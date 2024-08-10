@@ -5,7 +5,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-} from "@material-ui/core";
+} from "@mui/material";
 import IpcInvokeButton from "../IpcInvokeButton";
 
 type SwapCancelAlertProps = {

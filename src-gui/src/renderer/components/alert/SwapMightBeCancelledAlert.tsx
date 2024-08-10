@@ -1,5 +1,5 @@
-import { makeStyles } from "@material-ui/core";
-import { Alert, AlertTitle } from "@material-ui/lab";
+import makeStyles from '@mui/styles/makeStyles';
+import { Alert, AlertTitle } from '@mui/material';
 import { useActiveSwapInfo } from "store/hooks";
 import {
   isSwapTimelockInfoCancelled,

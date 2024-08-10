@@ -1,4 +1,4 @@
-import { Link, Typography } from "@material-ui/core";
+import { Link, Typography } from "@mui/material";
 import { ReactNode } from "react";
 import InfoBox from "./InfoBox";
 
@@ -28,7 +28,7 @@ export default function TransactionInfoBox({
         <>
           <Typography variant="subtitle2">{additionalContent}</Typography>
           <Typography variant="body1">
-            <Link href={explorerUrl} target="_blank">
+            <Link href={explorerUrl} target="_blank" underline="hover">
               View on explorer
             </Link>
           </Typography>

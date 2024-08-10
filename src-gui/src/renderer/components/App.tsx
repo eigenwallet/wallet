@@ -1,6 +1,7 @@
-import { Box, makeStyles, CssBaseline } from "@material-ui/core";
-import { createTheme, ThemeProvider } from "@material-ui/core/styles";
-import { indigo } from "@material-ui/core/colors";
+import { Box, CssBaseline, adaptV4Theme } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
+import { createTheme, ThemeProvider, Theme, StyledEngineProvider } from "@mui/material/styles";
+import { indigo } from "@mui/material/colors";
 import { MemoryRouter as Router, Routes, Route } from "react-router-dom";
 import Navigation, { drawerWidth } from "./navigation/Navigation";
 import HistoryPage from "./pages/history/HistoryPage";
@@ -8,6 +9,13 @@ import SwapPage from "./pages/swap/SwapPage";
 import WalletPage from "./pages/wallet/WalletPage";
 import HelpPage from "./pages/help/HelpPage";
 import GlobalSnackbarProvider from "./snackbar/GlobalSnackbarProvider";
+
+
+declare module '@mui/styles/defaultTheme' {
+  // eslint-disable-next-line @typescript-eslint/no-empty-interface
+  interface DefaultTheme extends Theme {}
+}
+
 
 const useStyles = makeStyles((theme) => ({
   innerContent: {
@@ -18,9 +26,9 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const theme = createTheme({
+const theme = createTheme(adaptV4Theme({
   palette: {
-    type: "dark",
+    mode: "dark",
     primary: {
       main: "#f4511e",
     },
@@ -34,7 +42,7 @@ const theme = createTheme({
       disableRipple: true,
     },
   },
-});
+}));
 
 function InnerContent() {
   const classes = useStyles();
@@ -54,14 +62,16 @@ function InnerContent() {
 
 export default function App() {
   return (
-    <ThemeProvider theme={theme}>
-      <GlobalSnackbarProvider>
-        <CssBaseline />
-        <Router>
-          <Navigation />
-          <InnerContent />
-        </Router>
-      </GlobalSnackbarProvider>
-    </ThemeProvider>
+    <StyledEngineProvider injectFirst>
+      <ThemeProvider theme={theme}>
+        <GlobalSnackbarProvider>
+          <CssBaseline />
+          <Router>
+            <Navigation />
+            <InnerContent />
+          </Router>
+        </GlobalSnackbarProvider>
+      </ThemeProvider>
+    </StyledEngineProvider>
   );
 }

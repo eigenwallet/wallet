@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Box, makeStyles, TextField, Typography } from "@material-ui/core";
+import { Box, TextField, Typography } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { SwapStateWaitingForBtcDeposit } from "models/storeModel";
 import { useAppSelector } from "store/hooks";
 import { satsToBtc } from "utils/conversionUtils";
@@ -75,13 +76,13 @@ export default function DepositAmountHelper({
         Depositing {bitcoinBalance > 0 && <>another</>}
       </Typography>
       <TextField
+        variant="standard"
         error={hasError()}
         value={amount}
         onChange={(e) => setAmount(parseFloat(e.target.value))}
         size="small"
         type="number"
-        className={classes.textField}
-      />
+        className={classes.textField} />
       <Typography variant="subtitle2">
         BTC will give you approximately{" "}
         <MoneroAmount amount={calcXMRAmount()} />.

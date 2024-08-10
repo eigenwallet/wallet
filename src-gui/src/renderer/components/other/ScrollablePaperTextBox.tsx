@@ -1,9 +1,9 @@
-import { Box, Divider, IconButton, Paper, Typography } from "@material-ui/core";
+import { Box, Divider, IconButton, Paper, Typography } from "@mui/material";
 import { ReactNode, useRef } from "react";
-import KeyboardArrowDownIcon from "@material-ui/icons/KeyboardArrowDown";
-import KeyboardArrowUpIcon from "@material-ui/icons/KeyboardArrowUp";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import { VList, VListHandle } from "virtua";
-import FileCopyOutlinedIcon from "@material-ui/icons/FileCopyOutlined";
+import FileCopyOutlinedIcon from "@mui/icons-material/FileCopyOutlined";
 import { ExpandableSearchBox } from "./ExpandableSearchBox";
 
 const MIN_HEIGHT = "10rem";

@@ -1,5 +1,5 @@
 import QRCode from "react-qr-code";
-import { Box } from "@material-ui/core";
+import { Box } from "@mui/material";
 
 export default function BitcoinQrCode({ address }: { address: string }) {
   return (

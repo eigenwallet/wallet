@@ -1,11 +1,6 @@
 import { useState } from "react";
-import {
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  makeStyles,
-} from "@material-ui/core";
+import { Button, Dialog, DialogActions, DialogContent } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import { swapReset } from "store/features/swapSlice";
 import SwapStatePage from "./pages/SwapStatePage";

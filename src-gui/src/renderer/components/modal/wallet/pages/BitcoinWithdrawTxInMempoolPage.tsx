@@ -1,4 +1,4 @@
-import { Button, DialogActions, DialogContentText } from "@material-ui/core";
+import { Button, DialogActions, DialogContentText } from "@mui/material";
 import BitcoinTransactionInfoBox from "../../swap/BitcoinTransactionInfoBox";
 import WithdrawDialogContent from "../WithdrawDialogContent";
 

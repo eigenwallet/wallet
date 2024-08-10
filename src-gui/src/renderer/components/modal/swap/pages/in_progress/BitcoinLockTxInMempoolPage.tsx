@@ -1,4 +1,4 @@
-import { Box, DialogContentText } from "@material-ui/core";
+import { Box, DialogContentText } from "@mui/material";
 import { SwapStateBtcLockInMempool } from "models/storeModel";
 import BitcoinTransactionInfoBox from "../../BitcoinTransactionInfoBox";
 import SwapMightBeCancelledAlert from "../../../../alert/SwapMightBeCancelledAlert";

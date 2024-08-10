@@ -1,9 +1,9 @@
-import { Tooltip } from "@material-ui/core";
-import Button, { ButtonProps } from "@material-ui/core/Button/Button";
-import DoneIcon from "@material-ui/icons/Done";
-import ErrorIcon from "@material-ui/icons/Error";
-import { green, red } from "@material-ui/core/colors";
-import PlayArrowIcon from "@material-ui/icons/PlayArrow";
+import { Tooltip } from "@mui/material";
+import Button, { ButtonProps } from "@mui/material/Button/Button";
+import DoneIcon from "@mui/icons-material/Done";
+import ErrorIcon from "@mui/icons-material/Error";
+import { green, red } from "@mui/material/colors";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import IpcInvokeButton from "../../../IpcInvokeButton";
 import {
   GetSwapInfoResponse,
