@@ -9,9 +9,9 @@ import {
   Button,
   Box,
   Chip,
-  makeStyles,
   Theme,
-} from "@material-ui/core";
+} from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { Multiaddr } from "multiaddr";
 import { useSnackbar } from "notistack";
 import IpcInvokeButton from "../../IpcInvokeButton";
@@ -91,6 +91,7 @@ export default function ListSellersDialog({
           discover providers and then connect and swap with them.
         </DialogContentText>
         <TextField
+          variant="standard"
           autoFocus
           margin="dense"
           label="Rendezvous point"
@@ -101,8 +102,7 @@ export default function ListSellersDialog({
           value={rendezvousAddress}
           onChange={handleMultiAddrChange}
           placeholder="/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE"
-          error={!!getMultiAddressError()}
-        />
+          error={!!getMultiAddressError()} />
         <Box className={classes.chipOuter}>
           {PRESET_RENDEZVOUS_POINTS.map((rAddress) => (
             <Chip

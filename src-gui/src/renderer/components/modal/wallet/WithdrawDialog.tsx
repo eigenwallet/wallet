@@ -1,8 +1,4 @@
-import { Button, Dialog, DialogActions } from "@material-ui/core";
-import { useAppDispatch, useIsRpcEndpointBusy } from "store/hooks";
-import { RpcMethod } from "models/rpcModel";
-import { rpcResetWithdrawTxId } from "store/features/rpcSlice";
-import WithdrawStatePage from "./WithdrawStatePage";
+import { Button, Dialog, DialogActions } from "@mui/material";
 import DialogHeader from "../DialogHeader";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { useState } from "react";
@@ -49,7 +45,12 @@ export default function WithdrawDialog({
         )}
       </WithdrawDialogContent>
       <DialogActions>
-        <Button onClick={onCancel} color="primary" disabled={pending}>
+        <Button
+          onClick={onCancel}
+          color={withdrawTxId === null ? "info" : "primary"}
+          disabled={pending}
+          variant={withdrawTxId === null ? "text" : "contained"}
+        >
           {withdrawTxId === null ? "Cancel" : "Done"}
         </Button>
         {withdrawTxId === null && (

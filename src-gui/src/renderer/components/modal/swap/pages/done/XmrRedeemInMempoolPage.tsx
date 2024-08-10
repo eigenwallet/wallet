@@ -1,4 +1,4 @@
-import { Box, DialogContentText } from "@material-ui/core";
+import { Box, DialogContentText } from "@mui/material";
 import { SwapStateXmrRedeemInMempool } from "models/storeModel";
 import { useActiveSwapInfo } from "store/hooks";
 import { getSwapXmrAmount } from "models/rpcModel";

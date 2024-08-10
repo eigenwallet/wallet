@@ -4,7 +4,7 @@ import {
   CircularProgress,
   IconButton,
   Tooltip,
-} from "@material-ui/core";
+} from "@mui/material";
 import { ReactElement, ReactNode, useEffect, useState } from "react";
 import { useSnackbar } from "notistack";
 import { useAppSelector } from "store/hooks";
@@ -139,7 +139,7 @@ export default function IpcInvokeButton<T>({
             onClick={handleClick}
             disabled={isDisabled}
             {...(rest as any)}
-          >
+            size="large">
             {actualEndIcon}
           </IconButton>
         ) : (

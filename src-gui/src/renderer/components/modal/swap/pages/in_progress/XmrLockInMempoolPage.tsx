@@ -1,4 +1,4 @@
-import { Box, DialogContentText } from "@material-ui/core";
+import { Box, DialogContentText } from "@mui/material";
 import { SwapStateXmrLockInMempool } from "models/storeModel";
 import MoneroTransactionInfoBox from "../../MoneroTransactionInfoBox";
 

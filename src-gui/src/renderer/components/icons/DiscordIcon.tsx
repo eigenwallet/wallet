@@ -1,5 +1,5 @@
-import { SvgIconProps } from "@material-ui/core/SvgIcon/SvgIcon";
-import { SvgIcon } from "@material-ui/core";
+import { SvgIconProps } from "@mui/material/SvgIcon/SvgIcon";
+import { SvgIcon } from "@mui/material";
 
 export default function DiscordIcon(props: SvgIconProps) {
   return (

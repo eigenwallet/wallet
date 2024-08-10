@@ -1,11 +1,6 @@
-import {
-  makeStyles,
-  Card,
-  CardContent,
-  Box,
-  IconButton,
-} from "@material-ui/core";
-import ArrowForwardIosIcon from "@material-ui/icons/ArrowForwardIos";
+import { Card, CardContent, Box, IconButton } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
+import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
 import { useState } from "react";
 import { useAppSelector } from "store/hooks";
 import ProviderInfo from "./ProviderInfo";

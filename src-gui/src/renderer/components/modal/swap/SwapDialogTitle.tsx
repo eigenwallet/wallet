@@ -1,4 +1,5 @@
-import { Box, DialogTitle, makeStyles, Typography } from "@material-ui/core";
+import { Box, DialogTitle, Typography } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import TorStatusBadge from "./pages/TorStatusBadge";
 import FeedbackSubmitBadge from "./pages/FeedbackSubmitBadge";
 import DebugPageSwitchBadge from "./pages/DebugPageSwitchBadge";
@@ -28,7 +29,7 @@ export default function SwapDialogTitle({
   const classes = useStyles();
 
   return (
-    <DialogTitle disableTypography className={classes.root}>
+    <DialogTitle className={classes.root}>
       <Typography variant="h6">{title}</Typography>
       <Box className={classes.rightSide}>
         <FeedbackSubmitBadge />

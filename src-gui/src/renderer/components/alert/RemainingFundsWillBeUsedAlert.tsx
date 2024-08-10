@@ -1,5 +1,6 @@
-import { Alert } from "@material-ui/lab";
-import { Box, makeStyles } from "@material-ui/core";
+import { Alert } from '@mui/material';
+import { Box } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { useAppSelector } from "store/hooks";
 import WalletRefreshButton from "../pages/wallet/WalletRefreshButton";
 import { SatsAmount } from "../other/Units";

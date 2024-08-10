@@ -1,5 +1,5 @@
 import { piconerosToXmr, satsToBtc } from "utils/conversionUtils";
-import { Tooltip } from "@material-ui/core";
+import { Tooltip } from "@mui/material";
 import { useAppSelector } from "store/hooks";
 
 type Amount = number | null | undefined;

@@ -1,17 +1,10 @@
 import { ChangeEvent, useEffect, useState } from "react";
-import {
-  makeStyles,
-  Box,
-  Paper,
-  Typography,
-  TextField,
-  LinearProgress,
-  Fab,
-} from "@material-ui/core";
-import InputAdornment from "@material-ui/core/InputAdornment";
-import ArrowDownwardIcon from "@material-ui/icons/ArrowDownward";
-import SwapHorizIcon from "@material-ui/icons/SwapHoriz";
-import { Alert } from "@material-ui/lab";
+import { Box, Paper, Typography, TextField, LinearProgress, Fab } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
+import InputAdornment from "@mui/material/InputAdornment";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import { Alert } from '@mui/material';
 import { satsToBtc } from "utils/conversionUtils";
 import { useAppSelector } from "store/hooks";
 import { ExtendedProviderStatus } from "models/apiModel";
