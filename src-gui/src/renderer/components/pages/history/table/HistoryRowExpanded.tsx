@@ -1,13 +1,5 @@
-import {
-  Box,
-  Link,
-  makeStyles,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableRow,
-} from "@material-ui/core";
+import { Box, Link, Table, TableBody, TableCell, TableContainer, TableRow } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { getBitcoinTxExplorerUrl } from "utils/conversionUtils";
 import { isTestnet } from "store/config";
 import {
@@ -108,7 +100,7 @@ export default function HistoryRowExpanded({
                 <Link
                   href={getBitcoinTxExplorerUrl(swap.tx_lock_id, isTestnet())}
                   target="_blank"
-                >
+                  underline="hover">
                   {swap.tx_lock_id}
                 </Link>
               </TableCell>

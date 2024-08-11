@@ -1,4 +1,6 @@
-import { Button, makeStyles, Paper, Typography } from "@material-ui/core";
+import { Button, Paper, Typography } from "@mui/material";
+
+import makeStyles from "@mui/styles/makeStyles";
 
 const useStyles = makeStyles((theme) => ({
   logsOuter: {
@@ -21,7 +23,7 @@ export default function PaperTextBox({ stdOut }: { stdOut: string }) {
   }
 
   return (
-    <Paper className={classes.logsOuter} variant="outlined">
+    <Paper className={classes.logsOuter} variant="elevation">
       <Typography component="pre" variant="body2">
         {stdOut}
       </Typography>

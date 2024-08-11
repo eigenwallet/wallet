@@ -1,9 +1,10 @@
-import { Box, DialogContentText, makeStyles } from "@material-ui/core";
+import { Box, DialogContentText } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { useState } from "react";
 import BitcoinAddressTextField from "renderer/components/inputs/BitcoinAddressTextField";
 import MoneroAddressTextField from "renderer/components/inputs/MoneroAddressTextField";
 import { useAppSelector } from "store/hooks";
-import PlayArrowIcon from "@material-ui/icons/PlayArrow";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import { isTestnet } from "store/config";
 import RemainingFundsWillBeUsedAlert from "../../../../alert/RemainingFundsWillBeUsedAlert";
 import IpcInvokeButton from "../../../../IpcInvokeButton";

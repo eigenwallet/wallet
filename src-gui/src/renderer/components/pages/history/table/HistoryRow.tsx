@@ -1,15 +1,9 @@
-import {
-  Box,
-  Collapse,
-  IconButton,
-  makeStyles,
-  TableCell,
-  TableRow,
-} from "@material-ui/core";
+import { Box, Collapse, IconButton, TableCell, TableRow } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { useState } from "react";
-import ArrowForwardIcon from "@material-ui/icons/ArrowForward";
-import KeyboardArrowDownIcon from "@material-ui/icons/KeyboardArrowDown";
-import KeyboardArrowUpIcon from "@material-ui/icons/KeyboardArrowUp";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import {
   getHumanReadableDbStateType,
   getSwapBtcAmount,

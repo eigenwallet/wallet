@@ -1,4 +1,4 @@
-import { ButtonProps } from "@material-ui/core/Button/Button";
+import { ButtonProps } from "@mui/material/Button/Button";
 import {
   Box,
   Button,
@@ -7,7 +7,7 @@ import {
   DialogContent,
   DialogContentText,
   Link,
-} from "@material-ui/core";
+} from "@mui/material";
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import { rpcResetMoneroRecoveryKeys } from "store/features/rpcSlice";
 import {
@@ -54,7 +54,7 @@ function MoneroRecoveryKeysDialog({ swap }: { swap: GetSwapInfoResponse }) {
                 href="https://www.getmonero.org/resources/user-guides/restore_from_keys.html"
                 target="_blank"
                 rel="noreferrer"
-              >
+                underline="hover">
                 this guide
               </Link>{" "}
               for a detailed description on how to import the keys and spend the

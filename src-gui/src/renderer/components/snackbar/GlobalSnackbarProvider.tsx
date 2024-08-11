@@ -4,8 +4,8 @@ import {
   SnackbarProvider,
   useSnackbar,
 } from "notistack";
-import { IconButton, styled } from "@material-ui/core";
-import { Close } from "@material-ui/icons";
+import { IconButton, styled } from "@mui/material";
+import { Close } from "@mui/icons-material";
 import { ReactNode } from "react";
 
 const StyledMaterialDesignContent = styled(MaterialDesignContent)(() => ({
@@ -18,7 +18,7 @@ function CloseSnackbarButton({ snackbarId }: { snackbarId: SnackbarKey }) {
   const { closeSnackbar } = useSnackbar();
 
   return (
-    <IconButton onClick={() => closeSnackbar(snackbarId)}>
+    <IconButton onClick={() => closeSnackbar(snackbarId)} size="large">
       <Close />
     </IconButton>
   );

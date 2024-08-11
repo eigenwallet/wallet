@@ -1,4 +1,4 @@
-import { Step, StepLabel, Stepper } from "@material-ui/core";
+import { Step, StepLabel, Stepper } from "@mui/material";
 import { useAppSelector, useIsRpcEndpointBusy } from "store/hooks";
 
 function getActiveStep(isPending: boolean, withdrawTxId: string | null) {

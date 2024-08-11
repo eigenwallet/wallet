@@ -9,12 +9,12 @@ import {
   DialogActions,
   Button,
   DialogContent,
-  makeStyles,
   CircularProgress,
-} from "@material-ui/core";
-import AddIcon from "@material-ui/icons/Add";
+} from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
+import AddIcon from "@mui/icons-material/Add";
 import { useState } from "react";
-import SearchIcon from "@material-ui/icons/Search";
+import SearchIcon from "@mui/icons-material/Search";
 import { ExtendedProviderStatus } from "models/apiModel";
 import {
   useAllProviders,

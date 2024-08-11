@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
-import { Box, DialogContent, makeStyles } from "@material-ui/core";
+import { Box, DialogContent } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import WithdrawStepper from "./WithdrawStepper";
 
 const useStyles = makeStyles({

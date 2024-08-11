@@ -1,5 +1,6 @@
-import { Alert, AlertTitle } from "@material-ui/lab/";
-import { Box, makeStyles } from "@material-ui/core";
+import { Alert, AlertTitle } from "@mui/lab/";
+import { Box } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { ReactNode } from "react";
 import { exhaustiveGuard } from "utils/typescriptUtils";
 import {
@@ -197,7 +198,8 @@ function SwapAlertStatusText({
       }
       return <ImmediateActionAlert />;
     default:
-      return exhaustiveGuard(swap.state_name);
+      throw new Error(`Unknown swap state: ${swap.state_name}`);
+    // return exhaustiveGuard(swap.state_name);
   }
 }
 

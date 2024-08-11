@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, DialogActions, DialogContentText } from "@material-ui/core";
+import { Button, DialogActions, DialogContentText } from "@mui/material";
 import BitcoinAddressTextField from "../../../inputs/BitcoinAddressTextField";
 import WithdrawDialogContent from "../WithdrawDialogContent";
 import IpcInvokeButton from "../../../IpcInvokeButton";

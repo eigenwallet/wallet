@@ -1,5 +1,6 @@
-import { makeStyles, Box, Typography, Chip, Tooltip } from "@material-ui/core";
-import { VerifiedUser } from "@material-ui/icons";
+import { Box, Typography, Chip, Tooltip } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
+import { VerifiedUser } from "@mui/icons-material";
 import { satsToBtc, secondsToDays } from "utils/conversionUtils";
 import { ExtendedProviderStatus } from "models/apiModel";
 import {

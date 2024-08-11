@@ -1,4 +1,4 @@
-import { Typography } from "@material-ui/core";
+import { Typography } from "@mui/material";
 import { useIsSwapRunning } from "store/hooks";
 import HistoryTable from "./table/HistoryTable";
 import SwapDialog from "../../modal/swap/SwapDialog";

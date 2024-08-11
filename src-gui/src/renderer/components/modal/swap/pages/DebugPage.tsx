@@ -1,4 +1,4 @@
-import { Box, DialogContentText } from "@material-ui/core";
+import { Box, DialogContentText } from "@mui/material";
 import { useActiveSwapInfo, useAppSelector } from "store/hooks";
 import CliLogsBox from "../../../other/RenderedCliLog";
 import JsonTreeView from "../../../other/JSONViewTree";
