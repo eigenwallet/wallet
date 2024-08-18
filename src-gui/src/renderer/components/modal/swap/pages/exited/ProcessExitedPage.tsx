@@ -1,13 +1,13 @@
-import { useActiveSwapInfo } from "store/hooks";
 import { SwapStateName } from "models/rpcModel";
+import { useActiveSwapInfo } from "store/hooks";
 import {
   isSwapStateBtcPunished,
   isSwapStateBtcRefunded,
   isSwapStateXmrRedeemInMempool,
   SwapStateProcessExited,
 } from "../../../../../../models/storeModel";
-import XmrRedeemInMempoolPage from "../done/XmrRedeemInMempoolPage";
 import BitcoinPunishedPage from "../done/BitcoinPunishedPage";
+import XmrRedeemInMempoolPage from "../done/XmrRedeemInMempoolPage";
 // eslint-disable-next-line import/no-cycle
 import SwapStatePage from "../SwapStatePage";
 import BitcoinRefundedPage from "../done/BitcoinRefundedPage";

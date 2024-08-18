@@ -1,4 +1,3 @@
-import { ButtonProps } from "@material-ui/core/Button/Button";
 import {
   Box,
   Button,
@@ -8,8 +7,9 @@ import {
   DialogContentText,
   Link,
 } from "@material-ui/core";
-import { useAppDispatch, useAppSelector } from "store/hooks";
+import { ButtonProps } from "@material-ui/core/Button/Button";
 import { rpcResetMoneroRecoveryKeys } from "store/features/rpcSlice";
+import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
   GetSwapInfoResponse,
   isSwapMoneroRecoverable,

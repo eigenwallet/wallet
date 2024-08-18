@@ -1,27 +1,27 @@
-import { ChangeEvent, useEffect, useState } from "react";
 import {
-  makeStyles,
   Box,
-  Paper,
-  Typography,
-  TextField,
-  LinearProgress,
   Fab,
+  LinearProgress,
+  makeStyles,
+  Paper,
+  TextField,
+  Typography,
 } from "@material-ui/core";
 import InputAdornment from "@material-ui/core/InputAdornment";
 import ArrowDownwardIcon from "@material-ui/icons/ArrowDownward";
 import SwapHorizIcon from "@material-ui/icons/SwapHoriz";
 import { Alert } from "@material-ui/lab";
-import { satsToBtc } from "utils/conversionUtils";
-import { useAppSelector } from "store/hooks";
 import { ExtendedProviderStatus } from "models/apiModel";
 import { isSwapState } from "models/storeModel";
-import SwapDialog from "../../modal/swap/SwapDialog";
-import ProviderSelect from "../../modal/provider/ProviderSelect";
+import { ChangeEvent, useEffect, useState } from "react";
+import { useAppSelector } from "store/hooks";
+import { satsToBtc } from "utils/conversionUtils";
 import {
   ListSellersDialogOpenButton,
   ProviderSubmitDialogOpenButton,
 } from "../../modal/provider/ProviderListDialog";
+import ProviderSelect from "../../modal/provider/ProviderSelect";
+import SwapDialog from "../../modal/swap/SwapDialog";
 
 // After RECONNECTION_ATTEMPTS_UNTIL_ASSUME_DOWN failed reconnection attempts we can assume the public registry is down
 const RECONNECTION_ATTEMPTS_UNTIL_ASSUME_DOWN = 1;

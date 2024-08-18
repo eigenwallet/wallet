@@ -5,11 +5,11 @@ import {
   IconButton,
   Tooltip,
 } from "@material-ui/core";
-import { ReactElement, ReactNode, useEffect, useState } from "react";
-import { useSnackbar } from "notistack";
-import { useAppSelector } from "store/hooks";
 import { RpcProcessStateType } from "models/rpcModel";
+import { useSnackbar } from "notistack";
+import { ReactElement, ReactNode, useEffect, useState } from "react";
 import { isExternalRpc } from "store/config";
+import { useAppSelector } from "store/hooks";
 
 function IpcButtonTooltip({
   requiresRpcAndNotReady,

@@ -1,19 +1,19 @@
-import { ChangeEvent, useState } from "react";
 import {
-  DialogTitle,
+  Box,
+  Button,
+  Chip,
   Dialog,
+  DialogActions,
   DialogContent,
   DialogContentText,
-  TextField,
-  DialogActions,
-  Button,
-  Box,
-  Chip,
+  DialogTitle,
   makeStyles,
+  TextField,
   Theme,
 } from "@material-ui/core";
 import { Multiaddr } from "multiaddr";
 import { useSnackbar } from "notistack";
+import { ChangeEvent, useState } from "react";
 import IpcInvokeButton from "../../IpcInvokeButton";
 
 const PRESET_RENDEZVOUS_POINTS = [

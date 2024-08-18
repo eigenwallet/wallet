@@ -1,16 +1,16 @@
 import { Tooltip } from "@material-ui/core";
-import Button, { ButtonProps } from "@material-ui/core/Button/Button";
+import { ButtonProps } from "@material-ui/core/Button/Button";
+import { green, red } from "@material-ui/core/colors";
 import DoneIcon from "@material-ui/icons/Done";
 import ErrorIcon from "@material-ui/icons/Error";
-import { green, red } from "@material-ui/core/colors";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
-import IpcInvokeButton from "../../../IpcInvokeButton";
 import {
   GetSwapInfoResponse,
   SwapStateName,
   isSwapStateNamePossiblyCancellableSwap,
   isSwapStateNamePossiblyRefundableSwap,
 } from "../../../../../models/rpcModel";
+import IpcInvokeButton from "../../../IpcInvokeButton";
 
 export function SwapResumeButton({
   swap,
@@ -57,11 +57,7 @@ export function SwapCancelRefundButton({
   );
 }
 
-export default function HistoryRowActions({
-  swap,
-}: {
-  swap: GetSwapInfoResponse;
-}) {
+export default function HistoryRowActions(swap: GetSwapInfoResponse) {
   if (swap.state_name === SwapStateName.XmrRedeemed) {
     return (
       <Tooltip title="The swap is completed because you have redeemed the XMR">

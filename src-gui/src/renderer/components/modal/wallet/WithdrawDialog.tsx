@@ -1,14 +1,10 @@
 import { Button, Dialog, DialogActions } from "@material-ui/core";
-import { useAppDispatch, useIsRpcEndpointBusy } from "store/hooks";
-import { RpcMethod } from "models/rpcModel";
-import { rpcResetWithdrawTxId } from "store/features/rpcSlice";
-import WithdrawStatePage from "./WithdrawStatePage";
-import DialogHeader from "../DialogHeader";
-import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { useState } from "react";
+import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { withdrawBtc } from "renderer/rpc";
-import BtcTxInMempoolPageContent from "./pages/BitcoinWithdrawTxInMempoolPage";
+import DialogHeader from "../DialogHeader";
 import AddressInputPage from "./pages/AddressInputPage";
+import BtcTxInMempoolPageContent from "./pages/BitcoinWithdrawTxInMempoolPage";
 import WithdrawDialogContent from "./WithdrawDialogContent";
 
 export default function WithdrawDialog({

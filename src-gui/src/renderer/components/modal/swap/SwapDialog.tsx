@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Button,
   Dialog,
@@ -6,13 +5,14 @@ import {
   DialogContent,
   makeStyles,
 } from "@material-ui/core";
-import { useAppDispatch, useAppSelector } from "store/hooks";
+import { useState } from "react";
 import { swapReset } from "store/features/swapSlice";
-import SwapStatePage from "./pages/SwapStatePage";
-import SwapStateStepper from "./SwapStateStepper";
+import { useAppDispatch, useAppSelector } from "store/hooks";
 import SwapSuspendAlert from "../SwapSuspendAlert";
-import SwapDialogTitle from "./SwapDialogTitle";
 import DebugPage from "./pages/DebugPage";
+import SwapStatePage from "./pages/SwapStatePage";
+import SwapDialogTitle from "./SwapDialogTitle";
+import SwapStateStepper from "./SwapStateStepper";
 
 const useStyles = makeStyles({
   content: {

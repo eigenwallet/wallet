@@ -8,24 +8,24 @@ import {
   TableContainer,
   TableRow,
 } from "@material-ui/core";
-import { getBitcoinTxExplorerUrl } from "utils/conversionUtils";
-import { isTestnet } from "store/config";
-import {
-  getHumanReadableDbStateType,
-  getSwapBtcAmount,
-  getSwapExchangeRate,
-  getSwapTxFees,
-  getSwapXmrAmount,
-  GetSwapInfoResponse,
-} from "../../../../../models/rpcModel";
-import SwapLogFileOpenButton from "./SwapLogFileOpenButton";
-import { SwapCancelRefundButton } from "./HistoryRowActions";
-import { SwapMoneroRecoveryButton } from "./SwapMoneroRecoveryButton";
 import {
   BitcoinAmount,
   MoneroAmount,
   MoneroBitcoinExchangeRate,
 } from "renderer/components/other/Units";
+import { isTestnet } from "store/config";
+import { getBitcoinTxExplorerUrl } from "utils/conversionUtils";
+import {
+  getHumanReadableDbStateType,
+  getSwapBtcAmount,
+  getSwapExchangeRate,
+  GetSwapInfoResponse,
+  getSwapTxFees,
+  getSwapXmrAmount,
+} from "../../../../../models/rpcModel";
+import { SwapCancelRefundButton } from "./HistoryRowActions";
+import SwapLogFileOpenButton from "./SwapLogFileOpenButton";
+import { SwapMoneroRecoveryButton } from "./SwapMoneroRecoveryButton";
 
 const useStyles = makeStyles((theme) => ({
   outer: {

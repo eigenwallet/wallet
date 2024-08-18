@@ -10,15 +10,15 @@ import {
   Select,
   TextField,
 } from "@material-ui/core";
-import { useState } from "react";
+import { CliLog } from "models/cliModel";
 import { useSnackbar } from "notistack";
+import { useState } from "react";
+import { store } from "renderer/store/storeRenderer";
 import { useActiveSwapInfo, useAppSelector } from "store/hooks";
 import { parseDateString } from "utils/parseUtils";
-import { store } from "renderer/store/storeRenderer";
-import { CliLog } from "models/cliModel";
 import { submitFeedbackViaHttp } from "../../../api";
-import { PiconeroAmount } from "../../other/Units";
 import LoadingButton from "../../other/LoadingButton";
+import { PiconeroAmount } from "../../other/Units";
 
 async function submitFeedback(body: string, swapId: string | number) {
   let attachedBody = "";

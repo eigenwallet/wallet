@@ -1,23 +1,21 @@
 import { Box, DialogContentText } from "@material-ui/core";
-import { SwapStateXmrRedeemInMempool } from "models/storeModel";
+import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { useActiveSwapInfo } from "store/hooks";
-import { getSwapXmrAmount } from "models/rpcModel";
-import MoneroTransactionInfoBox from "../../MoneroTransactionInfoBox";
 import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
-
-type XmrRedeemInMempoolPageProps = {
-  state: SwapStateXmrRedeemInMempool | null;
-};
+import MoneroTransactionInfoBox from "../../MoneroTransactionInfoBox";
 
 export default function XmrRedeemInMempoolPage({
-  state,
-}: XmrRedeemInMempoolPageProps) {
+  xmr_redeem_address,
+  xmr_redeem_txid,
+}: TauriSwapProgressEventContent<"XmrRedeemInMempool">) {
   const swap = useActiveSwapInfo();
-  const additionalContent = swap
-    ? `This transaction transfers ${getSwapXmrAmount(swap).toFixed(6)} XMR to ${
-        state?.bobXmrRedeemAddress
-      }`
-    : null;
+
+  // TODO: Reimplement this using Tauri
+  //const additionalContent = swap
+  //  ? `This transaction transfers ${getSwapXmrAmount(swap).toFixed(6)} XMR to ${
+  //      state?.bobXmrRedeemAddress
+  //    }`
+  //  : null;
 
   return (
     <Box>
@@ -32,16 +30,12 @@ export default function XmrRedeemInMempoolPage({
           gap: "0.5rem",
         }}
       >
-        {state && (
-          <>
-            <MoneroTransactionInfoBox
-              title="Monero Redeem Transaction"
-              txId={state.bobXmrRedeemTxId}
-              additionalContent={additionalContent}
-              loading={false}
-            />
-          </>
-        )}
+        <MoneroTransactionInfoBox
+          title="Monero Redeem Transaction"
+          txId={xmr_redeem_txid}
+          additionalContent={null}
+          loading={false}
+        />
         <FeedbackInfoBox />
       </Box>
     </Box>

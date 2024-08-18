@@ -9,12 +9,7 @@ import {
   TableHead,
   TableRow,
 } from "@material-ui/core";
-import { sortBy } from "lodash";
-import { parseDateString } from "utils/parseUtils";
-import {
-  useAppSelector,
-  useSwapInfosSortedByDate,
-} from "../../../../../store/hooks";
+import { useSwapInfosSortedByDate } from "../../../../../store/hooks";
 import HistoryRow from "./HistoryRow";
 
 const useStyles = makeStyles((theme) => ({

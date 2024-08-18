@@ -1,12 +1,7 @@
-import { Alert, AlertTitle } from "@material-ui/lab/";
 import { Box, makeStyles } from "@material-ui/core";
+import { Alert, AlertTitle } from "@material-ui/lab/";
 import { ReactNode } from "react";
 import { exhaustiveGuard } from "utils/typescriptUtils";
-import {
-  SwapCancelRefundButton,
-  SwapResumeButton,
-} from "../pages/history/table/HistoryRowActions";
-import HumanizedBitcoinBlockDuration from "../other/HumanizedBitcoinBlockDuration";
 import {
   GetSwapInfoResponse,
   GetSwapInfoResponseRunningSwap,
@@ -18,6 +13,11 @@ import {
   SwapTimelockInfoCancelled,
   SwapTimelockInfoNone,
 } from "../../../models/rpcModel";
+import HumanizedBitcoinBlockDuration from "../other/HumanizedBitcoinBlockDuration";
+import {
+  SwapCancelRefundButton,
+  SwapResumeButton,
+} from "../pages/history/table/HistoryRowActions";
 import { SwapMoneroRecoveryButton } from "../pages/history/table/SwapMoneroRecoveryButton";
 
 const useStyles = makeStyles({
@@ -197,7 +197,9 @@ function SwapAlertStatusText({
       }
       return <ImmediateActionAlert />;
     default:
-      return exhaustiveGuard(swap.state_name);
+      // TODO: fix the exhaustive guard
+      // return exhaustiveGuard(swap.state_name);
+      return <></>;
   }
 }
 

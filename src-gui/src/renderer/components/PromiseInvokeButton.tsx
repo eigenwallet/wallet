@@ -1,7 +1,7 @@
-import { Button, ButtonProps, IconButton, Tooltip } from "@material-ui/core";
+import { Button, ButtonProps, IconButton } from "@material-ui/core";
 import CircularProgress from "@material-ui/core/CircularProgress";
 import { useSnackbar } from "notistack";
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useState } from "react";
 
 interface IpcInvokeButtonProps<T> {
   onSuccess?: (data: T) => void;

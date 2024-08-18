@@ -1,4 +1,3 @@
-import { ButtonProps } from "@material-ui/core/Button/Button";
 import {
   Button,
   Dialog,
@@ -6,8 +5,9 @@ import {
   DialogContent,
   DialogTitle,
 } from "@material-ui/core";
-import { useState } from "react";
+import { ButtonProps } from "@material-ui/core/Button/Button";
 import { CliLog } from "models/cliModel";
+import { useState } from "react";
 import IpcInvokeButton from "../../../IpcInvokeButton";
 import CliLogsBox from "../../../other/RenderedCliLog";
 

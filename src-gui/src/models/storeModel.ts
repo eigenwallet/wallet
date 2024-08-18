@@ -1,8 +1,9 @@
-import { CliLog, SwapSpawnType } from "./cliModel";
 import { Provider } from "./apiModel";
+import { CliLog, SwapSpawnType } from "./cliModel";
+import { TauriSwapProgressEvent } from "./tauriModel";
 
 export interface SwapSlice {
-  state: SwapState | null;
+  state: TauriSwapProgressEvent | null;
   logs: CliLog[];
   processRunning: boolean;
   provider: Provider | null;
