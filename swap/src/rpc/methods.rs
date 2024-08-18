@@ -1,7 +1,7 @@
 use crate::api::request::{
     buy_xmr, cancel_and_refund, get_balance, get_current_swap, get_history, get_raw_states,
     get_swap_info, list_sellers, monero_recovery, resume_swap, suspend_current_swap, withdraw_btc,
-    BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, GetSwapInfoArgs, ListSellersArgs, Method,
+    BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, GetSwapInfoArgs, ListSellersArgs,
     MoneroRecoveryArgs, ResumeArgs, WithdrawBtcArgs,
 };
 use crate::api::Context;
@@ -130,8 +130,7 @@ pub fn register_modules(outer_context: Context) -> Result<RpcModule<Context>> {
                 ::bitcoin::Amount::from_str_in(amount_str, ::bitcoin::Denomination::Bitcoin)
                     .map_err(|_| {
                         jsonrpsee_core::Error::Custom("Unable to parse amount".to_string())
-                    })?
-                    .to_sat(),
+                    })?,
             )
         } else {
             None
@@ -192,7 +191,6 @@ pub fn register_modules(outer_context: Context) -> Result<RpcModule<Context>> {
                 seller,
                 bitcoin_change_address,
                 monero_receive_address,
-                swap_id: Uuid::new_v4(),
             },
             context,
         )
