@@ -3,9 +3,11 @@ use std::sync::Arc;
 use swap::{
     api::{
         request::{
-            get_balance as get_balance_impl, get_swap_infos_all as get_swap_infos_all_impl,
-            withdraw_btc as withdraw_btc_impl, BalanceArgs, BalanceResponse, GetSwapInfoResponse,
-            WithdrawBtcArgs, WithdrawBtcResponse,
+            buy_xmr as buy_xmr_impl, get_balance as get_balance_impl,
+            get_history as get_history_impl, get_swap_infos_all as get_swap_infos_all_impl,
+            resume_swap as resume_swap_impl, withdraw_btc as withdraw_btc_impl, BalanceArgs,
+            BalanceResponse, BuyXmrArgs, BuyXmrResponse, GetHistoryResponse, GetSwapInfoResponse,
+            ResumeArgs, ResumeSwapResponse, WithdrawBtcArgs, WithdrawBtcResponse,
         },
         Context,
     },
@@ -28,15 +30,13 @@ impl<T, E: ToString> ToStringResult<T> for Result<T, E> {
 }
 
 #[tauri::command]
-async fn get_balance(context: State<'_, Arc<Context>>) -> Result<BalanceResponse, String> {
-    get_balance_impl(
-        BalanceArgs {
-            force_refresh: true,
-        },
-        context.inner().clone(),
-    )
-    .await
-    .to_string_result()
+async fn get_balance(
+    context: State<'_, Arc<Context>>,
+    args: BalanceArgs,
+) -> Result<BalanceResponse, String> {
+    get_balance_impl(args, context.inner().clone())
+        .await
+        .to_string_result()
 }
 
 #[tauri::command]
@@ -48,19 +48,32 @@ async fn get_swap_infos_all(
         .to_string_result()
 }
 
-/*macro_rules! tauri_command {
-    ($command_name:ident, $command_args:ident, $command_response:ident) => {
-        #[tauri::command]
-        async fn $command_name(
-            context: State<'_, Context>,
-            args: $command_args,
-        ) -> Result<$command_response, String> {
-            swap::api::request::$command_name(args, context)
-                .await
-                .to_string_result()
-        }
-    };
-}*/
+#[tauri::command]
+async fn buy_xmr(
+    context: State<'_, Arc<Context>>,
+    args: BuyXmrArgs,
+) -> Result<BuyXmrResponse, String> {
+    buy_xmr_impl(args, context.inner().clone())
+        .await
+        .to_string_result()
+}
+
+#[tauri::command]
+async fn get_history(context: State<'_, Arc<Context>>) -> Result<GetHistoryResponse, String> {
+    get_history_impl(context.inner().clone())
+        .await
+        .to_string_result()
+}
+
+#[tauri::command]
+async fn resume_swap(
+    context: State<'_, Arc<Context>>,
+    args: ResumeArgs,
+) -> Result<ResumeSwapResponse, String> {
+    resume_swap_impl(args, context.inner().clone())
+        .await
+        .to_string_result()
+}
 
 #[tauri::command]
 async fn withdraw_btc(
@@ -90,7 +103,8 @@ fn setup<'a>(app: &'a mut tauri::App) -> Result<(), Box<dyn std::error::Error>> 
             None,
         )
         .await
-        .unwrap();
+        .unwrap()
+        .with_tauri_handle(app.app_handle().to_owned());
 
         app.manage(Arc::new(context));
     });
@@ -104,7 +118,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_balance,
             get_swap_infos_all,
-            withdraw_btc
+            withdraw_btc,
+            buy_xmr,
+            resume_swap,
+            get_history
         ])
         .setup(setup)
         .build(tauri::generate_context!())
