@@ -388,6 +388,11 @@ async fn next_state(
                         "Alice has accepted our request to cooperatively redeem the XMR"
                     );
 
+                    event_emitter.emit_swap_progress_event(
+                        swap_id,
+                        TauriSwapProgressEvent::CooperativeRedeemAccepted,
+                    );
+
                     let s_a = monero::PrivateKey { scalar: s_a };
 
                     let state5 = state.attempt_cooperative_redeem(s_a);

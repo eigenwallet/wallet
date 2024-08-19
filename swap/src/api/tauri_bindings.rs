@@ -122,10 +122,6 @@ pub enum TauriSwapProgressEvent {
         #[typeshare(serialized_as = "string")]
         xmr_redeem_address: monero::Address,
     },
-    ProcessExited {
-        prev_state: Box<Option<TauriSwapProgressEvent>>,
-        rpc_error: Option<String>,
-    },
     BtcCancelled {
         #[typeshare(serialized_as = "string")]
         btc_cancel_txid: Txid,
@@ -136,6 +132,7 @@ pub enum TauriSwapProgressEvent {
     },
     BtcPunished,
     AttemptingCooperativeRedeem,
+    CooperativeRedeemAccepted,
     CooperativeRedeemRejected {
         reason: String,
     },
