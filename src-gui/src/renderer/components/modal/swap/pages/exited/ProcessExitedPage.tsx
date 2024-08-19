@@ -1,47 +1,29 @@
-import { SwapStateName } from "models/rpcModel";
-import { useActiveSwapInfo } from "store/hooks";
-import {
-  isSwapStateBtcPunished,
-  isSwapStateBtcRefunded,
-  isSwapStateXmrRedeemInMempool,
-  SwapStateProcessExited,
-} from "../../../../../../models/storeModel";
-import BitcoinPunishedPage from "../done/BitcoinPunishedPage";
-import XmrRedeemInMempoolPage from "../done/XmrRedeemInMempoolPage";
-// eslint-disable-next-line import/no-cycle
+import { TauriSwapProgressEvent } from "models/tauriModel";
 import SwapStatePage from "../SwapStatePage";
-import BitcoinRefundedPage from "../done/BitcoinRefundedPage";
-import ProcessExitedAndNotDonePage from "./ProcessExitedAndNotDonePage";
 
-type ProcessExitedPageProps = {
-  state: SwapStateProcessExited;
-};
-
-export default function ProcessExitedPage({ state }: ProcessExitedPageProps) {
-  const swap = useActiveSwapInfo();
-
+export default function ProcessExitedPage({
+  prevState,
+}: {
+  prevState: TauriSwapProgressEvent | null;
+}) {
   // If we have a swap state, for a "done" state we should use it to display additional information that can't be extracted from the database
   if (
-    isSwapStateXmrRedeemInMempool(state.prevState) ||
-    isSwapStateBtcRefunded(state.prevState) ||
-    isSwapStateBtcPunished(state.prevState)
+    prevState.type === "XmrRedeemInMempool" ||
+    prevState.type === "BtcRefunded" ||
+    prevState.type === "BtcPunished"
   ) {
-    return <SwapStatePage swapState={state.prevState} />;
+    return <SwapStatePage curr={prevState} prev={null} />;
   }
 
-  // If we don't have a swap state for a "done" state, we should fall back to using the database to display as much information as we can
-  if (swap) {
-    if (swap.state_name === SwapStateName.XmrRedeemed) {
-      return <XmrRedeemInMempoolPage state={null} />;
-    }
-    if (swap.state_name === SwapStateName.BtcRefunded) {
-      return <BitcoinRefundedPage state={null} />;
-    }
-    if (swap.state_name === SwapStateName.BtcPunished) {
-      return <BitcoinPunishedPage />;
-    }
-  }
+  // TODO: Display something useful here
+  return (
+    <>
+      If the swap is not a "done" state (or we don't have a db state because the
+      swap did complete the SwapSetup yet) we should tell the user and show logs
+      Not implemented yet
+    </>
+  );
 
   // If the swap is not a "done" state (or we don't have a db state because the swap did complete the SwapSetup yet) we should tell the user and show logs
-  return <ProcessExitedAndNotDonePage state={state} />;
+  // return <ProcessExitedAndNotDonePage state={state} />;
 }

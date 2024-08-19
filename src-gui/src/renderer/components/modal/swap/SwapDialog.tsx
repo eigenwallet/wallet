@@ -37,7 +37,7 @@ export default function SwapDialog({
   const dispatch = useAppDispatch();
 
   function onCancel() {
-    if (swap.processRunning) {
+    if (swap.state.curr !== null && swap.state.curr?.type !== "Released") {
       setOpenSuspendAlert(true);
     } else {
       onClose();
@@ -61,7 +61,7 @@ export default function SwapDialog({
           <DebugPage />
         ) : (
           <>
-            <SwapStatePage swapState={swap.state} />
+            <SwapStatePage {...swap.state} />
             <SwapStateStepper />
           </>
         )}
@@ -75,7 +75,9 @@ export default function SwapDialog({
           color="primary"
           variant="contained"
           onClick={onCancel}
-          disabled={!(swap.state !== null && !swap.processRunning)}
+          disabled={
+            !(swap.state !== null && swap.state.curr?.type === "Released")
+          }
         >
           Done
         </Button>
