@@ -1,3 +1,11 @@
+/*
+TODO: This is all broken due to the new Tauri Model.
+
+The SwapStateName enum is not available anymore, and GetSwapInfo["type"] is different
+
+The Display implementation of BobState is different to the old SwapStateName and doesnt have typeshare definitions yet
+*/
+
 import { Box, makeStyles } from "@material-ui/core";
 import { Alert, AlertTitle } from "@material-ui/lab/";
 import { GetSwapInfoResponse } from "models/tauriModel";

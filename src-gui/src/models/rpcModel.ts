@@ -143,6 +143,13 @@ export interface GetHistoryResponse {
   swaps: [swapId: string, stateName: SwapStateName][];
 }
 
+/*
+TODO: Fix this to work with Tauri
+
+The SwapStateName enum is not available anymore, and GetSwapInfo["type"] has different types
+
+The Display implementation of BobState is different to the old SwapStateName and doesnt have typeshare definitions yet
+*/
 export enum SwapStateName {
   Started = "quote has been requested",
   SwapSetupCompleted = "execution setup done",

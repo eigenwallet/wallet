@@ -8,7 +8,8 @@ export default function ProcessExitedPage({
   prevState: TauriSwapProgressEvent | null;
   swapId: string;
 }) {
-  // If we have a swap state, for a "done" state we should use it to display additional information that can't be extracted from the database
+  // If we have a previous state, we can show the user the last state of the swap
+  // We only show the last state if its a final state (XmrRedeemInMempool, BtcRefunded, BtcPunished)
   if (
     prevState != null &&
     (prevState.type === "XmrRedeemInMempool" ||
