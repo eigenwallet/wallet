@@ -42,7 +42,6 @@ const MessageList = ({ messages }: { messages: ReactNode[] }) => {
   return (
     <ul className={classes.list}>
       {messages.map((msg, i) => (
-        // eslint-disable-next-line react/no-array-index-key
         <li key={i}>{msg}</li>
       ))}
     </ul>

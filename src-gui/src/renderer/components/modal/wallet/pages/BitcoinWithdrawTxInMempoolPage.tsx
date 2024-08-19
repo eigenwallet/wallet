@@ -3,10 +3,8 @@ import BitcoinTransactionInfoBox from "../../swap/BitcoinTransactionInfoBox";
 
 export default function BtcTxInMempoolPageContent({
   withdrawTxId,
-  onCancel,
 }: {
   withdrawTxId: string;
-  onCancel: () => void;
 }) {
   return (
     <>

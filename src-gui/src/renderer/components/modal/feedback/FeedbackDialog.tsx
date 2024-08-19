@@ -67,7 +67,7 @@ function SwapSelectDropDown({
     >
       <MenuItem value={0}>Do not attach logs</MenuItem>
       {swaps.map((swap) => (
-        <MenuItem value={swap.swap_id}>
+        <MenuItem value={swap.swap_id} key={swap.swap_id}>
           Swap {swap.swap_id.substring(0, 5)}... from{" "}
           {new Date(parseDateString(swap.start_date)).toDateString()} (
           <PiconeroAmount amount={swap.xmr_amount} />)

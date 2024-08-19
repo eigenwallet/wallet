@@ -38,10 +38,7 @@ export default function WithdrawDialog({
             setWithdrawAddressValid={setWithdrawAddressValid}
           />
         ) : (
-          <BtcTxInMempoolPageContent
-            withdrawTxId={withdrawTxId}
-            onCancel={onCancel}
-          />
+          <BtcTxInMempoolPageContent withdrawTxId={withdrawTxId} />
         )}
       </WithdrawDialogContent>
       <DialogActions>

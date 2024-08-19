@@ -53,7 +53,7 @@ export default function ListSellersDialog({
         return "The multi address must contain the peer id (/p2p/)";
       }
       return null;
-    } catch (e) {
+    } catch {
       return "Not a valid multi address";
     }
   }

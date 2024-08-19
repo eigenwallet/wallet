@@ -18,7 +18,7 @@ export default function ProcessExitedAndNotDonePage({
     const hasRpcError = state.rpcError != null;
     const hasSwap = swap != null;
 
-    let messages = [];
+    const messages = [];
 
     messages.push(
       isCancelRefund
