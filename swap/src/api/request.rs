@@ -142,7 +142,7 @@ pub struct GetSwapInfoResponse {
     pub completed: bool,
     pub start_date: String,
     #[typeshare(serialized_as = "string")]
-    pub state_name: BobState,
+    pub state_name: String,
     #[typeshare(serialized_as = "number")]
     pub xmr_amount: monero::Amount,
     #[typeshare(serialized_as = "number")]
@@ -317,7 +317,7 @@ pub async fn get_swap_info(
         },
         completed: is_completed,
         start_date,
-        state_name: swap_state,
+        state_name: format!("{}", swap_state),
         xmr_amount,
         btc_amount,
         tx_lock_id,
@@ -589,7 +589,8 @@ pub async fn resume_swap(resume: ResumeArgs, context: Arc<Context>) -> Result<Re
         event_loop_handle,
         monero_receive_address,
     )
-    .await?;
+    .await?
+    .with_event_emitter(context.tauri_handle.clone());
 
     context.tasks.clone().spawn(
         async move {
