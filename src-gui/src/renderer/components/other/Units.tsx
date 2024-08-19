@@ -68,6 +68,12 @@ export function MoneroBitcoinExchangeRate({ rate }: { rate: Amount }) {
   return <AmountWithUnit amount={rate} unit="BTC/XMR" fixedPrecision={8} />;
 }
 
+export function MoneroSatsExchangeRate({ rate }: { rate: Amount }) {
+  const btc = satsToBtc(rate);
+
+  return <AmountWithUnit amount={btc} unit="BTC/XMR" fixedPrecision={6} />;
+}
+
 export function SatsAmount({ amount }: { amount: Amount }) {
   const btcAmount = amount == null ? null : satsToBtc(amount);
   return <BitcoinAmount amount={btcAmount} />;
