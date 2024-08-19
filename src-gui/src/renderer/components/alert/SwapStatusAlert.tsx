@@ -1,9 +1,9 @@
 import { Box, makeStyles } from "@material-ui/core";
 import { Alert, AlertTitle } from "@material-ui/lab/";
+import { GetSwapInfoResponse } from "models/tauriModel";
 import { ReactNode } from "react";
 import { exhaustiveGuard } from "utils/typescriptUtils";
 import {
-  GetSwapInfoResponse,
   GetSwapInfoResponseRunningSwap,
   isGetSwapInfoResponseRunningSwap,
   isSwapTimelockInfoCancelled,
@@ -212,6 +212,9 @@ export default function SwapStatusAlert({
 }: {
   swap: GetSwapInfoResponse;
 }): JSX.Element | null {
+  // TODO: Reinstate this when the feature is available with Tauri
+  return <>not implemented</>;
+
   // If the swap is not running, there is no need to display the alert
   // This is either because the swap is finished or has not started yet (e.g. in the setup phase, no Bitcoin locked)
   if (!isGetSwapInfoResponseRunningSwap(swap)) {

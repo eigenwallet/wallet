@@ -37,7 +37,7 @@ export default function SwapDialog({
   const dispatch = useAppDispatch();
 
   function onCancel() {
-    if (swap.state.curr !== null && swap.state.curr?.type !== "Released") {
+    if (swap.state !== null && swap.state.curr.type !== "Released") {
       setOpenSuspendAlert(true);
     } else {
       onClose();

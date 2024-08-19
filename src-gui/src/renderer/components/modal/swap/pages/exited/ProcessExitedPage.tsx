@@ -10,11 +10,20 @@ export default function ProcessExitedPage({
 }) {
   // If we have a swap state, for a "done" state we should use it to display additional information that can't be extracted from the database
   if (
-    prevState.type === "XmrRedeemInMempool" ||
-    prevState.type === "BtcRefunded" ||
-    prevState.type === "BtcPunished"
+    prevState != null &&
+    (prevState.type === "XmrRedeemInMempool" ||
+      prevState.type === "BtcRefunded" ||
+      prevState.type === "BtcPunished")
   ) {
-    return <SwapStatePage curr={prevState} prev={null} swapId={swapId} />;
+    return (
+      <SwapStatePage
+        state={{
+          curr: prevState,
+          prev: null,
+          swapId,
+        }}
+      />
+    );
   }
 
   // TODO: Display something useful here

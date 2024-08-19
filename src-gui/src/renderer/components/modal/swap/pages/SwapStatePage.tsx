@@ -1,5 +1,6 @@
 import { Box } from "@material-ui/core";
 import { SwapSlice } from "models/storeModel";
+import CircularProgressWithSubtitle from "../CircularProgressWithSubtitle";
 import BitcoinPunishedPage from "./done/BitcoinPunishedPage";
 import BitcoinRefundedPage from "./done/BitcoinRefundedPage";
 import XmrRedeemInMempoolPage from "./done/XmrRedeemInMempoolPage";
@@ -34,53 +35,52 @@ export default function SwapStatePage({
   if (state === null) {
     return <InitPage />;
   }
-  if (state.curr.type === "Initiated") {
-    return <InitiatedPage />;
+  switch (state.curr.type) {
+    case "Initiated":
+      return <InitiatedPage />;
+    case "ReceivedQuote":
+      return <ReceivedQuotePage />;
+    case "WaitingForBtcDeposit":
+      return <WaitingForBitcoinDepositPage {...state.curr.content} />;
+    case "Started":
+      return <StartedPage {...state.curr.content} />;
+    case "BtcLockTxInMempool":
+      return <BitcoinLockTxInMempoolPage {...state.curr.content} />;
+    case "XmrLockTxInMempool":
+      return <XmrLockTxInMempoolPage {...state.curr.content} />;
+    case "XmrLocked":
+      return <XmrLockedPage />;
+    case "BtcRedeemed":
+      return <BitcoinRedeemedPage />;
+    case "XmrRedeemInMempool":
+      return <XmrRedeemInMempoolPage {...state.curr.content} />;
+    case "BtcCancelled":
+      return <BitcoinCancelledPage />;
+    case "BtcRefunded":
+      return <BitcoinRefundedPage {...state.curr.content} />;
+    case "BtcPunished":
+      return <BitcoinPunishedPage />;
+    case "AttemptingCooperativeRedeem":
+      return (
+        <CircularProgressWithSubtitle description="Attempting to redeem the Monero with the help of the other party" />
+      );
+    case "CooperativeRedeemAccepted":
+      return (
+        <CircularProgressWithSubtitle description="The other party is cooperating with us to redeem the Monero..." />
+      );
+    case "CooperativeRedeemRejected":
+      return <BitcoinPunishedPage />;
+    case "Released":
+      return <ProcessExitedPage prevState={state.prev} swapId={state.swapId} />;
+    default:
+      // TODO: Use this when we have all states implemented, ensures we don't forget to implement a state
+      // return exhaustiveGuard(state.curr.type);
+      return (
+        <Box>
+          No information to display
+          <br />
+          State: {JSON.stringify(state, null, 4)}
+        </Box>
+      );
   }
-  if (state.curr.type === "ReceivedQuote") {
-    return <ReceivedQuotePage />;
-  }
-  if (state.curr.type === "WaitingForBtcDeposit") {
-    return <WaitingForBitcoinDepositPage {...state.curr.content} />;
-  }
-  if (state.curr.type === "Started") {
-    return <StartedPage {...state.curr.content} />;
-  }
-  if (state.curr.type === "BtcLockTxInMempool") {
-    return <BitcoinLockTxInMempoolPage {...state.curr.content} />;
-  }
-  if (state.curr.type === "XmrLockTxInMempool") {
-    return <XmrLockTxInMempoolPage {...state.curr.content} />;
-  }
-  if (state.curr.type === "XmrLocked") {
-    return <XmrLockedPage />;
-  }
-  if (state.curr.type === "BtcRedeemed") {
-    return <BitcoinRedeemedPage />;
-  }
-  if (state.curr.type === "XmrRedeemInMempool") {
-    return <XmrRedeemInMempoolPage {...state.curr.content} />;
-  }
-  if (state.curr.type === "BtcCancelled") {
-    return <BitcoinCancelledPage />;
-  }
-  if (state.curr.type === "BtcRefunded") {
-    return <BitcoinRefundedPage {...state.curr.content} />;
-  }
-  if (state.curr.type === "BtcPunished") {
-    return <BitcoinPunishedPage />;
-  }
-  if (state.curr.type === "Released") {
-    return <ProcessExitedPage prevState={state.prev} swapId={state.swapId} />;
-  }
-
-  // TODO: Implement cooperative redeem attempt/reject page here
-
-  return (
-    <Box>
-      No information to display
-      <br />
-      State: ${JSON.stringify(state, null, 4)}
-    </Box>
-  );
 }
