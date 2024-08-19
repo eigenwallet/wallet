@@ -8,6 +8,7 @@ import {
   GetSwapInfoResponse,
   ResumeArgs,
   ResumeSwapResponse,
+  SuspendCurrentSwapResponse,
   TauriSwapProgressEventWrapper,
   WithdrawBtcArgs,
   WithdrawBtcResponse,
@@ -78,4 +79,8 @@ export async function resumeSwap(swapId: string) {
   await invoke<ResumeArgs, ResumeSwapResponse>("resume_swap", {
     swap_id: swapId,
   });
+}
+
+export async function suspendCurrentSwap() {
+  await invokeNoArgs<SuspendCurrentSwapResponse>("suspend_current_swap");
 }

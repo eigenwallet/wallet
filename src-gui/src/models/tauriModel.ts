@@ -137,6 +137,10 @@ export interface WithdrawBtcResponse {
   txid: string;
 }
 
+export interface SuspendCurrentSwapResponse {
+  swap_id: string;
+}
+
 export type TauriSwapProgressEvent =
   | { type: "Initiated"; content?: undefined }
   | { type: "ReceivedQuote"; content: BidQuote }
@@ -207,7 +211,8 @@ export type TauriSwapProgressEvent =
       content: {
         reason: string;
       };
-    };
+    }
+  | { type: "Released"; content?: undefined };
 
 export interface TauriSwapProgressEventWrapper {
   swap_id: string;

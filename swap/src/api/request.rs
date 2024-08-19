@@ -182,14 +182,21 @@ pub struct Seller {
     pub addresses: Vec<String>,
 }
 
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SuspendCurrentSwapResponse {
+    #[typeshare(serialized_as = "string")]
+    pub swap_id: Uuid,
+}
+
 #[tracing::instrument(fields(method = "suspend_current_swap"), skip(context))]
-pub async fn suspend_current_swap(context: Arc<Context>) -> Result<serde_json::Value> {
+pub async fn suspend_current_swap(context: Arc<Context>) -> Result<SuspendCurrentSwapResponse> {
     let swap_id = context.swap_lock.get_current_swap_id().await;
 
     if let Some(id_value) = swap_id {
         context.swap_lock.send_suspend_signal().await?;
 
-        Ok(json!({ "swapId": id_value }))
+        Ok(SuspendCurrentSwapResponse { swap_id: id_value })
     } else {
         bail!("No swap is currently running")
     }
@@ -389,6 +396,9 @@ pub async fn buy_xmr(
         _ = context.swap_lock.listen_for_swap_force_suspension() => {
             tracing::debug!("Shutdown signal received, exiting");
             context.swap_lock.release_swap_lock().await.expect("Shutdown signal received but failed to release swap lock. The swap process has been terminated but the swap lock is still active.");
+
+            context.tauri_handle.emit_swap_progress_event(swap_id, TauriSwapProgressEvent::Released);
+
             bail!("Shutdown signal received");
         },
         result = async {
@@ -413,6 +423,11 @@ pub async fn buy_xmr(
                 .release_swap_lock()
                 .await
                 .expect("Could not release swap lock");
+
+            context
+                .tauri_handle
+                .emit_swap_progress_event(swap_id, TauriSwapProgressEvent::Released);
+
             bail!(error);
         }
     };
@@ -428,6 +443,9 @@ pub async fn buy_xmr(
             _ = context.swap_lock.listen_for_swap_force_suspension() => {
                 tracing::debug!("Shutdown signal received, exiting");
                 context.swap_lock.release_swap_lock().await.expect("Shutdown signal received but failed to release swap lock. The swap process has been terminated but the swap lock is still active.");
+
+                context.tauri_handle.emit_swap_progress_event(swap_id, TauriSwapProgressEvent::Released);
+
                 bail!("Shutdown signal received");
             },
             event_loop_result = event_loop => {
@@ -500,6 +518,9 @@ pub async fn buy_xmr(
             .release_swap_lock()
             .await
             .expect("Could not release swap lock");
+
+        context.tauri_handle.emit_swap_progress_event(swap_id, TauriSwapProgressEvent::Released);
+
         Ok::<_, anyhow::Error>(())
     }.in_current_span()).await;
 
@@ -578,6 +599,9 @@ pub async fn resume_swap(resume: ResumeArgs, context: Arc<Context>) -> Result<Re
                 _ = context.swap_lock.listen_for_swap_force_suspension() => {
                      tracing::debug!("Shutdown signal received, exiting");
                     context.swap_lock.release_swap_lock().await.expect("Shutdown signal received but failed to release swap lock. The swap process has been terminated but the swap lock is still active.");
+
+                    context.tauri_handle.emit_swap_progress_event(swap_id, TauriSwapProgressEvent::Released);
+
                     bail!("Shutdown signal received");
                 },
 
@@ -608,6 +632,9 @@ pub async fn resume_swap(resume: ResumeArgs, context: Arc<Context>) -> Result<Re
                 .release_swap_lock()
                 .await
                 .expect("Could not release swap lock");
+
+            context.tauri_handle.emit_swap_progress_event(swap_id, TauriSwapProgressEvent::Released);
+
             Ok::<(), anyhow::Error>(())
         }
         .in_current_span(),
@@ -639,6 +666,10 @@ pub async fn cancel_and_refund(
         .release_swap_lock()
         .await
         .expect("Could not release swap lock");
+
+    context
+        .tauri_handle
+        .emit_swap_progress_event(swap_id, TauriSwapProgressEvent::Released);
 
     state.map(|state| {
         json!({

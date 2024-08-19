@@ -5,9 +5,10 @@ use swap::{
         request::{
             buy_xmr as buy_xmr_impl, get_balance as get_balance_impl,
             get_history as get_history_impl, get_swap_infos_all as get_swap_infos_all_impl,
-            resume_swap as resume_swap_impl, withdraw_btc as withdraw_btc_impl, BalanceArgs,
-            BalanceResponse, BuyXmrArgs, BuyXmrResponse, GetHistoryResponse, GetSwapInfoResponse,
-            ResumeArgs, ResumeSwapResponse, WithdrawBtcArgs, WithdrawBtcResponse,
+            resume_swap as resume_swap_impl, suspend_current_swap as suspend_current_swap_impl,
+            withdraw_btc as withdraw_btc_impl, BalanceArgs, BalanceResponse, BuyXmrArgs,
+            BuyXmrResponse, GetHistoryResponse, GetSwapInfoResponse, ResumeArgs,
+            ResumeSwapResponse, SuspendCurrentSwapResponse, WithdrawBtcArgs, WithdrawBtcResponse,
         },
         Context,
     },
@@ -85,6 +86,15 @@ async fn withdraw_btc(
         .to_string_result()
 }
 
+#[tauri::command]
+async fn suspend_current_swap(
+    context: State<'_, Arc<Context>>,
+) -> Result<SuspendCurrentSwapResponse, String> {
+    suspend_current_swap_impl(context.inner().clone())
+        .await
+        .to_string_result()
+}
+
 fn setup<'a>(app: &'a mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     tauri::async_runtime::block_on(async {
         let context = Context::build(
@@ -121,7 +131,8 @@ pub fn run() {
             withdraw_btc,
             buy_xmr,
             resume_swap,
-            get_history
+            get_history,
+            suspend_current_swap
         ])
         .setup(setup)
         .build(tauri::generate_context!())
