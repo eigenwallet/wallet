@@ -8,13 +8,13 @@ import {
   Link,
 } from "@material-ui/core";
 import { ButtonProps } from "@material-ui/core/Button/Button";
+import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { rpcResetMoneroRecoveryKeys } from "store/features/rpcSlice";
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import {
   GetSwapInfoResponse,
   isSwapMoneroRecoverable,
 } from "../../../../../models/rpcModel";
-import IpcInvokeButton from "../../../IpcInvokeButton";
 import DialogHeader from "../../../modal/DialogHeader";
 import ScrollablePaperTextBox from "../../../other/ScrollablePaperTextBox";
 
@@ -105,14 +105,14 @@ export function SwapMoneroRecoveryButton({
 
   return (
     <>
-      <IpcInvokeButton
-        ipcChannel="spawn-monero-recovery"
-        ipcArgs={[swap.swap_id]}
-        requiresRpc
+      <PromiseInvokeButton
+        onClick={async () => {
+          throw new Error("Not implemented");
+        }}
         {...props}
       >
         Display Monero Recovery Keys
-      </IpcInvokeButton>
+      </PromiseInvokeButton>
       <MoneroRecoveryKeysDialog swap={swap} />
     </>
   );

@@ -14,7 +14,7 @@ import {
 import { Multiaddr } from "multiaddr";
 import { useSnackbar } from "notistack";
 import { ChangeEvent, useState } from "react";
-import IpcInvokeButton from "../../IpcInvokeButton";
+import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 
 const PRESET_RENDEZVOUS_POINTS = [
   "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
@@ -119,17 +119,17 @@ export default function ListSellersDialog({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
-        <IpcInvokeButton
+        <PromiseInvokeButton
           variant="contained"
           disabled={!(rendezvousAddress && !getMultiAddressError())}
           color="primary"
           onSuccess={handleSuccess}
-          ipcChannel="spawn-list-sellers"
-          ipcArgs={[rendezvousAddress]}
-          requiresRpc
+          onClick={() => {
+            throw new Error("Not implemented");
+          }}
         >
           Connect
-        </IpcInvokeButton>
+        </PromiseInvokeButton>
       </DialogActions>
     </Dialog>
   );

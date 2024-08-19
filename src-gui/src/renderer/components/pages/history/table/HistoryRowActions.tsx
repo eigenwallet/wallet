@@ -4,31 +4,31 @@ import { green, red } from "@material-ui/core/colors";
 import DoneIcon from "@material-ui/icons/Done";
 import ErrorIcon from "@material-ui/icons/Error";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
+import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import {
   GetSwapInfoResponse,
   SwapStateName,
   isSwapStateNamePossiblyCancellableSwap,
   isSwapStateNamePossiblyRefundableSwap,
 } from "../../../../../models/rpcModel";
-import IpcInvokeButton from "../../../IpcInvokeButton";
 
 export function SwapResumeButton({
   swap,
   ...props
 }: { swap: GetSwapInfoResponse } & ButtonProps) {
   return (
-    <IpcInvokeButton
+    <PromiseInvokeButton
       variant="contained"
       color="primary"
       disabled={swap.completed}
-      ipcChannel="spawn-resume-swap"
-      ipcArgs={[swap.swap_id]}
       endIcon={<PlayArrowIcon />}
-      requiresRpc
+      onClick={async () => {
+        throw new Error("Not implemented");
+      }}
       {...props}
     >
       Resume
-    </IpcInvokeButton>
+    </PromiseInvokeButton>
   );
 }
 
@@ -45,15 +45,15 @@ export function SwapCancelRefundButton({
   }
 
   return (
-    <IpcInvokeButton
-      ipcChannel="spawn-cancel-refund"
-      ipcArgs={[swap.swap_id]}
-      requiresRpc
+    <PromiseInvokeButton
       displayErrorSnackbar={false}
       {...props}
+      onClick={async () => {
+        throw new Error("Not implemented");
+      }}
     >
       Attempt manual Cancel & Refund
-    </IpcInvokeButton>
+    </PromiseInvokeButton>
   );
 }
 
