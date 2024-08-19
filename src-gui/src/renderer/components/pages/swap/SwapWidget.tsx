@@ -12,7 +12,6 @@ import ArrowDownwardIcon from "@material-ui/icons/ArrowDownward";
 import SwapHorizIcon from "@material-ui/icons/SwapHoriz";
 import { Alert } from "@material-ui/lab";
 import { ExtendedProviderStatus } from "models/apiModel";
-import { isSwapState } from "models/storeModel";
 import { ChangeEvent, useEffect, useState } from "react";
 import { useAppSelector } from "store/hooks";
 import { satsToBtc } from "utils/conversionUtils";
@@ -84,9 +83,7 @@ function HasProviderSwapWidget({
 }) {
   const classes = useStyles();
 
-  const forceShowDialog = useAppSelector((state) =>
-    isSwapState(state.swap.state),
-  );
+  const forceShowDialog = useAppSelector((state) => state.swap.state !== null);
   const [showDialog, setShowDialog] = useState(false);
   const [btcFieldValue, setBtcFieldValue] = useState<number | string>(
     satsToBtc(selectedProvider.minSwapAmount),
@@ -177,9 +174,7 @@ function HasProviderSwapWidget({
 }
 
 function HasNoProvidersSwapWidget() {
-  const forceShowDialog = useAppSelector((state) =>
-    isSwapState(state.swap.state),
-  );
+  const forceShowDialog = useAppSelector((state) => state.swap.state !== null);
   const isPublicRegistryDown = useAppSelector((state) =>
     isRegistryDown(
       state.providers.registry.failedReconnectAttemptsSinceLastSuccess,

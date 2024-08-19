@@ -15,7 +15,11 @@ import InitiatedPage from "./init/InitiatedPage";
 import InitPage from "./init/InitPage";
 import WaitingForBitcoinDepositPage from "./init/WaitingForBitcoinDepositPage";
 
-export default function SwapStatePage(state: SwapSlice["state"]) {
+export default function SwapStatePage({
+  state,
+}: {
+  state: SwapSlice["state"];
+}) {
   // TODO: Reimplement this using tauri events
   /*
   const isSyncingMoneroWallet = useAppSelector(
@@ -67,7 +71,7 @@ export default function SwapStatePage(state: SwapSlice["state"]) {
     return <BitcoinPunishedPage />;
   }
   if (state.curr.type === "Released") {
-    return <ProcessExitedPage prevState={state.prev} />;
+    return <ProcessExitedPage prevState={state.prev} swapId={state.swapId} />;
   }
 
   // TODO: Implement cooperative redeem attempt/reject page here
