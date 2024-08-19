@@ -32,6 +32,7 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev
+            
       - name: Check formatting
         uses: dprint/check@v2.2
         with:
