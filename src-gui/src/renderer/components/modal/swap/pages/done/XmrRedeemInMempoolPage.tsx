@@ -1,6 +1,5 @@
 import { Box, DialogContentText } from "@material-ui/core";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
-import { useActiveSwapInfo } from "store/hooks";
 import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
 import MoneroTransactionInfoBox from "../../MoneroTransactionInfoBox";
 
@@ -8,8 +7,6 @@ export default function XmrRedeemInMempoolPage({
   xmr_redeem_address,
   xmr_redeem_txid,
 }: TauriSwapProgressEventContent<"XmrRedeemInMempool">) {
-  const swap = useActiveSwapInfo();
-
   // TODO: Reimplement this using Tauri
   //const additionalContent = swap
   //  ? `This transaction transfers ${getSwapXmrAmount(swap).toFixed(6)} XMR to ${
@@ -33,7 +30,7 @@ export default function XmrRedeemInMempoolPage({
         <MoneroTransactionInfoBox
           title="Monero Redeem Transaction"
           txId={xmr_redeem_txid}
-          additionalContent={null}
+          additionalContent={`The funds have been sent to the address ${xmr_redeem_address}`}
           loading={false}
         />
         <FeedbackInfoBox />
