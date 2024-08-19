@@ -18,6 +18,7 @@ import { swapTauriEventReceived } from "store/features/swapSlice";
 import { store } from "./store/storeRenderer";
 
 listen<TauriSwapProgressEventWrapper>("swap-progress-update", (event) => {
+  console.log("Received swap progress event", event.payload);
   store.dispatch(swapTauriEventReceived(event.payload));
 });
 
