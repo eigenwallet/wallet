@@ -8,13 +8,9 @@ import {
   Link,
 } from "@material-ui/core";
 import { ButtonProps } from "@material-ui/core/Button/Button";
-import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
+import { GetSwapInfoArgs } from "models/tauriModel";
 import { rpcResetMoneroRecoveryKeys } from "store/features/rpcSlice";
 import { useAppDispatch, useAppSelector } from "store/hooks";
-import {
-  GetSwapInfoResponse,
-  isSwapMoneroRecoverable,
-} from "../../../../../models/rpcModel";
 import DialogHeader from "../../../modal/DialogHeader";
 import ScrollablePaperTextBox from "../../../other/ScrollablePaperTextBox";
 
@@ -96,8 +92,11 @@ function MoneroRecoveryKeysDialog({ swap }: { swap: GetSwapInfoResponse }) {
 export function SwapMoneroRecoveryButton({
   swap,
   ...props
-}: { swap: GetSwapInfoResponse } & ButtonProps) {
+}: { swap: GetSwapInfoArgs } & ButtonProps) {
+  return <> </>;
+  /* TODO: Reimplement this using the new Tauri API
   const isRecoverable = isSwapMoneroRecoverable(swap.state_name);
+
 
   if (!isRecoverable) {
     return <></>;
@@ -116,4 +115,5 @@ export function SwapMoneroRecoveryButton({
       <MoneroRecoveryKeysDialog swap={swap} />
     </>
   );
+  */
 }

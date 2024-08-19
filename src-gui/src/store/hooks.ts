@@ -22,12 +22,12 @@ export function useIsSwapRunning() {
 
 export function useSwapInfo(swapId: string | null) {
   return useAppSelector((state) =>
-    swapId ? state.rpc.state.swapInfos[swapId] ?? null : null,
+    swapId ? (state.rpc.state.swapInfos[swapId] ?? null) : null,
   );
 }
 
 export function useActiveSwapId() {
-  return useAppSelector((s) => s.swap.swapId);
+  return useAppSelector((s) => s.swap.state?.swapId ?? null);
 }
 
 export function useActiveSwapInfo() {

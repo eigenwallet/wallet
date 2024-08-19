@@ -38,7 +38,7 @@ export default function HistoryTable() {
           </TableHead>
           <TableBody>
             {swapSortedByDate.map((swap) => (
-              <HistoryRow swap={swap} key={swap.swap_id} />
+              <HistoryRow {...swap} key={swap.swap_id} />
             ))}
           </TableBody>
         </Table>

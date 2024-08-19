@@ -9,18 +9,11 @@ import {
 import ArrowForwardIcon from "@material-ui/icons/ArrowForward";
 import KeyboardArrowDownIcon from "@material-ui/icons/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@material-ui/icons/KeyboardArrowUp";
+import { GetSwapInfoResponse } from "models/tauriModel";
 import { useState } from "react";
-import {
-  getHumanReadableDbStateType,
-  GetSwapInfoResponse,
-} from "../../../../../models/rpcModel";
-import { BitcoinAmount, MoneroAmount } from "../../../other/Units";
+import { PiconeroAmount, SatsAmount } from "../../../other/Units";
 import HistoryRowActions from "./HistoryRowActions";
 import HistoryRowExpanded from "./HistoryRowExpanded";
-
-type HistoryRowProps = {
-  swap: GetSwapInfoResponse;
-};
 
 const useStyles = makeStyles((theme) => ({
   amountTransferContainer: {
@@ -41,9 +34,9 @@ function AmountTransfer({
 
   return (
     <Box className={classes.amountTransferContainer}>
-      <BitcoinAmount amount={btcAmount} />
+      <SatsAmount amount={btcAmount} />
       <ArrowForwardIcon />
-      <MoneroAmount amount={xmrAmount} />
+      <PiconeroAmount amount={xmrAmount} />
     </Box>
   );
 }
@@ -59,14 +52,14 @@ export default function HistoryRow(swap: GetSwapInfoResponse) {
             {expanded ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
           </IconButton>
         </TableCell>
-        <TableCell>{swap.swap_id}...</TableCell>
+        <TableCell>{swap.swap_id}</TableCell>
         <TableCell>
           <AmountTransfer
             xmrAmount={swap.xmr_amount}
             btcAmount={swap.btc_amount}
           />
         </TableCell>
-        <TableCell>{getHumanReadableDbStateType(swap.state_name)}</TableCell>
+        <TableCell>{swap.state_name.toString()}</TableCell>
         <TableCell>
           <HistoryRowActions {...swap} />
         </TableCell>

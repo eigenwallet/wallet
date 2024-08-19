@@ -19,6 +19,9 @@ export function extractAmountFromUnitString(text: string): number | null {
 
 // E.g 2021-12-29 14:25:59.64082 +00:00:00
 export function parseDateString(str: string): number {
+  // TODO: Fix this to work with Tauri
+  return 0;
+
   const parts = str.split(" ").slice(0, -1);
   if (parts.length !== 2) {
     throw new Error(
