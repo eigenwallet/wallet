@@ -64,7 +64,18 @@ export function MoneroAmount({ amount }: { amount: Amount }) {
   );
 }
 
-export function MoneroBitcoinExchangeRate({ rate }: { rate: Amount }) {
+export function MoneroBitcoinExchangeRate(
+  state: { rate: Amount } | { satsAmount: number; piconeroAmount: number },
+) {
+  if ("rate" in state) {
+    return (
+      <AmountWithUnit amount={state.rate} unit="BTC/XMR" fixedPrecision={8} />
+    );
+  }
+
+  const rate =
+    satsToBtc(state.satsAmount) / piconerosToXmr(state.piconeroAmount);
+
   return <AmountWithUnit amount={rate} unit="BTC/XMR" fixedPrecision={8} />;
 }
 

@@ -70,10 +70,10 @@ export default function HistoryRowExpanded({
             <TableRow>
               <TableCell>Exchange Rate</TableCell>
               <TableCell>
-                {
-                  // TOOD: use actual exchange rate here
-                }
-                <MoneroBitcoinExchangeRate rate={1} />
+                <MoneroBitcoinExchangeRate
+                  satsAmount={swap.btc_amount}
+                  piconeroAmount={swap.xmr_amount}
+                />
               </TableCell>
             </TableRow>
             <TableRow>
