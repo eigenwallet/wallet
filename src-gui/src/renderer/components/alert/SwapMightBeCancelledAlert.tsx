@@ -21,6 +21,9 @@ export default function SwapMightBeCancelledAlert({
 }: {
   bobBtcLockTxConfirmations: number;
 }) {
+  // TODO: Reimplement this using Tauri
+  return <></>;
+
   const classes = useStyles();
   const swap = useActiveSwapInfo();
 

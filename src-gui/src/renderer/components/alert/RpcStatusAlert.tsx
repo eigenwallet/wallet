@@ -3,6 +3,9 @@ import { Alert } from "@material-ui/lab";
 import { RpcProcessStateType } from "models/rpcModel";
 import { useAppSelector } from "store/hooks";
 
+// TODO: Reimplement this using Tauri
+// Currently the RPC process is always available, so this component is not needed
+// since the UI is only displayed when the RPC process is available
 export default function RpcStatusAlert() {
   const rpcProcess = useAppSelector((s) => s.rpc.process);
   if (rpcProcess.type === RpcProcessStateType.STARTED) {
