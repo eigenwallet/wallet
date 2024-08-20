@@ -6,6 +6,7 @@ import {
   MoneroRecoveryResponse,
   RpcProcessStateType,
 } from "../../models/rpcModel";
+import { GetSwapInfoResponseExt } from "models/tauriModelExt";
 
 type Process =
   | {
@@ -31,7 +32,7 @@ interface State {
   withdrawTxId: string | null;
   rendezvous_discovered_sellers: (ExtendedProviderStatus | ProviderStatus)[];
   swapInfos: {
-    [swapId: string]: GetSwapInfoResponse;
+    [swapId: string]: GetSwapInfoResponseExt;
   };
   moneroRecovery: {
     swapId: string;
@@ -122,7 +123,8 @@ export const rpcSlice = createSlice({
       slice.state.withdrawTxId = null;
     },
     rpcSetSwapInfo(slice, action: PayloadAction<GetSwapInfoResponse>) {
-      slice.state.swapInfos[action.payload.swap_id] = action.payload;
+      slice.state.swapInfos[action.payload.swap_id] =
+        action.payload as GetSwapInfoResponseExt;
     },
     rpcSetEndpointBusy(slice, action: PayloadAction<string>) {
       if (!slice.busyEndpoints.includes(action.payload)) {
