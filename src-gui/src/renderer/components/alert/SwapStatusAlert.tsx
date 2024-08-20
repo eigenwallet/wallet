@@ -9,18 +9,14 @@ The Display implementation of BobState is different to the old SwapStateName and
 import { Box, makeStyles } from "@material-ui/core";
 import { Alert, AlertTitle } from "@material-ui/lab/";
 import { GetSwapInfoResponse } from "models/tauriModel";
+import {
+  BobStateName,
+  GetSwapInfoResponseExt,
+  TimelockCancel,
+  TimelockNone,
+} from "models/tauriModelExt";
 import { ReactNode } from "react";
 import { exhaustiveGuard } from "utils/typescriptUtils";
-import {
-  GetSwapInfoResponseRunningSwap,
-  isGetSwapInfoResponseRunningSwap,
-  isSwapTimelockInfoCancelled,
-  isSwapTimelockInfoNone,
-  isSwapTimelockInfoPunished,
-  SwapStateName,
-  SwapTimelockInfoCancelled,
-  SwapTimelockInfoNone,
-} from "../../../models/rpcModel";
 import HumanizedBitcoinBlockDuration from "../other/HumanizedBitcoinBlockDuration";
 import {
   SwapCancelRefundButton,
@@ -88,21 +84,21 @@ const BitcoinLockedNoTimelockExpiredStateAlert = ({
   timelock,
   punishTimelockOffset,
 }: {
-  timelock: SwapTimelockInfoNone;
+  timelock: TimelockNone;
   punishTimelockOffset: number;
 }) => (
   <MessageList
     messages={[
       <>
         Your Bitcoin is locked. If the swap is not completed in approximately{" "}
-        <HumanizedBitcoinBlockDuration blocks={timelock.None.blocks_left} />,
+        <HumanizedBitcoinBlockDuration blocks={timelock.content.blocks_left} />,
         you need to refund
       </>,
       <>
-        You will lose your funds if you do not refund or complete the swap
+        You might lose your funds if you do not refund or complete the swap
         within{" "}
         <HumanizedBitcoinBlockDuration
-          blocks={timelock.None.blocks_left + punishTimelockOffset}
+          blocks={timelock.content.blocks_left + punishTimelockOffset}
         />
       </>,
     ]}
@@ -120,8 +116,8 @@ const BitcoinPossiblyCancelledAlert = ({
   swap,
   timelock,
 }: {
-  swap: GetSwapInfoResponse;
-  timelock: SwapTimelockInfoCancelled;
+  swap: GetSwapInfoResponseExt;
+  timelock: TimelockCancel;
 }) => {
   const classes = useStyles();
   return (
@@ -131,9 +127,9 @@ const BitcoinPossiblyCancelledAlert = ({
           "The swap was cancelled because it did not complete in time",
           "You must resume the swap immediately to refund your Bitcoin. If that fails, you can manually refund it",
           <>
-            You will lose your funds if you do not refund within{" "}
+            You might lose your funds if you do not refund within{" "}
             <HumanizedBitcoinBlockDuration
-              blocks={timelock.Cancel.blocks_left}
+              blocks={timelock.content.blocks_left}
             />
           </>,
         ]}
@@ -156,51 +152,46 @@ const ImmediateActionAlert = () => (
  * @param swap - The swap information.
  * @returns JSX.Element | null
  */
-function SwapAlertStatusText({
-  swap,
-}: {
-  swap: GetSwapInfoResponseRunningSwap;
-}) {
+function SwapAlertStatusText({ swap }: { swap: GetSwapInfoResponseExt }) {
   switch (swap.state_name) {
     // This is the state where the swap is safe because the other party has redeemed the Bitcoin
     // It cannot be punished anymore
-    case SwapStateName.BtcRedeemed:
+    case BobStateName.BtcRedeemed:
       return <BitcoinRedeemedStateAlert swap={swap} />;
 
     // These are states that are at risk of punishment because the Bitcoin have been locked
     // but has not been redeemed yet by the other party
-    case SwapStateName.BtcLocked:
-    case SwapStateName.XmrLockProofReceived:
-    case SwapStateName.XmrLocked:
-    case SwapStateName.EncSigSent:
-    case SwapStateName.CancelTimelockExpired:
-    case SwapStateName.BtcCancelled:
-      if (swap.timelock !== null) {
-        if (isSwapTimelockInfoNone(swap.timelock)) {
-          return (
-            <BitcoinLockedNoTimelockExpiredStateAlert
-              punishTimelockOffset={swap.punish_timelock}
-              timelock={swap.timelock}
-            />
-          );
-        }
+    case BobStateName.BtcLocked:
+    case BobStateName.XmrLockProofReceived:
+    case BobStateName.XmrLocked:
+    case BobStateName.EncSigSent:
+    case BobStateName.CancelTimelockExpired:
+    case BobStateName.BtcCancelled:
+      if (swap.timelock != null) {
+        switch (swap.timelock.type) {
+          case "None":
+            return (
+              <BitcoinLockedNoTimelockExpiredStateAlert
+                punishTimelockOffset={swap.punish_timelock}
+                timelock={swap.timelock}
+              />
+            );
 
-        if (isSwapTimelockInfoCancelled(swap.timelock)) {
-          return (
-            <BitcoinPossiblyCancelledAlert
-              timelock={swap.timelock}
-              swap={swap}
-            />
-          );
-        }
+          case "Cancel":
+            return (
+              <BitcoinPossiblyCancelledAlert
+                timelock={swap.timelock}
+                swap={swap}
+              />
+            );
+          case "Punish":
+            return <ImmediateActionAlert />;
 
-        if (isSwapTimelockInfoPunished(swap.timelock)) {
-          return <ImmediateActionAlert />;
+          default:
+            // We have covered all possible timelock states above
+            // If we reach this point, it means we have missed a case
+            exhaustiveGuard(swap.timelock);
         }
-
-        // We have covered all possible timelock states above
-        // If we reach this point, it means we have missed a case
-        return exhaustiveGuard(swap.timelock);
       }
       return <ImmediateActionAlert />;
     default:
@@ -218,14 +209,12 @@ function SwapAlertStatusText({
 export default function SwapStatusAlert({
   swap,
 }: {
-  swap: GetSwapInfoResponse;
+  swap: GetSwapInfoResponseExt;
 }): JSX.Element | null {
-  // TODO: Reinstate this when the feature is available with Tauri
-  return <>not implemented</>;
-
-  // If the swap is not running, there is no need to display the alert
-  // This is either because the swap is finished or has not started yet (e.g. in the setup phase, no Bitcoin locked)
-  if (!isGetSwapInfoResponseRunningSwap(swap)) {
+  // If the swap is completed, there is no need to display the alert
+  // TODO: Here we should also check if the swap is in a state where any funds can be lost
+  // TODO: If the no Bitcoin have been locked yet, we can safely ignore the swap
+  if (swap.completed) {
     return null;
   }
 

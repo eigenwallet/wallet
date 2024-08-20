@@ -1,4 +1,5 @@
 import {
+  ExpiredTimelocks,
   GetSwapInfoResponse,
   TauriSwapProgressEvent,
 } from "./tauriModel";
@@ -30,6 +31,9 @@ export type GetSwapInfoResponseExt = GetSwapInfoResponse & {
   state_name: BobStateName;
 };
 
+export type TimelockNone = Extract<ExpiredTimelocks, { type: "None" }>;
+export type TimelockCancel = Extract<ExpiredTimelocks, { type: "Cancel" }>;
+export type TimelockPunish = Extract<ExpiredTimelocks, { type: "Punish" }>;
 
 export type BobStateNameRunningSwap = Exclude<
   BobStateName,
