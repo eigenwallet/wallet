@@ -402,6 +402,14 @@ async fn next_state(
                         .await
                     {
                         Ok(_) => {
+                            event_emitter.emit_swap_progress_event(
+                                swap_id,
+                                TauriSwapProgressEvent::XmrRedeemInMempool {
+                                    xmr_redeem_txid: monero::TxHash("placeholder".to_string()),
+                                    xmr_redeem_address: monero_receive_address,
+                                },
+                            );
+
                             return Ok(BobState::XmrRedeemed { tx_lock_id });
                         }
                         Err(error) => {
