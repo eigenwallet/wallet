@@ -1,16 +1,7 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { ExtendedProviderStatus, ProviderStatus } from "models/apiModel";
-import { MoneroWalletRpcUpdateState } from "models/storeModel";
 import { GetSwapInfoResponse } from "models/tauriModel";
-import {
-  CliLog,
-  isCliLog,
-  isCliLogDownloadingMoneroWalletRpc,
-  isCliLogFailedToSyncMoneroWallet,
-  isCliLogFinishedSyncingMoneroWallet,
-  isCliLogStartedRpcServer,
-  isCliLogStartedSyncingMoneroWallet,
-} from "../../models/cliModel";
+import { CliLog } from "../../models/cliModel";
 import {
   MoneroRecoveryResponse,
   RpcProcessStateType,
@@ -50,7 +41,8 @@ interface State {
     isSyncing: boolean;
   };
   moneroWalletRpc: {
-    updateState: false | MoneroWalletRpcUpdateState;
+    // TODO: Reimplement this using Tauri
+    updateState: false;
   };
 }
 
@@ -84,44 +76,6 @@ export const rpcSlice = createSlice({
   name: "rpc",
   initialState,
   reducers: {
-    rpcAddLogs(slice, action: PayloadAction<(CliLog | string)[]>) {
-      if (
-        slice.process.type === RpcProcessStateType.STARTED ||
-        slice.process.type === RpcProcessStateType.LISTENING_FOR_CONNECTIONS ||
-        slice.process.type === RpcProcessStateType.EXITED
-      ) {
-        const logs = action.payload;
-        slice.process.logs.push(...logs);
-
-        logs.filter(isCliLog).forEach((log) => {
-          if (
-            isCliLogStartedRpcServer(log) &&
-            slice.process.type === RpcProcessStateType.STARTED
-          ) {
-            slice.process = {
-              type: RpcProcessStateType.LISTENING_FOR_CONNECTIONS,
-              logs: slice.process.logs,
-              address: log.fields.addr,
-            };
-          } else if (isCliLogDownloadingMoneroWalletRpc(log)) {
-            slice.state.moneroWalletRpc.updateState = {
-              progress: log.fields.progress,
-              downloadUrl: log.fields.download_url,
-            };
-
-            if (log.fields.progress === "100%") {
-              slice.state.moneroWalletRpc.updateState = false;
-            }
-          } else if (isCliLogStartedSyncingMoneroWallet(log)) {
-            slice.state.moneroWallet.isSyncing = true;
-          } else if (isCliLogFinishedSyncingMoneroWallet(log)) {
-            slice.state.moneroWallet.isSyncing = false;
-          } else if (isCliLogFailedToSyncMoneroWallet(log)) {
-            slice.state.moneroWallet.isSyncing = false;
-          }
-        });
-      }
-    },
     rpcInitiate(slice) {
       slice.process = {
         type: RpcProcessStateType.STARTED,
@@ -201,7 +155,6 @@ export const rpcSlice = createSlice({
 
 export const {
   rpcProcessExited,
-  rpcAddLogs,
   rpcInitiate,
   rpcSetBalance,
   rpcSetWithdrawTxId,

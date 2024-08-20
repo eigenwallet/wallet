@@ -1,4 +1,4 @@
-import { CliLog, isCliLog } from "models/cliModel";
+import { CliLog } from "models/cliModel";
 
 /*
 Extract btc amount from string
@@ -53,13 +53,15 @@ export function getLogsAndStringsFromRawFileString(
   return getLinesOfString(rawFileData).map((line) => {
     try {
       return JSON.parse(line);
-    } catch (e) {
+    } catch {
       return line;
     }
   });
 }
 
 export function getLogsFromRawFileString(rawFileData: string): CliLog[] {
+  // TODO: Reimplement this using Tauri
+  return [];
   return getLogsAndStringsFromRawFileString(rawFileData).filter(isCliLog);
 }
 
