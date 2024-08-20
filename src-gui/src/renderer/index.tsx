@@ -14,10 +14,10 @@ import App from "./components/App";
 import { checkBitcoinBalance, getRawSwapInfos } from "./rpc";
 import { store } from "./store/storeRenderer";
 
-setTimeout(() => {
+setInterval(() => {
   checkBitcoinBalance();
   getRawSwapInfos();
-}, 10000);
+}, 5000);
 
 const container = document.getElementById("root");
 const root = createRoot(container!);
