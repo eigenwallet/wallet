@@ -1,0 +1,17 @@
+.container {
+  display: inline-flex;
+  align-items: center;
+  font-family: monospace;
+  background-color: rgba(0, 0, 0, 0.5);
+  color: rgb(212, 212, 212);
+  border-radius: 4px;
+  padding: 4px 6px;
+  white-space: pre;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.container:active {
+  background-color: rgba(27, 27, 27, 0.5)
+}
