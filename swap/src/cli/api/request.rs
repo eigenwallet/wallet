@@ -354,6 +354,31 @@ impl Request for GetSwapInfosAllArgs {
     }
 }
 
+pub struct GetLogsArgs {
+    pub swap_id: Option<Uuid>,
+    pub redact: bool,
+    pub logs_dir: Option<PathBuf>,
+}
+
+pub struct GetLogsResponse {
+    logs: Vec<String>,
+}
+
+impl Request for GetLogsArgs {
+    type Response = Vec<String>;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        let dir = logs_dir.unwrap_or(context.config.data_dir.join("logs"));
+        let logs = get_logs(dir, swap_id, redact).await?;
+
+        for msg in &logs {
+            println!("{msg}");
+        }
+
+        Ok(GetLogsResponse { logs })
+    }
+}
+
 #[tracing::instrument(fields(method = "suspend_current_swap"), skip(context))]
 pub async fn suspend_current_swap(context: Arc<Context>) -> Result<SuspendCurrentSwapResponse> {
     let swap_id = context.swap_lock.get_current_swap_id().await;

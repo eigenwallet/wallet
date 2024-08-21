@@ -8,6 +8,14 @@ use crate::cli::api::Context;
 use crate::monero::monero_address;
 use anyhow::Result;
 use jsonrpsee::server::RpcModule;
+use jsonrpsee::types::Params;
+use libp2p::core::Multiaddr;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::Arc;
+use uuid::Uuid;
 
 trait ConvertToJsonRpseeError<T> {
     fn to_jsonrpsee_result(self) -> Result<T, jsonrpsee_core::Error>;
@@ -46,6 +54,28 @@ pub fn register_modules(outer_context: Context) -> Result<RpcModule<Context>> {
             .request(context)
             .await
             .to_jsonrpsee_result()
+    })?;
+
+    module.register_async_method("get_logs", |params_raw, context| async move {
+        #[derive(Debug, Clone, Deserialize)]
+        struct Params {
+            swap_id: Option<Uuid>,
+            logs_dir: Option<PathBuf>,
+            redact: bool,
+        }
+
+        let params: Params = params_raw.parse()?;
+
+        execute_request(
+            params_raw,
+            Method::Logs {
+                swap_id: params.swap_id,
+                logs_dir: params.logs_dir,
+                redact: params.redact,
+            },
+            &context,
+        )
+        .await
     })?;
 
     module.register_async_method("resume_swap", |params_raw, context| async move {
