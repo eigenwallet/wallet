@@ -37,7 +37,6 @@ export default function ClickableAddress({address}: Props) {
                 />
             </div>
         </Tooltip>
-
     )
 }
 
