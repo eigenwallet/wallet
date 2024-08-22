@@ -15,6 +15,7 @@ import { useSnackbar } from "notistack";
 import { useState } from "react";
 import { store } from "renderer/store/storeRenderer";
 import { useActiveSwapInfo, useAppSelector } from "store/hooks";
+import { addSubmittedFeedbackId } from "store/tauriStore";
 import { parseDateString } from "utils/parseUtils";
 import { submitFeedbackViaHttp } from "../../../api";
 import LoadingButton from "../../other/LoadingButton";
@@ -27,7 +28,7 @@ async function submitFeedback(body: string, swapId: string | number) {
     const swapInfo = store.getState().rpc.state.swapInfos[swapId];
     const logs = [] as CliLog[];
 
-    throw new Error("Not implemented");
+    throw new Error("Not implemented (cant submit feedback with logs)");
 
     if (swapInfo === undefined) {
       throw new Error(`Swap with id ${swapId} not found`);
@@ -38,7 +39,11 @@ async function submitFeedback(body: string, swapId: string | number) {
       .join("\n====\n")}`;
   }
 
-  await submitFeedbackViaHttp(body, attachedBody);
+  const feedbackId = await submitFeedbackViaHttp(body, attachedBody);
+
+  addSubmittedFeedbackId(feedbackId);
+
+  return feedbackId;
 }
 
 /*

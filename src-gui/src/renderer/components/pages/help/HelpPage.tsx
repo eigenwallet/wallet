@@ -1,6 +1,7 @@
 import { Box, makeStyles } from "@material-ui/core";
 import ContactInfoBox from "./ContactInfoBox";
 import DonateInfoBox from "./DonateInfoBox";
+import FeedbackConversationsBox from "./FeedbackConversationsBox";
 import FeedbackInfoBox from "./FeedbackInfoBox";
 import RpcControlBox from "./RpcControlBox";
 import TorInfoBox from "./TorInfoBox";
@@ -19,6 +20,7 @@ export default function HelpPage() {
   return (
     <Box className={classes.outer}>
       <RpcControlBox />
+      <FeedbackConversationsBox />
       <TorInfoBox />
       <FeedbackInfoBox />
       <ContactInfoBox />
