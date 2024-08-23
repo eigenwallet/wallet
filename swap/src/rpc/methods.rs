@@ -2,7 +2,7 @@ use crate::api::request::{
     buy_xmr, cancel_and_refund, get_balance, get_current_swap, get_history, get_raw_states,
     get_swap_info, list_sellers, monero_recovery, resume_swap, suspend_current_swap, withdraw_btc,
     BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, GetSwapInfoArgs, ListSellersArgs,
-    MoneroRecoveryArgs, Request, ResumeArgs, WithdrawBtcArgs,
+    MoneroRecoveryArgs, Request, ResumeSwapArgs, WithdrawBtcArgs,
 };
 use crate::api::Context;
 use crate::bitcoin::bitcoin_address;
@@ -85,7 +85,7 @@ pub fn register_modules(outer_context: Context) -> Result<RpcModule<Context>> {
         let swap_id = as_uuid(swap_id)
             .ok_or_else(|| jsonrpsee_core::Error::Custom("Could not parse swap_id".to_string()))?;
 
-        ResumeArgs { swap_id }
+        ResumeSwapArgs { swap_id }
             .request(context)
             .await
             .to_jsonrpsee_result()

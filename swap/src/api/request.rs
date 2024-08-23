@@ -1,4 +1,3 @@
-use super::tauri_bindings::OptionalTauriHandle;
 use super::tauri_bindings::TauriHandle;
 use crate::api::tauri_bindings::{TauriEmitter, TauriSwapProgressEvent};
 use crate::api::Context;
@@ -29,7 +28,7 @@ use typeshare::typeshare;
 use uuid::Uuid;
 
 pub trait Request {
-    type Response: Serialize + for<'de> Deserialize<'de>;
+    type Response: Serialize;
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response>;
 }
 
@@ -79,7 +78,7 @@ impl Request for ResumeSwapArgs {
     type Response = ResumeSwapResponse;
 
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
-        resume(self, ctx).await
+        resume_swap(self, ctx).await
     }
 }
 
@@ -152,7 +151,7 @@ pub struct ListSellersArgs {
 }
 
 impl Request for ListSellersArgs {
-    type Response = ListSellersResponse;
+    type Response = serde_json::Value;
 
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
         list_sellers(self, ctx).await
@@ -165,14 +164,6 @@ impl Request for ListSellersArgs {
 pub struct StartDaemonArgs {
     #[typeshare(serialized_as = "string")]
     pub server_address: Option<SocketAddr>,
-}
-
-impl Request for StartDaemonArgs {
-    type Response = StartDaemonResponse;
-
-    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
-        start_daemon(self, ctx).await
-    }
 }
 
 // GetSwapInfo
@@ -298,6 +289,16 @@ impl Request for SuspendCurrentSwapArgs {
 
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
         suspend_current_swap(ctx).await
+    }
+}
+
+pub struct GetCurrentSwap;
+
+impl Request for GetCurrentSwap {
+    type Response = serde_json::Value;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        get_current_swap(ctx).await
     }
 }
 

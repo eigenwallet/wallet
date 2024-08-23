@@ -1,8 +1,8 @@
 use crate::api::request::{
     buy_xmr, cancel_and_refund, export_bitcoin_wallet, get_balance, get_config, get_history,
     list_sellers, monero_recovery, resume_swap, start_daemon, withdraw_btc, BalanceArgs,
-    BuyXmrArgs, CancelAndRefundArgs, ListSellersArgs, MoneroRecoveryArgs, Request, ResumeSwapArgs,
-    StartDaemonArgs, WithdrawBtcArgs,
+    BuyXmrArgs, CancelAndRefundArgs, GetHistoryArgs, ListSellersArgs, MoneroRecoveryArgs, Request,
+    ResumeSwapArgs, StartDaemonArgs, WithdrawBtcArgs,
 };
 use crate::api::Context;
 use crate::bitcoin::{bitcoin_address, Amount};
@@ -161,7 +161,7 @@ where
             )
             .await?;
 
-            start_daemon(StartDaemonArgs { server_address }, context).await?;
+            start_daemon(StartDaemonArgs { server_address }, context.clone()).await?;
 
             Ok(Arc::new(context))
         }
