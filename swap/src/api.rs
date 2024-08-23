@@ -16,7 +16,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as SyncMutex, Once};
 use tauri::AppHandle;
-use tauri_bindings::OptionalTauriHandle;
+use tauri_bindings::TauriHandle;
 use tokio::sync::{broadcast, broadcast::Sender, Mutex as TokioMutex, RwLock};
 use tokio::task::JoinHandle;
 use url::Url;
@@ -172,7 +172,7 @@ pub struct Context {
     pub swap_lock: Arc<SwapLock>,
     pub config: Config,
     pub tasks: Arc<PendingTaskList>,
-    tauri_handle: OptionalTauriHandle,
+    tauri_handle: Option<TauriHandle>,
     bitcoin_wallet: Option<Arc<bitcoin::Wallet>>,
     monero_wallet: Option<Arc<monero::Wallet>>,
     monero_rpc_process: Option<Arc<SyncMutex<monero::WalletRpcProcess>>>,
@@ -250,14 +250,14 @@ impl Context {
             },
             swap_lock: Arc::new(SwapLock::new()),
             tasks: Arc::new(PendingTaskList::default()),
-            tauri_handle: OptionalTauriHandle::none(),
+            tauri_handle: None,
         };
 
         Ok(context)
     }
 
     pub fn with_tauri_handle(mut self, tauri_handle: AppHandle) -> Self {
-        self.tauri_handle = OptionalTauriHandle::new(tauri_handle);
+        self.tauri_handle = Some(TauriHandle::new(tauri_handle));
 
         self
     }
@@ -281,7 +281,7 @@ impl Context {
             monero_rpc_process: None,
             swap_lock: Arc::new(SwapLock::new()),
             tasks: Arc::new(PendingTaskList::default()),
-            tauri_handle: OptionalTauriHandle::none(),
+            tauri_handle: None,
         }
     }
 

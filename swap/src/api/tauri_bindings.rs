@@ -13,50 +13,51 @@ use crate::{monero, network::quote::BidQuote};
 
 static SWAP_PROGRESS_EVENT_NAME: &str = "swap-progress-update";
 
-#[derive(Clone)]
-struct TauriHandle(Arc<AppHandle>);
+#[derive(Debug, Clone)]
+pub struct TauriHandle(Arc<AppHandle>);
 
 impl TauriHandle {
+    pub fn new(tauri_handle: AppHandle) -> Self {
+        Self(Arc::new(tauri_handle))
+    }
+
     pub fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()> {
         self.0.emit(event, payload).map_err(|e| e.into())
     }
 }
 
 pub trait TauriEmitter {
-    fn emit_tauri_event_optional<S: Serialize + Clone>(
+    fn emit_tauri_event<S: Serialize + Clone>(
         &self,
         event: &str,
         payload: S,
     ) -> Result<()>;
 
     fn emit_swap_progress_event(&self, swap_id: Uuid, event: TauriSwapProgressEvent) {
-        let _ = self.emit_tauri_event_optional(
+        let _ = self.emit_tauri_event(
             SWAP_PROGRESS_EVENT_NAME,
             TauriSwapProgressEventWrapper { swap_id, event },
         );
     }
 }
 
-#[derive(Clone)]
-pub struct OptionalTauriHandle(Option<TauriHandle>);
-
-impl OptionalTauriHandle {
-    pub fn new(tauri_handle: AppHandle) -> Self {
-        Self(Some(TauriHandle(Arc::new(tauri_handle))))
-    }
-
-    pub fn none() -> Self {
-        Self(None)
-    }
-}
-
-impl TauriEmitter for OptionalTauriHandle {
-    fn emit_tauri_event_optional<S: Serialize + Clone>(
+impl TauriEmitter for TauriHandle {
+    fn emit_tauri_event<S: Serialize + Clone>(
         &self,
         event: &str,
         payload: S,
     ) -> Result<()> {
-        match &self.0 {
+        self.emit_tauri_event(event, payload)
+    }
+}
+
+impl TauriEmitter for Option<TauriHandle> {
+    fn emit_tauri_event<S: Serialize + Clone>(
+        &self,
+        event: &str,
+        payload: S,
+    ) -> Result<()> {
+        match self {
             Some(tauri) => tauri.emit_tauri_event(event, payload),
             None => Ok(()),
         }

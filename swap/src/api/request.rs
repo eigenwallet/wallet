@@ -26,7 +26,7 @@ use tracing::Instrument;
 use typeshare::typeshare;
 use uuid::Uuid;
 
-use super::tauri_bindings::OptionalTauriHandle;
+use super::tauri_bindings::TauriHandle;
 
 #[typeshare]
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -929,7 +929,7 @@ pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS, FFE, TFE>(
     max_giveable_fn: FMG,
     sync: FS,
     estimate_fee: FFE,
-    event_emitter: OptionalTauriHandle,
+    event_emitter: Option<TauriHandle>,
 ) -> Result<(bitcoin::Amount, bitcoin::Amount)>
 where
     TB: Future<Output = Result<bitcoin::Amount>>,

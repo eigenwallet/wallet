@@ -1,4 +1,4 @@
-use crate::api::tauri_bindings::{OptionalTauriHandle, TauriEmitter, TauriSwapProgressEvent};
+use crate::api::tauri_bindings::{TauriEmitter, TauriHandle, TauriSwapProgressEvent};
 use crate::bitcoin::{ExpiredTimelocks, TxCancel, TxRefund};
 use crate::cli::EventLoopHandle;
 use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, Rejected};
@@ -75,7 +75,7 @@ async fn next_state(
     bitcoin_wallet: &bitcoin::Wallet,
     monero_wallet: &monero::Wallet,
     monero_receive_address: monero::Address,
-    event_emitter: Arc<OptionalTauriHandle>,
+    event_emitter: Option<TauriHandle>,
 ) -> Result<BobState> {
     tracing::debug!(%state, "Advancing state");
 

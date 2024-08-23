@@ -23,10 +23,7 @@ trait ToStringResult<T> {
 // Implement the trait for Result<T, E>
 impl<T, E: ToString> ToStringResult<T> for Result<T, E> {
     fn to_string_result(self) -> Result<T, String> {
-        match self {
-            Ok(value) => Ok(value),
-            Err(err) => Err(err.to_string()),
-        }
+        self.map_err(|e| e.to_string())
     }
 }
 
