@@ -6,7 +6,7 @@ import {
   BuyXmrArgs,
   BuyXmrResponse,
   GetSwapInfoResponse,
-  ResumeArgs,
+  ResumeSwapArgs,
   ResumeSwapResponse,
   SuspendCurrentSwapResponse,
   TauriSwapProgressEventWrapper,
@@ -77,7 +77,7 @@ export async function buyXmr(
 }
 
 export async function resumeSwap(swapId: string) {
-  await invoke<ResumeArgs, ResumeSwapResponse>("resume_swap", {
+  await invoke<ResumeSwapArgs, ResumeSwapResponse>("resume_swap", {
     swap_id: swapId,
   });
 }

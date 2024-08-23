@@ -170,6 +170,14 @@ pub struct StartDaemonArgs {
     pub server_address: Option<SocketAddr>,
 }
 
+impl Request for StartDaemonArgs {
+    type Response = serde_json::Value;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        start_daemon(self, (*ctx).clone()).await
+    }
+}
+
 // GetSwapInfo
 #[typeshare]
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -303,6 +311,26 @@ impl Request for GetCurrentSwap {
 
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
         get_current_swap(ctx).await
+    }
+}
+
+pub struct GetConfig;
+
+impl Request for GetConfig {
+    type Response = serde_json::Value;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        get_config(ctx).await
+    }
+}
+
+pub struct ExportBitcoinWalletArgs;
+
+impl Request for ExportBitcoinWallet {
+    type Response = serde_json::Value;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        export_bitcoin_wallet(ctx).await
     }
 }
 
