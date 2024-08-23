@@ -1,7 +1,7 @@
 use crate::api::request::{
     buy_xmr, cancel_and_refund, export_bitcoin_wallet, get_balance, get_config, get_history,
     list_sellers, monero_recovery, resume_swap, start_daemon, withdraw_btc, BalanceArgs,
-    BuyXmrArgs, CancelAndRefundArgs, ListSellersArgs, MoneroRecoveryArgs, ResumeArgs,
+    BuyXmrArgs, CancelAndRefundArgs, ListSellersArgs, MoneroRecoveryArgs, Request, ResumeSwapArgs,
     StartDaemonArgs, WithdrawBtcArgs,
 };
 use crate::api::Context;
@@ -93,15 +93,12 @@ where
                 .await?,
             );
 
-            buy_xmr(
-                BuyXmrArgs {
-                    seller,
-                    bitcoin_change_address,
-                    monero_receive_address,
-                },
-                context.clone(),
-            )
-            .await?;
+            let args = BuyXmrArgs {
+                seller,
+                bitcoin_change_address,
+                monero_receive_address,
+            };
+            args.request(context.clone()).await?;
 
             Ok(context)
         }
@@ -110,7 +107,7 @@ where
                 Context::build(None, None, None, data, is_testnet, debug, json, None).await?,
             );
 
-            get_history(context.clone()).await?;
+            GetHistoryArgs {}.request(context.clone()).await?;
 
             Ok(context)
         }
@@ -138,12 +135,10 @@ where
                 .await?,
             );
 
-            get_balance(
-                BalanceArgs {
-                    force_refresh: true,
-                },
-                context.clone(),
-            )
+            BalanceArgs {
+                force_refresh: true,
+            }
+            .request(context.clone())
             .await?;
 
             Ok(context)
@@ -166,7 +161,7 @@ where
             )
             .await?;
 
-            start_daemon(StartDaemonArgs { server_address }, context.clone()).await?;
+            start_daemon(StartDaemonArgs { server_address }, context).await?;
 
             Ok(Arc::new(context))
         }
@@ -191,7 +186,9 @@ where
                 .await?,
             );
 
-            withdraw_btc(WithdrawBtcArgs { amount, address }, context.clone()).await?;
+            WithdrawBtcArgs { amount, address }
+                .request(context.clone())
+                .await?;
 
             Ok(context)
         }
@@ -215,7 +212,7 @@ where
                 .await?,
             );
 
-            resume_swap(ResumeArgs { swap_id }, context.clone()).await?;
+            ResumeSwapArgs { swap_id }.request(context.clone()).await?;
 
             Ok(context)
         }
@@ -238,7 +235,9 @@ where
                 .await?,
             );
 
-            cancel_and_refund(CancelAndRefundArgs { swap_id }, context.clone()).await?;
+            CancelAndRefundArgs { swap_id }
+                .request(context.clone())
+                .await?;
 
             Ok(context)
         }
@@ -250,7 +249,9 @@ where
                 Context::build(None, None, Some(tor), data, is_testnet, debug, json, None).await?,
             );
 
-            list_sellers(ListSellersArgs { rendezvous_point }, context.clone()).await?;
+            ListSellersArgs { rendezvous_point }
+                .request(context.clone())
+                .await?;
 
             Ok(context)
         }
@@ -280,7 +281,9 @@ where
                 Context::build(None, None, None, data, is_testnet, debug, json, None).await?,
             );
 
-            monero_recovery(MoneroRecoveryArgs { swap_id }, context.clone()).await?;
+            MoneroRecoveryArgs { swap_id }
+                .request(context.clone())
+                .await?;
 
             Ok(context)
         }
@@ -1059,18 +1062,14 @@ mod tests {
         let args = parse_args_and_apply_defaults(raw_ars).await.unwrap();
         let (is_testnet, debug, json) = (true, true, false);
 
-        let (expected_config, expected_request) = (
-            Config::default(is_testnet, None, debug, json),
-            Request::resume(),
-        );
+        let expected_config = Config::default(is_testnet, None, debug, json);
 
-        let (actual_config, actual_request) = match args {
-            ParseResult::Context(context, request) => (context.config.clone(), request),
+        let actual_config = match args {
+            ParseResult::Context(context, request) => context.config.clone(),
             _ => panic!("Couldn't parse result"),
         };
 
         assert_eq!(actual_config, expected_config);
-        assert_eq!(actual_request, Box::new(expected_request));
 
         // given_buy_xmr_on_mainnet_with_json_then_json_set
         let raw_ars = vec![

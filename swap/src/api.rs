@@ -160,6 +160,12 @@ impl SwapLock {
     }
 }
 
+impl Default for SwapLock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Holds shared data for different parts of the CLI.
 ///
 /// Some components are optional, allowing initialization of only necessary parts.
@@ -402,11 +408,6 @@ impl Config {
 #[cfg(test)]
 pub mod api_test {
     use super::*;
-
-    use libp2p::Multiaddr;
-    use request::BuyXmrArgs;
-    use std::str::FromStr;
-    use uuid::Uuid;
 
     pub const MULTI_ADDRESS: &str =
         "/ip4/127.0.0.1/tcp/9939/p2p/12D3KooWCdMKjesXMJz1SiZ7HgotrxuqhQJbP5sgBm2BwP1cqThi";
