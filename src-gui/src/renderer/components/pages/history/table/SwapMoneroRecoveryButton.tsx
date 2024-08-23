@@ -8,6 +8,7 @@ import {
   Link,
 } from "@material-ui/core";
 import { ButtonProps } from "@material-ui/core/Button/Button";
+import { GetSwapInfoResponse } from "models/rpcModel";
 import { GetSwapInfoArgs } from "models/tauriModel";
 import { rpcResetMoneroRecoveryKeys } from "store/features/rpcSlice";
 import { useAppDispatch, useAppSelector } from "store/hooks";
