@@ -3,18 +3,14 @@ use std::sync::Arc;
 use swap::{
     api::{
         request::{
-            buy_xmr as buy_xmr_impl, get_balance as get_balance_impl,
-            get_history as get_history_impl, get_swap_infos_all as get_swap_infos_all_impl,
-            resume_swap as resume_swap_impl, suspend_current_swap as suspend_current_swap_impl,
-            withdraw_btc as withdraw_btc_impl, BalanceArgs, BalanceResponse, BuyXmrArgs,
-            BuyXmrResponse, GetHistoryResponse, GetSwapInfoResponse, ResumeArgs,
-            ResumeSwapResponse, SuspendCurrentSwapResponse, WithdrawBtcArgs, WithdrawBtcResponse,
+            BalanceArgs, BuyXmrArgs, GetHistoryArgs, ResumeSwapArgs, SuspendCurrentSwapArgs,
+            WithdrawBtcArgs,
         },
         Context,
     },
     cli::command::{Bitcoin, Monero},
 };
-use tauri::{Manager, RunEvent, State};
+use tauri::{Manager, RunEvent};
 
 trait ToStringResult<T> {
     fn to_string_result(self) -> Result<T, String>;
@@ -27,70 +23,40 @@ impl<T, E: ToString> ToStringResult<T> for Result<T, E> {
     }
 }
 
-#[tauri::command]
-async fn get_balance(
-    context: State<'_, Arc<Context>>,
-    args: BalanceArgs,
-) -> Result<BalanceResponse, String> {
-    get_balance_impl(args, context.inner().clone())
-        .await
-        .to_string_result()
+/// This macro is used to create boilerplate functions as tauri commands
+/// that simply delegate handling to the respective request type.
+/// 
+/// # Example
+/// ```ignored
+/// tauri_command!(get_balance, BalanceArgs);
+/// ```
+/// will resolve to
+/// ```ignored
+/// #[tauri::command]
+/// async fn get_balance(context: tauri::State<'...>, args: BalanceArgs) -> Result<BalanceArgs::Response, String> {
+///     args.handle(context.inner().clone()).await.to_string_result()
+/// }
+/// ```
+macro_rules! tauri_command {
+    ($fn_name:ident, $request_name:ident) => {
+        #[tauri::command]
+        async fn $fn_name(
+            context: tauri::State<'_, Arc<Context>>,
+            args: $request_name,
+        ) -> Result<<$request_name as swap::api::request::Request>::Response, String> {
+            <$request_name as swap::api::request::Request>::request(args, context.inner().clone())
+                .await
+                .to_string_result()
+        }
+    };
 }
-
-#[tauri::command]
-async fn get_swap_infos_all(
-    context: State<'_, Arc<Context>>,
-) -> Result<Vec<GetSwapInfoResponse>, String> {
-    get_swap_infos_all_impl(context.inner().clone())
-        .await
-        .to_string_result()
-}
-
-#[tauri::command]
-async fn buy_xmr(
-    context: State<'_, Arc<Context>>,
-    args: BuyXmrArgs,
-) -> Result<BuyXmrResponse, String> {
-    buy_xmr_impl(args, context.inner().clone())
-        .await
-        .to_string_result()
-}
-
-#[tauri::command]
-async fn get_history(context: State<'_, Arc<Context>>) -> Result<GetHistoryResponse, String> {
-    get_history_impl(context.inner().clone())
-        .await
-        .to_string_result()
-}
-
-#[tauri::command]
-async fn resume_swap(
-    context: State<'_, Arc<Context>>,
-    args: ResumeArgs,
-) -> Result<ResumeSwapResponse, String> {
-    resume_swap_impl(args, context.inner().clone())
-        .await
-        .to_string_result()
-}
-
-#[tauri::command]
-async fn withdraw_btc(
-    context: State<'_, Arc<Context>>,
-    args: WithdrawBtcArgs,
-) -> Result<WithdrawBtcResponse, String> {
-    withdraw_btc_impl(args, context.inner().clone())
-        .await
-        .to_string_result()
-}
-
-#[tauri::command]
-async fn suspend_current_swap(
-    context: State<'_, Arc<Context>>,
-) -> Result<SuspendCurrentSwapResponse, String> {
-    suspend_current_swap_impl(context.inner().clone())
-        .await
-        .to_string_result()
-}
+tauri_command!(get_balance, BalanceArgs);
+tauri_command!(get_swap_infos_all, BalanceArgs);
+tauri_command!(buy_xmr, BuyXmrArgs);
+tauri_command!(get_history, GetHistoryArgs);
+tauri_command!(resume_swap, ResumeSwapArgs);
+tauri_command!(withdraw_btc, WithdrawBtcArgs);
+tauri_command!(suspend_current_swap, SuspendCurrentSwapArgs);
 
 fn setup<'a>(app: &'a mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     tauri::async_runtime::block_on(async {

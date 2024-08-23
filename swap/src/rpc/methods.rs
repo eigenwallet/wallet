@@ -1,6 +1,6 @@
 use crate::api::request::{
-    buy_xmr, cancel_and_refund, get_balance, get_current_swap, get_history, get_raw_states,
-    get_swap_info, list_sellers, monero_recovery, resume_swap, suspend_current_swap, withdraw_btc,
+    get_current_swap, get_history, get_raw_states,
+    suspend_current_swap,
     BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, GetSwapInfoArgs, ListSellersArgs,
     MoneroRecoveryArgs, Request, ResumeSwapArgs, WithdrawBtcArgs,
 };
