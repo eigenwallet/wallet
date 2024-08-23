@@ -17,7 +17,10 @@ export function useResumeableSwapsCount() {
 }
 
 export function useIsSwapRunning() {
-  return useAppSelector((state) => state.swap.state !== null);
+  return useAppSelector(
+    (state) =>
+      state.swap.state !== null && state.swap.state.curr.type !== "Released",
+  );
 }
 
 export function useSwapInfo(swapId: string | null) {
