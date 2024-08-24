@@ -1,8 +1,8 @@
 use crate::api::request::{
     buy_xmr, cancel_and_refund, export_bitcoin_wallet, get_balance, get_config, get_history,
     list_sellers, monero_recovery, resume_swap, start_daemon, withdraw_btc, BalanceArgs,
-    BuyXmrArgs, CancelAndRefundArgs, ExportBitcoinWalletArgs, GetHistoryArgs, ListSellersArgs,
-    MoneroRecoveryArgs, Request, ResumeSwapArgs, StartDaemonArgs, WithdrawBtcArgs,
+    BuyXmrArgs, CancelAndRefundArgs, ExportBitcoinWalletArgs, GetConfigArgs, GetHistoryArgs,
+    ListSellersArgs, MoneroRecoveryArgs, Request, ResumeSwapArgs, StartDaemonArgs, WithdrawBtcArgs,
 };
 use crate::api::Context;
 use crate::bitcoin::{bitcoin_address, Amount};
@@ -38,7 +38,7 @@ const DEFAULT_TOR_SOCKS5_PORT: &str = "9050";
 #[derive(Debug)]
 pub enum ParseResult {
     /// The arguments we were invoked in.
-    Success((Arc<Context>, Box<dyn Request + Send + Sync + 'static>)),
+    Success(Arc<Context>),
     /// A flag or command was given that does not need further processing other
     /// than printing the provided message.
     ///
@@ -65,7 +65,7 @@ where
     let json = args.json;
     let is_testnet = args.testnet;
     let data = args.data;
-    let result: Result<(Arc<Context>, Box<dyn Request + Send + Sync + 'static>)> = match args.cmd {
+    let result: Result<Arc<Context>> = match args.cmd {
         CliCommand::BuyXmr {
             seller: Seller { seller },
             bitcoin,
@@ -93,27 +93,33 @@ where
                 .await?,
             );
 
-            let args = Box::new(BuyXmrArgs {
+            BuyXmrArgs {
                 seller,
                 bitcoin_change_address,
                 monero_receive_address,
-            });
+            }
+            .request(context.clone())
+            .await?;
 
-            Ok((context, args))
+            Ok(context)
         }
         CliCommand::History => {
             let context = Arc::new(
                 Context::build(None, None, None, data, is_testnet, debug, json, None).await?,
             );
 
-            Ok((context, GetHistoryArgs {}))
+            GetHistoryArgs {}.request(context.clone()).await?;
+
+            Ok(context)
         }
         CliCommand::Config => {
             let context = Arc::new(
                 Context::build(None, None, None, data, is_testnet, debug, json, None).await?,
             );
 
-            Ok((context, GetConfigArgs {}))
+            GetConfigArgs {}.request(context.clone()).await?;
+
+            Ok(context)
         }
         CliCommand::Balance { bitcoin } => {
             let context = Arc::new(
@@ -130,12 +136,13 @@ where
                 .await?,
             );
 
-            Ok((
-                context,
-                Box::new(BalanceArgs {
-                    force_refresh: true,
-                }),
-            ))
+            BalanceArgs {
+                force_refresh: true,
+            }
+            .request(context.clone())
+            .await?;
+
+            Ok(context)
         }
         CliCommand::StartDaemon {
             server_address,
@@ -157,7 +164,11 @@ where
                 .await?,
             );
 
-            Ok((context, Box::new(StartDaemonArgs { server_address })))
+            StartDaemonArgs { server_address }
+                .request(context.clone())
+                .await?;
+
+            Ok(context)
         }
         CliCommand::WithdrawBtc {
             bitcoin,
@@ -180,7 +191,11 @@ where
                 .await?,
             );
 
-            Ok((context, Box::new(WithdrawBtcArgs { amount, address })))
+            WithdrawBtcArgs { amount, address }
+                .request(context.clone())
+                .await?;
+
+            Ok(context)
         }
         CliCommand::Resume {
             swap_id: SwapId { swap_id },
@@ -202,7 +217,9 @@ where
                 .await?,
             );
 
-            Ok((context, Box::new(ResumeSwapArgs { swap_id })))
+            ResumeSwapArgs { swap_id }.request(context.clone()).await?;
+
+            Ok(context)
         }
         CliCommand::CancelAndRefund {
             swap_id: SwapId { swap_id },
@@ -223,7 +240,11 @@ where
                 .await?,
             );
 
-            Ok((context, Box::new(CancelAndRefundArgs { swap_id })))
+            CancelAndRefundArgs { swap_id }
+                .request(context.clone())
+                .await?;
+
+            Ok(context)
         }
         CliCommand::ListSellers {
             rendezvous_point,
@@ -233,7 +254,11 @@ where
                 Context::build(None, None, Some(tor), data, is_testnet, debug, json, None).await?,
             );
 
-            Ok((context, Box::new(ListSellersArgs { rendezvous_point })))
+            ListSellersArgs { rendezvous_point }
+                .request(context.clone())
+                .await?;
+
+            Ok(context)
         }
         CliCommand::ExportBitcoinWallet { bitcoin } => {
             let context = Arc::new(
@@ -250,7 +275,9 @@ where
                 .await?,
             );
 
-            Ok((context, Box::new(ExportBitcoinWalletArgs {})))
+            ExportBitcoinWalletArgs {}.request(context.clone()).await?;
+
+            Ok(context)
         }
         CliCommand::MoneroRecovery {
             swap_id: SwapId { swap_id },
@@ -259,7 +286,11 @@ where
                 Context::build(None, None, None, data, is_testnet, debug, json, None).await?,
             );
 
-            Ok((context, Box::new(MoneroRecoveryArgs { swap_id })))
+            MoneroRecoveryArgs { swap_id }
+                .request(context.clone())
+                .await?;
+
+            Ok(context)
         }
     };
 

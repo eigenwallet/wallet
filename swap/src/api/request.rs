@@ -27,8 +27,8 @@ use tracing::Instrument;
 use typeshare::typeshare;
 use uuid::Uuid;
 
-/// This trait is implemented by all types of request args that 
-/// the CLI can handle. 
+/// This trait is implemented by all types of request args that
+/// the CLI can handle.
 /// It provides a unified abstraction that can be useful for generics.
 #[allow(async_fn_in_trait)]
 pub trait Request {
@@ -326,11 +326,21 @@ impl Request for GetConfig {
 
 pub struct ExportBitcoinWalletArgs;
 
-impl Request for ExportBitcoinWallet {
+impl Request for ExportBitcoinWalletArgs {
     type Response = serde_json::Value;
 
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
         export_bitcoin_wallet(ctx).await
+    }
+}
+
+pub struct GetConfigArgs;
+
+impl Request for GetConfigArgs {
+    type Response = serde_json::Value;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        get_config(ctx).await
     }
 }
 
