@@ -1,5 +1,6 @@
-import { Box, Chip, makeStyles, Tooltip, Typography } from "@material-ui/core";
-import { VerifiedUser } from "@material-ui/icons";
+import { Box, Chip, Tooltip, Typography } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
+import { VerifiedUser } from "@mui/icons-material";
 import { ExtendedProviderStatus } from "models/apiModel";
 import {
   MoneroBitcoinExchangeRate,

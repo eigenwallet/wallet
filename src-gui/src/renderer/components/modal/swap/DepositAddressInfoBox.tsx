@@ -1,5 +1,5 @@
-import { Box, Typography } from "@material-ui/core";
-import FileCopyOutlinedIcon from "@material-ui/icons/FileCopyOutlined";
+import { Box, Typography } from "@mui/material";
+import FileCopyOutlinedIcon from "@mui/icons-material/FileCopyOutlined";
 import { ReactNode } from "react";
 import BitcoinQrCode from "./BitcoinQrCode";
 import ClipboardIconButton from "./ClipbiardIconButton";

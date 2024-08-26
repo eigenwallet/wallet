@@ -1,4 +1,4 @@
-import { Badge } from "@material-ui/core";
+import { Badge } from "@mui/material";
 import { useResumeableSwapsCount } from "store/hooks";
 
 export default function UnfinishedSwapsBadge({

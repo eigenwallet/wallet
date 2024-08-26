@@ -6,8 +6,8 @@ import {
   DialogContent,
   DialogContentText,
   Link,
-} from "@material-ui/core";
-import { ButtonProps } from "@material-ui/core/Button/Button";
+} from "@mui/material";
+import { ButtonProps } from "@mui/material/Button/Button";
 import { GetSwapInfoArgs } from "models/tauriModel";
 import { rpcResetMoneroRecoveryKeys } from "store/features/rpcSlice";
 import { useAppDispatch, useAppSelector } from "store/hooks";

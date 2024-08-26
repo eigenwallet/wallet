@@ -1,5 +1,6 @@
-import { Box, DialogContentText, makeStyles } from "@material-ui/core";
-import PlayArrowIcon from "@material-ui/icons/PlayArrow";
+import { Box, DialogContentText } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import { useState } from "react";
 import BitcoinAddressTextField from "renderer/components/inputs/BitcoinAddressTextField";
 import MoneroAddressTextField from "renderer/components/inputs/MoneroAddressTextField";

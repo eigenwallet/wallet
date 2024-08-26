@@ -1,5 +1,5 @@
-import { CircularProgress } from "@material-ui/core";
-import { Alert } from "@material-ui/lab";
+import { CircularProgress } from "@mui/material";
+import { Alert } from "@mui/material";
 import { RpcProcessStateType } from "models/rpcModel";
 import { useAppSelector } from "store/hooks";
 

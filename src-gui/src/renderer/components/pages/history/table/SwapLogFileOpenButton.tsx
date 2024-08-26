@@ -4,8 +4,8 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-} from "@material-ui/core";
-import { ButtonProps } from "@material-ui/core/Button/Button";
+} from "@mui/material";
+import { ButtonProps } from "@mui/material/Button/Button";
 import { CliLog } from "models/cliModel";
 import { useState } from "react";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";

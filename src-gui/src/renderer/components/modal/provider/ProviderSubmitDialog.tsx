@@ -6,7 +6,7 @@ import {
   DialogContentText,
   DialogTitle,
   TextField,
-} from "@material-ui/core";
+} from "@mui/material";
 import { Multiaddr } from "multiaddr";
 import { ChangeEvent, useState } from "react";
 
@@ -72,6 +72,7 @@ export default function ProviderSubmitDialog({
           other users to trade with.
         </DialogContentText>
         <TextField
+          variant="standard"
           autoFocus
           margin="dense"
           label="Multiaddress"
@@ -86,6 +87,7 @@ export default function ProviderSubmitDialog({
           error={!!getMultiAddressError()}
         />
         <TextField
+          variant="standard"
           margin="dense"
           label="Peer ID"
           fullWidth

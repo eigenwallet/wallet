@@ -1,7 +1,8 @@
-import { Box, makeStyles } from "@material-ui/core";
-import FolderOpenIcon from "@material-ui/icons/FolderOpen";
-import PlayArrowIcon from "@material-ui/icons/PlayArrow";
-import StopIcon from "@material-ui/icons/Stop";
+import { Box } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import StopIcon from "@mui/icons-material/Stop";
 import { RpcProcessStateType } from "models/rpcModel";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { useAppSelector } from "store/hooks";

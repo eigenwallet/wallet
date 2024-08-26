@@ -1,13 +1,13 @@
 import {
   Box,
   Link,
-  makeStyles,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableRow,
-} from "@material-ui/core";
+} from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import { GetSwapInfoResponse } from "models/tauriModel";
 import {
   MoneroBitcoinExchangeRate,

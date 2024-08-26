@@ -9,7 +9,7 @@ import {
   MenuItem,
   Select,
   TextField,
-} from "@material-ui/core";
+} from "@mui/material";
 import { CliLog } from "models/cliModel";
 import { useSnackbar } from "notistack";
 import { useState } from "react";

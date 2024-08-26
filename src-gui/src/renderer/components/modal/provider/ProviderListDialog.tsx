@@ -10,10 +10,10 @@ import {
   ListItem,
   ListItemAvatar,
   ListItemText,
-  makeStyles,
-} from "@material-ui/core";
-import AddIcon from "@material-ui/icons/Add";
-import SearchIcon from "@material-ui/icons/Search";
+} from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
+import AddIcon from "@mui/icons-material/Add";
+import SearchIcon from "@mui/icons-material/Search";
 import { ExtendedProviderStatus } from "models/apiModel";
 import { RpcMethod } from "models/rpcModel";
 import { useState } from "react";

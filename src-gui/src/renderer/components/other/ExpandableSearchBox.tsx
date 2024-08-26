@@ -1,6 +1,6 @@
-import { Box, IconButton, TextField } from "@material-ui/core";
-import CloseIcon from "@material-ui/icons/Close";
-import SearchIcon from "@material-ui/icons/Search";
+import { Box, IconButton, TextField } from "@mui/material";
+import CloseIcon from "@mui/icons-material/Close";
+import SearchIcon from "@mui/icons-material/Search";
 import { useState } from "react";
 
 export function ExpandableSearchBox({
@@ -18,6 +18,7 @@ export function ExpandableSearchBox({
         {expanded ? (
           <>
             <TextField
+              variant="standard"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               autoFocus

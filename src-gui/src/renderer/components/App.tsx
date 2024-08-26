@@ -1,6 +1,11 @@
-import { Box, CssBaseline, makeStyles } from "@material-ui/core";
-import { indigo } from "@material-ui/core/colors";
-import { createTheme, ThemeProvider } from "@material-ui/core/styles";
+import { adaptV4Theme, Box, CssBaseline } from "@mui/material";
+import { indigo } from "@mui/material/colors";
+import {
+  createTheme,
+  StyledEngineProvider,
+  ThemeProvider,
+} from "@mui/material/styles";
+import makeStyles from "@mui/styles/makeStyles";
 import { Route, MemoryRouter as Router, Routes } from "react-router-dom";
 import Navigation, { drawerWidth } from "./navigation/Navigation";
 import HelpPage from "./pages/help/HelpPage";
@@ -18,23 +23,29 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const theme = createTheme({
-  palette: {
-    type: "dark",
-    primary: {
-      main: "#f4511e",
+const theme = createTheme(
+  adaptV4Theme({
+    palette: {
+      mode: "dark",
+      primary: {
+        main: "#f4511e",
+      },
+      secondary: indigo,
+      background: {
+        default: "#303030",
+        paper: "#424242",
+      },
     },
-    secondary: indigo,
-  },
-  transitions: {
-    create: () => "none",
-  },
-  props: {
-    MuiButtonBase: {
-      disableRipple: true,
+    transitions: {
+      create: () => "none",
     },
-  },
-});
+    props: {
+      MuiButtonBase: {
+        disableRipple: true,
+      },
+    },
+  }),
+);
 
 function InnerContent() {
   const classes = useStyles();
@@ -54,14 +65,16 @@ function InnerContent() {
 
 export default function App() {
   return (
-    <ThemeProvider theme={theme}>
-      <GlobalSnackbarProvider>
-        <CssBaseline />
-        <Router>
-          <Navigation />
-          <InnerContent />
-        </Router>
-      </GlobalSnackbarProvider>
-    </ThemeProvider>
+    <StyledEngineProvider injectFirst>
+      <ThemeProvider theme={theme}>
+        <GlobalSnackbarProvider>
+          <CssBaseline />
+          <Router>
+            <Navigation />
+            <InnerContent />
+          </Router>
+        </GlobalSnackbarProvider>
+      </ThemeProvider>
+    </StyledEngineProvider>
   );
 }

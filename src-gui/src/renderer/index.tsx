@@ -11,16 +11,10 @@ import {
   fetchXmrPrice,
 } from "./api";
 import App from "./components/App";
-import { checkBitcoinBalance, getRawSwapInfos } from "./rpc";
 import { store } from "./store/storeRenderer";
 
-setInterval(() => {
-  checkBitcoinBalance();
-  getRawSwapInfos();
-}, 5000);
-
 const container = document.getElementById("root");
-const root = createRoot(container!);
+const root = createRoot(container);
 root.render(
   <Provider store={store}>
     <App />

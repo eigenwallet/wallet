@@ -7,10 +7,10 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  makeStyles,
   TextField,
   Theme,
-} from "@material-ui/core";
+} from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import { Multiaddr } from "multiaddr";
 import { useSnackbar } from "notistack";
 import { ChangeEvent, useState } from "react";
@@ -91,6 +91,7 @@ export default function ListSellersDialog({
           discover providers and then connect and swap with them.
         </DialogContentText>
         <TextField
+          variant="standard"
           autoFocus
           margin="dense"
           label="Rendezvous point"
