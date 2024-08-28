@@ -26,8 +26,7 @@ impl TauriHandle {
     #[allow(unused_variables)]
     pub fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()> {
         #[cfg(feature = "tauri")]
-        tauri::Emitter::emit(self.0.as_ref(), event, payload)
-            .map_err(|e| anyhow::Error::from(e))?;
+        tauri::Emitter::emit(self.0.as_ref(), event, payload).map_err(anyhow::Error::from)?;
 
         Ok(())
     }
