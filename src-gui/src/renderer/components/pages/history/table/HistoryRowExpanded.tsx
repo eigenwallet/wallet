@@ -7,6 +7,7 @@ import {
   TableCell,
   TableContainer,
   TableRow,
+  Typography,
 } from "@material-ui/core";
 import { GetSwapInfoResponse } from "models/tauriModel";
 import {
@@ -17,6 +18,9 @@ import {
 import { isTestnet } from "store/config";
 import { getBitcoinTxExplorerUrl } from "utils/conversionUtils";
 import SwapLogFileOpenButton from "./SwapLogFileOpenButton";
+import InlineCode from "renderer/components/other/InlineCode";
+import { OpenInNew } from "@material-ui/icons";
+import ClickableAddress from "renderer/components/other/ClickableAddress";
 
 const useStyles = makeStyles((theme) => ({
   outer: {
@@ -85,7 +89,7 @@ export default function HistoryRowExpanded({
             <TableRow>
               <TableCell>Provider Address</TableCell>
               <TableCell>
-                <Box>{swap.seller.addresses.join(", ")}</Box>
+                <Box>{swap.seller.addresses.map(addr => <ClickableAddress address={addr} noIcon />)}</Box>
               </TableCell>
             </TableRow>
             <TableRow>
@@ -95,7 +99,7 @@ export default function HistoryRowExpanded({
                   href={getBitcoinTxExplorerUrl(swap.tx_lock_id, isTestnet())}
                   target="_blank"
                 >
-                  {swap.tx_lock_id}
+                  <InlineCode content={swap.tx_lock_id} endIcon={<OpenInNew />} />
                 </Link>
               </TableCell>
             </TableRow>

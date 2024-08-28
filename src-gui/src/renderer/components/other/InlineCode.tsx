@@ -1,22 +1,37 @@
-import { ReactNode } from 'react';
-import { Button, Typography } from '@material-ui/core';
+import { Box, makeStyles } from "@material-ui/core"
+import { ReactNode } from "react"
 
 type Props = {
-    onClick: (e: any) => void;
     content: string,
-    icon?: ReactNode | null
+    onClick?: (content: string) => void,
+    endIcon?: ReactNode
 }
 
-export default function InlineCode({onClick, content, icon}: Props) {
+const useStyles = makeStyles(theme => ({
+    root: {
+        display: "inline-flex",
+        alignItems: 'center',
+        backgroundColor: theme.palette.grey[900],
+        borderRadius: theme.shape.borderRadius,
+        padding: theme.spacing(0.5)
+    }
+}))
+
+export default function InlineCode({ content, endIcon, onClick }: Props) {
+    // Use custom style 
+    const classes = useStyles()
+
+    // Call onClick if specified
+    const handleClick = () => {
+        if (onClick !== undefined) {
+            onClick(content)
+        }
+    }
+
     return (
-        <Button 
-            variant='outlined' 
-            endIcon={icon}
-            onClick={onClick}
-        >
-            <Typography variant="overline">
-                {content}
-            </Typography>
-        </Button>
+        <Box className={classes.root} onClick={handleClick}>
+            {content}
+            {endIcon}
+        </Box>
     )
 }

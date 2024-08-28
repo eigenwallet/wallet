@@ -61,7 +61,7 @@ export function SwapCancelRefundButton({
 export default function HistoryRowActions(swap: GetSwapInfoResponse) {
   if (swap.state_name === BobStateName.XmrRedeemed) {
     return (
-      <Tooltip title="The swap is completed because you have redeemed the XMR">
+      <Tooltip title="This swap is completed. You have redeemed the Monero.">
         <DoneIcon style={{ color: green[500] }} />
       </Tooltip>
     );
@@ -69,7 +69,7 @@ export default function HistoryRowActions(swap: GetSwapInfoResponse) {
 
   if (swap.state_name === BobStateName.BtcRefunded) {
     return (
-      <Tooltip title="The swap is completed because your BTC have been refunded">
+      <Tooltip title="The swap is completed. Your Bitcoin has been refunded.">
         <DoneIcon style={{ color: green[500] }} />
       </Tooltip>
     );
