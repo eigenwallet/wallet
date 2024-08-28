@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Tooltip } from "@material-ui/core";
 import InlineCode from "./InlineCode";
-import { FileCopy, FileCopyOutlined } from "@material-ui/icons";
+import { FileCopyOutlined } from "@material-ui/icons";
 
 type Props = {
     address: string

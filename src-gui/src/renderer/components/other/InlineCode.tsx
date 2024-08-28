@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import styles from './InlineCode.module.css'
+import { Button, Typography } from '@material-ui/core';
 
 type Props = {
     onClick: (e: any) => void;
@@ -9,13 +9,14 @@ type Props = {
 
 export default function InlineCode({onClick, content, icon}: Props) {
     return (
-        <span 
-            className={styles.container} 
+        <Button 
+            variant='outlined' 
+            endIcon={icon}
             onClick={onClick}
         >
-            {content}
-            {" "}
-            {icon}
-        </span>
+            <Typography variant="overline">
+                {content}
+            </Typography>
+        </Button>
     )
 }
