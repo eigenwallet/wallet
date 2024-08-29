@@ -3,13 +3,14 @@ pub mod tauri_bindings;
 
 use crate::cli::command::{Bitcoin, Monero, Tor};
 use crate::common::tracing_util::Format;
-use crate::database::{open_db, AccessMode};
+use crate::database::open_db;
 use crate::env::{Config as EnvConfig, GetConfig, Mainnet, Testnet};
 use crate::fs::system_data_dir;
 use crate::network::rendezvous::XmrBtcNamespace;
 use crate::protocol::Database;
 use crate::seed::Seed;
 use crate::{bitcoin, common, monero};
+use anyhow::anyhow;
 use anyhow::{bail, Context as AnyContext, Error, Result};
 use futures::future::try_join_all;
 use std::fmt;
@@ -277,8 +278,8 @@ impl ContextBuilder {
         let data_dir = data::data_dir_from(self.data, self.is_testnet)?;
         let env_config = env_config_from(self.is_testnet);
 
-        let format = if json { Format::Json } else { Format::Raw };
-        let level_filter = if debug {
+        let format = if self.json { Format::Json } else { Format::Raw };
+        let level_filter = if self.debug {
             LevelFilter::from_level(Level::DEBUG)
         } else {
             LevelFilter::from_level(Level::INFO)

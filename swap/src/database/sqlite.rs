@@ -4,7 +4,7 @@ use crate::protocol::{Database, State};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use libp2p::{Multiaddr, PeerId};
-use sqlx::sqlite::{Sqlite, SqliteConnectOptions};
+use sqlx::sqlite::Sqlite;
 use sqlx::{ConnectOptions, Pool, SqlitePool};
 use std::path::Path;
 use std::str::FromStr;
@@ -22,8 +22,7 @@ impl SqliteDatabase {
     {
         let path_str = format!("sqlite:{}", path.as_ref().display());
 
-        let mut options = SqliteConnectOptions::from_str(&path_str)?.read_only(read_only);
-        let pool = SqlitePool::connect_with(options).await?;
+        let pool = SqlitePool::connect(&path_str).await?;
 
         let mut sqlite = Self { pool };
         sqlite.run_migrations().await?;

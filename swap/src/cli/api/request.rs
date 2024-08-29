@@ -24,6 +24,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use swap::common::get_logs;
 use tracing::Instrument;
 use typeshare::typeshare;
 use uuid::Uuid;
@@ -374,8 +375,8 @@ impl Request for GetLogsArgs {
     type Response = GetLogsResponse;
 
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
-        let dir = logs_dir.unwrap_or(context.config.data_dir.join("logs"));
-        let logs = get_logs(dir, swap_id, redact).await?;
+        let dir = self.logs_dir.unwrap_or(ctx.config.data_dir.join("logs"));
+        let logs = get_logs(dir, self.swap_id, self.redact).await?;
 
         for msg in &logs {
             println!("{msg}");
