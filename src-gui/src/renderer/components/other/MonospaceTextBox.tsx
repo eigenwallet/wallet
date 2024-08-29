@@ -24,7 +24,7 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-export default function InlineCode({ content, endIcon, onClick }: Props) {
+export default function MonospaceTextBox({ content, endIcon, onClick }: Props) {
   const classes = useStyles();
 
   const handleClick = () => onClick?.(content);
