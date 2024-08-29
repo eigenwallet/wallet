@@ -1,34 +1,44 @@
-import { Box, makeStyles } from "@material-ui/core"
-import { ReactNode } from "react"
+import { Box, Typography, makeStyles } from "@material-ui/core";
+import { ReactNode } from "react";
 
 type Props = {
-    content: string,
-    onClick?: (content: string) => void,
-    endIcon?: ReactNode
-}
+  content: string;
+  onClick?: (content: string) => void;
+  endIcon?: ReactNode;
+};
 
-const useStyles = makeStyles(theme => ({
-    root: {
-        display: "inline-flex",
-        alignItems: 'center',
-        backgroundColor: theme.palette.grey[900],
-        borderRadius: theme.shape.borderRadius,
-        padding: theme.spacing(1),
-        gap: theme.spacing(1)
-    }
-}))
+const useStyles = makeStyles((theme) => ({
+  root: {
+    display: "flex",
+    alignItems: "center",
+    backgroundColor: theme.palette.grey[900],
+    borderRadius: theme.shape.borderRadius,
+    padding: theme.spacing(1),
+    gap: theme.spacing(1),
+  },
+  content: {
+    wordBreak: "break-word",
+    whiteSpace: "pre-wrap",
+    fontFamily: "monospace",
+    lineHeight: "1.5em",
+  },
+}));
 
 export default function InlineCode({ content, endIcon, onClick }: Props) {
-    // Use custom style 
-    const classes = useStyles()
+  const classes = useStyles();
 
-    // Call onClick if specified
-    const handleClick = () => onClick?.(content)
+  const handleClick = () => onClick?.(content);
 
-    return (
-        <Box className={classes.root} onClick={handleClick}>
-            {content}
-            {endIcon}
-        </Box>
-    )
+  return (
+    <Box className={classes.root} onClick={handleClick}>
+      <Typography
+        component="span"
+        variant="overline"
+        className={classes.content}
+      >
+        {content}
+      </Typography>
+      {endIcon}
+    </Box>
+  );
 }
