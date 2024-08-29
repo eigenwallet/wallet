@@ -131,11 +131,13 @@ where
                     .await?,
             );
 
-            let request = GetLogsArgs {
+            GetLogsArgs {
                 logs_dir,
                 redact,
                 swap_id,
-            };
+            }
+            .request(context.clone())
+            .await?;
 
             Ok(context)
         }
