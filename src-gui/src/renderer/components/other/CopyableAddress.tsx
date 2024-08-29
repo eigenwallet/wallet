@@ -13,7 +13,7 @@ type Props = {
 export default function ClickableAddress({ address, noIcon = false }: Props) {
     // Signal that the address was copied
     const [copied, setCopied] = useState(false);
-    const tooltip = copied ? "copied" : "copy";
+    const tooltip = copied ? "Copied to clipboard" : "Click to copy";
 
     // Copy address to clipboard on-click
     const handleClick = async () => {

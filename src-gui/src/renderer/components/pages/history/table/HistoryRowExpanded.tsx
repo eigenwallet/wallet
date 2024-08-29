@@ -1,6 +1,7 @@
 import {
   Box,
   Link,
+  ListItem,
   makeStyles,
   Table,
   TableBody,
@@ -20,7 +21,7 @@ import { getBitcoinTxExplorerUrl } from "utils/conversionUtils";
 import SwapLogFileOpenButton from "./SwapLogFileOpenButton";
 import InlineCode from "renderer/components/other/InlineCode";
 import { OpenInNew } from "@material-ui/icons";
-import ClickableAddress from "renderer/components/other/ClickableAddress";
+import ClickableAddress from "renderer/components/other/CopyableAddress";
 
 const useStyles = makeStyles((theme) => ({
   outer: {
@@ -89,7 +90,12 @@ export default function HistoryRowExpanded({
             <TableRow>
               <TableCell>Provider Address</TableCell>
               <TableCell>
-                <Box>{swap.seller.addresses.map(addr => <ClickableAddress address={addr} noIcon />)}</Box>
+                <Box>{swap.seller.addresses.map(addr => 
+                    <ListItem disableGutters key={addr}>
+                      <ClickableAddress address={addr} noIcon />
+                    </ListItem>
+                  )}
+                </Box>
               </TableCell>
             </TableRow>
             <TableRow>

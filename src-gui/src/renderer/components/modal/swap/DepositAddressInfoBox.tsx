@@ -1,10 +1,8 @@
 import { ReactNode } from "react";
 import { Box, Typography } from "@material-ui/core";
-import FileCopyOutlinedIcon from "@material-ui/icons/FileCopyOutlined";
 import InfoBox from "./InfoBox";
-import ClipboardIconButton from "./ClipbiardIconButton";
 import BitcoinQrCode from "./BitcoinQrCode";
-import ClickableAddress from "renderer/components/other/ClickableAddress";
+import ClickableAddress from "renderer/components/other/CopyableAddress";
 
 type Props = {
   title: string;
