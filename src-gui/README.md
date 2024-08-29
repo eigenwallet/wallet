@@ -11,7 +11,7 @@
 
 ## Start development servers
 
-For development, we need run both `vite` and `tauri` servers:
+For development, we need to run both `vite` and `tauri` servers:
 
 ```bash
 cd src-gui
