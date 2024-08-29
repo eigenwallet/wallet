@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Tooltip, Typography, WithStyles } from "@material-ui/core";
+import { Box, Button, Tooltip, Typography, WithStyles } from "@material-ui/core";
 import { FileCopyOutlined } from "@material-ui/icons";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import InlineCode from "./InlineCode";
@@ -34,9 +34,9 @@ export default function ClickableAddress({ address, noIcon = false }: Props) {
             arrow
         >
             {/* Div is necessary to make the tooltip work */}
-            <div style={{ cursor: 'pointer' }}>
+            <Box style={{ cursor: 'pointer' }}>
                 <InlineCode content={address} endIcon={icon} onClick={handleClick}/>
-            </div>
+            </Box>
         </Tooltip>
     )
 }

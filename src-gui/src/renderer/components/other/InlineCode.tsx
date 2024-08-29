@@ -22,11 +22,7 @@ export default function InlineCode({ content, endIcon, onClick }: Props) {
     const classes = useStyles()
 
     // Call onClick if specified
-    const handleClick = () => {
-        if (onClick !== undefined) {
-            onClick(content)
-        }
-    }
+    const handleClick = () => onClick?.(content)
 
     return (
         <Box className={classes.root} onClick={handleClick}>
