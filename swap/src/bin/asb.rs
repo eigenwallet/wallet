@@ -31,7 +31,7 @@ use swap::asb::config::{
 use swap::asb::{cancel, punish, redeem, refund, safely_abort, EventLoop, Finality, KrakenRate};
 use swap::common::tracing_util::Format;
 use swap::common::{self, check_latest_version, get_logs};
-use swap::database::{open_db, AccessMode};
+use swap::database::open_db;
 use swap::network::rendezvous::XmrBtcNamespace;
 use swap::network::swarm;
 use swap::protocol::alice::{run, AliceState};
