@@ -365,7 +365,7 @@ pub struct GetLogsResponse {
 }
 
 impl Request for GetLogsArgs {
-    type Response = Vec<String>;
+    type Response = GetLogsResponse;
 
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
         let dir = logs_dir.unwrap_or(context.config.data_dir.join("logs"));
