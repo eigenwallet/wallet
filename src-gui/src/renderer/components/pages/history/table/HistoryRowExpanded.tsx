@@ -90,12 +90,7 @@ export default function HistoryRowExpanded({
             <TableRow>
               <TableCell>Provider Address</TableCell>
               <TableCell>
-                <Box>{swap.seller.addresses.map(addr => 
-                    <ListItem disableGutters key={addr}>
-                      <ClickableAddress address={addr} noIcon />
-                    </ListItem>
-                  )}
-                </Box>
+                <Box>{swap.seller.addresses.map(addr => <ClickableAddress key={addr} address={addr} noIcon /> )}</Box>
               </TableCell>
             </TableRow>
             <TableRow>
