@@ -21,6 +21,7 @@ use std::cmp::min;
 use std::convert::TryInto;
 use std::future::Future;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::Instrument;
@@ -354,12 +355,17 @@ impl Request for GetSwapInfosAllArgs {
     }
 }
 
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GetLogsArgs {
     pub swap_id: Option<Uuid>,
     pub redact: bool,
+    #[typeshare(serialized_as = "string")]
     pub logs_dir: Option<PathBuf>,
 }
 
+#[typeshare]
+#[derive(Serialize, Debug)]
 pub struct GetLogsResponse {
     logs: Vec<String>,
 }

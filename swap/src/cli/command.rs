@@ -137,7 +137,7 @@ where
                 swap_id,
             };
 
-            (context, request)
+            Ok(context)
         }
         CliCommand::Config => {
             let context = Arc::new(

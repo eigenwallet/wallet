@@ -8,14 +8,6 @@ use crate::cli::api::Context;
 use crate::monero::monero_address;
 use anyhow::Result;
 use jsonrpsee::server::RpcModule;
-use jsonrpsee::types::Params;
-use libp2p::core::Multiaddr;
-use serde::Deserialize;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::sync::Arc;
-use uuid::Uuid;
 
 trait ConvertToJsonRpseeError<T> {
     fn to_jsonrpsee_result(self) -> Result<T, jsonrpsee_core::Error>;
