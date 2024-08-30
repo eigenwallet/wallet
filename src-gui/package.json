@@ -7,6 +7,7 @@
     "check-bindings": "typeshare --lang=typescript --output-file __temp_bindings.ts ../swap/src && dprint fmt __temp_bindings.ts && diff -wbB __temp_bindings.ts ./src/models/tauriModel.ts && rm __temp_bindings.ts",
     "gen-bindings": "typeshare --lang=typescript --output-file ./src/models/tauriModel.ts ../swap/src && dprint fmt ./src/models/tauriModel.ts",
     "dev": "vite",
+    "prebuild": "yarn run gen-bindings",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"
