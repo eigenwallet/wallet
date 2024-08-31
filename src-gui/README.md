@@ -9,7 +9,6 @@
 - For formatting and bindings: `dprint` (`cargo install dprint@0.39.1`) and `typeshare` (`cargo install typeshare-cli`)
 - If you are on Windows and you want to use the `check-bindings` command you'll need to manually install the GNU DiffUtils ([installation](https://gnuwin32.sourceforge.net/packages/diffutils.htm)) and GNU CoreUtils ([installtion](https://gnuwin32.sourceforge.net/packages/coreutils.htm)). Remember to add the installation path (probably `C:\Program Files (x86)\GnuWin32\bin`) to the `PATH` in your enviroment variables.
 
-
 ## Start development servers
 
 For development, we need to run both `vite` and `tauri` servers:
@@ -25,6 +24,7 @@ cd src-tauri
 cargo tauri dev 
 # let this run as well
 ```
+
 ## Generate bindings for Tauri API
 
 Running `yarn run dev` or `yarn build` should automatically re-build the Typescript bindings whenever something changes. You can also manually trigger this using the `gen-bindings` command:
