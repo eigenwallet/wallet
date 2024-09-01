@@ -6,12 +6,12 @@ use swap::cli::{
             BalanceArgs, BuyXmrArgs, GetHistoryArgs, GetSwapInfosAllArgs, ResumeSwapArgs,
             SuspendCurrentSwapArgs, WithdrawBtcArgs,
         },
-        tauri_bindings::TauriHandle,
+        tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle},
         Context, ContextBuilder,
     },
     command::{Bitcoin, Monero},
 };
-use tauri::{Manager, RunEvent};
+use tauri::{async_runtime::RwLock, Manager, RunEvent};
 
 trait ToStringResult<T> {
     fn to_string_result(self) -> Result<T, String>;
@@ -53,13 +53,18 @@ macro_rules! tauri_command {
     ($fn_name:ident, $request_name:ident) => {
         #[tauri::command]
         async fn $fn_name(
-            context: tauri::State<'_, Option<Arc<Context>>>,
+            context: tauri::State<'_, RwLock<State>>,
             args: $request_name,
         ) -> Result<<$request_name as swap::cli::api::request::Request>::Response, String> {
             // Throw error if context is not available
-            let context = context.inner().as_ref().ok_or("Context not available")?;
+            let context = context
+                .read()
+                .await
+                .context
+                .clone()
+                .ok_or("Context not available")?;
 
-            <$request_name as swap::cli::api::request::Request>::request(args, context.clone())
+            <$request_name as swap::cli::api::request::Request>::request(args, context)
                 .await
                 .to_string_result()
         }
@@ -67,35 +72,45 @@ macro_rules! tauri_command {
     ($fn_name:ident, $request_name:ident, no_args) => {
         #[tauri::command]
         async fn $fn_name(
-            context: tauri::State<'_, Option<Arc<Context>>>,
+            context: tauri::State<'_, RwLock<State>>,
         ) -> Result<<$request_name as swap::cli::api::request::Request>::Response, String> {
             // Throw error if context is not available
-            let context = context.inner().as_ref().ok_or("Context not available")?;
+            let context = context
+                .read()
+                .await
+                .context
+                .clone()
+                .ok_or("Context not available")?;
 
-            <$request_name as swap::cli::api::request::Request>::request(
-                $request_name {},
-                context.clone(),
-            )
-            .await
-            .to_string_result()
+            <$request_name as swap::cli::api::request::Request>::request($request_name {}, context)
+                .await
+                .to_string_result()
         }
     };
 }
 
-tauri_command!(get_balance, BalanceArgs);
-tauri_command!(buy_xmr, BuyXmrArgs);
-tauri_command!(resume_swap, ResumeSwapArgs);
-tauri_command!(withdraw_btc, WithdrawBtcArgs);
-tauri_command!(suspend_current_swap, SuspendCurrentSwapArgs, no_args);
-tauri_command!(get_swap_infos_all, GetSwapInfosAllArgs, no_args);
-tauri_command!(get_history, GetHistoryArgs, no_args);
+struct State {
+    pub context: Option<Arc<Context>>,
+}
+
+impl State {
+    fn new() -> Self {
+        Self { context: None }
+    }
+
+    fn set_context(&mut self, context: impl Into<Option<Arc<Context>>>) {
+        self.context = context.into();
+    }
+}
 
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let app_handle = app.app_handle().to_owned().clone();
+    let app_handle = app.app_handle().to_owned();
 
-    app_handle.manage::<Option<Arc<Context>>>(None);
+    app_handle.manage::<RwLock<State>>(RwLock::new(State::new()));
 
     tauri::async_runtime::spawn(async move {
+        let tauri_handle = TauriHandle::new(app_handle.clone());
+
         let context = ContextBuilder::new(true)
             .with_bitcoin(Bitcoin {
                 bitcoin_electrum_rpc_url: None,
@@ -106,11 +121,24 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             })
             .with_json(false)
             .with_debug(true)
-            .with_tauri(TauriHandle::new(app_handle.clone()))
+            .with_tauri(tauri_handle.clone())
             .build()
-            .await
-            .expect("failed to create context");
-        app_handle.manage::<Option<Arc<Context>>>(Arc::new(context).into());
+            .await;
+
+        match context {
+            Ok(context) => {
+                let state = app_handle.state::<RwLock<State>>();
+
+                state.write().await.set_context(Arc::new(context));
+
+                tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Available);
+            }
+            Err(e) => {
+                println!("Error while initializing context: {:?}", e);
+
+                tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Failed);
+            }
+        }
     });
 
     Ok(())
@@ -134,7 +162,13 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| match event {
             RunEvent::Exit | RunEvent::ExitRequested { .. } => {
-                let context = app.state::<Option<Arc<Context>>>().inner().as_ref();
+                let context = app
+                    .state::<RwLock<State>>()
+                    .inner()
+                    .try_read()
+                    .unwrap()
+                    .context
+                    .clone();
 
                 if let Some(context) = context {
                     if let Err(err) = context.cleanup() {
@@ -145,3 +179,11 @@ pub fn run() {
             _ => {}
         })
 }
+
+tauri_command!(get_balance, BalanceArgs);
+tauri_command!(buy_xmr, BuyXmrArgs);
+tauri_command!(resume_swap, ResumeSwapArgs);
+tauri_command!(withdraw_btc, WithdrawBtcArgs);
+tauri_command!(suspend_current_swap, SuspendCurrentSwapArgs, no_args);
+tauri_command!(get_swap_infos_all, GetSwapInfosAllArgs, no_args);
+tauri_command!(get_history, GetHistoryArgs, no_args);

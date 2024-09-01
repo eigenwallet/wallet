@@ -9,11 +9,16 @@ import {
   ResumeSwapArgs,
   ResumeSwapResponse,
   SuspendCurrentSwapResponse,
+  TauriContextInitProgressEvent,
   TauriSwapProgressEventWrapper,
   WithdrawBtcArgs,
   WithdrawBtcResponse,
 } from "models/tauriModel";
-import { rpcSetBalance, rpcSetSwapInfo } from "store/features/rpcSlice";
+import {
+  contextInitProgressEventReceived,
+  rpcSetBalance,
+  rpcSetSwapInfo,
+} from "store/features/rpcSlice";
 import { swapTauriEventReceived } from "store/features/swapSlice";
 import { store } from "./store/storeRenderer";
 import { Provider } from "models/apiModel";
@@ -24,6 +29,14 @@ export async function initEventListeners() {
     console.log("Received swap progress event", event.payload);
     store.dispatch(swapTauriEventReceived(event.payload));
   });
+
+  listen<TauriContextInitProgressEvent>(
+    "context-init-progress-update",
+    (event) => {
+      console.log("Received context init progress event", event.payload);
+      store.dispatch(contextInitProgressEventReceived(event.payload));
+    },
+  );
 }
 
 async function invoke<ARGS, RESPONSE>(

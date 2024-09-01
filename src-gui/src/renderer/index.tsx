@@ -12,7 +12,11 @@ import {
   fetchXmrPrice,
 } from "./api";
 import App from "./components/App";
-import { checkBitcoinBalance, getRawSwapInfos } from "./rpc";
+import {
+  checkBitcoinBalance,
+  getRawSwapInfos,
+  initEventListeners,
+} from "./rpc";
 import { persistor, store } from "./store/storeRenderer";
 
 setInterval(() => {
