@@ -55,9 +55,9 @@ export const rpcSlice = createSlice({
   name: "rpc",
   initialState,
   reducers: {
-    contextInitProgressEventReceived(
+    contextStatusEventReceived(
       slice,
-      action: PayloadAction<TauriContextInitProgressEvent>,
+      action: PayloadAction<TauriContextStatusEvent>,
     ) {
       slice.status = action.payload;
     },
@@ -110,7 +110,7 @@ export const rpcSlice = createSlice({
 });
 
 export const {
-  contextInitProgressEventReceived,
+  contextStatusEventReceived,
   rpcSetBalance,
   rpcSetWithdrawTxId,
   rpcResetWithdrawTxId,
