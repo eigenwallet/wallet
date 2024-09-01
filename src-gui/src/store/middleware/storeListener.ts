@@ -18,6 +18,7 @@ export function createMainListeners() {
         typeof contextStatusEventReceived
       >[0];
 
+      // If the context is available, check the bitcoin balance and fetch all swap infos
       if (status.type === "Available") {
         logger.debug(
           "Context is available, checking bitcoin balance and history",

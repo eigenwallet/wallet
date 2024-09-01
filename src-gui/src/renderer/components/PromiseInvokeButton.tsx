@@ -73,7 +73,7 @@ export default function PromiseInvokeButton<T>({
 
   const actualTooltipTitle =
     (requiresContextButNotAvailable
-      ? "Wait the application to load all required components"
+      ? "Wait for the application to load all required components"
       : tooltipTitle) ?? "";
 
   return (
