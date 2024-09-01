@@ -57,12 +57,7 @@ macro_rules! tauri_command {
             args: $request_name,
         ) -> Result<<$request_name as swap::cli::api::request::Request>::Response, String> {
             // Throw error if context is not available
-            let context = context
-                .read()
-                .await
-                .context
-                .clone()
-                .ok_or("Context not available")?;
+            let context = context.read().await.try_get_context()?;
 
             <$request_name as swap::cli::api::request::Request>::request(args, context)
                 .await
@@ -75,12 +70,7 @@ macro_rules! tauri_command {
             context: tauri::State<'_, RwLock<State>>,
         ) -> Result<<$request_name as swap::cli::api::request::Request>::Response, String> {
             // Throw error if context is not available
-            let context = context
-                .read()
-                .await
-                .context
-                .clone()
-                .ok_or("Context not available")?;
+            let context = context.read().await.try_get_context()?;
 
             <$request_name as swap::cli::api::request::Request>::request($request_name {}, context)
                 .await
@@ -100,6 +90,13 @@ impl State {
 
     fn set_context(&mut self, context: impl Into<Option<Arc<Context>>>) {
         self.context = context.into();
+    }
+
+    fn try_get_context(&self) -> Result<Arc<Context>, String> {
+        self.context
+            .clone()
+            .ok_or("Context not available")
+            .to_string_result()
     }
 }
 
