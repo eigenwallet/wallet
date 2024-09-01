@@ -162,17 +162,18 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| match event {
             RunEvent::Exit | RunEvent::ExitRequested { .. } => {
-                let context = app
-                    .state::<RwLock<State>>()
-                    .inner()
-                    .try_read()
-                    .unwrap()
-                    .context
-                    .clone();
+                let context = app.state::<RwLock<State>>().inner().try_read();
 
-                if let Some(context) = context {
-                    if let Err(err) = context.cleanup() {
-                        println!("Cleanup failed {}", err);
+                match context {
+                    Ok(context) => {
+                        if let Some(context) = context.context.as_ref() {
+                            if let Err(err) = context.cleanup() {
+                                println!("Cleanup failed {}", err);
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        println!("Failed to acquire lock on context: {}", err);
                     }
                 }
             }
