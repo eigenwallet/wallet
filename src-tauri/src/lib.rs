@@ -13,11 +13,12 @@ use swap::cli::{
 };
 use tauri::{async_runtime::RwLock, Manager, RunEvent};
 
+/// Trait to convert Result<T, E> to Result<T, String>
+/// Tauri commands require the error type to be a string
 trait ToStringResult<T> {
     fn to_string_result(self) -> Result<T, String>;
 }
 
-// Implement the trait for Result<T, E>
 impl<T, E: ToString> ToStringResult<T> for Result<T, E> {
     fn to_string_result(self) -> Result<T, String> {
         self.map_err(|e| e.to_string())
@@ -79,19 +80,26 @@ macro_rules! tauri_command {
     };
 }
 
+/// Represents the shared Tauri state. It is accessed by Tauri commands
 struct State {
     pub context: Option<Arc<Context>>,
 }
 
 impl State {
+    /// Creates a new State instance with no Context
     fn new() -> Self {
         Self { context: None }
     }
 
+    /// Sets the context for the application state
+    /// This is typically called after the Context has been initialized
+    /// in the setup function
     fn set_context(&mut self, context: impl Into<Option<Arc<Context>>>) {
         self.context = context.into();
     }
 
+    /// Attempts to retrieve the context
+    /// Returns an error if the context is not available
     fn try_get_context(&self) -> Result<Arc<Context>, String> {
         self.context
             .clone()
@@ -100,9 +108,13 @@ impl State {
     }
 }
 
+/// Sets up the Tauri application
+/// Initializes the Tauri state and spawns an async task to set up the Context
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let app_handle = app.app_handle().to_owned();
 
+    // We need to set a value for the Tauri state right at the start
+    // If we don't do this, Tauri commands will panic at runtime if no value is present
     app_handle.manage::<RwLock<State>>(RwLock::new(State::new()));
 
     tauri::async_runtime::spawn(async move {
@@ -128,11 +140,13 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
                 state.write().await.set_context(Arc::new(context));
 
+                // To display to the user that the setup is done, we emit an event to the Tauri frontend
                 tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Available);
             }
             Err(e) => {
                 println!("Error while initializing context: {:?}", e);
 
+                // To display to the user that the setup failed, we emit an event to the Tauri frontend
                 tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Failed);
             }
         }
@@ -159,6 +173,9 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| match event {
             RunEvent::Exit | RunEvent::ExitRequested { .. } => {
+                // Here we cleanup the Context when the application is closed
+                // This is necessary to among other things stop the monero-wallet-rpc process
+                // If the application is forcibly closed, this may not be called
                 let context = app.state::<RwLock<State>>().inner().try_read();
 
                 match context {
@@ -178,6 +195,9 @@ pub fn run() {
         })
 }
 
+// Here we define the Tauri commands that will be available to the frontend
+// The commands are defined using the `tauri_command!` macro.
+// Implementations are handled by the Request trait
 tauri_command!(get_balance, BalanceArgs);
 tauri_command!(buy_xmr, BuyXmrArgs);
 tauri_command!(resume_swap, ResumeSwapArgs);
