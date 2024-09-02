@@ -9,14 +9,9 @@ export function createMainListeners() {
   // Listener for when the Context becomes available
   // When the context becomes available, we check the bitcoin balance and fetch all swap infos
   listener.startListening({
-    predicate: (action) => {
-      // Check if the action is the contextStatusEventReceived action
-      return action.type === "rpc/contextStatusEventReceived";
-    },
+    actionCreator: contextStatusEventReceived,
     effect: async (action) => {
-      const status = action.payload as Parameters<
-        typeof contextStatusEventReceived
-      >[0];
+      const status = action.payload;
 
       // If the context is available, check the bitcoin balance and fetch all swap infos
       if (status.type === "Available") {
