@@ -18,7 +18,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as SyncMutex, Once};
 use tauri_bindings::{
-    TauriContextInitializationProgressEvent, TauriContextStatusEvent, TauriEmitter, TauriHandle,
+    TauriContextInitializationProgress, TauriContextStatusEvent, TauriEmitter, TauriHandle,
 };
 use tokio::sync::{broadcast, broadcast::Sender, Mutex as TokioMutex, RwLock};
 use tokio::task::JoinHandle;
@@ -298,7 +298,7 @@ impl ContextBuilder {
         // To display the progress to the user, we emit events to the Tauri frontend
         self.tauri_handle
             .emit_context_init_progress_event(TauriContextStatusEvent::Initializing(
-                TauriContextInitializationProgressEvent::OpeningBitcoinWallet,
+                TauriContextInitializationProgress::OpeningBitcoinWallet,
             ));
 
         let bitcoin_wallet = {
@@ -324,7 +324,7 @@ impl ContextBuilder {
         // To display the progress to the user, we emit events to the Tauri frontend
         self.tauri_handle
             .emit_context_init_progress_event(TauriContextStatusEvent::Initializing(
-                TauriContextInitializationProgressEvent::OpeningMoneroWallet,
+                TauriContextInitializationProgress::OpeningMoneroWallet,
             ));
 
         let (monero_wallet, monero_rpc_process) = {
@@ -342,7 +342,7 @@ impl ContextBuilder {
         // To display the progress to the user, we emit events to the Tauri frontend
         self.tauri_handle
             .emit_context_init_progress_event(TauriContextStatusEvent::Initializing(
-                TauriContextInitializationProgressEvent::OpeningDatabase,
+                TauriContextInitializationProgress::OpeningDatabase,
             ));
 
         let db = open_db(data_dir.join("sqlite")).await?;

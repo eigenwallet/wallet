@@ -1,6 +1,6 @@
 import { CircularProgress } from "@material-ui/core";
 import { Alert, AlertProps } from "@material-ui/lab";
-import { TauriContextInitializationProgressEvent } from "models/tauriModel";
+import { TauriContextInitializationProgress } from "models/tauriModel";
 import { useState } from "react";
 import { useAppSelector } from "store/hooks";
 import { exhaustiveGuard } from "utils/typescriptUtils";
@@ -44,19 +44,19 @@ export default function DaemonStatusAlert() {
   switch (contextStatus.type) {
     case "Initializing":
       switch (contextStatus.content) {
-        case TauriContextInitializationProgressEvent.OpeningBitcoinWallet:
+        case TauriContextInitializationProgress.OpeningBitcoinWallet:
           return (
             <LoadingSpinnerAlert severity="warning">
               Connecting to the Bitcoin network
             </LoadingSpinnerAlert>
           );
-        case TauriContextInitializationProgressEvent.OpeningMoneroWallet:
+        case TauriContextInitializationProgress.OpeningMoneroWallet:
           return (
             <LoadingSpinnerAlert severity="warning">
               Connecting to the Monero network
             </LoadingSpinnerAlert>
           );
-        case TauriContextInitializationProgressEvent.OpeningDatabase:
+        case TauriContextInitializationProgress.OpeningDatabase:
           return (
             <LoadingSpinnerAlert severity="warning">
               Opening the local database

@@ -66,7 +66,7 @@ impl TauriEmitter for Option<TauriHandle> {
 
 #[typeshare]
 #[derive(Display, Clone, Serialize)]
-pub enum TauriContextInitializationProgressEvent {
+pub enum TauriContextInitializationProgress {
     OpeningBitcoinWallet,
     OpeningMoneroWallet,
     OpeningDatabase,
@@ -76,7 +76,7 @@ pub enum TauriContextInitializationProgressEvent {
 #[derive(Display, Clone, Serialize)]
 #[serde(tag = "type", content = "content")]
 pub enum TauriContextStatusEvent {
-    Initializing(TauriContextInitializationProgressEvent),
+    Initializing(TauriContextInitializationProgress),
     Available,
     Failed,
 }
