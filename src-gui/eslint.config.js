@@ -15,6 +15,15 @@ export default [
     languageOptions: { globals: globals.browser },
     rules: {
       "react/react-in-jsx-scope": "off",
+      "no-restricted-properties": [
+        "warn",
+        {
+          object: "window",
+          property: "open",
+          message:
+            "Use the open(...) function from @tauri-apps/plugin-shell instead",
+        },
+      ],
     },
   },
 ];
