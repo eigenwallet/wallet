@@ -518,7 +518,7 @@ impl State3 {
         // Ensure that the XMR to be refunded are spendable by awaiting 10 confirmations
         // on the lock transaction
         monero_wallet
-            .watch_for_transfer_with(self.lock_xmr_watch_request(transfer_proof, 10), Box::new(|_| Box::pin(async {})))
+            .watch_for_transfer_with(self.lock_xmr_watch_request(transfer_proof, 10), |_| Box::pin(async {}))
             .await?;
 
         monero_wallet

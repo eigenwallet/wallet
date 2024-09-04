@@ -217,7 +217,7 @@ impl Wallet {
         ))
     }
 
-    pub async fn watch_for_transfer_with(&self, request: WatchRequest, listener: ConfirmationListener) -> Result<(), InsufficientFunds> {
+    pub async fn watch_for_transfer_with(&self, request: WatchRequest, listener: impl Fn(u64) -> ConfirmationListener + Send + Sync + 'static) -> Result<(), InsufficientFunds> {
         let WatchRequest {
             conf_target,
             public_view_key,
@@ -335,7 +335,7 @@ pub struct WatchRequest {
     pub expected: Amount,
 }
 
-type ConfirmationListener = Box<dyn Fn(u64) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + Sync>;
+type ConfirmationListener = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 
 async fn wait_for_confirmations_with<C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
     client: &Mutex<C>,
@@ -345,7 +345,7 @@ async fn wait_for_confirmations_with<C: monero_rpc::wallet::MoneroWalletRpc<reqw
     conf_target: u64,
     mut check_interval: Interval,
     wallet_name: String,
-    listener: ConfirmationListener
+    listener: impl Fn(u64) -> ConfirmationListener + Send + Sync + 'static
 ) -> Result<(), InsufficientFunds> {
     let mut seen_confirmations = 0u64;
 
@@ -445,7 +445,7 @@ mod tests {
             10,
             tokio::time::interval(Duration::from_millis(10)),
             "foo-wallet".to_owned(),
-            Box::new(|_| Box::pin(async {})),
+            |_| Box::pin(async {}),
         )
         .await;
 
@@ -497,7 +497,7 @@ mod tests {
             5,
             tokio::time::interval(Duration::from_millis(10)),
             "foo-wallet".to_owned(),
-            Box::new(|_| Box::pin(async {})),
+            |_| Box::pin(async {}),
         )
         .await
         .unwrap();
@@ -545,7 +545,7 @@ mod tests {
             5,
             tokio::time::interval(Duration::from_millis(10)),
             "foo-wallet".to_owned(),
-            Box::new(|_| Box::pin(async {})),
+            |_| Box::pin(async {}),
         )
         .await
         .unwrap();
