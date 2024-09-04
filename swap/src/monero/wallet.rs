@@ -253,41 +253,6 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn watch_for_transfer(&self, request: WatchRequest) -> Result<(), InsufficientFunds> {
-        let WatchRequest {
-            conf_target,
-            public_view_key,
-            public_spend_key,
-            transfer_proof,
-            expected,
-        } = request;
-
-        let txid = transfer_proof.tx_hash();
-
-        tracing::info!(
-            %txid,
-            target_confirmations = %conf_target,
-            "Waiting for Monero transaction finality"
-        );
-
-        let address = Address::standard(self.network, public_spend_key, public_view_key.into());
-
-        let check_interval = tokio::time::interval(self.sync_interval.div(10));
-
-        wait_for_confirmations(
-            &self.inner,
-            transfer_proof,
-            address,
-            expected,
-            conf_target,
-            check_interval,
-            self.name.clone(),
-        )
-        .await?;
-
-        Ok(())
-    }
-
     pub async fn sweep_all(&self, address: Address) -> Result<Vec<TxHash>> {
         let sweep_all = self
             .inner
@@ -455,85 +420,6 @@ async fn wait_for_confirmations_with<C: monero_rpc::wallet::MoneroWalletRpc<reqw
     Ok(())
 }
 
-async fn wait_for_confirmations<C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
-    client: &Mutex<C>,
-    transfer_proof: TransferProof,
-    to_address: Address,
-    expected: Amount,
-    conf_target: u64,
-    mut check_interval: Interval,
-    wallet_name: String,
-) -> Result<(), InsufficientFunds> {
-    let mut seen_confirmations = 0u64;
-
-    while seen_confirmations < conf_target {
-        check_interval.tick().await; // tick() at the beginning of the loop so every `continue` tick()s as well
-
-        let txid = transfer_proof.tx_hash().to_string();
-        let client = client.lock().await;
-
-        let tx = match client
-            .check_tx_key(
-                txid.clone(),
-                transfer_proof.tx_key.to_string(),
-                to_address.to_string(),
-            )
-            .await
-        {
-            Ok(proof) => proof,
-            Err(jsonrpc::Error::JsonRpc(jsonrpc::JsonRpcError {
-                code: -1,
-                message,
-                data,
-            })) => {
-                tracing::debug!(message, ?data);
-                tracing::warn!(%txid, message, "`monero-wallet-rpc` failed to fetch transaction, may need to be restarted");
-                continue;
-            }
-            // TODO: Implement this using a generic proxy for each function call once https://github.com/thomaseizinger/rust-jsonrpc-client/issues/47 is fixed.
-            Err(jsonrpc::Error::JsonRpc(jsonrpc::JsonRpcError { code: -13, .. })) => {
-                tracing::debug!(
-                    "Opening wallet `{}` because no wallet is loaded",
-                    wallet_name
-                );
-                let _ = client.open_wallet(wallet_name.clone()).await;
-                continue;
-            }
-            Err(other) => {
-                tracing::debug!(
-                    %txid,
-                    "Failed to retrieve tx from blockchain: {:#}", other
-                );
-                continue; // treating every error as transient and retrying
-                          // is obviously wrong but the jsonrpc client is
-                          // too primitive to differentiate between all the
-                          // cases
-            }
-        };
-
-        let received = Amount::from_piconero(tx.received);
-
-        if received != expected {
-            return Err(InsufficientFunds {
-                expected,
-                actual: received,
-            });
-        }
-
-        if tx.confirmations > seen_confirmations {
-            seen_confirmations = tx.confirmations;
-            tracing::info!(
-                %txid,
-                %seen_confirmations,
-                needed_confirmations = %conf_target,
-                "Received new confirmation for Monero lock tx"
-            );
-        }
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -549,7 +435,7 @@ mod tests {
             received: 100,
         })]));
 
-        let result = wait_for_confirmations(
+        let result = wait_for_confirmations_with(
             &client,
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
@@ -558,7 +444,8 @@ mod tests {
             Amount::from_piconero(100),
             10,
             tokio::time::interval(Duration::from_millis(10)),
-            "foo-wallet".to_owned()
+            "foo-wallet".to_owned(),
+            Box::new(|_| Box::pin(async {})),
         )
         .await;
 
@@ -600,7 +487,7 @@ mod tests {
             }),
         ]));
 
-        wait_for_confirmations(
+        wait_for_confirmations_with(
             &client,
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
@@ -609,7 +496,8 @@ mod tests {
             Amount::from_piconero(100),
             5,
             tokio::time::interval(Duration::from_millis(10)),
-            "foo-wallet".to_owned()
+            "foo-wallet".to_owned(),
+            Box::new(|_| Box::pin(async {})),
         )
         .await
         .unwrap();
@@ -647,7 +535,7 @@ mod tests {
             }),
         ]));
 
-        wait_for_confirmations(
+        wait_for_confirmations_with(
             &client,
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
@@ -656,7 +544,8 @@ mod tests {
             Amount::from_piconero(100),
             5,
             tokio::time::interval(Duration::from_millis(10)),
-            "foo-wallet".to_owned()
+            "foo-wallet".to_owned(),
+            Box::new(|_| Box::pin(async {})),
         )
         .await
         .unwrap();
