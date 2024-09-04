@@ -15,6 +15,7 @@ export default [
     languageOptions: { globals: globals.browser },
     rules: {
       "react/react-in-jsx-scope": "off",
+      // Disallow the use of the `open` on the gloal object
       "no-restricted-globals": [
         "warn",
         {
@@ -23,19 +24,12 @@ export default [
             "Use the open(...) function from @tauri-apps/plugin-shell instead",
         },
       ],
+      // Disallow the use of the `open` on the `window` object
       "no-restricted-properties": [
         "warn",
         {
           object: "window",
           property: "open",
-          message:
-            "Use the open(...) function from @tauri-apps/plugin-shell instead",
-        },
-      ],
-      "no-restricted-imports": [
-        "off",
-        {
-          name: "open",
           message:
             "Use the open(...) function from @tauri-apps/plugin-shell instead",
         },
