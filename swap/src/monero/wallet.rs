@@ -217,7 +217,14 @@ impl Wallet {
         ))
     }
 
-    pub async fn watch_for_transfer_with(&self, request: WatchRequest, listener: impl Fn(u64) -> ConfirmationListener + Send + Sync + 'static) -> Result<(), InsufficientFunds> {
+
+    /// Wait until the specified transfer has been completed or failed.
+    pub async fn watch_for_transfer(&self, request: WatchRequest) -> Result<(), InsufficientFunds> {
+        self.watch_for_transfer_with(request, None).await
+    }
+
+    /// Wait until the specified transfer has been completed or failed and listen to each new confirmation. 
+    pub async fn watch_for_transfer_with(&self, request: WatchRequest, listener: Option<ConfirmationListener>) -> Result<(), InsufficientFunds> {
         let WatchRequest {
             conf_target,
             public_view_key,
@@ -335,7 +342,7 @@ pub struct WatchRequest {
     pub expected: Amount,
 }
 
-type ConfirmationListener = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
+type ConfirmationListener = Box<dyn Fn(u64) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send +'static>;
 
 async fn wait_for_confirmations_with<C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
     client: &Mutex<C>,
@@ -345,7 +352,7 @@ async fn wait_for_confirmations_with<C: monero_rpc::wallet::MoneroWalletRpc<reqw
     conf_target: u64,
     mut check_interval: Interval,
     wallet_name: String,
-    listener: impl Fn(u64) -> ConfirmationListener + Send + Sync + 'static
+    listener: Option<ConfirmationListener>
 ) -> Result<(), InsufficientFunds> {
     let mut seen_confirmations = 0u64;
 
@@ -412,8 +419,10 @@ async fn wait_for_confirmations_with<C: monero_rpc::wallet::MoneroWalletRpc<reqw
                 "Received new confirmation for Monero lock tx"
             );
 
-            // notify the listener we received new
-            listener(seen_confirmations).await;
+            // notify the listener we received new confirmations
+            if let Some(listener) = &listener {
+                listener(seen_confirmations).await;
+            }
         }
     }
 
@@ -445,7 +454,7 @@ mod tests {
             10,
             tokio::time::interval(Duration::from_millis(10)),
             "foo-wallet".to_owned(),
-            |_| Box::pin(async {}),
+            None,
         )
         .await;
 
@@ -497,7 +506,7 @@ mod tests {
             5,
             tokio::time::interval(Duration::from_millis(10)),
             "foo-wallet".to_owned(),
-            |_| Box::pin(async {}),
+            None,
         )
         .await
         .unwrap();
@@ -545,7 +554,7 @@ mod tests {
             5,
             tokio::time::interval(Duration::from_millis(10)),
             "foo-wallet".to_owned(),
-            |_| Box::pin(async {}),
+            None,
         )
         .await
         .unwrap();

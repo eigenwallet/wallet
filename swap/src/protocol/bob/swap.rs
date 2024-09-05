@@ -235,7 +235,7 @@ async fn next_state(
 
             let watch_request = state.lock_xmr_watch_request(lock_transfer_proof);
             // We pass a listener to the function that get's called everytime a new confirmation is spotted.
-            let watch_future = monero_wallet.watch_for_transfer_with(watch_request, move |confirmations| {
+            let watch_future = monero_wallet.watch_for_transfer_with(watch_request, Some(Box::new(move |confirmations| {
                 // Clone them AGAIN so that we can move them AGAIN
                 let tranfer = transfer_proof_clone.clone();
                 let tauri = tauri_clone.clone();
@@ -249,7 +249,7 @@ async fn next_state(
                         },
                     );
                 })
-            });
+            })));
 
             select! {
                 received_xmr = watch_future => {
