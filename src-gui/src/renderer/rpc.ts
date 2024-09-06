@@ -89,7 +89,7 @@ export async function withdrawBtc(address: string): Promise<string> {
 
 export async function buyXmr(
   seller: Provider,
-  bitcoin_change_address: string,
+  bitcoin_change_address: string | null,
   monero_receive_address: string,
 ) {
   await invoke<BuyXmrArgs, BuyXmrResponse>("buy_xmr", {
