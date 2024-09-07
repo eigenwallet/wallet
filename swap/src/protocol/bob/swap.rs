@@ -158,9 +158,10 @@ async fn next_state(
 
             let tx_lock_status = bitcoin_wallet.subscribe_to(state3.tx_lock.clone()).await;
 
-            let ExpiredTimelocks::None { .. } = state3.expired_timelock(bitcoin_wallet).await? else {
+            let ExpiredTimelocks::None { .. } = state3.expired_timelock(bitcoin_wallet).await?
+            else {
                 let state4 = state3.cancel(monero_wallet_restore_blockheight);
-                return Ok(BobState::CancelTimelockExpired(state4))
+                return Ok(BobState::CancelTimelockExpired(state4));
             };
 
             tracing::info!("Waiting for Alice to lock Monero");
@@ -169,7 +170,7 @@ async fn next_state(
             if let Some(transfer_proof) = db
                 .get_buffered_transfer_proof(swap_id)
                 .await
-                .context("Failed to get buffered transfer proof")? 
+                .context("Failed to get buffered transfer proof")?
             {
                 tracing::debug!(txid = %transfer_proof.tx_hash(), "Found buffered transfer proof");
                 tracing::info!(txid = %transfer_proof.tx_hash(), "Alice locked Monero");
@@ -225,8 +226,11 @@ async fn next_state(
             let tx_lock_status = bitcoin_wallet.subscribe_to(state.tx_lock.clone()).await;
 
             // Check if the cancel timelock has expired => we cancel the swap
-            let ExpiredTimelocks::None { .. } = state.expired_timelock(bitcoin_wallet).await? else {
-                return Ok(BobState::CancelTimelockExpired(state.cancel(monero_wallet_restore_blockheight)))
+            let ExpiredTimelocks::None { .. } = state.expired_timelock(bitcoin_wallet).await?
+            else {
+                return Ok(BobState::CancelTimelockExpired(
+                    state.cancel(monero_wallet_restore_blockheight),
+                ));
             };
 
             // Clone these so that we can move them
@@ -235,26 +239,29 @@ async fn next_state(
 
             let watch_request = state.lock_xmr_watch_request(lock_transfer_proof);
             // We pass a listener to the function that get's called everytime a new confirmation is spotted.
-            let watch_future = monero_wallet.watch_for_transfer_with(watch_request, Some(Box::new(move |confirmations| {
-                // Clone them AGAIN so that we can move them AGAIN
-                let tranfer = transfer_proof_clone.clone();
-                let tauri = tauri_clone.clone();
-                // Emit a Tauri event
-                Box::pin(async move {
-                    tauri.emit_swap_progress_event(
-                        swap_id,
-                        TauriSwapProgressEvent::XmrLockTxInMempool {
-                            xmr_lock_txid: tranfer.tx_hash(),
-                            xmr_lock_tx_confirmations: confirmations,
-                        },
-                    );
-                })
-            })));
+            let watch_future = monero_wallet.watch_for_transfer_with(
+                watch_request,
+                Some(Box::new(move |confirmations| {
+                    // Clone them AGAIN so that we can move them AGAIN
+                    let tranfer = transfer_proof_clone.clone();
+                    let tauri = tauri_clone.clone();
+                    // Emit a Tauri event
+                    Box::pin(async move {
+                        tauri.emit_swap_progress_event(
+                            swap_id,
+                            TauriSwapProgressEvent::XmrLockTxInMempool {
+                                xmr_lock_txid: tranfer.tx_hash(),
+                                xmr_lock_tx_confirmations: confirmations,
+                            },
+                        );
+                    })
+                })),
+            );
 
             select! {
                 received_xmr = watch_future => {
                     match received_xmr {
-                        Ok(()) => 
+                        Ok(()) =>
                             BobState::XmrLocked(state.xmr_locked(monero_wallet_restore_blockheight)),
                         Err(monero::InsufficientFunds { expected, actual }) => {
                             tracing::warn!(%expected, %actual, "Insufficient Monero have been locked!");

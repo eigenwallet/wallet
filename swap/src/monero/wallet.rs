@@ -217,14 +217,17 @@ impl Wallet {
         ))
     }
 
-
     /// Wait until the specified transfer has been completed or failed.
     pub async fn watch_for_transfer(&self, request: WatchRequest) -> Result<(), InsufficientFunds> {
         self.watch_for_transfer_with(request, None).await
     }
 
-    /// Wait until the specified transfer has been completed or failed and listen to each new confirmation. 
-    pub async fn watch_for_transfer_with(&self, request: WatchRequest, listener: Option<ConfirmationListener>) -> Result<(), InsufficientFunds> {
+    /// Wait until the specified transfer has been completed or failed and listen to each new confirmation.
+    pub async fn watch_for_transfer_with(
+        &self,
+        request: WatchRequest,
+        listener: Option<ConfirmationListener>,
+    ) -> Result<(), InsufficientFunds> {
         let WatchRequest {
             conf_target,
             public_view_key,
@@ -253,7 +256,7 @@ impl Wallet {
             conf_target,
             check_interval,
             self.name.clone(),
-            listener
+            listener,
         )
         .await?;
 
@@ -342,9 +345,12 @@ pub struct WatchRequest {
     pub expected: Amount,
 }
 
-type ConfirmationListener = Box<dyn Fn(u64) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send +'static>;
+type ConfirmationListener =
+    Box<dyn Fn(u64) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + 'static>;
 
-async fn wait_for_confirmations_with<C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
+async fn wait_for_confirmations_with<
+    C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
+>(
     client: &Mutex<C>,
     transfer_proof: TransferProof,
     to_address: Address,
@@ -352,7 +358,7 @@ async fn wait_for_confirmations_with<C: monero_rpc::wallet::MoneroWalletRpc<reqw
     conf_target: u64,
     mut check_interval: Interval,
     wallet_name: String,
-    listener: Option<ConfirmationListener>
+    listener: Option<ConfirmationListener>,
 ) -> Result<(), InsufficientFunds> {
     let mut seen_confirmations = 0u64;
 
