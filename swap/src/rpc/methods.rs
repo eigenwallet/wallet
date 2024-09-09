@@ -92,7 +92,7 @@ pub fn register_modules(outer_context: Context) -> Result<RpcModule<Context>> {
 
         params.bitcoin_change_address = params
             .bitcoin_change_address
-            .map(|address| bitcoin_address::validate(address, context.env_config.bitcoin_network))
+            .map(|address| bitcoin_address::validate(address, context.config.env_config.bitcoin_network))
             .transpose()
             .to_jsonrpsee_result()?;
 

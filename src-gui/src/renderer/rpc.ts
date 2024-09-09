@@ -92,11 +92,19 @@ export async function buyXmr(
   bitcoin_change_address: string | null,
   monero_receive_address: string,
 ) {
-  await invoke<BuyXmrArgs, BuyXmrResponse>("buy_xmr", {
-    seller: providerToConcatenatedMultiAddr(seller),
-    bitcoin_change_address,
-    monero_receive_address,
-  });
+  await invoke<BuyXmrArgs, BuyXmrResponse>(
+    "buy_xmr",
+    bitcoin_change_address == null
+      ? {
+          seller: providerToConcatenatedMultiAddr(seller),
+          monero_receive_address,
+        }
+      : {
+          seller: providerToConcatenatedMultiAddr(seller),
+          monero_receive_address,
+          bitcoin_change_address,
+        },
+  );
 }
 
 export async function resumeSwap(swapId: string) {

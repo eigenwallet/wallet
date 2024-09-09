@@ -44,7 +44,7 @@ pub trait Request {
 pub struct BuyXmrArgs {
     #[typeshare(serialized_as = "string")]
     pub seller: Multiaddr,
-    #[typeshare(serialized_as = "string")]
+    #[typeshare(serialized_as = "Option<string>")]
     pub bitcoin_change_address: Option<bitcoin::Address>,
     #[typeshare(serialized_as = "string")]
     pub monero_receive_address: monero::Address,

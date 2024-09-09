@@ -42,7 +42,11 @@ export default function InitPage() {
   );
 
   async function init() {
-    await buyXmr(selectedProvider, refundAddress, redeemAddress);
+    await buyXmr(
+      selectedProvider,
+      useExternalRefundAddress ? refundAddress : null,
+      redeemAddress,
+    );
   }
 
   return (
