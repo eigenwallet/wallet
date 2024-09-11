@@ -223,6 +223,7 @@ impl Wallet {
     }
 
     /// Wait until the specified transfer has been completed or failed and listen to each new confirmation.
+    #[allow(clippy::too_many_arguments)]
     pub async fn watch_for_transfer_with(
         &self,
         request: WatchRequest,
