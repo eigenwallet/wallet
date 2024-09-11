@@ -171,6 +171,7 @@ pub fn run() {
             monero_recovery,
             get_logs,
             list_sellers,
+            cancel_and_refund,
             suspend_current_swap,
             is_context_available,
         ])
@@ -211,6 +212,7 @@ tauri_command!(withdraw_btc, WithdrawBtcArgs);
 tauri_command!(monero_recovery, MoneroRecoveryArgs);
 tauri_command!(get_logs, GetLogsArgs);
 tauri_command!(list_sellers, ListSellersArgs);
+tauri_command!(cancel_and_refund, CancelAndRefundArgs);
 
 // These commands require no arguments
 tauri_command!(suspend_current_swap, SuspendCurrentSwapArgs, no_args);

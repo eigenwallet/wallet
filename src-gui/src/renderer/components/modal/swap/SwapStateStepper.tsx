@@ -23,14 +23,10 @@ function getActiveStep(
   }
 
   const prevState = state.prev;
-  let latestState = state.curr;
-
-  const processExited = latestState.type === "Released";
+  const processExited = state.curr.type === "Released";
 
   // If the swap is completed we use the previous state to display the correct step
-  if (latestState.type === "Released") {
-    latestState = prevState;
-  }
+  const latestState = processExited ? prevState : state.prev;
 
   switch (latestState.type) {
     // Step 0: Initializing the swap
@@ -54,7 +50,7 @@ function getActiveStep(
     // Step 2: Waiting for encrypted signature to be sent to Alice
     // and for Alice to redeem the Bitcoin
     case "XmrLocked":
-      // case BobStateName.EncSigSent: // TODO: There is no equivalent for this with Tauri events
+    case "EncryptedSignatureSent":
       return [PathType.HAPPY_PATH, 2, processExited];
 
     // Step 3: Waiting for XMR redemption
@@ -72,13 +68,11 @@ function getActiveStep(
     // case BobStateName.SafelyAborted:
     //  return [PathType.HAPPY_PATH, 0, true];
 
-    // // Unhappy Path
-    // Step: 1 (Cancelling swap, checking if cancel transaction has been published already by the other party)
-    // TODO: There's no equivalent for this with the Tauri events
-    //case BobStateName.CancelTimelockExpired:
-    //  return [PathType.UNHAPPY_PATH, 0, processExited];
-
     // Unhappy Path States
+
+    // Step 1: Cancel timelock has expired. Waiting for cancel transaction to be published
+    case "CancelTimelockExpired":
+      return [PathType.UNHAPPY_PATH, 0, processExited];
 
     // Step 2: Swap has been cancelled. Waiting for Bitcoin to be refunded
     case "BtcCancelled":
