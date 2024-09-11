@@ -171,7 +171,6 @@ pub fn run() {
             monero_recovery,
             get_logs,
             list_sellers,
-            cancel_and_refund,
             suspend_current_swap,
             is_context_available,
         ])
