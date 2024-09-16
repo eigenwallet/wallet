@@ -349,6 +349,31 @@ pub struct WatchRequest {
 type ConfirmationListener =
     Box<dyn Fn(u64) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + 'static>;
 
+
+async fn wait_for_confirmations<
+    C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
+>(
+    client: &Mutex<C>,
+    transfer_proof: TransferProof,
+    to_address: Address,
+    expected: Amount,
+    conf_target: u64,
+    check_interval: Interval,
+    wallet_name: String,
+) -> Result<(), InsufficientFunds> {
+    wait_for_confirmations_with(
+        client,
+        transfer_proof,
+        to_address,
+        expected,
+        conf_target,
+        check_interval,
+        wallet_name,
+        None,
+    )
+    .await
+}
+
 async fn wait_for_confirmations_with<
     C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
 >(
@@ -451,7 +476,7 @@ mod tests {
             received: 100,
         })]));
 
-        let result = wait_for_confirmations_with(
+        let result = wait_for_confirmations(
             &client,
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
@@ -461,7 +486,6 @@ mod tests {
             10,
             tokio::time::interval(Duration::from_millis(10)),
             "foo-wallet".to_owned(),
-            None,
         )
         .await;
 
@@ -503,7 +527,7 @@ mod tests {
             }),
         ]));
 
-        wait_for_confirmations_with(
+        wait_for_confirmations(
             &client,
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
@@ -512,8 +536,7 @@ mod tests {
             Amount::from_piconero(100),
             5,
             tokio::time::interval(Duration::from_millis(10)),
-            "foo-wallet".to_owned(),
-            None,
+            "foo-wallet".to_owned()
         )
         .await
         .unwrap();
@@ -551,7 +574,7 @@ mod tests {
             }),
         ]));
 
-        wait_for_confirmations_with(
+        wait_for_confirmations(
             &client,
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
@@ -561,7 +584,6 @@ mod tests {
             5,
             tokio::time::interval(Duration::from_millis(10)),
             "foo-wallet".to_owned(),
-            None,
         )
         .await
         .unwrap();

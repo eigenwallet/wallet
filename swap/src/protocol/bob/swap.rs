@@ -158,8 +158,8 @@ async fn next_state(
 
             let tx_lock_status = bitcoin_wallet.subscribe_to(state3.tx_lock.clone()).await;
 
-            let ExpiredTimelocks::None { .. } = state3.expired_timelock(bitcoin_wallet).await?
-            else {
+            // Check whether we can cancel the swap, and do so if possible
+            if state3.expired_timelock(bitcoin_wallet).await?.cancel_timelock_expired() {
                 let state4 = state3.cancel(monero_wallet_restore_blockheight);
                 return Ok(BobState::CancelTimelockExpired(state4));
             };
@@ -226,14 +226,13 @@ async fn next_state(
             let tx_lock_status = bitcoin_wallet.subscribe_to(state.tx_lock.clone()).await;
 
             // Check if the cancel timelock has expired => we cancel the swap
-            let ExpiredTimelocks::None { .. } = state.expired_timelock(bitcoin_wallet).await?
-            else {
+            if state.expired_timelock(bitcoin_wallet).await?.cancel_timelock_expired() {
                 return Ok(BobState::CancelTimelockExpired(
                     state.cancel(monero_wallet_restore_blockheight),
                 ));
             };
 
-            // Clone these so that we can move them
+            // Clone these so that we can move them into the listener closure
             let tauri_clone = event_emitter.clone();
             let transfer_proof_clone = lock_transfer_proof.clone();
 
@@ -273,7 +272,6 @@ async fn next_state(
                         },
                     }
                 }
-                // TODO: Send Tauri event here everytime we receive a new confirmation
                 result = tx_lock_status.wait_until_confirmed_with(state.cancel_timelock) => {
                     result?;
                     BobState::CancelTimelockExpired(state.cancel(monero_wallet_restore_blockheight))
@@ -292,26 +290,27 @@ async fn next_state(
 
             let tx_lock_status = bitcoin_wallet.subscribe_to(state.tx_lock.clone()).await;
 
-            if let ExpiredTimelocks::None { .. } = state.expired_timelock(bitcoin_wallet).await? {
-                // Alice has locked Xmr
-                // Bob sends Alice his key
-
-                select! {
-                    result = event_loop_handle.send_encrypted_signature(state.tx_redeem_encsig()) => {
-                        match result {
-                            Ok(_) => BobState::EncSigSent(state),
-                            Err(bmrng::error::RequestError::RecvError | bmrng::error::RequestError::SendError(_)) => bail!("Failed to communicate encrypted signature through event loop channel"),
-                            Err(bmrng::error::RequestError::RecvTimeoutError) => unreachable!("We construct the channel with no timeout"),
-                        }
-                    },
-                    result = tx_lock_status.wait_until_confirmed_with(state.cancel_timelock) => {
-                        result?;
-                        BobState::CancelTimelockExpired(state.cancel())
-                    }
-                }
-            } else {
-                BobState::CancelTimelockExpired(state.cancel())
+            // Check whether we can cancel the swap and do so if possible.
+            if state.expired_timelock(bitcoin_wallet).await?.cancel_timelock_expired() {
+                return Ok(BobState::CancelTimelockExpired(state.cancel()));
             }
+
+            // Alice has locked Xmr
+            // Bob sends Alice his key
+            select! {
+                result = event_loop_handle.send_encrypted_signature(state.tx_redeem_encsig()) => {
+                    match result {
+                        Ok(_) => BobState::EncSigSent(state),
+                        Err(bmrng::error::RequestError::RecvError | bmrng::error::RequestError::SendError(_)) => bail!("Failed to communicate encrypted signature through event loop channel"),
+                        Err(bmrng::error::RequestError::RecvTimeoutError) => unreachable!("We construct the channel with no timeout"),
+                    }
+                },
+                result = tx_lock_status.wait_until_confirmed_with(state.cancel_timelock) => {
+                    result?;
+                    BobState::CancelTimelockExpired(state.cancel())
+                }
+            }
+            
         }
         BobState::EncSigSent(state) => {
             // We need to make sure that Alice did not publish the redeem transaction while we were offline
@@ -323,18 +322,18 @@ async fn next_state(
 
             let tx_lock_status = bitcoin_wallet.subscribe_to(state.tx_lock.clone()).await;
 
-            if let ExpiredTimelocks::None { .. } = state.expired_timelock(bitcoin_wallet).await? {
-                select! {
-                    state5 = state.watch_for_redeem_btc(bitcoin_wallet) => {
-                        BobState::BtcRedeemed(state5?)
-                    },
-                    result = tx_lock_status.wait_until_confirmed_with(state.cancel_timelock) => {
-                        result?;
-                        BobState::CancelTimelockExpired(state.cancel())
-                    }
+            if state.expired_timelock(bitcoin_wallet).await?.cancel_timelock_expired() {
+                return Ok(BobState::CancelTimelockExpired(state.cancel()));
+            }
+
+            select! {
+                state5 = state.watch_for_redeem_btc(bitcoin_wallet) => {
+                    BobState::BtcRedeemed(state5?)
+                },
+                result = tx_lock_status.wait_until_confirmed_with(state.cancel_timelock) => {
+                    result?;
+                    BobState::CancelTimelockExpired(state.cancel())
                 }
-            } else {
-                BobState::CancelTimelockExpired(state.cancel())
             }
         }
         BobState::BtcRedeemed(state) => {
