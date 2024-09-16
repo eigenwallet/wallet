@@ -350,29 +350,6 @@ type ConfirmationListener =
     Box<dyn Fn(u64) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + 'static>;
 
 
-async fn wait_for_confirmations<
-    C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
->(
-    client: &Mutex<C>,
-    transfer_proof: TransferProof,
-    to_address: Address,
-    expected: Amount,
-    conf_target: u64,
-    check_interval: Interval,
-    wallet_name: String,
-) -> Result<(), InsufficientFunds> {
-    wait_for_confirmations_with(
-        client,
-        transfer_proof,
-        to_address,
-        expected,
-        conf_target,
-        check_interval,
-        wallet_name,
-        None,
-    )
-    .await
-}
 
 async fn wait_for_confirmations_with<
     C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
@@ -468,6 +445,31 @@ mod tests {
     use monero_rpc::wallet::CheckTxKey;
     use std::sync::atomic::{AtomicU32, Ordering};
     use tracing::metadata::LevelFilter;
+
+
+    async fn wait_for_confirmations<
+        C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
+        >(
+        client: &Mutex<C>,
+        transfer_proof: TransferProof,
+        to_address: Address,
+        expected: Amount,
+        conf_target: u64,
+        check_interval: Interval,
+        wallet_name: String,
+    ) -> Result<(), InsufficientFunds> {
+        wait_for_confirmations_with(
+            client,
+            transfer_proof,
+            to_address,
+            expected,
+            conf_target,
+            check_interval,
+            wallet_name,
+            None,
+        )
+        .await
+    }
 
     #[tokio::test]
     async fn given_exact_confirmations_does_not_fetch_tx_again() {
