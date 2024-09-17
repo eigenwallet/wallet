@@ -137,9 +137,7 @@ where
         } => match state3.expired_timelocks(bitcoin_wallet).await? {
             ExpiredTimelocks::None { .. } => {
                 monero_wallet
-                    .watch_for_transfer(
-                        state3.lock_xmr_watch_request(transfer_proof.clone(), 1),
-                    )
+                    .watch_for_transfer(state3.lock_xmr_watch_request(transfer_proof.clone(), 1))
                     .await
                     .with_context(|| {
                         format!(

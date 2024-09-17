@@ -349,8 +349,6 @@ pub struct WatchRequest {
 type ConfirmationListener =
     Box<dyn Fn(u64) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + 'static>;
 
-
-
 async fn wait_for_confirmations_with<
     C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
 >(
@@ -446,10 +444,9 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
     use tracing::metadata::LevelFilter;
 
-
     async fn wait_for_confirmations<
         C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
-        >(
+    >(
         client: &Mutex<C>,
         transfer_proof: TransferProof,
         to_address: Address,

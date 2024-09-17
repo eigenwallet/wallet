@@ -48,8 +48,8 @@ pub enum ExpiredTimelocks {
 }
 
 impl ExpiredTimelocks {
-    /// Check whether the timelock on the cancel transaction has expired. 
-    /// 
+    /// Check whether the timelock on the cancel transaction has expired.
+    ///
     /// Retuns `true` even if the swap has already been canceled or punished.
     pub fn cancel_timelock_expired(&self) -> bool {
         match self {
