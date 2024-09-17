@@ -25,8 +25,13 @@ function getActiveStep(
   const prevState = state.prev;
   const processExited = state.curr.type === "Released";
 
-  // If the swap is completed we use the previous state to display the correct step
-  const latestState = processExited ? prevState : state.prev;
+  // If the swap is released we use the previous state to display the correct step
+  const latestState = processExited ? prevState : state.curr;
+
+  // If the swap is released but we do not have a previous state we fallback
+  if(latestState === null) {
+    return [PathType.HAPPY_PATH, 0, true];
+  }
 
   switch (latestState.type) {
     // Step 0: Initializing the swap
@@ -100,100 +105,48 @@ function getActiveStep(
       );
 
     default:
-      return exhaustiveGuard(stateName);
+      return exhaustiveGuard(latestState.type);
   }
 }
 
-function HappyPathStepper({
-  activeStep,
-  error,
-}: {
+function SwapStepper({ steps, activeStep, error }: {
+  steps: Array<{ label: string; duration: string }>;
   activeStep: number;
   error: boolean;
 }) {
   return (
     <Stepper activeStep={activeStep}>
-      <Step key={0}>
-        <StepLabel
-          optional={<Typography variant="caption">~12min</Typography>}
-          error={error && activeStep === 0}
-        >
-          Locking your BTC
-        </StepLabel>
-      </Step>
-      <Step key={1}>
-        <StepLabel
-          optional={<Typography variant="caption">~18min</Typography>}
-          error={error && activeStep === 1}
-        >
-          They lock their XMR
-        </StepLabel>
-      </Step>
-      <Step key={2}>
-        <StepLabel
-          optional={<Typography variant="caption">~2min</Typography>}
-          error={error && activeStep === 2}
-        >
-          They redeem the BTC
-        </StepLabel>
-      </Step>
-      <Step key={3}>
-        <StepLabel
-          optional={<Typography variant="caption">~2min</Typography>}
-          error={error && activeStep === 3}
-        >
-          Redeeming your XMR
-        </StepLabel>
-      </Step>
+      {steps.map((step, index) => (
+        <Step key={index}>
+          <StepLabel
+            optional={<Typography variant="caption">{step.duration}</Typography>}
+            error={error && activeStep === index}
+          >
+            {step.label}
+          </StepLabel>
+        </Step>
+      ))}
     </Stepper>
   );
 }
 
-function UnhappyPathStepper({
-  activeStep,
-  error,
-}: {
-  activeStep: number;
-  error: boolean;
-}) {
-  return (
-    <Stepper activeStep={activeStep}>
-      <Step key={0}>
-        <StepLabel
-          optional={<Typography variant="caption">~20min</Typography>}
-          error={error && activeStep === 0}
-        >
-          Cancelling swap
-        </StepLabel>
-      </Step>
-      <Step key={1}>
-        <StepLabel
-          optional={<Typography variant="caption">~20min</Typography>}
-          error={error && activeStep === 1}
-        >
-          Attempting recovery
-        </StepLabel>
-      </Step>
-    </Stepper>
-  );
-}
+const HAPPY_PATH_STEP_LABELS = [
+  { label: "Locking your BTC", duration: "~12min" },
+  { label: "They lock their XMR", duration: "~18min" },
+  { label: "They redeem the BTC", duration: "~2min" },
+  { label: "Redeeming your XMR", duration: "~2min" },
+];
+
+const UNHAPPY_PATH_STEP_LABELS = [
+  { label: "Cancelling swap", duration: "~1min" },
+  { label: "Attempting recovery", duration: "~5min" },
+];
 
 export default function SwapStateStepper() {
-  // TODO: There's no equivalent of this with Tauri yet.
-  const currentSwapSpawnType = useAppSelector((s) => s.swap.spawnType);
-
   const swapState = useAppSelector((s) => s.swap.state);
-
   const [pathType, activeStep, error] = getActiveStep(swapState);
 
-  // TODO: Fix this to work with Tauri
-  // If the current swap is being manually cancelled and refund, we want to show the unhappy path even though the current state is not a "unhappy" state
-  if (currentSwapSpawnType === SwapSpawnType.CANCEL_REFUND) {
-    return <UnhappyPathStepper activeStep={0} error={error} />;
-  }
+  const steps = pathType === PathType.HAPPY_PATH ? HAPPY_PATH_STEP_LABELS : UNHAPPY_PATH_STEP_LABELS;
 
-  if (pathType === PathType.HAPPY_PATH) {
-    return <HappyPathStepper activeStep={activeStep} error={error} />;
-  }
-  return <UnhappyPathStepper activeStep={activeStep} error={error} />;
+  return <SwapStepper steps={steps} activeStep={activeStep} error={error} />;
 }
