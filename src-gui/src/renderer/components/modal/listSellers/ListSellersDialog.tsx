@@ -53,19 +53,16 @@ export default function ListSellersDialog({
   }
 
   function getMultiAddressError(): string | null {
-    if (isValidMultiAddressWithPeerId(rendezvousAddress)) {
-      return null;
-    }
-    return "Address is invalid or missing peer ID";
+    return isValidMultiAddressWithPeerId(rendezvousAddress)) ? null : "Address is invalid or missing peer ID"
   }
 
   function handleSuccess({ sellers }: ListSellersResponse) {
     dispatch(discoveredProvidersByRendezvous(sellers));
 
-    const sellersLength = sellers.length;
+    const discoveredSellersCount = sellers.length;
     let message: string;
 
-    switch (sellersLength) {
+    switch (discoveredSellersCount) {
       case 0:
         message = `No providers were discovered at the rendezvous point`;
         break;
@@ -73,7 +70,7 @@ export default function ListSellersDialog({
         message = `Discovered one provider at the rendezvous point`;
         break;
       default:
-        message = `Discovered ${sellersLength} providers at the rendezvous point`;
+        message = `Discovered ${discoveredSellersCount} providers at the rendezvous point`;
     }
 
     enqueueSnackbar(message, {
