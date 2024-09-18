@@ -52,9 +52,6 @@ impl ExpiredTimelocks {
     ///
     /// Retuns `true` even if the swap has already been canceled or punished.
     pub fn cancel_timelock_expired(&self) -> bool {
-        match self {
-            ExpiredTimelocks::None { .. } => false,
-            _ => true,
-        }
+        !matches!(self, ExpiredTimelocks::None { .. })
     }
 }
