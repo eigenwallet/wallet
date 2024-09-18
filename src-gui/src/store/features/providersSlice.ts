@@ -14,6 +14,7 @@ export interface ProvidersSlice {
   };
   registry: {
     providers: ExtendedProviderStatus[] | null;
+    // This counts how many failed connections attempts we have counted since the last successful connection
     connectionFailsCount: number;
   };
   selectedProvider: ExtendedProviderStatus | null;
