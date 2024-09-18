@@ -103,7 +103,7 @@ export const providersSlice = createSlice({
       );
       slice.selectedProvider = selectNewSelectedProvider(slice);
     },
-    increaseFailedRegistryReconnectAttemptsSinceLastSuccess(slice) {
+    registryConnectionFailed(slice) {
       slice.registry.failedReconnectAttemptsSinceLastSuccess += 1;
     },
     setSelectedProvider(
@@ -123,7 +123,7 @@ export const providersSlice = createSlice({
 export const {
   discoveredProvidersByRendezvous,
   setRegistryProviders,
-  increaseFailedRegistryReconnectAttemptsSinceLastSuccess,
+  registryConnectionFailed,
   setSelectedProvider,
 } = providersSlice.actions;
 
