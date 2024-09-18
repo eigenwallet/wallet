@@ -39,7 +39,7 @@ export default function ProviderInfo({
         {provider.multiAddr}
       </Typography>
       <Typography color="textSecondary" gutterBottom>
-        {provider.peerId}
+        <TruncatedText>{provider.peerId}</TruncatedText>
       </Typography>
       <Typography variant="caption">
         Exchange rate:{" "}
