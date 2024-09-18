@@ -12,7 +12,6 @@ import {
   Theme,
 } from "@material-ui/core";
 import { ListSellersResponse } from "models/tauriModel";
-import { Multiaddr } from "multiaddr";
 import { useSnackbar } from "notistack";
 import { ChangeEvent, useState } from "react";
 import TruncatedText from "renderer/components/other/TruncatedText";
@@ -20,6 +19,7 @@ import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { listSellersAtRendezvousPoint } from "renderer/rpc";
 import { discoveredProvidersByRendezvous } from "store/features/providersSlice";
 import { useAppDispatch } from "store/hooks";
+import { isValidMultiAddressWithPeerId } from "utils/parseUtils";
 
 const PRESET_RENDEZVOUS_POINTS = [
   "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
@@ -53,23 +53,19 @@ export default function ListSellersDialog({
   }
 
   function getMultiAddressError(): string | null {
-    try {
-      const multiAddress = new Multiaddr(rendezvousAddress);
-      if (!multiAddress.protoNames().includes("p2p")) {
-        return "The multi address must contain the peer id (/p2p/)";
-      }
+    if (isValidMultiAddressWithPeerId(rendezvousAddress)) {
       return null;
-    } catch {
-      return "Not a valid multi address";
     }
+    return "Invalid multiaddress or is missing peer ID";
   }
 
   function handleSuccess({ sellers }: ListSellersResponse) {
     dispatch(discoveredProvidersByRendezvous(sellers));
 
+    const sellersLength = sellers.length;
     let message: string;
 
-    switch (sellers.length) {
+    switch (sellersLength) {
       case 0:
         message = `No providers were discovered at the rendezvous point`;
         break;
@@ -77,7 +73,7 @@ export default function ListSellersDialog({
         message = `Discovered one provider at the rendezvous point`;
         break;
       default:
-        message = `Discovered ${sellers.length} providers at the rendezvous point`;
+        message = `Discovered ${sellersLength} providers at the rendezvous point`;
     }
 
     enqueueSnackbar(message, {
@@ -126,7 +122,10 @@ export default function ListSellersDialog({
         <Button onClick={onClose}>Cancel</Button>
         <PromiseInvokeButton
           variant="contained"
-          disabled={!(rendezvousAddress && !getMultiAddressError())}
+          disabled={
+            // We disable the button if the multiaddress is invalid
+            getMultiAddressError() !== null
+          }
           color="primary"
           onSuccess={handleSuccess}
           onInvoke={() => listSellersAtRendezvousPoint(rendezvousAddress)}

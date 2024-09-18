@@ -1,10 +1,9 @@
-// This file is responsible for making HTTP requests to the Unstoppable API
-// The API is used to:
+// This file is responsible for making HTTP requests to the Unstoppable API and to the CoinGecko API.
+// The APIs are used to:
 // - fetch provider status from the public registry
 // - fetch alerts to be displayed to the user
 // - and to submit feedback
-//
-// This file also contains wrapper around the CoinGecko API to fetch currency rates
+// - fetch currency rates from CoinGecko
 import { Alert, ExtendedProviderStatus } from "models/apiModel";
 
 const API_BASE_URL = "https://api.unstoppableswap.net";
