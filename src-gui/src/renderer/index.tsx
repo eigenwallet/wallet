@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 import { Provider } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
 import { setAlerts } from "store/features/alertsSlice";
-import { setRegistryProviders } from "store/features/providersSlice";
+import { setRegistryProviders, increaseFailedRegistryReconnectAttemptsSinceLastSuccess } from "store/features/providersSlice";
 import { setBtcPrice, setXmrPrice } from "store/features/ratesSlice";
 import logger from "../utils/logger";
 import {
@@ -44,6 +44,7 @@ async function fetchInitialData() {
       "Fetched providers via UnstoppableSwap HTTP API",
     );
   } catch (e) {
+    store.dispatch(increaseFailedRegistryReconnectAttemptsSinceLastSuccess())
     logger.error(e, "Failed to fetch providers via UnstoppableSwap HTTP API");
   }
 

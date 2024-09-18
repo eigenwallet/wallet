@@ -11,11 +11,15 @@ import {
   TextField,
   Theme,
 } from "@material-ui/core";
+import { ListSellersResponse } from "models/tauriModel";
 import { Multiaddr } from "multiaddr";
 import { useSnackbar } from "notistack";
 import { ChangeEvent, useState } from "react";
 import TruncatedText from "renderer/components/other/TruncatedText";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
+import { listSellersAtRendezvousPoint } from "renderer/rpc";
+import { discoveredProvidersByRendezvous } from "store/features/providersSlice";
+import { useAppDispatch } from "store/hooks";
 
 const PRESET_RENDEZVOUS_POINTS = [
   "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
@@ -42,6 +46,7 @@ export default function ListSellersDialog({
   const classes = useStyles();
   const [rendezvousAddress, setRendezvousAddress] = useState("");
   const { enqueueSnackbar } = useSnackbar();
+  const dispatch = useAppDispatch();
 
   function handleMultiAddrChange(event: ChangeEvent<HTMLInputElement>) {
     setRendezvousAddress(event.target.value);
@@ -59,10 +64,12 @@ export default function ListSellersDialog({
     }
   }
 
-  function handleSuccess(amountOfSellers: number) {
+  function handleSuccess({ sellers }: ListSellersResponse) {
+    dispatch(discoveredProvidersByRendezvous(sellers));
+
     let message: string;
 
-    switch (amountOfSellers) {
+    switch (sellers.length) {
       case 0:
         message = `No providers were discovered at the rendezvous point`;
         break;
@@ -70,7 +77,7 @@ export default function ListSellersDialog({
         message = `Discovered one provider at the rendezvous point`;
         break;
       default:
-        message = `Discovered ${amountOfSellers} providers at the rendezvous point`;
+        message = `Discovered ${sellers.length} providers at the rendezvous point`;
     }
 
     enqueueSnackbar(message, {
@@ -122,9 +129,7 @@ export default function ListSellersDialog({
           disabled={!(rendezvousAddress && !getMultiAddressError())}
           color="primary"
           onSuccess={handleSuccess}
-          onInvoke={() => {
-            throw new Error("Not implemented");
-          }}
+          onInvoke={() => listSellersAtRendezvousPoint(rendezvousAddress)}
         >
           Connect
         </PromiseInvokeButton>

@@ -1,6 +1,8 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { ExtendedProviderStatus, ProviderStatus } from "models/apiModel";
+import { Seller } from "models/tauriModel";
 import { getStubTestnetProvider } from "store/config";
+import { rendezvousSellerToProviderStatus } from "utils/conversionUtils";
 import { isProviderCompatible } from "utils/multiAddrUtils";
 import { sortProviderList } from "utils/sortUtils";
 
@@ -47,35 +49,46 @@ export const providersSlice = createSlice({
   name: "providers",
   initialState,
   reducers: {
-    discoveredProvidersByRendezvous(
-      slice,
-      action: PayloadAction<ProviderStatus[]>,
-    ) {
-      action.payload.forEach((discoveredProvider) => {
+    discoveredProvidersByRendezvous(slice, action: PayloadAction<Seller[]>) {
+      action.payload.forEach((discoveredSeller) => {
+        console.log(discoveredSeller);
+
+        const discoveredProviderStatus =
+          rendezvousSellerToProviderStatus(discoveredSeller);
+
+        console.log(discoveredProviderStatus);
+
+        // If the seller has a status of "Unreachable" the provider is not added to the list
+        if (discoveredProviderStatus === null) {
+          return;
+        }
+
+        // If the provider was already discovered via the public registry, don't add it again
         if (
           !slice.registry.providers?.some(
             (prov) =>
-              prov.peerId === discoveredProvider.peerId &&
-              prov.multiAddr === discoveredProvider.multiAddr,
+              prov.peerId === discoveredProviderStatus.peerId &&
+              prov.multiAddr === discoveredProviderStatus.multiAddr,
           )
         ) {
           const indexOfExistingProvider = slice.rendezvous.providers.findIndex(
             (prov) =>
-              prov.peerId === discoveredProvider.peerId &&
-              prov.multiAddr === discoveredProvider.multiAddr,
+              prov.peerId === discoveredProviderStatus.peerId &&
+              prov.multiAddr === discoveredProviderStatus.multiAddr,
           );
 
-          // Avoid duplicates, replace instead
+          // Avoid duplicate entries, replace them instead
           if (indexOfExistingProvider !== -1) {
             slice.rendezvous.providers[indexOfExistingProvider] =
-              discoveredProvider;
+              discoveredProviderStatus;
           } else {
-            slice.rendezvous.providers.push(discoveredProvider);
+            slice.rendezvous.providers.push(discoveredProviderStatus);
           }
         }
       });
 
       slice.rendezvous.providers = sortProviderList(slice.rendezvous.providers);
+      slice.selectedProvider = selectNewSelectedProvider(slice);
     },
     setRegistryProviders(
       slice,

@@ -1,6 +1,6 @@
 import { Alert, ExtendedProviderStatus } from "models/apiModel";
 
-const API_BASE_URL = "https://api.unstoppableswap.net";
+const API_BASE_URL = "https://fial.api.unstoppableswap.net";
 
 export async function fetchProvidersViaHttp(): Promise<
   ExtendedProviderStatus[]
