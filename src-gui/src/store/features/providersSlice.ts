@@ -14,7 +14,7 @@ export interface ProvidersSlice {
   };
   registry: {
     providers: ExtendedProviderStatus[] | null;
-    failedReconnectAttemptsSinceLastSuccess: number;
+    connectionFailsCount: number;
   };
   selectedProvider: ExtendedProviderStatus | null;
 }
@@ -25,7 +25,7 @@ const initialState: ProvidersSlice = {
   },
   registry: {
     providers: stubTestnetProvider ? [stubTestnetProvider] : null,
-    failedReconnectAttemptsSinceLastSuccess: 0,
+    connectionFailsCount: 0,
   },
   selectedProvider: null,
 };
@@ -51,12 +51,8 @@ export const providersSlice = createSlice({
   reducers: {
     discoveredProvidersByRendezvous(slice, action: PayloadAction<Seller[]>) {
       action.payload.forEach((discoveredSeller) => {
-        console.log(discoveredSeller);
-
         const discoveredProviderStatus =
           rendezvousSellerToProviderStatus(discoveredSeller);
-
-        console.log(discoveredProviderStatus);
 
         // If the seller has a status of "Unreachable" the provider is not added to the list
         if (discoveredProviderStatus === null) {
@@ -104,7 +100,7 @@ export const providersSlice = createSlice({
       slice.selectedProvider = selectNewSelectedProvider(slice);
     },
     registryConnectionFailed(slice) {
-      slice.registry.failedReconnectAttemptsSinceLastSuccess += 1;
+      slice.registry.connectionFailsCount += 1;
     },
     setSelectedProvider(
       slice,
