@@ -6,8 +6,7 @@ import MoneroTransactionInfoBox from "../../MoneroTransactionInfoBox";
 export default function XmrRedeemInMempoolPage(
   state: TauriSwapProgressEventContent<"XmrRedeemInMempool">,
 ) {
-  const xmr_redeem_txid =
-    state.xmr_redeem_txids.length === 0 ? "Unknown" : state.xmr_redeem_txids.join(", ");
+  const xmr_redeem_txid = state.xmr_redeem_txids[0] ?? null;
 
   return (
     <Box>
