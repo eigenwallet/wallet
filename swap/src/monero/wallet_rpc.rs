@@ -25,7 +25,6 @@ use tokio_util::io::StreamReader;
 const MONERO_DAEMONS: [MoneroDaemon; 17] = [
     MoneroDaemon::new("xmr-node.cakewallet.com", 18081, Network::Mainnet),
     MoneroDaemon::new("nodex.monerujo.io", 18081, Network::Mainnet),
-    MoneroDaemon::new("node.moneroworld.com", 18089, Network::Mainnet),
     MoneroDaemon::new("nodes.hashvault.pro", 18081, Network::Mainnet),
     MoneroDaemon::new("p2pmd.xmrvsbeast.com", 18081, Network::Mainnet),
     MoneroDaemon::new("node.monerodevs.org", 18089, Network::Mainnet),
