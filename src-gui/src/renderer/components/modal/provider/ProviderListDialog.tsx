@@ -21,7 +21,6 @@ import { setSelectedProvider } from "store/features/providersSlice";
 import {
   useAllProviders,
   useAppDispatch,
-  useIsRpcEndpointBusy,
 } from "store/hooks";
 import ListSellersDialog from "../listSellers/ListSellersDialog";
 import ProviderInfo from "./ProviderInfo";
@@ -65,13 +64,11 @@ export function ProviderSubmitDialogOpenButton() {
 
 export function ListSellersDialogOpenButton() {
   const [open, setOpen] = useState(false);
-  const running = useIsRpcEndpointBusy(RpcMethod.LIST_SELLERS);
 
   return (
     <ListItem
       autoFocus
       button
-      disabled={running}
       onClick={() => {
         // Prevents background from being clicked and reopening dialog
         if (!open) {

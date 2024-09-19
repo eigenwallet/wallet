@@ -31,7 +31,6 @@ interface State {
 export interface RPCSlice {
   status: TauriContextStatusEvent | null;
   state: State;
-  busyEndpoints: string[];
   logs: string[];
 }
 
@@ -51,7 +50,7 @@ const initialState: RPCSlice = {
     },
   },
   busyEndpoints: [],
-  logs: []
+  logs: [],
 };
 
 export const rpcSlice = createSlice({
@@ -86,17 +85,6 @@ export const rpcSlice = createSlice({
       slice.state.swapInfos[action.payload.swap_id] =
         action.payload as GetSwapInfoResponseExt;
     },
-    rpcSetEndpointBusy(slice, action: PayloadAction<string>) {
-      if (!slice.busyEndpoints.includes(action.payload)) {
-        slice.busyEndpoints.push(action.payload);
-      }
-    },
-    rpcSetEndpointFree(slice, action: PayloadAction<string>) {
-      const index = slice.busyEndpoints.indexOf(action.payload);
-      if (index >= 0) {
-        slice.busyEndpoints.splice(index);
-      }
-    },
     rpcSetMoneroRecoveryKeys(
       slice,
       action: PayloadAction<[string, MoneroRecoveryResponse]>,
@@ -121,8 +109,6 @@ export const {
   rpcSetBalance,
   rpcSetWithdrawTxId,
   rpcResetWithdrawTxId,
-  rpcSetEndpointBusy,
-  rpcSetEndpointFree,
   rpcSetRendezvousDiscoveredProviders,
   rpcSetSwapInfo,
   rpcSetMoneroRecoveryKeys,
