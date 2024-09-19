@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { ExtendedProviderStatus, ProviderStatus } from "models/apiModel";
 import {
+  CliLogEmittedEvent,
   GetSwapInfoResponse,
   TauriContextStatusEvent,
 } from "models/tauriModel";
@@ -31,6 +32,7 @@ export interface RPCSlice {
   status: TauriContextStatusEvent | null;
   state: State;
   busyEndpoints: string[];
+  logs: string[];
 }
 
 const initialState: RPCSlice = {
@@ -49,12 +51,16 @@ const initialState: RPCSlice = {
     },
   },
   busyEndpoints: [],
+  logs: []
 };
 
 export const rpcSlice = createSlice({
   name: "rpc",
   initialState,
   reducers: {
+    receivedCliLog(slice, action: PayloadAction<CliLogEmittedEvent>) {
+      slice.logs.push(action.payload.message);
+    },
     contextStatusEventReceived(
       slice,
       action: PayloadAction<TauriContextStatusEvent>,
@@ -111,6 +117,7 @@ export const rpcSlice = createSlice({
 
 export const {
   contextStatusEventReceived,
+  receivedCliLog,
   rpcSetBalance,
   rpcSetWithdrawTxId,
   rpcResetWithdrawTxId,
