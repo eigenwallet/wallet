@@ -22,7 +22,12 @@ pub enum Format {
 /// Besides printing to `stdout`, this will append to a log file.
 /// Said file will contain JSON-formatted logs of all levels,
 /// disregarding the arguments to this function.
-pub fn init(level_filter: LevelFilter, format: Format, dir: impl AsRef<Path>, tauri_handle: Option<TauriHandle>) -> Result<()> {
+pub fn init(
+    level_filter: LevelFilter,
+    format: Format,
+    dir: impl AsRef<Path>,
+    tauri_handle: Option<TauriHandle>,
+) -> Result<()> {
     let env_filter = EnvFilter::from_default_env()
         .add_directive(Directive::from_str(&format!("asb={}", &level_filter))?)
         .add_directive(Directive::from_str(&format!("swap={}", &level_filter))?);
@@ -89,9 +94,15 @@ impl<Subscriber> Layer<Subscriber> for TauriEmitLayer<Subscriber>
 where
     Subscriber: tracing::Subscriber,
 {
-    fn on_event(&self, event: &tracing::Event<'_>, _ctx: tracing_subscriber::layer::Context<'_, Subscriber>) {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, Subscriber>,
+    ) {
         let log_message = format!("{:?}", event);
-        let log_event = CliLogEmittedEvent { message: log_message };
+        let log_event = CliLogEmittedEvent {
+            message: log_message,
+        };
 
         self.tauri_handle.emit_cli_log_event(log_event);
     }

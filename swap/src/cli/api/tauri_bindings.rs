@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 const SWAP_PROGRESS_EVENT_NAME: &str = "swap-progress-update";
 const CONTEXT_INIT_PROGRESS_EVENT_NAME: &str = "context-init-progress-update";
-const CLI_LOG_EMITTED_EVENT_NAME: &str = "cli-log-emitted";	
+const CLI_LOG_EMITTED_EVENT_NAME: &str = "cli-log-emitted";
 
 #[derive(Debug, Clone)]
 pub struct TauriHandle(
@@ -50,7 +50,9 @@ pub trait TauriEmitter {
     }
 
     fn emit_cli_log_event(&self, event: CliLogEmittedEvent) {
-        let _ = self.emit_tauri_event(CLI_LOG_EMITTED_EVENT_NAME, event).ok();
+        let _ = self
+            .emit_tauri_event(CLI_LOG_EMITTED_EVENT_NAME, event)
+            .ok();
     }
 }
 
@@ -162,9 +164,8 @@ pub enum TauriSwapProgressEvent {
     Released,
 }
 
-
 #[derive(Debug, Serialize, Clone)]
 #[typeshare]
 pub struct CliLogEmittedEvent {
-    pub message: String
+    pub message: String,
 }
