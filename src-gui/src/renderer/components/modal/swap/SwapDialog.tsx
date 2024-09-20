@@ -33,6 +33,7 @@ export default function SwapDialog({
   const classes = useStyles();
   const swap = useAppSelector((state) => state.swap);
   const isSwapRunning = useIsSwapRunning();
+
   const [debug, setDebug] = useState(false);
   const [openSuspendAlert, setOpenSuspendAlert] = useState(false);
   const dispatch = useAppDispatch();
@@ -76,7 +77,7 @@ export default function SwapDialog({
           color="primary"
           variant="contained"
           onClick={onCancel}
-          disabled={isSwapRunning}
+          disabled={useIsSwapRunning || swap.state !== null}
         >
           Done
         </Button>

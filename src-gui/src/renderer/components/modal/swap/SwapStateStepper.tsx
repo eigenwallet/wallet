@@ -1,5 +1,4 @@
 import { Step, StepLabel, Stepper, Typography } from "@material-ui/core";
-import { SwapSpawnType } from "models/cliModel";
 import { SwapSlice } from "models/storeModel";
 import { useAppSelector } from "store/hooks";
 import { exhaustiveGuard } from "utils/typescriptUtils";
@@ -29,7 +28,7 @@ function getActiveStep(
   const latestState = processExited ? prevState : state.curr;
 
   // If the swap is released but we do not have a previous state we fallback
-  if(latestState === null) {
+  if (latestState === null) {
     return [PathType.HAPPY_PATH, 0, true];
   }
 
@@ -109,7 +108,11 @@ function getActiveStep(
   }
 }
 
-function SwapStepper({ steps, activeStep, error }: {
+function SwapStepper({
+  steps,
+  activeStep,
+  error,
+}: {
   steps: Array<{ label: string; duration: string }>;
   activeStep: number;
   error: boolean;
@@ -119,7 +122,9 @@ function SwapStepper({ steps, activeStep, error }: {
       {steps.map((step, index) => (
         <Step key={index}>
           <StepLabel
-            optional={<Typography variant="caption">{step.duration}</Typography>}
+            optional={
+              <Typography variant="caption">{step.duration}</Typography>
+            }
             error={error && activeStep === index}
           >
             {step.label}
@@ -146,7 +151,10 @@ export default function SwapStateStepper() {
   const swapState = useAppSelector((s) => s.swap.state);
   const [pathType, activeStep, error] = getActiveStep(swapState);
 
-  const steps = pathType === PathType.HAPPY_PATH ? HAPPY_PATH_STEP_LABELS : UNHAPPY_PATH_STEP_LABELS;
+  const steps =
+    pathType === PathType.HAPPY_PATH
+      ? HAPPY_PATH_STEP_LABELS
+      : UNHAPPY_PATH_STEP_LABELS;
 
   return <SwapStepper steps={steps} activeStep={activeStep} error={error} />;
 }
