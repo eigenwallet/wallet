@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{monero, network::quote::BidQuote};
 use anyhow::Result;
 use bitcoin::Txid;
@@ -167,5 +169,8 @@ pub enum TauriSwapProgressEvent {
 #[derive(Debug, Serialize, Clone)]
 #[typeshare]
 pub struct CliLogEmittedEvent {
-    pub message: String,
+    pub level: String,
+    pub span: String,
+    pub message: Option<String>,
+    pub fields: HashMap<String, String>
 }
