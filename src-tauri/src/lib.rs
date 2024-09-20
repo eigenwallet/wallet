@@ -5,7 +5,7 @@ use swap::cli::{
         request::{
             BalanceArgs, BuyXmrArgs, GetHistoryArgs, GetLogsArgs, GetSwapInfosAllArgs,
             ListSellersArgs, MoneroRecoveryArgs, ResumeSwapArgs, SuspendCurrentSwapArgs,
-            WithdrawBtcArgs,
+            WithdrawBtcArgs, CancelAndRefundArgs
         },
         tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle},
         Context, ContextBuilder,
