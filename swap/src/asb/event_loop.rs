@@ -161,8 +161,6 @@ where
                 swarm_event = self.swarm.select_next_some() => {
                     match swarm_event {
                         SwarmEvent::Behaviour(OutEvent::SwapSetupInitiated { mut send_wallet_snapshot }) => {
-                            println!("wating for snapshot 1");
-
                             let (btc, responder) = match send_wallet_snapshot.recv().await {
                                 Ok((btc, responder)) => (btc, responder),
                                 Err(error) => {
@@ -171,7 +169,6 @@ where
                                 }
                             };
 
-                            println!("wating for snapshot 2");
                             let wallet_snapshot = match WalletSnapshot::capture(&self.bitcoin_wallet, &self.monero_wallet, &self.external_redeem_address, btc).await {
                                 Ok(wallet_snapshot) => wallet_snapshot,
                                 Err(error) => {
