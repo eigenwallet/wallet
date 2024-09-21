@@ -1,12 +1,13 @@
 import { Step, StepLabel, Stepper, Typography } from "@material-ui/core";
-import { SwapSlice } from "models/storeModel";
+import { SwapState } from "models/storeModel";
 import { useAppSelector } from "store/hooks";
-import { exhaustiveGuard } from "utils/typescriptUtils";
 
 export enum PathType {
   HAPPY_PATH = "happy path",
   UNHAPPY_PATH = "unhappy path",
 }
+
+type PathStep = [type: PathType, step: number, isError: boolean];
 
 /**
  * Determines the current step in the swap process based on the previous and latest state.
@@ -15,21 +16,32 @@ export enum PathType {
  * @returns A tuple containing [PathType, activeStep, errorFlag]
  */
 function getActiveStep(
-  state: SwapSlice["state"],
-): [type: PathType, step: number, isError: boolean] {
+  state: SwapState | null,
+): PathStep {
+  // In case we cannot infer a correct step from the state
+  function fallbackStep(reason: string) {
+    console.error(`Unable to choose correct stepper type (reason: ${reason}, state: ${JSON.stringify(state)}`);
+    return [PathType.HAPPY_PATH, 0, true] as PathStep;
+  }
+
   if (state === null) {
     return [PathType.HAPPY_PATH, 0, false];
   }
 
   const prevState = state.prev;
-  const processExited = state.curr.type === "Released";
+  const isReleased = state.curr.type === "Released";
 
   // If the swap is released we use the previous state to display the correct step
-  const latestState = processExited ? prevState : state.curr;
+  const latestState = isReleased ? prevState : state.curr;
 
   // If the swap is released but we do not have a previous state we fallback
   if (latestState === null) {
-    return [PathType.HAPPY_PATH, 0, true];
+    return fallbackStep("Swap has been released but we do not have a previous state saved to display");
+  }
+
+  // This should really never happen. For this statement to be true, the host has to submit a "Released" event twice
+  if(latestState.type === "Released") {
+    return fallbackStep("Both the current and previous states are both of type 'Released'.");
   }
 
   switch (latestState.type) {
@@ -40,27 +52,27 @@ function getActiveStep(
     case "ReceivedQuote":
     case "WaitingForBtcDeposit":
     case "Started":
-      return [PathType.HAPPY_PATH, 0, processExited];
+      return [PathType.HAPPY_PATH, 0, isReleased];
 
     // Step 1: Waiting for Bitcoin lock confirmation
     // Bitcoin has been locked, waiting for the counterparty to lock their XMR
     case "BtcLockTxInMempool":
-      return [PathType.HAPPY_PATH, 1, processExited];
+      return [PathType.HAPPY_PATH, 1, isReleased];
 
     // Still Step 1: Both Bitcoin and XMR have been locked, waiting for Monero lock to be confirmed
     case "XmrLockTxInMempool":
-      return [PathType.HAPPY_PATH, 1, processExited];
+      return [PathType.HAPPY_PATH, 1, isReleased];
 
     // Step 2: Waiting for encrypted signature to be sent to Alice
     // and for Alice to redeem the Bitcoin
     case "XmrLocked":
     case "EncryptedSignatureSent":
-      return [PathType.HAPPY_PATH, 2, processExited];
+      return [PathType.HAPPY_PATH, 2, isReleased];
 
     // Step 3: Waiting for XMR redemption
     // Bitcoin has been redeemed by Alice, now waiting for us to redeem Monero
     case "BtcRedeemed":
-      return [PathType.HAPPY_PATH, 3, processExited];
+      return [PathType.HAPPY_PATH, 3, isReleased];
 
     // Step 4: Swap completed successfully
     // XMR redemption transaction is in mempool, swap is essentially complete
@@ -76,11 +88,11 @@ function getActiveStep(
 
     // Step 1: Cancel timelock has expired. Waiting for cancel transaction to be published
     case "CancelTimelockExpired":
-      return [PathType.UNHAPPY_PATH, 0, processExited];
+      return [PathType.UNHAPPY_PATH, 0, isReleased];
 
     // Step 2: Swap has been cancelled. Waiting for Bitcoin to be refunded
     case "BtcCancelled":
-      return [PathType.UNHAPPY_PATH, 1, processExited];
+      return [PathType.UNHAPPY_PATH, 1, isReleased];
 
     // Step 2: Swap cancelled and Bitcoin refunded successfully
     case "BtcRefunded":
@@ -94,17 +106,13 @@ function getActiveStep(
     // Attempting cooperative redemption after punishment
     case "AttemptingCooperativeRedeem":
     case "CooperativeRedeemAccepted":
-      return [PathType.UNHAPPY_PATH, 1, false];
+      return [PathType.UNHAPPY_PATH, 1, isReleased];
     case "CooperativeRedeemRejected":
       return [PathType.UNHAPPY_PATH, 1, true];
-
-    case "Released":
-      throw new Error(
-        "Unexpected, latest and previous state cannot be 'Released'",
-      );
-
     default:
-      return exhaustiveGuard(latestState.type);
+      return fallbackStep("No step is assigned to the current state");
+      // TODO: Make this guard work. It should force the compiler to check if we have covered all possible cases.
+      // return exhaustiveGuard(latestState.type);
   }
 }
 
