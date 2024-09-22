@@ -403,21 +403,11 @@ async fn next_state(
                     );
                 }
                 ExpiredTimelocks::Cancel { .. } => {
-<<<<<<< HEAD
-                    state.publish_refund_btc(bitcoin_wallet).await?;
-
-                    event_emitter.emit_swap_progress_event(
-                        swap_id,
-                        TauriSwapProgressEvent::BtcRefunded {
-                            btc_refund_txid: state.signed_refund_transaction()?.txid(),
-                        },
-=======
                     let btc_refund_txid = state.publish_refund_btc(bitcoin_wallet).await?;
 
                     event_emitter.emit_swap_progress_event(
                         swap_id,
                         TauriSwapProgressEvent::BtcRefunded { btc_refund_txid },
->>>>>>> 3c138791 (fix(gui): Emit Tauri event after btc refund tx is published)
                     );
 
                     BobState::BtcRefunded(state)
