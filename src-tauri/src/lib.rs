@@ -172,6 +172,7 @@ pub fn run() {
             get_logs,
             list_sellers,
             suspend_current_swap,
+            cancel_and_refund,
             is_context_available,
         ])
         .setup(setup)
