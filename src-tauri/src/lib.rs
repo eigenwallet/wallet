@@ -3,9 +3,9 @@ use std::sync::Arc;
 use swap::cli::{
     api::{
         request::{
-            BalanceArgs, BuyXmrArgs, GetHistoryArgs, GetLogsArgs, GetSwapInfosAllArgs,
-            ListSellersArgs, MoneroRecoveryArgs, ResumeSwapArgs, SuspendCurrentSwapArgs,
-            WithdrawBtcArgs, CancelAndRefundArgs
+            BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, GetHistoryArgs, GetLogsArgs,
+            GetSwapInfosAllArgs, ListSellersArgs, MoneroRecoveryArgs, ResumeSwapArgs,
+            SuspendCurrentSwapArgs, WithdrawBtcArgs,
         },
         tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle},
         Context, ContextBuilder,
