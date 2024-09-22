@@ -16,7 +16,7 @@ type PathStep = [type: PathType, step: number, isError: boolean];
  * @returns A tuple containing [PathType, activeStep, errorFlag]
  */
 function getActiveStep(
-  state: SwapState | null,
+  state: SwapState | null
 ): PathStep {
   // In case we cannot infer a correct step from the state
   function fallbackStep(reason: string) {
@@ -155,9 +155,12 @@ const UNHAPPY_PATH_STEP_LABELS = [
   { label: "Attempting recovery", duration: "~5min" },
 ];
 
-export default function SwapStateStepper() {
-  const swapState = useAppSelector((s) => s.swap.state);
-  const [pathType, activeStep, error] = getActiveStep(swapState);
+export default function SwapStateStepper({
+  state,
+}: {
+  state: SwapState | null
+}) {
+  const [pathType, activeStep, error] = getActiveStep(state);
 
   const steps =
     pathType === PathType.HAPPY_PATH

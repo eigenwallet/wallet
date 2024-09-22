@@ -64,7 +64,7 @@ export default function SwapDialog({
         ) : (
           <>
             <SwapStatePage state={swap.state} />
-            <SwapStateStepper />
+            <SwapStateStepper state={swap.state}/>
           </>
         )}
       </DialogContent>
@@ -77,7 +77,7 @@ export default function SwapDialog({
           color="primary"
           variant="contained"
           onClick={onCancel}
-          disabled={useIsSwapRunning || swap.state !== null}
+          disabled={isSwapRunning || swap.state === null}
         >
           Done
         </Button>

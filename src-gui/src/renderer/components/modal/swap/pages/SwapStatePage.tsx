@@ -1,5 +1,5 @@
 import { Box } from "@material-ui/core";
-import { SwapSlice } from "models/storeModel";
+import { SwapSlice, SwapState } from "models/storeModel";
 import CircularProgressWithSubtitle from "../CircularProgressWithSubtitle";
 import BitcoinPunishedPage from "./done/BitcoinPunishedPage";
 import BitcoinRefundedPage from "./done/BitcoinRefundedPage";
@@ -21,7 +21,7 @@ import WaitingForBitcoinDepositPage from "./init/WaitingForBitcoinDepositPage";
 export default function SwapStatePage({
   state,
 }: {
-  state: SwapSlice["state"];
+  state: SwapState | null
 }) {
   // TODO: Reimplement this using tauri events
   /*
