@@ -1,13 +1,29 @@
 import { ExtendedProviderStatus } from "models/apiModel";
+import { splitPeerIdFromMultiAddress } from "utils/parseUtils";
 
 export const isTestnet = () => true;
 
 export const isDevelopment = true;
 
 export function getStubTestnetProvider(): ExtendedProviderStatus | null {
-  return {
-    multiAddr: "/ip4/127.0.0.1/tcp/9939",
-    testnet: true,
-    peerId: "12D3KooWEJxNSpzsUiFTL5etJBcfH9GsUJGb2BBUCS9HGVu19idT",
-  };
+  const stubProviderAddress = process.env.TESTNET_STUB_PROVIDER_ADDRESS;
+
+  if(stubProviderAddress != null) {
+    try {
+      const [multiAddr, peerId] = splitPeerIdFromMultiAddress(stubProviderAddress);
+
+      return {
+        multiAddr,
+        testnet: true,
+        peerId,
+        maxSwapAmount: 0,
+        minSwapAmount: 0,
+        price: 0,
+      };
+    }catch {
+      return null;
+    }
+  }
+
+  return null;
 }
