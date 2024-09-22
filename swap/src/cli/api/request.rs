@@ -40,8 +40,9 @@ pub trait Request {
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response>;
 }
 
+/// This generates a tracing span which is attached to all logs caused by a swap
 fn get_swap_tracing_span(swap_id: Uuid) -> Span {
-    return debug_span!("swap", swap_id = %swap_id);
+    debug_span!("swap", swap_id = %swap_id)
 }
 
 // BuyXmr
