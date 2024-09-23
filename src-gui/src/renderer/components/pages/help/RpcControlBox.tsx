@@ -3,7 +3,7 @@ import FolderOpenIcon from "@material-ui/icons/FolderOpen";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
 import StopIcon from "@material-ui/icons/Stop";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
-import { useIsContextAvailable, useAppSelector } from "store/hooks";
+import { useAppSelector, useIsContextAvailable } from "store/hooks";
 import InfoBox from "../../modal/swap/InfoBox";
 import CliLogsBox from "../../other/RenderedCliLog";
 
@@ -18,7 +18,9 @@ const useStyles = makeStyles((theme) => ({
 export default function RpcControlBox() {
   const isRunning = useIsContextAvailable();
   const classes = useStyles();
-  const logs = useAppSelector(s => s.rpc.logs)
+  const logs = useAppSelector((s) => s.rpc.logs);
+
+  console.log(logs);
 
   return (
     <InfoBox
