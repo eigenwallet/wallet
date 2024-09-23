@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{monero, network::quote::BidQuote};
 use anyhow::Result;
 use bitcoin::Txid;
@@ -166,11 +164,13 @@ pub enum TauriSwapProgressEvent {
     Released,
 }
 
+/// This event is emitted whenever there is a log message issued in the CLI.
+/// 
+/// It contains a json serialized object containing the log message and metadata.
+#[typeshare]
 #[derive(Debug, Serialize, Clone)]
 #[typeshare]
 pub struct CliLogEmittedEvent {
-    pub level: String,
-    pub span: String,
-    pub message: Option<String>,
-    pub fields: HashMap<String, String>
+    /// The serialized object containing the log message and metadata.
+    pub json: String
 }

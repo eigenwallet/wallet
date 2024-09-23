@@ -1,15 +1,14 @@
-use std::collections::HashMap;
-use std::fmt::Debug;
+use std::io;
 use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::Result;
-use tracing::field::Field;
 use tracing_subscriber::filter::{Directive, LevelFilter};
 use tracing_subscriber::fmt::time::UtcTime;
+use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter, Layer};
+use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::cli::api::tauri_bindings::{CliLogEmittedEvent, TauriEmitter, TauriHandle};
 
@@ -42,7 +41,7 @@ pub fn init(
         .json()
         .with_filter(env_filter(level_filter)?);
 
-    // terminal logger
+    // terminal loger
     let is_terminal = atty::is(atty::Stream::Stderr);
     let terminal_layer = fmt::layer()
         .with_writer(std::io::stdout)
@@ -51,7 +50,12 @@ pub fn init(
         .with_target(false);
 
     // tauri layer (forwards logs to the tauri guest when connected)
-    let tauri_layer = TauriEmitLayer::new(tauri_handle)
+    let tauri_layer = fmt::layer()
+        .with_writer(TauriWriter::new(tauri_handle))
+        .with_ansi(false)
+        .with_timer(UtcTime::rfc_3339())
+        .with_target(false)
+        .json()
         .with_filter(env_filter(level_filter)?);
 
     // combine the layers and start logging, format with json if specified
@@ -69,7 +73,7 @@ pub fn init(
             .init();
     }
 
-    // now we can use the tracing macros to log messages
+    // Now we can use the tracing macros to log messages
     tracing::info!(%level_filter, logs_dir=%dir.as_ref().display(), "Initialized tracing");
 
     Ok(())
@@ -82,52 +86,44 @@ fn env_filter(level_filter: LevelFilter) -> Result<EnvFilter> {
         .add_directive(Directive::from_str(&format!("swap={}", &level_filter))?))
 }
 
-/// Emit log messages to the tauri guest.
-struct TauriEmitLayer<Subscriber> {
+/// A writer that forwards tracing log messages to the tauri guest.
+#[derive(Clone)]
+pub struct TauriWriter {
     tauri_handle: Option<TauriHandle>,
-    _subscriber: std::marker::PhantomData<Subscriber>,
 }
 
-impl<Subscriber> TauriEmitLayer<Subscriber> {
-    fn new(tauri_handle: Option<TauriHandle>) -> Self {
-        Self {
-            tauri_handle,
-            _subscriber: std::marker::PhantomData,
-        }
+impl TauriWriter {
+    /// Create a new Tauri writer that sends log messages to the tauri guest.
+    pub fn new(tauri_handle: Option<TauriHandle>) -> Self {
+        Self { tauri_handle }
     }
 }
 
-impl<Subscriber> Layer<Subscriber> for TauriEmitLayer<Subscriber>
-where
-    Subscriber: tracing::Subscriber,
-{
-    fn on_event(
-        &self,
-        event: &tracing::Event<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, Subscriber>,
-    ) {
-        let level = event.metadata().level().as_str().to_owned();
-        let span = event.metadata().name().to_owned();
-        let mut fields = HashMap::new();
+/// This is needed for tracing to accept this as a writer.
+impl<'a> MakeWriter<'a> for TauriWriter {
+    type Writer = TauriWriter;
 
-        let mut message: Option<String> = None;
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
 
-        // Visit every field of the event and put it into the map
-        event.record(&mut |field: &Field, value: &dyn Debug| {
-            if field.name() == "message" {
-                message = Some(format!("{:?}", value));
-                return;
-            }
-            fields.insert(field.name().into(), format!("{:?}", value));
-        });
+/// For every write issued by tracing we simply pass the string on as an event to the tauri guest.
+impl std::io::Write for TauriWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        // Since this function accepts bytes, we need to pass to utf8 first
+        let owned_buf = buf.to_owned();
+        let utf8_string = String::from_utf8(owned_buf)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
-        let log_event = CliLogEmittedEvent {
-            level,
-            span,
-            message,
-            fields,
-        };
+        // Then send to tauri
+        self.tauri_handle.emit_cli_log_event(CliLogEmittedEvent { json: utf8_string });
 
-        self.tauri_handle.emit_cli_log_event(log_event);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        // No-op, we don't need to flush anything
+        Ok(())
     }
 }
