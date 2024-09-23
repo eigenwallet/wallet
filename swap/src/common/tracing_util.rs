@@ -7,8 +7,8 @@ use tracing_subscriber::filter::{Directive, LevelFilter};
 use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{fmt, EnvFilter, Layer};
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{fmt, EnvFilter, Layer};
 
 use crate::cli::api::tauri_bindings::{CliLogEmittedEvent, TauriEmitter, TauriHandle};
 
@@ -117,7 +117,9 @@ impl std::io::Write for TauriWriter {
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
         // Then send to tauri
-        self.tauri_handle.emit_cli_log_event(CliLogEmittedEvent { json: utf8_string });
+        self.tauri_handle.emit_cli_log_event(CliLogEmittedEvent {
+            buffer: utf8_string,
+        });
 
         Ok(buf.len())
     }

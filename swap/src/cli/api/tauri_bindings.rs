@@ -165,12 +165,12 @@ pub enum TauriSwapProgressEvent {
 }
 
 /// This event is emitted whenever there is a log message issued in the CLI.
-/// 
+///
 /// It contains a json serialized object containing the log message and metadata.
 #[typeshare]
 #[derive(Debug, Serialize, Clone)]
 #[typeshare]
 pub struct CliLogEmittedEvent {
     /// The serialized object containing the log message and metadata.
-    pub json: String
+    pub buffer: String
 }

@@ -7,7 +7,6 @@ import {
 } from "models/tauriModel";
 import { MoneroRecoveryResponse } from "../../models/rpcModel";
 import { GetSwapInfoResponseExt } from "models/tauriModelExt";
-import { CliLog } from "models/cliModel";
 
 interface State {
   balance: number | null;
@@ -32,7 +31,7 @@ interface State {
 export interface RPCSlice {
   status: TauriContextStatusEvent | null;
   state: State;
-  logs: CliLog[];
+  logs: string;
 }
 
 const initialState: RPCSlice = {
@@ -50,7 +49,7 @@ const initialState: RPCSlice = {
       updateState: false,
     },
   },
-  logs: [],
+  logs: "",
 };
 
 export const rpcSlice = createSlice({
@@ -58,8 +57,8 @@ export const rpcSlice = createSlice({
   initialState,
   reducers: {
     receivedCliLog(slice, action: PayloadAction<CliLogEmittedEvent>) {
-      const log = action.payload.json;
-      slice.logs.push(JSON.parse(log) as CliLog);
+      const buffer = action.payload.buffer;
+      slice.logs.concat(buffer);
     },
     contextStatusEventReceived(
       slice,
