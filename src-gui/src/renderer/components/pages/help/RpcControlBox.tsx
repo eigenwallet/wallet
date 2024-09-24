@@ -20,8 +20,6 @@ export default function RpcControlBox() {
   const classes = useStyles();
   const logs = useAppSelector((s) => s.rpc.logs);
 
-  console.log(logs);
-
   return (
     <InfoBox
       title={`Daemon Controller`}
