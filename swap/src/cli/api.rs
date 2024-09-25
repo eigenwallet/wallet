@@ -234,31 +234,31 @@ impl ContextBuilder {
     }
 
     /// Configures the Context to initialize a Monero wallet with the given configuration.
-    pub fn with_monero(mut self, monero: swapProgressEventReceived<Option<Monero>>) -> Self {
+    pub fn with_monero(mut self, monero: impl Into<Option<Monero>>) -> Self {
         self.monero = monero.into();
         self
     }
 
     /// Configures the Context to initialize a Bitcoin wallet with the given configuration.
-    pub fn with_bitcoin(mut self, bitcoin: swapProgressEventReceived<Option<Bitcoin>>) -> Self {
+    pub fn with_bitcoin(mut self, bitcoin: impl Into<Option<Bitcoin>>) -> Self {
         self.bitcoin = bitcoin.into();
         self
     }
 
     /// Configures the Context to use Tor with the given configuration.
-    pub fn with_tor(mut self, tor: swapProgressEventReceived<Option<Tor>>) -> Self {
+    pub fn with_tor(mut self, tor: impl Into<Option<Tor>>) -> Self {
         self.tor = tor.into();
         self
     }
 
     /// Attach a handle to Tauri to the Context for emitting events etc.
-    pub fn with_tauri(mut self, tauri: swapProgressEventReceived<Option<TauriHandle>>) -> Self {
+    pub fn with_tauri(mut self, tauri: impl Into<Option<TauriHandle>>) -> Self {
         self.tauri_handle = tauri.into();
         self
     }
 
     /// Configures where the data and logs are saved in the filesystem
-    pub fn with_data_dir(mut self, data: swapProgressEventReceived<Option<PathBuf>>) -> Self {
+    pub fn with_data_dir(mut self, data: impl Into<Option<PathBuf>>) -> Self {
         self.data = data.into();
         self
     }
@@ -384,10 +384,7 @@ impl ContextBuilder {
 }
 
 impl Context {
-    pub fn with_tauri_handle(
-        mut self,
-        tauri_handle: swapProgressEventReceived<Option<TauriHandle>>,
-    ) -> Self {
+    pub fn with_tauri_handle(mut self, tauri_handle: impl Into<Option<TauriHandle>>) -> Self {
         self.tauri_handle = tauri_handle.into();
 
         self

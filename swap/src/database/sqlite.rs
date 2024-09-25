@@ -46,10 +46,7 @@ impl SqliteDatabase {
     }
 
     // swapProgressEventReceived<TauriHandle>
-    pub fn with_tauri_handle(
-        mut self,
-        tauri_handle: swapProgressEventReceived<Option<TauriHandle>>,
-    ) -> Self {
+    pub fn with_tauri_handle(mut self, tauri_handle: impl Into<Option<TauriHandle>>) -> Self {
         self.tauri_handle = tauri_handle.into();
         self
     }
