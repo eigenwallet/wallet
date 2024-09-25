@@ -1,3 +1,5 @@
+use crate::cli::api::tauri_bindings::TauriEmitter;
+use crate::cli::api::tauri_bindings::TauriHandle;
 use crate::database::Swap;
 use crate::monero::{Address, TransferProof};
 use crate::protocol::{Database, State};
@@ -15,6 +17,7 @@ use super::AccessMode;
 
 pub struct SqliteDatabase {
     pool: Pool<Sqlite>,
+    tauri_handle: Option<TauriHandle>,
 }
 
 impl SqliteDatabase {
@@ -30,13 +33,25 @@ impl SqliteDatabase {
         let options = options.disable_statement_logging();
 
         let pool = SqlitePool::connect_with(options.to_owned()).await?;
-        let mut sqlite = Self { pool };
+        let mut sqlite = Self {
+            pool,
+            tauri_handle: None,
+        };
 
         if !read_only {
             sqlite.run_migrations().await?;
         }
 
         Ok(sqlite)
+    }
+
+    // swapProgressEventReceived<TauriHandle>
+    pub fn with_tauri_handle(
+        mut self,
+        tauri_handle: swapProgressEventReceived<Option<TauriHandle>>,
+    ) -> Self {
+        self.tauri_handle = tauri_handle.into();
+        self
     }
 
     async fn run_migrations(&mut self) -> anyhow::Result<()> {
@@ -203,6 +218,9 @@ impl Database for SqliteDatabase {
     async fn insert_latest_state(&self, swap_id: Uuid, state: State) -> Result<()> {
         let mut conn = self.pool.acquire().await?;
         let entered_at = OffsetDateTime::now_utc();
+
+        self.tauri_handle
+            .emit_swap_database_state_event(swap_id, state.clone());
 
         let swap_id = swap_id.to_string();
         let swap = serde_json::to_string(&Swap::from(state))?;

@@ -22,10 +22,11 @@ import {
 import {
   contextStatusEventReceived,
   receivedCliLog,
+  databaseStateEventReceived,
   rpcSetBalance,
   rpcSetSwapInfo,
 } from "store/features/rpcSlice";
-import { swapTauriEventReceived } from "store/features/swapSlice";
+import { swapProgressEventReceived } from "store/features/swapSlice";
 import { store } from "./store/storeRenderer";
 import { Provider } from "models/apiModel";
 import { providerToConcatenatedMultiAddr } from "utils/multiAddrUtils";
@@ -42,7 +43,7 @@ export async function initEventListeners() {
 
   listen<TauriSwapProgressEventWrapper>("swap-progress-update", (event) => {
     console.log("Received swap progress event", event.payload);
-    store.dispatch(swapTauriEventReceived(event.payload));
+    store.dispatch(swapProgressEventReceived(event.payload));
   });
 
   listen<TauriContextStatusEvent>("context-init-progress-update", (event) => {
@@ -52,8 +53,13 @@ export async function initEventListeners() {
 
   listen<CliLogEmittedEvent>("cli-log-emitted", (event) => {
     console.log("Received cli log event", event.payload);
-    store.dispatch(receivedCliLog(event.payload))
-  })
+    store.dispatch(receivedCliLog(event.payload));
+  });
+
+  listen<TauriContextStatusEvent>("swap-database-state-update", (event) => {
+    console.log("Received swap database state update event", event.payload);
+    store.dispatch(databaseStateEventReceived(event.payload));
+  });
 }
 
 async function invoke<ARGS, RESPONSE>(

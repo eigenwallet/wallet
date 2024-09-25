@@ -1,9 +1,9 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { ExtendedProviderStatus, ProviderStatus } from "models/apiModel";
 import {
-  CliLogEmittedEvent,
   GetSwapInfoResponse,
   TauriContextStatusEvent,
+  TauriDatabaseStateEvent,
 } from "models/tauriModel";
 import { MoneroRecoveryResponse } from "../../models/rpcModel";
 import { GetSwapInfoResponseExt } from "models/tauriModelExt";
@@ -63,6 +63,15 @@ export const rpcSlice = createSlice({
     ) {
       slice.status = action.payload;
     },
+    databaseStateEventReceived(
+      slice,
+      action: PayloadAction<TauriDatabaseStateEvent>,
+    ) {
+      const swap = slice.state.swapInfos[action.payload.swap_id];
+      if (swap != null) {
+        swap.state_name = slice.payload.state_name;
+      }
+    },
     rpcSetBalance(slice, action: PayloadAction<number>) {
       slice.state.balance = action.payload;
     },
@@ -103,6 +112,7 @@ export const rpcSlice = createSlice({
 export const {
   contextStatusEventReceived,
   receivedCliLog,
+  databaseStateEventReceived,
   rpcSetBalance,
   rpcSetWithdrawTxId,
   rpcResetWithdrawTxId,

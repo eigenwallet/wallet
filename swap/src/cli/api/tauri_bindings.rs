@@ -1,3 +1,4 @@
+use crate::protocol::State;
 use crate::{monero, network::quote::BidQuote};
 use anyhow::Result;
 use bitcoin::Txid;
@@ -6,9 +7,15 @@ use strum::Display;
 use typeshare::typeshare;
 use uuid::Uuid;
 
+<<<<<<< HEAD
 const SWAP_PROGRESS_EVENT_NAME: &str = "swap-progress-update";
 const CONTEXT_INIT_PROGRESS_EVENT_NAME: &str = "context-init-progress-update";
 const CLI_LOG_EMITTED_EVENT_NAME: &str = "cli-log-emitted";
+=======
+static SWAP_PROGRESS_EVENT_NAME: &str = "swap-progress-update";
+static SWAP_DATABASE_STATE_EVENT_NAME: &str = "swap-database-state-update";
+static CONTEXT_INIT_PROGRESS_EVENT_NAME: &str = "context-init-progress-update";
+>>>>>>> ba2c85c8 (remove faulty changed files)
 
 #[derive(Debug, Clone)]
 pub struct TauriHandle(
@@ -49,10 +56,21 @@ pub trait TauriEmitter {
         let _ = self.emit_tauri_event(CONTEXT_INIT_PROGRESS_EVENT_NAME, event);
     }
 
+<<<<<<< HEAD
     fn emit_cli_log_event(&self, event: CliLogEmittedEvent) {
         let _ = self
             .emit_tauri_event(CLI_LOG_EMITTED_EVENT_NAME, event)
             .ok();
+=======
+    fn emit_swap_database_state_event(&self, swap_id: Uuid, state: State) {
+        let _ = self.emit_tauri_event(
+            SWAP_DATABASE_STATE_EVENT_NAME,
+            TauriDatabaseStateEvent {
+                swap_id,
+                state_name: format!("{}", state),
+            },
+        );
+>>>>>>> ba2c85c8 (remove faulty changed files)
     }
 }
 
@@ -166,6 +184,7 @@ pub enum TauriSwapProgressEvent {
     Released,
 }
 
+<<<<<<< HEAD
 /// This event is emitted whenever there is a log message issued in the CLI.
 ///
 /// It contains a json serialized object containing the log message and metadata.
@@ -175,4 +194,12 @@ pub enum TauriSwapProgressEvent {
 pub struct CliLogEmittedEvent {
     /// The serialized object containing the log message and metadata.
     pub buffer: String
+=======
+#[derive(Serialize, Clone)]
+#[typeshare]
+pub struct TauriDatabaseStateEvent {
+    #[typeshare(serialized_as = "string")]
+    swap_id: Uuid,
+    state_name: String,
+>>>>>>> ba2c85c8 (remove faulty changed files)
 }
