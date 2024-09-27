@@ -4,6 +4,7 @@ import { TypedUseSelectorHook, useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "renderer/store/storeRenderer";
 import { parseDateString } from "utils/parseUtils";
 import { useMemo } from "react";
+import { isCliLogRelatedToSwap } from "models/cliModel";
 
 // Use throughout your app instead of plain `useDispatch` and `useSelector`
 export const useAppDispatch = () => useDispatch<AppDispatch>();
@@ -51,7 +52,13 @@ export function useActiveSwapLogs() {
   const logs = useAppSelector((s) => s.rpc.logs);
 
   return useMemo(
-    () => logs.filter((l) => JSON.stringify(l).includes(swapId)),
+    () =>
+      logs.filter((log) => {
+        if (typeof log === "string") {
+          return log.includes(swapId);
+        }
+        return isCliLogRelatedToSwap(log, swapId);
+      }),
     [logs, swapId],
   );
 }
