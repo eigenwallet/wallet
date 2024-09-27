@@ -10,7 +10,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter, Layer};
 
-use crate::cli::api::tauri_bindings::{CliLogEmittedEvent, TauriEmitter, TauriHandle};
+use crate::cli::api::tauri_bindings::{TauriLogEvent, TauriEmitter, TauriHandle};
 
 /// Output formats for logging messages.
 pub enum Format {
@@ -117,7 +117,7 @@ impl std::io::Write for TauriWriter {
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
         // Then send to tauri
-        self.tauri_handle.emit_cli_log_event(CliLogEmittedEvent {
+        self.tauri_handle.emit_cli_log_event(TauriLogEvent {
             buffer: utf8_string,
         });
 

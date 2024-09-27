@@ -5,7 +5,7 @@ import {
   BalanceResponse,
   BuyXmrArgs,
   BuyXmrResponse,
-  CliLogEmittedEvent,
+  TauriLogEvent,
   GetLogsArgs,
   GetLogsResponse,
   GetSwapInfoResponse,
@@ -51,7 +51,7 @@ export async function initEventListeners() {
     store.dispatch(contextStatusEventReceived(event.payload));
   });
 
-  listen<CliLogEmittedEvent>("cli-log-emitted", (event) => {
+  listen<TauriLogEvent>("cli-log-emitted", (event) => {
     console.log("Received cli log event", event.payload);
     store.dispatch(receivedCliLog(event.payload));
   });

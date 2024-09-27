@@ -51,7 +51,7 @@ pub trait TauriEmitter {
         let _ = self.emit_tauri_event(CONTEXT_INIT_PROGRESS_EVENT_NAME, event);
     }
 
-    fn emit_cli_log_event(&self, event: CliLogEmittedEvent) {
+    fn emit_cli_log_event(&self, event: TauriLogEvent) {
         let _ = self
             .emit_tauri_event(CLI_LOG_EMITTED_EVENT_NAME, event)
             .ok();
@@ -184,7 +184,7 @@ pub enum TauriSwapProgressEvent {
 #[typeshare]
 #[derive(Debug, Serialize, Clone)]
 #[typeshare]
-pub struct CliLogEmittedEvent {
+pub struct TauriLogEvent {
     /// The serialized object containing the log message and metadata.
     pub buffer: String,
 }

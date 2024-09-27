@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { ExtendedProviderStatus, ProviderStatus } from "models/apiModel";
 import {
+  TauriLogEvent,
   GetSwapInfoResponse,
   TauriContextStatusEvent,
   TauriDatabaseStateEvent,
@@ -52,7 +53,7 @@ export const rpcSlice = createSlice({
   name: "rpc",
   initialState,
   reducers: {
-    receivedCliLog(slice, action: PayloadAction<CliLogEmittedEvent>) {
+    receivedCliLog(slice, action: PayloadAction<TauriLogEvent>) {
       const buffer = action.payload.buffer;
       const logs = getLogsAndStringsFromRawFileString(buffer);
       slice.logs = slice.logs.concat(logs);
