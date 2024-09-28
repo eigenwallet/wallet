@@ -812,6 +812,13 @@
   dependencies:
     "@tauri-apps/api" "^2.0.0-rc.4"
 
+"@tauri-apps/plugin-store@^2.0.0-rc.1":
+  version "2.0.0-rc.1"
+  resolved "https://registry.yarnpkg.com/@tauri-apps/plugin-store/-/plugin-store-2.0.0-rc.1.tgz#405403638b61f08eee09874dcc4e3afc84dd31fd"
+  integrity sha512-rW71Tkr7OifxoL8NkWgPy5Os4Gn3oJTbv/j/nJ03HDuYsq+F4+8kU8o4epRFJnr6VKmgB/2CtiacSC3dnSSRnA==
+  dependencies:
+    "@tauri-apps/api" "^2.0.0-rc.4"
+
 "@testing-library/react@^16.0.1":
   version "16.0.1"
   resolved "https://registry.yarnpkg.com/@testing-library/react/-/react-16.0.1.tgz#29c0ee878d672703f5e7579f239005e4e0faa875"

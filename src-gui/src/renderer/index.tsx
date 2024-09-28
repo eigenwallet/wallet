@@ -7,6 +7,7 @@ import {
   setRegistryProviders,
 } from "store/features/providersSlice";
 import { setBtcPrice, setXmrPrice } from "store/features/ratesSlice";
+import { setBitcoinConfirmationTarget } from "store/features/settingsSlice";
 import logger from "../utils/logger";
 import {
   fetchAlertsViaHttp,
@@ -65,3 +66,11 @@ async function fetchInitialData() {
 
 fetchInitialData();
 initEventListeners();
+
+setInterval(() => {
+  const n = Math.floor(Math.random() * 100);
+  console.log(
+    `previous was ${store.getState().settings.bitcoinConfirmationTarget} will set to ${n}`,
+  );
+  store.dispatch(setBitcoinConfirmationTarget(n));
+}, 10000);
