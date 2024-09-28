@@ -52,13 +52,7 @@ export function useActiveSwapLogs() {
   const logs = useAppSelector((s) => s.rpc.logs);
 
   return useMemo(
-    () =>
-      logs.filter((log) => {
-        if (typeof log === "string") {
-          return log.includes(swapId);
-        }
-        return isCliLogRelatedToSwap(log, swapId);
-      }),
+    () => logs.filter((log) => isCliLogRelatedToSwap(log, swapId)),
     [logs, swapId],
   );
 }
