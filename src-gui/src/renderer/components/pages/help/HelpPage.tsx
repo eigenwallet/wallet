@@ -3,6 +3,7 @@ import ContactInfoBox from "./ContactInfoBox";
 import DonateInfoBox from "./DonateInfoBox";
 import FeedbackInfoBox from "./FeedbackInfoBox";
 import RpcControlBox from "./RpcControlBox";
+import SettingsInfoBox from "./SettingsInfoBox";
 import TorInfoBox from "./TorInfoBox";
 
 const useStyles = makeStyles((theme) => ({
@@ -18,6 +19,7 @@ export default function HelpPage() {
 
   return (
     <Box className={classes.outer}>
+      <SettingsInfoBox />
       <RpcControlBox />
       <TorInfoBox />
       <FeedbackInfoBox />

@@ -176,3 +176,12 @@ pub struct CliLogEmittedEvent {
     /// The serialized object containing the log message and metadata.
     pub buffer: String
 }
+
+/// This struct contains the settings for the 
+#[derive(Debug, Clone)]
+#[typeshare]
+pub struct TauriSettings {
+    bitcoin_confirmation_target: u16,
+    monero_node_url: Option<String>,
+    electrum_rpc_url: Option<String>,
+}

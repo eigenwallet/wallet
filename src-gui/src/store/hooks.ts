@@ -58,3 +58,7 @@ export function useSwapInfosSortedByDate() {
     (swap) => -parseDateString(swap.start_date),
   );
 }
+
+export function useSettings() {
+  return useAppSelector((state) => state.settings);
+}

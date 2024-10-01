@@ -1,11 +1,11 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { TauriSettings } from "models/tauriModel";
 
-export interface SettingsSlice {
-  bitcoinConfirmationTarget: number;
-}
 
-const initialState: SettingsSlice = {
-  bitcoinConfirmationTarget: 1,
+const initialState: TauriSettings = {
+  bitcoin_confirmation_target: 1,
+  electrum_rpc_url: null,
+  monero_node_url: null,
 };
 
 const alertsSlice = createSlice({
@@ -13,10 +13,16 @@ const alertsSlice = createSlice({
   initialState,
   reducers: {
     setBitcoinConfirmationTarget(slice, action: PayloadAction<number>) {
-      slice.bitcoinConfirmationTarget = action.payload;
+      slice.bitcoin_confirmation_target = action.payload;
     },
+    setElectrumRpcUrl(slice, action: PayloadAction<string | null>) {
+      slice.electrum_rpc_url = action.payload;
+    },
+    setMoneroNodeUrl(slice, action: PayloadAction<string | null>) {
+      slice.monero_node_url = action.payload;
+    }
   },
 });
 
-export const { setBitcoinConfirmationTarget } = alertsSlice.actions;
+export const { setBitcoinConfirmationTarget, setElectrumRpcUrl, setMoneroNodeUrl } = alertsSlice.actions;
 export default alertsSlice.reducer;

@@ -30,9 +30,9 @@ const tauriStore = new Store("settings.bin");
 const settingsPersistConfig = {
   key: "settings", // Key under which 'settings' will be stored in Tauri's storage
   storage: {
-    getItem: (key) => tauriStore.get(key), // Retrieve item from Tauri's storage
-    setItem: (key, value) => tauriStore.set(key, value), // Save item to Tauri's storage
-    removeItem: (key) => tauriStore.delete(key), // Remove item from Tauri's storage
+    getItem: (key: string) => tauriStore.get(key), // Retrieve item from Tauri's storage
+    setItem: (key: string, value: unknown) => tauriStore.set(key, value), // Save item to Tauri's storage
+    removeItem: (key: string) => tauriStore.delete(key), // Remove item from Tauri's storage
   },
 };
 
