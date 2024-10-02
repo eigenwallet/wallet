@@ -1,9 +1,10 @@
 use crate::{monero, network::quote::BidQuote};
 use anyhow::Result;
 use bitcoin::Txid;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use strum::Display;
 use typeshare::typeshare;
+use url::Url;
 use uuid::Uuid;
 
 const SWAP_PROGRESS_EVENT_NAME: &str = "swap-progress-update";
@@ -177,11 +178,15 @@ pub struct CliLogEmittedEvent {
     pub buffer: String
 }
 
-/// This struct contains the settings for the 
-#[derive(Debug, Clone)]
+/// This struct contains the settings for the Context
 #[typeshare]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TauriSettings {
-    bitcoin_confirmation_target: u16,
-    monero_node_url: Option<String>,
-    electrum_rpc_url: Option<String>,
+    /// This is used for estimating the target block for Bitcoin (fee)
+    pub bitcoin_confirmation_target: usize,
+    /// The URL of the Monero node e.g `http://xmr.node:18081`
+    pub monero_node_url: Option<String>,
+    /// The URL of the Electrum RPC server e.g `ssl://bitcoin.com:50001`
+    #[typeshare(serialized_as = "string")]
+    pub electrum_rpc_url: Option<Url>,
 }

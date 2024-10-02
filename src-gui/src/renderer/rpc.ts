@@ -52,8 +52,8 @@ export async function initEventListeners() {
 
   listen<CliLogEmittedEvent>("cli-log-emitted", (event) => {
     console.log("Received cli log event", event.payload);
-    store.dispatch(receivedCliLog(event.payload))
-  })
+    store.dispatch(receivedCliLog(event.payload));
+  });
 }
 
 async function invoke<ARGS, RESPONSE>(
@@ -159,5 +159,12 @@ export async function listSellersAtRendezvousPoint(
 ): Promise<ListSellersResponse> {
   return await invoke<ListSellersArgs, ListSellersResponse>("list_sellers", {
     rendezvous_point: rendezvousPointAddress,
+  });
+}
+
+export async function initializeContext() {
+  const settings = store.getState().settings
+  await invokeUnsafe<void>("initialize_context", {
+    settings
   });
 }

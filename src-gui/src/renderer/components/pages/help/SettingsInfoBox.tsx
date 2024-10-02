@@ -1,28 +1,41 @@
+import React from "react";
 import {
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableRow,
-  TextField,
+  MenuItem,
+  Select,
+  Typography,
 } from "@material-ui/core";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
-import { setBitcoinConfirmationTarget, setElectrumRpcUrl, setMoneroNodeUrl } from "store/features/settingsSlice";
+import {
+  setBitcoinConfirmationTarget,
+  setElectrumRpcUrl,
+  setMoneroNodeUrl,
+} from "store/features/settingsSlice";
 import { useAppDispatch, useAppSelector } from "store/hooks";
-import { MenuItem, Select } from "@material-ui/core";
+import ValidatedTextField from "renderer/components/other/ValidatedTextField";
 
-export default function SettingsInfoBox() {
+export default function SettingsBox() {
   const bitcoinConfirmationTarget = useAppSelector(
-    (s) => s.settings.bitcoin_confirmation_target,
+    (s) => s.settings.bitcoin_confirmation_target
   );
   const electrumRpcUrl = useAppSelector((s) => s.settings.electrum_rpc_url);
   const moneroNodeUrl = useAppSelector((s) => s.settings.monero_node_url);
   const dispatch = useAppDispatch();
 
+  // URL validation function, forces the URL to be in the format of "protocol://host:port/path"
+  function isValidUrl(string) {
+    const pattern = /^(https?|ssl|tcp):\/\/[^\/:\s]+:\d+(\/[^\s]*)?$/i;
+    return pattern.test(string);
+  }  
+
   return (
     <InfoBox
       title="Settings"
-      mainContent={
+      additionalContent={
         <TableContainer>
           <Table>
             <TableBody>
@@ -32,7 +45,9 @@ export default function SettingsInfoBox() {
                   <Select
                     value={bitcoinConfirmationTarget}
                     onChange={(e) => {
-                      dispatch(setBitcoinConfirmationTarget(Number(e.target.value)));
+                      dispatch(
+                        setBitcoinConfirmationTarget(Number(e.target.value))
+                      );
                     }}
                   >
                     {[1, 2, 3].map((target) => (
@@ -43,35 +58,45 @@ export default function SettingsInfoBox() {
                   </Select>
                 </TableCell>
               </TableRow>
-                <TableRow>
-                <TableCell>Electrum RPC URL</TableCell>
+              <TableRow>
+                <TableCell>Custom Electrum RPC URL</TableCell>
                 <TableCell>
-                  <TextField
-                  value={electrumRpcUrl}
-                  onChange={(e) => {
-                    dispatch(setElectrumRpcUrl(e.target.value));
-                  }}
-                  fullWidth
+                  <ValidatedTextField
+                    label="Electrum RPC URL"
+                    value={electrumRpcUrl}
+                    isValid={isValidUrl}
+                    onValidatedChange={(value) => {
+                      dispatch(setElectrumRpcUrl(value));
+                    }}
+                    fullWidth
+                    placeholder="ssl://blockstream.info:700"
                   />
                 </TableCell>
-                </TableRow>
-                <TableRow>
-                <TableCell>Monero Node URL</TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell>Custom Monero Node URL</TableCell>
                 <TableCell>
-                  <TextField
-                  value={moneroNodeUrl}
-                  onChange={(e) => {
-                    dispatch(setMoneroNodeUrl(e.target.value));
-                  }}
-                  fullWidth
+                  <ValidatedTextField
+                    label="Monero Node URL"
+                    value={moneroNodeUrl}
+                    isValid={isValidUrl}
+                    onValidatedChange={(value) => {
+                      dispatch(setMoneroNodeUrl(value));
+                    }}
+                    fullWidth
+                    placeholder="http://xmr-node.cakewallet.com:18081"
                   />
                 </TableCell>
-                </TableRow>
+              </TableRow>
             </TableBody>
           </Table>
         </TableContainer>
       }
-      additionalContent={null}
+      mainContent={
+        <Typography variant="subtitle2">
+          Some of these settings require a restart to take effect.
+        </Typography>
+      }
       icon={null}
       loading={false}
     />

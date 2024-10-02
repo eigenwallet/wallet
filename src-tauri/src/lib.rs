@@ -7,7 +7,7 @@ use swap::cli::{
             GetSwapInfosAllArgs, ListSellersArgs, MoneroRecoveryArgs, ResumeSwapArgs,
             SuspendCurrentSwapArgs, WithdrawBtcArgs,
         },
-        tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle},
+        tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle, TauriSettings},
         Context, ContextBuilder,
     },
     command::{Bitcoin, Monero},
@@ -104,51 +104,18 @@ impl State {
     fn try_get_context(&self) -> Result<Arc<Context>, String> {
         self.context
             .clone()
-            .ok_or("Context not available")
-            .to_string_result()
+            .ok_or("Context not available".to_string())
     }
 }
 
 /// Sets up the Tauri application
-/// Initializes the Tauri state and spawns an async task to set up the Context
+/// Initializes the Tauri state
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let app_handle = app.app_handle().to_owned();
 
     // We need to set a value for the Tauri state right at the start
     // If we don't do this, Tauri commands will panic at runtime if no value is present
     app_handle.manage::<RwLock<State>>(RwLock::new(State::new()));
-
-    tauri::async_runtime::spawn(async move {
-        let tauri_handle = TauriHandle::new(app_handle.clone());
-
-        let context = ContextBuilder::new(true)
-            .with_bitcoin(Bitcoin {
-                bitcoin_electrum_rpc_url: None,
-                bitcoin_target_block: None,
-            })
-            .with_monero(Monero {
-                monero_daemon_address: None,
-            })
-            .with_json(false)
-            .with_debug(true)
-            .with_tauri(tauri_handle.clone())
-            .build()
-            .await;
-
-        match context {
-            Ok(context) => {
-                let state = app_handle.state::<RwLock<State>>();
-                state.write().await.set_context(Arc::new(context));
-                // To display to the user that the setup is done, we emit an event to the Tauri frontend
-                tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Available);
-            }
-            Err(e) => {
-                println!("Error while initializing context: {:?}", e);
-                // To display to the user that the setup failed, we emit an event to the Tauri frontend
-                tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Failed);
-            }
-        }
-    });
 
     Ok(())
 }
@@ -172,6 +139,7 @@ pub fn run() {
             suspend_current_swap,
             cancel_and_refund,
             is_context_available,
+            initialize_context,
         ])
         .setup(setup)
         .build(tauri::generate_context!())
@@ -222,4 +190,51 @@ tauri_command!(get_history, GetHistoryArgs, no_args);
 #[tauri::command]
 async fn is_context_available(context: tauri::State<'_, RwLock<State>>) -> Result<bool, String> {
     Ok(context.read().await.try_get_context().is_ok())
+}
+
+/// Tauri command to initialize the Context
+#[tauri::command]
+async fn initialize_context(
+    settings: TauriSettings,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, RwLock<State>>,
+) -> Result<(), String> {
+    // Acquire a write lock on the state
+    let mut state_write_lock = state.try_write().to_string_result()?;
+
+    // Get app handle and create a Tauri handle
+    let tauri_handle = TauriHandle::new(app_handle.clone());
+
+    let context_result = ContextBuilder::new(true)
+        .with_bitcoin(Bitcoin {
+            bitcoin_electrum_rpc_url: settings.electrum_rpc_url,
+            bitcoin_target_block: settings.bitcoin_confirmation_target.into(),
+        })
+        .with_monero(Monero {
+            monero_daemon_address: settings.monero_node_url,
+        })
+        .with_json(false)
+        .with_debug(true)
+        .with_tauri(tauri_handle.clone())
+        .build()
+        .await;
+
+    match context_result {
+        Ok(context_instance) => {
+            state_write_lock.set_context(Arc::new(context_instance));
+
+            tracing::info!("Context initialized");
+
+            // Emit event to frontend
+            tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Available);
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!(error = ?e, "Failed to initialize context");
+
+            // Emit event to frontend
+            tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Failed);
+            Err(e.to_string())
+        }
+    }
 }

@@ -3,7 +3,7 @@ import { persistReducer, persistStore } from "redux-persist";
 import sessionStorage from "redux-persist/lib/storage/session";
 import { reducers } from "store/combinedReducer";
 import { createMainListeners } from "store/middleware/storeListener";
-import { Store } from "@tauri-apps/plugin-store";
+import { createStore } from "@tauri-apps/plugin-store";
 
 // We persist the redux store in sessionStorage
 // The point of this is to preserve the store across reloads while not persisting it across GUI restarts
@@ -23,7 +23,10 @@ const rootPersistConfig = {
 
 // Initialize Tauri's store for persisting settings across application restarts.
 // This utilizes Tauri's native file system capabilities for persistent storage.
-const tauriStore = new Store("settings.bin");
+const tauriStore = await createStore("settings.bin", {
+  // Workaround for https://github.com/tauri-apps/plugins-workspace/issues/1865
+  autoSave: 1000 as unknown as boolean,
+});
 
 // Configure persistence for the 'settings' reducer using Tauri's storage.
 // This ensures that user settings are retained even after the application is closed.

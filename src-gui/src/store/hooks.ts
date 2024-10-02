@@ -29,7 +29,7 @@ export function useIsContextAvailable() {
 
 export function useSwapInfo(swapId: string | null) {
   return useAppSelector((state) =>
-    swapId ? (state.rpc.state.swapInfos[swapId] ?? null) : null,
+    swapId ? state.rpc.state.swapInfos[swapId] ?? null : null,
   );
 }
 

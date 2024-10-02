@@ -1,11 +1,11 @@
 import { Box, makeStyles } from "@material-ui/core";
 import FolderOpenIcon from "@material-ui/icons/FolderOpen";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
-import StopIcon from "@material-ui/icons/Stop";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { useAppSelector, useIsContextAvailable } from "store/hooks";
 import InfoBox from "../../modal/swap/InfoBox";
 import CliLogsBox from "../../other/RenderedCliLog";
+import { initializeContext } from "renderer/rpc";
 
 const useStyles = makeStyles((theme) => ({
   actionsOuter: {
@@ -16,9 +16,14 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export default function RpcControlBox() {
-  const isRunning = useIsContextAvailable();
   const classes = useStyles();
   const logs = useAppSelector((s) => s.rpc.logs);
+  const canContextBeManuallyStarted = useAppSelector(
+    (s) => s.rpc.status?.type === "Failed" || s.rpc.status === null,
+  );
+  const isContextInitializing = useAppSelector(
+    (s) => s.rpc.status?.type === "Initializing",
+  );
 
   return (
     <InfoBox
@@ -34,22 +39,13 @@ export default function RpcControlBox() {
           <PromiseInvokeButton
             variant="contained"
             endIcon={<PlayArrowIcon />}
-            disabled={isRunning}
-            onInvoke={() => {
-              throw new Error("Not implemented");
-            }}
+            onInvoke={initializeContext}
+            requiresContext={false}
+            disabled={!canContextBeManuallyStarted}
+            isLoadingOverride={isContextInitializing}
+            displayErrorSnackbar
           >
             Start Daemon
-          </PromiseInvokeButton>
-          <PromiseInvokeButton
-            variant="contained"
-            endIcon={<StopIcon />}
-            disabled={!isRunning}
-            onInvoke={() => {
-              throw new Error("Not implemented");
-            }}
-          >
-            Stop Daemon
           </PromiseInvokeButton>
           <PromiseInvokeButton
             endIcon={<FolderOpenIcon />}
