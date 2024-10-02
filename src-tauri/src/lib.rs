@@ -123,6 +123,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
@@ -189,6 +190,7 @@ tauri_command!(get_history, GetHistoryArgs, no_args);
 /// Here we define Tauri commands whose implementation is not delegated to the Request trait
 #[tauri::command]
 async fn is_context_available(context: tauri::State<'_, RwLock<State>>) -> Result<bool, String> {
+    // TODO: Here we should check if write is locked, and if so, return that the context is being initialized
     Ok(context.read().await.try_get_context().is_ok())
 }
 

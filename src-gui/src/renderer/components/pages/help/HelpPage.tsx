@@ -2,9 +2,8 @@ import { Box, makeStyles } from "@material-ui/core";
 import ContactInfoBox from "./ContactInfoBox";
 import DonateInfoBox from "./DonateInfoBox";
 import FeedbackInfoBox from "./FeedbackInfoBox";
-import RpcControlBox from "./RpcControlBox";
-import SettingsBox from "./SettingsInfoBox";
-import TorInfoBox from "./TorInfoBox";
+import DaemonControlBox from "./RpcControlBox";
+import SettingsBox from "./SettingsBox";
 
 const useStyles = makeStyles((theme) => ({
   outer: {
@@ -19,9 +18,8 @@ export default function HelpPage() {
 
   return (
     <Box className={classes.outer}>
-      <RpcControlBox />
+      <DaemonControlBox />
       <SettingsBox />
-      <TorInfoBox />
       <FeedbackInfoBox />
       <ContactInfoBox />
       <DonateInfoBox />

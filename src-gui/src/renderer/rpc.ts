@@ -38,6 +38,8 @@ export async function initEventListeners() {
   // TOOD: Replace this with a more reliable mechanism (such as an event replay mechanism)
   if (await checkContextAvailability()) {
     store.dispatch(contextStatusEventReceived({ type: "Available" }));
+  } else {
+    initializeContext();
   }
 
   listen<TauriSwapProgressEventWrapper>("swap-progress-update", (event) => {
@@ -163,8 +165,8 @@ export async function listSellersAtRendezvousPoint(
 }
 
 export async function initializeContext() {
-  const settings = store.getState().settings
+  const settings = store.getState().settings;
   await invokeUnsafe<void>("initialize_context", {
-    settings
+    settings,
   });
 }

@@ -20,7 +20,7 @@ import ValidatedTextField from "renderer/components/other/ValidatedTextField";
 
 export default function SettingsBox() {
   const bitcoinConfirmationTarget = useAppSelector(
-    (s) => s.settings.bitcoin_confirmation_target
+    (s) => s.settings.bitcoin_confirmation_target,
   );
   const electrumRpcUrl = useAppSelector((s) => s.settings.electrum_rpc_url);
   const moneroNodeUrl = useAppSelector((s) => s.settings.monero_node_url);
@@ -30,7 +30,7 @@ export default function SettingsBox() {
   function isValidUrl(string) {
     const pattern = /^(https?|ssl|tcp):\/\/[^\/:\s]+:\d+(\/[^\s]*)?$/i;
     return pattern.test(string);
-  }  
+  }
 
   return (
     <InfoBox
@@ -46,7 +46,7 @@ export default function SettingsBox() {
                     value={bitcoinConfirmationTarget}
                     onChange={(e) => {
                       dispatch(
-                        setBitcoinConfirmationTarget(Number(e.target.value))
+                        setBitcoinConfirmationTarget(Number(e.target.value)),
                       );
                     }}
                   >
@@ -70,6 +70,7 @@ export default function SettingsBox() {
                     }}
                     fullWidth
                     placeholder="ssl://blockstream.info:700"
+                    allowEmpty
                   />
                 </TableCell>
               </TableRow>
@@ -85,6 +86,7 @@ export default function SettingsBox() {
                     }}
                     fullWidth
                     placeholder="http://xmr-node.cakewallet.com:18081"
+                    allowEmpty
                   />
                 </TableCell>
               </TableRow>

@@ -6,6 +6,8 @@ import { useAppSelector, useIsContextAvailable } from "store/hooks";
 import InfoBox from "../../modal/swap/InfoBox";
 import CliLogsBox from "../../other/RenderedCliLog";
 import { initializeContext } from "renderer/rpc";
+import { relaunch } from "@tauri-apps/plugin-process";
+import RotateLeftIcon from "@material-ui/icons/RotateLeft";
 
 const useStyles = makeStyles((theme) => ({
   actionsOuter: {
@@ -15,7 +17,7 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-export default function RpcControlBox() {
+export default function DaemonControlBox() {
   const classes = useStyles();
   const logs = useAppSelector((s) => s.rpc.logs);
   const canContextBeManuallyStarted = useAppSelector(
@@ -46,6 +48,15 @@ export default function RpcControlBox() {
             displayErrorSnackbar
           >
             Start Daemon
+          </PromiseInvokeButton>
+          <PromiseInvokeButton
+            variant="contained"
+            endIcon={<RotateLeftIcon />}
+            onInvoke={relaunch}
+            requiresContext={false}
+            displayErrorSnackbar
+          >
+            Restart
           </PromiseInvokeButton>
           <PromiseInvokeButton
             endIcon={<FolderOpenIcon />}

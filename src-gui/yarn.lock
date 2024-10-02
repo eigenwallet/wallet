@@ -722,6 +722,11 @@
   resolved "https://registry.yarnpkg.com/@tauri-apps/api/-/api-2.0.0-rc.1.tgz#ec858f239e34792625e311f687fcaca0581e0904"
   integrity sha512-qubAWjM9sqofUh7fe+7UAbBY3wlkfCyxm+PNRYpq9mnNng7lvSQq3sYsFUEB12AYvgGARZSb54VMVUvRuVLi7w==
 
+"@tauri-apps/api@^2.0.0":
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/@tauri-apps/api/-/api-2.0.1.tgz#dc49d899fb873b96ee1d46a171384625ba5ad404"
+  integrity sha512-eoQWT+Tq1qSwQpHV+nw1eNYe5B/nm1PoRjQCRiEOS12I1b+X4PUcREfXVX8dPcBT6GrzWGDtaecY0+1p0Rfqlw==
+
 "@tauri-apps/api@^2.0.0-rc.0":
   version "2.0.0-rc.3"
   resolved "https://registry.yarnpkg.com/@tauri-apps/api/-/api-2.0.0-rc.3.tgz#1dd17530de9cafd854f77d3feeca1732a985a81e"
@@ -805,6 +810,13 @@
   dependencies:
     "@tauri-apps/api" "^2.0.0-rc.0"
 
+"@tauri-apps/plugin-process@^2.0.0":
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/@tauri-apps/plugin-process/-/plugin-process-2.0.0.tgz#002fd73f0d7b1ae2a5aacf442aa657e83dc2960b"
+  integrity sha512-OYzi0GnkrF4NAnsHZU7U3tjSoP0PbeAlO7T1Z+vJoBUH9sFQ1NSLqWYWQyf8hcb3gVWe7P1JggjiskO+LST1ug==
+  dependencies:
+    "@tauri-apps/api" "^2.0.0"
+
 "@tauri-apps/plugin-shell@^2.0.0-rc.0":
   version "2.0.0-rc.1"
   resolved "https://registry.yarnpkg.com/@tauri-apps/plugin-shell/-/plugin-shell-2.0.0-rc.1.tgz#9facf3bbcedfa2de676cb4cfc703687377aa12a3"
@@ -812,12 +824,12 @@
   dependencies:
     "@tauri-apps/api" "^2.0.0-rc.4"
 
-"@tauri-apps/plugin-store@^2.0.0-rc.1":
-  version "2.0.0-rc.2"
-  resolved "https://registry.yarnpkg.com/@tauri-apps/plugin-store/-/plugin-store-2.0.0-rc.2.tgz#6f275dd8d826ab46b198824042ae6090c22d44f4"
-  integrity sha512-cCEnSlXMs66t/kLTZeH00Z5bPLCGiPSWh2p0zKTeQWytiNMHTwjzBYatV1PWIsGQUXsXRTfqEMaKlm0B0zBFqQ==
+"@tauri-apps/plugin-store@^2.0.0":
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/@tauri-apps/plugin-store/-/plugin-store-2.0.0.tgz#7563bff85795bc501ac606dab0c329760ef28134"
+  integrity sha512-l4xsbxAXrKGdBdYNNswrLfcRv3v1kOatdycOcVPYW+jKwkznCr1HEOrPXkPhXsZLSLyYmNXpgfOmdSZNmcykDg==
   dependencies:
-    "@tauri-apps/api" "^2.0.0-rc.4"
+    "@tauri-apps/api" "^2.0.0"
 
 "@testing-library/react@^16.0.1":
   version "16.0.1"

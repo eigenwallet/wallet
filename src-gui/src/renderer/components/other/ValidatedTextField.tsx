@@ -1,12 +1,23 @@
 import React, { useState, ChangeEvent } from "react";
-import { TextField, TextFieldProps, StandardTextFieldProps, FilledTextFieldProps, OutlinedTextFieldProps } from "@material-ui/core";
+import {
+  TextField,
+  TextFieldProps,
+  StandardTextFieldProps,
+  FilledTextFieldProps,
+  OutlinedTextFieldProps,
+} from "@material-ui/core";
 
-type VariantTextFieldProps = StandardTextFieldProps | FilledTextFieldProps | OutlinedTextFieldProps;
+type VariantTextFieldProps =
+  | StandardTextFieldProps
+  | FilledTextFieldProps
+  | OutlinedTextFieldProps;
 
-interface ValidatedTextFieldProps extends Omit<VariantTextFieldProps, 'onChange' | 'value'> {
+interface ValidatedTextFieldProps
+  extends Omit<VariantTextFieldProps, "onChange" | "value"> {
   value: string;
   isValid: (value: string) => boolean;
   onValidatedChange: (value: string) => void;
+  allowEmpty?: boolean;
 }
 
 export default function ValidatedTextField({
@@ -16,6 +27,7 @@ export default function ValidatedTextField({
   onValidatedChange,
   helperText = "Invalid input",
   variant = "standard",
+  allowEmpty = false,
   ...props
 }: ValidatedTextFieldProps) {
   const [inputValue, setInputValue] = useState(value);
@@ -25,7 +37,10 @@ export default function ValidatedTextField({
     const newValue = e.target.value;
     setInputValue(newValue);
 
-    if (isValid(newValue)) {
+    if (newValue === "" && allowEmpty) {
+      setErrorState(false);
+      onValidatedChange(null);
+    } else if (isValid(newValue)) {
       setErrorState(false);
       onValidatedChange(newValue);
     } else {
