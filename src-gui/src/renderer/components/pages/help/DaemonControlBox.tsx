@@ -66,6 +66,7 @@ export default function DaemonControlBox() {
             size="small"
             tooltipTitle="Open the data directory of the Swap Daemon in your file explorer"
             onInvoke={() => {
+              // TODO: Implement this
               throw new Error("Not implemented");
             }}
           />
