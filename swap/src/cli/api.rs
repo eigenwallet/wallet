@@ -27,6 +27,8 @@ use tracing::Level;
 use url::Url;
 use uuid::Uuid;
 
+use super::watcher::Watcher;
+
 static START: Once = Once::new();
 
 #[derive(Clone, PartialEq, Debug)]
@@ -306,24 +308,31 @@ impl ContextBuilder {
                 TauriContextInitializationProgress::OpeningBitcoinWallet,
             ));
 
-        let bitcoin_wallet = {
-            if let Some(bitcoin) = self.bitcoin {
-                let (bitcoin_electrum_rpc_url, bitcoin_target_block) =
-                    bitcoin.apply_defaults(self.is_testnet)?;
-                Some(Arc::new(
-                    init_bitcoin_wallet(
-                        bitcoin_electrum_rpc_url,
-                        &seed,
-                        data_dir.clone(),
-                        env_config,
-                        bitcoin_target_block,
-                    )
-                    .await?,
-                ))
-            } else {
-                None
-            }
+        let bitcoin_wallet = 'block: {
+            let Some(bitcoin) = self.bitcoin else {
+                break 'block None;
+            };
+
+            let (bitcoin_electrum_rpc_url, bitcoin_target_block) =
+                bitcoin.apply_defaults(self.is_testnet)?;
+            Some(Arc::new(
+                init_bitcoin_wallet(
+                    bitcoin_electrum_rpc_url,
+                    &seed,
+                    data_dir.clone(),
+                    env_config,
+                    bitcoin_target_block,
+                )
+                .await?,
+            ))
         };
+
+        // If we are connected to the Bitcoin blockchain
+        // we start a background task to watch for timelock changes.
+        if let Some(wallet) = bitcoin_wallet.clone() {
+            let watcher = Watcher::new(wallet, self.tauri_handle.clone());
+            tokio::spawn(watcher.run());
+        }
 
         // We initialize the Monero wallet below
         // To display the progress to the user, we emit events to the Tauri frontend

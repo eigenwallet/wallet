@@ -39,7 +39,7 @@ impl<T, E: ToString> ToStringResult<T> for Result<T, E> {
 /// async fn get_balance(context: tauri::State<'...>, args: BalanceArgs) -> Result<BalanceArgs::Response, String> {
 ///     args.handle(context.inner().clone()).await.to_string_result()
 /// }
-///
+/// ```
 /// # Example 2
 /// ```ignored
 /// tauri_command!(get_balance, BalanceArgs, no_args);

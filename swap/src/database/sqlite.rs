@@ -216,7 +216,7 @@ impl Database for SqliteDatabase {
         let entered_at = OffsetDateTime::now_utc();
 
         self.tauri_handle
-            .emit_swap_database_state_event(swap_id, state.clone());
+            .emit_swap_state_change_event(swap_id);
 
         let swap_id = swap_id.to_string();
         let swap = serde_json::to_string(&Swap::from(state))?;

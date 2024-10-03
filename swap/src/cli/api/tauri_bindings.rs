@@ -1,4 +1,3 @@
-use crate::protocol::State;
 use crate::{monero, network::quote::BidQuote};
 use anyhow::Result;
 use bitcoin::Txid;
@@ -7,10 +6,11 @@ use strum::Display;
 use typeshare::typeshare;
 use uuid::Uuid;
 
-static CLI_LOG_EMITTED_EVENT_NAME: &str = "cli-log-emitted";
-static SWAP_PROGRESS_EVENT_NAME: &str = "swap-progress-update";
-static SWAP_DATABASE_STATE_EVENT_NAME: &str = "swap-database-state-update";
-static CONTEXT_INIT_PROGRESS_EVENT_NAME: &str = "context-init-progress-update";
+const CLI_LOG_EMITTED_EVENT_NAME: &str = "cli-log-emitted";
+const SWAP_PROGRESS_EVENT_NAME: &str = "swap-progress-update";
+const SWAP_STATE_CHANGE_EVENT_NAME: &str = "swap-database-state-update";
+const TIMELOCK_CHANGE_EVENT_NAME: &str = "timelock-change";
+const CONTEXT_INIT_PROGRESS_EVENT_NAME: &str = "context-init-progress-update";
 
 #[derive(Debug, Clone)]
 pub struct TauriHandle(
@@ -57,13 +57,19 @@ pub trait TauriEmitter {
             .ok();
     }
 
-    fn emit_swap_database_state_event(&self, swap_id: Uuid, state: State) {
+    fn emit_swap_state_change_event(&self, swap_id: Uuid) {
         let _ = self.emit_tauri_event(
-            SWAP_DATABASE_STATE_EVENT_NAME,
+            SWAP_STATE_CHANGE_EVENT_NAME,
             TauriDatabaseStateEvent {
                 swap_id,
-                state_name: format!("{}", state),
             },
+        );
+    }
+
+    fn emit_timelock_change_event(&self, swap_id: Uuid) {
+        let _ = self.emit_tauri_event(
+            TIMELOCK_CHANGE_EVENT_NAME,
+            TauriTimelockChangeEvent { swap_id },
         );
     }
 }
@@ -194,5 +200,12 @@ pub struct TauriLogEvent {
 pub struct TauriDatabaseStateEvent {
     #[typeshare(serialized_as = "string")]
     swap_id: Uuid,
-    state_name: String,
+}
+
+#[derive(Serialize, Clone)]
+#[typeshare]
+pub struct TauriTimelockChangeEvent {
+    #[typeshare(serialized_as = "string")]
+    swap_id: Uuid
+    // Maybe add which timelock changed? E.g. cancel, refund, punish
 }
