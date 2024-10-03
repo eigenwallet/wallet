@@ -190,7 +190,7 @@ tauri_command!(get_history, GetHistoryArgs, no_args);
 /// Here we define Tauri commands whose implementation is not delegated to the Request trait
 #[tauri::command]
 async fn is_context_available(context: tauri::State<'_, RwLock<State>>) -> Result<bool, String> {
-    // TODO: Here we should check if write is locked, and if so, return that the context is being initialized
+    // TODO: Here we should return more information about status of the context (e.g. initializing, failed)
     Ok(context.read().await.try_get_context().is_ok())
 }
 

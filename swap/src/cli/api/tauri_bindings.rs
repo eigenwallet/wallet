@@ -84,6 +84,7 @@ pub enum TauriContextInitializationProgress {
 #[derive(Display, Clone, Serialize)]
 #[serde(tag = "type", content = "content")]
 pub enum TauriContextStatusEvent {
+    NotInitialized,
     Initializing(TauriContextInitializationProgress),
     Available,
     Failed,
