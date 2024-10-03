@@ -1,7 +1,7 @@
 use crate::{monero, network::quote::BidQuote};
 use anyhow::Result;
 use bitcoin::Txid;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use strum::Display;
 use typeshare::typeshare;
 use url::Url;
@@ -175,7 +175,7 @@ pub enum TauriSwapProgressEvent {
 #[typeshare]
 pub struct CliLogEmittedEvent {
     /// The serialized object containing the log message and metadata.
-    pub buffer: String
+    pub buffer: String,
 }
 
 /// This struct contains the settings for the Context

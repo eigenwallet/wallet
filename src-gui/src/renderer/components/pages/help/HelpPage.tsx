@@ -2,7 +2,7 @@ import { Box, makeStyles } from "@material-ui/core";
 import ContactInfoBox from "./ContactInfoBox";
 import DonateInfoBox from "./DonateInfoBox";
 import FeedbackInfoBox from "./FeedbackInfoBox";
-import DaemonControlBox from "./RpcControlBox";
+import DaemonControlBox from "./DaemonControlBox";
 import SettingsBox from "./SettingsBox";
 
 const useStyles = makeStyles((theme) => ({
@@ -10,6 +10,7 @@ const useStyles = makeStyles((theme) => ({
     display: "flex",
     gap: theme.spacing(2),
     flexDirection: "column",
+    paddingBottom: theme.spacing(2),
   },
 }));
 

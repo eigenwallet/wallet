@@ -84,7 +84,10 @@ fn env_filter(level_filter: LevelFilter) -> Result<EnvFilter> {
     Ok(EnvFilter::from_default_env()
         .add_directive(Directive::from_str(&format!("asb={}", &level_filter))?)
         .add_directive(Directive::from_str(&format!("swap={}", &level_filter))?)
-        .add_directive(Directive::from_str(&format!("unstoppableswap-gui-rs={}", &level_filter))?))
+        .add_directive(Directive::from_str(&format!(
+            "unstoppableswap-gui-rs={}",
+            &level_filter
+        ))?))
 }
 
 /// A writer that forwards tracing log messages to the tauri guest.
