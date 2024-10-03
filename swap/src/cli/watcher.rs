@@ -22,6 +22,9 @@ pub struct Watcher {
 }
 
 impl Watcher {
+    /// How often to check for changes (in seconds)
+    const CHECK_INTERVAL: u64 = 3;
+
     /// Create a new Watcher
     pub fn new(wallet: Arc<Wallet>, database: Arc<dyn Database + Send + Sync>, tauri: Option<TauriHandle>) -> Self {
         Self {
@@ -61,7 +64,7 @@ impl Watcher {
                 // Check if the status changed
                 if let Some(old_status) = self.subscriptions.get(&uuid) {
                     // And send a tauri event if it did
-                    if *old_status == new_status {
+                    if *old_status != new_status {
                         self.tauri.emit_timelock_change_event(uuid);
                     }
                 } else {
@@ -74,7 +77,7 @@ impl Watcher {
             }
 
             // Sleep and check again later
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            tokio::time::sleep(Duration::from_secs(Watcher::CHECK_INTERVAL)).await;
         }
     }
 
