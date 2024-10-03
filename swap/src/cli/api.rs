@@ -327,10 +327,17 @@ impl ContextBuilder {
             ))
         };
 
+        let db = open_db(
+            data_dir.join("sqlite"),
+            AccessMode::ReadWrite,
+            self.tauri_handle.clone(),
+        )
+        .await?;
+
         // If we are connected to the Bitcoin blockchain
         // we start a background task to watch for timelock changes.
         if let Some(wallet) = bitcoin_wallet.clone() {
-            let watcher = Watcher::new(wallet, self.tauri_handle.clone());
+            let watcher = Watcher::new(wallet, db.clone(), self.tauri_handle.clone());
             tokio::spawn(watcher.run());
         }
 
@@ -361,12 +368,7 @@ impl ContextBuilder {
 
         let tor_socks5_port = self.tor.map_or(9050, |tor| tor.tor_socks5_port);
 
-        let db = open_db(
-            data_dir.join("sqlite"),
-            AccessMode::ReadWrite,
-            self.tauri_handle.clone(),
-        )
-        .await?;
+        
 
         let context = Context {
             db,

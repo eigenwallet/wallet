@@ -18,6 +18,8 @@ import {
   TauriSwapProgressEventWrapper,
   WithdrawBtcArgs,
   WithdrawBtcResponse,
+  TauriDatabaseStateEvent,
+  TauriTimelockChangeEvent,
 } from "models/tauriModel";
 import {
   contextStatusEventReceived,
@@ -56,10 +58,15 @@ export async function initEventListeners() {
     store.dispatch(receivedCliLog(event.payload));
   });
 
-  listen<TauriContextStatusEvent>("swap-database-state-update", (event) => {
+  listen<TauriDatabaseStateEvent>("swap-database-state-update", (event) => {
     console.log("Received swap database state update event", event.payload);
     store.dispatch(databaseStateEventReceived(event.payload));
   });
+
+  listen<TauriTimelockChangeEvent>('timelock-change', (event) => {
+    console.log('Received timelock change event', event.payload);
+    store.dispatch(timelockChangeEventReceived(event.payload));
+  })
 }
 
 async function invoke<ARGS, RESPONSE>(
@@ -167,3 +174,7 @@ export async function listSellersAtRendezvousPoint(
     rendezvous_point: rendezvousPointAddress,
   });
 }
+function timelockChangeEventReceived(payload: TauriTimelockChangeEvent): any {
+  throw new Error("Function not implemented.");
+}
+

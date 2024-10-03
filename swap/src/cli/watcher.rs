@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use anyhow::Result;
-use bitcoin::{Script, Txid};
 use uuid::Uuid;
 
-use crate::bitcoin::Wallet;
-use crate::bitcoin::wallet::ScriptStatus;
+use crate::bitcoin::{ExpiredTimelocks, Wallet};
 use crate::cli::api::tauri_bindings::TauriHandle;
+use crate::protocol::bob::BobState;
+use crate::protocol::{Database, State};
 
 use super::api::tauri_bindings::TauriEmitter;
 
@@ -16,62 +16,80 @@ use super::api::tauri_bindings::TauriEmitter;
 #[derive(Clone)]
 pub struct Watcher {
     wallet: Arc<Wallet>,
-    subscriptions: HashMap<(Uuid, Txid, Script), ScriptStatus>,
-    tauri: Option<TauriHandle>
+    database: Arc<dyn Database + Send + Sync>,
+    subscriptions: HashMap<Uuid, ExpiredTimelocks>,
+    tauri: Option<TauriHandle>,
 }
 
 impl Watcher {
     /// Create a new Watcher
-    pub fn new(wallet: Arc<Wallet>, tauri: Option<TauriHandle>) -> Self {
+    pub fn new(wallet: Arc<Wallet>, database: Arc<dyn Database + Send + Sync>, tauri: Option<TauriHandle>) -> Self {
         Self {
             wallet,
+            database,
             subscriptions: HashMap::new(),
-            tauri
+            tauri,
         }
     }
 
     /// Start running the watcher event loop. 
     /// Should be done in a new task using [`tokio::spawn`].
     pub async fn run(mut self) {
+        // Note: since this is de-facto a daemon, we have to gracefully handle errors
+        // (which in our case means logging the error message and trying again later)
         loop {
             // Fetch current transactions and timelocks
-            let current_transactions = match self.fetch_current_transactions().await {
-                Ok(x) => x,
+            let current_swaps = match self.get_current_swaps().await {
+                Ok(val) => val,
                 Err(e) => {
                     tracing::error!(error=%e, "Failed to fetch current transactions, retrying later");
                     continue;
                 }
             };
 
-            for (uuid, txid, script) in current_transactions {
-                // Fetch new script status
-                let script_status = match self.wallet.status_of_script(&(txid, script.clone())).await {
-                    Ok(x) => x,
+            // Check for changes for every current swap
+            for (uuid, state) in current_swaps {
+                // Check if the timelock has expired
+                let new_status = match state.expired_timelocks(self.wallet.clone()).await {
+                    Ok(Some(val)) => val,
+                    Ok(None) => continue, // ignore finished swaps
                     Err(e) => {
-                        tracing::error!(error=%e, "Failed to fetch status of script, retrying later");
+                        tracing::error!(error=%e, "Failed to fetch expired timelocks, retrying later");
                         continue;
                     }
                 };
                 // Check if the status changed
-                if let Some(old_status) = self.subscriptions.get(&(uuid, txid, script.clone())) {
+                if let Some(old_status) = self.subscriptions.get(&uuid) {
                     // And send a tauri event if it did
-                    // TODO: distinguish between timelock and confirmation events
-                    if *old_status == script_status {
+                    if *old_status == new_status {
                         self.tauri.emit_timelock_change_event(uuid);
                     }
+                } else {
+                    // If this is the first time we see this swap, send a tauri event, too
+                    self.tauri.emit_timelock_change_event(uuid);
                 }
+
                 // Insert new status
-                self.subscriptions.insert((uuid, txid, script), script_status);
+                self.subscriptions.insert(uuid, new_status);
             }
 
-            // Check for updated timelocks and confirmations
+            // Sleep and check again later
             tokio::time::sleep(Duration::from_secs(3)).await;
         }
     }
 
     /// Helper function for fetching the current list of swaps
-    async fn fetch_current_transactions(&self) -> Result<Vec<(Uuid, Txid, Script)>> {
-        // TODO fetch all relevant TxLock, TxCancel, TxRefund, TxRedeem, here
-        Err(std::io::Error::new(std::io::ErrorKind::Other, "TODO").into())
+    async fn get_current_swaps(&self) -> Result<Vec<(Uuid, BobState)>> {
+        Ok(self.database
+            .all()
+            .await?
+            .into_iter()
+            // Filter for BobState
+            .filter_map(|(uuid, state)| {
+                match state {
+                    State::Bob(bob_state) => Some((uuid, bob_state)),
+                    _ => None
+                }
+            }).collect())
     }
 }

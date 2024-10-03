@@ -5,6 +5,7 @@ import {
   GetSwapInfoResponse,
   TauriContextStatusEvent,
   TauriDatabaseStateEvent,
+  TauriTimelockChangeEvent,
 } from "models/tauriModel";
 import { MoneroRecoveryResponse } from "../../models/rpcModel";
 import { GetSwapInfoResponseExt } from "models/tauriModelExt";
@@ -69,9 +70,13 @@ export const rpcSlice = createSlice({
       action: PayloadAction<TauriDatabaseStateEvent>,
     ) {
       const swap = slice.state.swapInfos[action.payload.swap_id];
-      if (swap != null) {
-        swap.state_name = slice.payload.state_name;
-      }
+      // TODO: refetch details for this swap
+    },
+    timelockChangeEventReceived(
+      slice,
+      action: PayloadAction<TauriTimelockChangeEvent>
+    ) {
+      // TODO: refetch timelock details of this swap
     },
     rpcSetBalance(slice, action: PayloadAction<number>) {
       slice.state.balance = action.payload;
