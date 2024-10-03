@@ -105,7 +105,7 @@ impl MoneroDaemon {
 
     pub fn from_str(address: String, network: Network) -> Result<Self, Error> {
         let (address, port) = extract_host_and_port(address)?;
-        
+
         Ok(Self {
             address,
             port,
@@ -334,13 +334,13 @@ impl WalletRpc {
         let daemon = match daemon_address {
             Some(daemon_address) => {
                 let daemon = MoneroDaemon::from_str(daemon_address, network)?;
-                
+
                 if !daemon.is_available(&reqwest::Client::new()).await? {
                     bail!("Specified daemon is not available or not on the correct network");
                 }
 
                 daemon
-            },
+            }
             None => choose_monero_daemon(network).await?,
         };
 
@@ -487,16 +487,29 @@ impl WalletRpc {
 }
 
 fn extract_host_and_port(address: String) -> Result<(&'static str, u16), Error> {
-    let parts: Vec<&str> = address.split(':').collect();
+    // Strip the protocol (anything before "://")
+    let stripped_address = if let Some(pos) = address.find("://") {
+        address[(pos + 3)..].to_string()
+    } else {
+        address
+    };
+
+    // Split the remaining address into parts (host and port)
+    let parts: Vec<&str> = stripped_address.split(':').collect();
 
     if parts.len() == 2 {
         let host = parts[0].to_string();
-        let port = parts[1].parse::<u16>().unwrap();
+        let port = parts[1].parse::<u16>()?;
+
+        // Leak the host string to create a 'static lifetime string
         let static_str_host: &'static str = Box::leak(host.into_boxed_str());
         return Ok((static_str_host, port));
     }
 
-    bail!("Could not extract host and port from address: {}", address)
+    bail!(
+        "Could not extract host and port from address: {}",
+        stripped_address
+    )
 }
 
 #[cfg(test)]

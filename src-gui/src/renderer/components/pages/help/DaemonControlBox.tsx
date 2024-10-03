@@ -36,7 +36,7 @@ export default function DaemonControlBox() {
       title={`Daemon Controller (${stringifiedDaemonStatus})`}
       mainContent={
         <CliLogsBox
-          label="Swap Daemon Logs (current session only)"
+          label="Logs (current session only)"
           logs={logs}
         />
       }
@@ -60,7 +60,7 @@ export default function DaemonControlBox() {
             requiresContext={false}
             displayErrorSnackbar
           >
-            Restart
+            Restart GUI
           </PromiseInvokeButton>
           <PromiseInvokeButton
             endIcon={<FolderOpenIcon />}

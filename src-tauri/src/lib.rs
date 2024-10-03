@@ -1,3 +1,4 @@
+use anyhow::Context as AnyhowContext;
 use std::result::Result;
 use std::sync::Arc;
 use swap::cli::{
@@ -202,7 +203,10 @@ async fn initialize_context(
     state: tauri::State<'_, RwLock<State>>,
 ) -> Result<(), String> {
     // Acquire a write lock on the state
-    let mut state_write_lock = state.try_write().to_string_result()?;
+    let mut state_write_lock = state
+        .try_write()
+        .context("Context is already being initialized")
+        .to_string_result()?;
 
     // Get app handle and create a Tauri handle
     let tauri_handle = TauriHandle::new(app_handle.clone());

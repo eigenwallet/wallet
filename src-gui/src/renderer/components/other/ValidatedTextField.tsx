@@ -1,4 +1,4 @@
-import React, { useState, ChangeEvent } from "react";
+import { useState, useEffect } from "react";
 import {
   TextField,
   TextFieldProps,
@@ -14,8 +14,8 @@ type VariantTextFieldProps =
 
 interface ValidatedTextFieldProps
   extends Omit<VariantTextFieldProps, "onChange" | "value"> {
-  value: string;
-  isValid: (value: string) => boolean;
+  value: string | null;
+  isValid: (value: string | null) => boolean;
   onValidatedChange: (value: string) => void;
   allowEmpty?: boolean;
 }
@@ -33,13 +33,16 @@ export default function ValidatedTextField({
   const [inputValue, setInputValue] = useState(value);
   const [errorState, setErrorState] = useState(false);
 
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value;
+  function handleChange(newValue: string | null): void {
+    newValue = newValue == null ? "" : newValue.trim();
+
     setInputValue(newValue);
 
     if (newValue === "" && allowEmpty) {
       setErrorState(false);
       onValidatedChange(null);
+    } else if (newValue === "" && !allowEmpty) {
+      setErrorState(true);
     } else if (isValid(newValue)) {
       setErrorState(false);
       onValidatedChange(newValue);
@@ -48,11 +51,16 @@ export default function ValidatedTextField({
     }
   };
 
+  // In case the value changes from the outside, we need to update the input value
+  useEffect(() => {
+    handleChange(value);
+  }, [value]);
+
   return (
     <TextField
       label={label}
-      value={inputValue}
-      onChange={handleChange}
+      value={inputValue ?? ""}
+      onChange={(e) => handleChange(e.target.value)}
       error={errorState}
       helperText={errorState ? helperText : ""}
       variant={variant}
