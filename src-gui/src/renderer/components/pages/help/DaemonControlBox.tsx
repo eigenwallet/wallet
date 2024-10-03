@@ -29,9 +29,11 @@ export default function DaemonControlBox() {
     (s) => s.rpc.status?.type === "Initializing",
   );
 
+  const stringifiedDaemonStatus = useAppSelector((s) => s.rpc.status?.type ?? "not started");
+
   return (
     <InfoBox
-      title={`Daemon Controller`}
+      title={`Daemon Controller (${stringifiedDaemonStatus})`}
       mainContent={
         <CliLogsBox
           label="Swap Daemon Logs (current session only)"

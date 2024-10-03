@@ -4,6 +4,7 @@ import sessionStorage from "redux-persist/lib/storage/session";
 import { reducers } from "store/combinedReducer";
 import { createMainListeners } from "store/middleware/storeListener";
 import { createStore } from "@tauri-apps/plugin-store";
+import { getNetworkName } from "store/config";
 
 // Goal: Maintain application state across page reloads while allowing a clean slate on application restart
 // Settings are persisted across application restarts, while the rest of the state is cleared
@@ -17,7 +18,7 @@ const rootPersistConfig = {
 };
 
 // Use Tauri's store plugin for persistent settings
-const tauriStore = await createStore("settings.bin", {
+const tauriStore = await createStore(`${getNetworkName()}_settings.bin`, {
   autoSave: 1000 as unknown as boolean,
 });
 

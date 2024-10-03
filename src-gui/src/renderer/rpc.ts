@@ -31,6 +31,7 @@ import { Provider } from "models/apiModel";
 import { providerToConcatenatedMultiAddr } from "utils/multiAddrUtils";
 import { MoneroRecoveryResponse } from "models/rpcModel";
 import { ListSellersResponse } from "../models/tauriModel";
+import logger from "utils/logger";
 
 export async function initEventListeners() {
   // This operation is in-expensive
@@ -39,6 +40,10 @@ export async function initEventListeners() {
   if (await checkContextAvailability()) {
     store.dispatch(contextStatusEventReceived({ type: "Available" }));
   } else {
+    // Warning: If we reload the page while the Context is being initialized, this function will throw an error
+    initializeContext().catch((e) => {
+      logger.error(e, "Failed to initialize context on page load. This might be because we reloaded the page while the context was being initialized");
+    });
     initializeContext();
   }
 
