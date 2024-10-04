@@ -5,7 +5,8 @@ use std::time::Duration;
 use anyhow::Result;
 use uuid::Uuid;
 
-use crate::bitcoin::{ExpiredTimelocks, Wallet};
+use crate::bitcoin::wallet::ScriptStatus;
+use crate::bitcoin::{ExpiredTimelocks, TxLock, Wallet};
 use crate::cli::api::tauri_bindings::TauriHandle;
 use crate::protocol::bob::BobState;
 use crate::protocol::{Database, State};
@@ -17,7 +18,9 @@ use super::api::tauri_bindings::TauriEmitter;
 pub struct Watcher {
     wallet: Arc<Wallet>,
     database: Arc<dyn Database + Send + Sync>,
-    subscriptions: HashMap<Uuid, ExpiredTimelocks>,
+    /// This saves for every running swap the expired timelocks as well as
+    /// the [`ScriptStatus`] of [`TxLock`].
+    current_swaps: HashMap<(Uuid, TxLock), (ExpiredTimelocks, ScriptStatus)>,
     tauri: Option<TauriHandle>,
 }
 
@@ -30,7 +33,7 @@ impl Watcher {
         Self {
             wallet,
             database,
-            subscriptions: HashMap::new(),
+            current_swaps: HashMap::new(),
             tauri,
         }
     }
@@ -53,7 +56,7 @@ impl Watcher {
             // Check for changes for every current swap
             for (uuid, state) in current_swaps {
                 // Check if the timelock has expired
-                let new_status = match state.expired_timelocks(self.wallet.clone()).await {
+                let new_timelock_status = match state.expired_timelocks(self.wallet.clone()).await {
                     Ok(Some(val)) => val,
                     Ok(None) => continue, // ignore finished swaps
                     Err(e) => {
@@ -61,10 +64,13 @@ impl Watcher {
                         continue;
                     }
                 };
+                let new_confirmation_status = match self.wallet.status_of_script(state.tx_lock()) {
+                    
+                }
                 // Check if the status changed
-                if let Some(old_status) = self.subscriptions.get(&uuid) {
+                if let Some(old_status) = self.current_swaps.get(&uuid) {
                     // And send a tauri event if it did
-                    if *old_status != new_status {
+                    if *old_status != new_timelock_status {
                         self.tauri.emit_timelock_change_event(uuid);
                     }
                 } else {
@@ -73,7 +79,7 @@ impl Watcher {
                 }
 
                 // Insert new status
-                self.subscriptions.insert(uuid, new_status);
+                self.current_swaps.insert(uuid, new_timelock_status);
             }
 
             // Sleep and check again later
