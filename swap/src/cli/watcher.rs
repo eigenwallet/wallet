@@ -5,8 +5,7 @@ use std::time::Duration;
 use anyhow::Result;
 use uuid::Uuid;
 
-use crate::bitcoin::wallet::ScriptStatus;
-use crate::bitcoin::{ExpiredTimelocks, TxLock, Wallet};
+use crate::bitcoin::{ExpiredTimelocks, Wallet};
 use crate::cli::api::tauri_bindings::TauriHandle;
 use crate::protocol::bob::BobState;
 use crate::protocol::{Database, State};
@@ -20,7 +19,7 @@ pub struct Watcher {
     database: Arc<dyn Database + Send + Sync>,
     /// This saves for every running swap the expired timelocks as well as
     /// the [`ScriptStatus`] of [`TxLock`].
-    current_swaps: HashMap<(Uuid, TxLock), (ExpiredTimelocks, ScriptStatus)>,
+    current_swaps: HashMap<Uuid, ExpiredTimelocks>,
     tauri: Option<TauriHandle>,
 }
 
@@ -64,9 +63,6 @@ impl Watcher {
                         continue;
                     }
                 };
-                let new_confirmation_status = match self.wallet.status_of_script(state.tx_lock()) {
-                    
-                }
                 // Check if the status changed
                 if let Some(old_status) = self.current_swaps.get(&uuid) {
                     // And send a tauri event if it did

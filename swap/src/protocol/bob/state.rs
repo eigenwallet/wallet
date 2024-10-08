@@ -16,7 +16,6 @@ use ecdsa_fun::Signature;
 use monero_rpc::wallet::BlockHeight;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
-use serde_with::rust::seq_display_fromstr;
 use sha2::Sha256;
 use sigma_fun::ext::dl_secp256k1_ed25519_eq::CrossCurveDLEQProof;
 use std::fmt;

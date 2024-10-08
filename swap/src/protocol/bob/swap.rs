@@ -1,3 +1,4 @@
+use crate::bitcoin::wallet::ScriptStatus;
 use crate::bitcoin::{ExpiredTimelocks, TxCancel, TxRefund};
 use crate::cli::api::tauri_bindings::{TauriEmitter, TauriHandle, TauriSwapProgressEvent};
 use crate::cli::EventLoopHandle;
@@ -118,13 +119,17 @@ async fn next_state(
             // which can lead to the wallet not detect the transaction.
             let monero_wallet_restore_blockheight = monero_wallet.block_height().await?;
 
-            // Alice and Bob have exchanged info
+            // Alice and Bob have exchanged info 
+            // -> finalize the btc lock transaction.
             let (state3, tx_lock) = state2.lock_btc().await?;
             let signed_tx = bitcoin_wallet
                 .sign_and_finalize(tx_lock.clone().into())
                 .await
                 .context("Failed to sign Bitcoin lock transaction")?;
+            // Actually publish tx_lock
+            let (_,  subscription) = bitcoin_wallet.broadcast(signed_tx, "lock").await?;
 
+            // Emit an event to tauri that the the swap started
             event_emitter.emit_swap_progress_event(
                 swap_id,
                 TauriSwapProgressEvent::Started {
@@ -134,8 +139,9 @@ async fn next_state(
                 },
             );
 
-            let (..) = bitcoin_wallet.broadcast(signed_tx, "lock").await?;
-
+            // Wait until tx_lock was confirmed
+            subscription.wait_until_final().await?;
+            
             BobState::BtcLocked {
                 state3,
                 monero_wallet_restore_blockheight,
@@ -188,7 +194,17 @@ async fn next_state(
             // Wait for either Alice to send the XMR transfer proof or until we can cancel the swap
             let transfer_proof_watcher = event_loop_handle.recv_transfer_proof();
             let cancel_timelock_expires =
-                tx_lock_status.wait_until_confirmed_with(state3.cancel_timelock);
+                tx_lock_status.wait_until(|status| {
+                    // Emit a tauri event on new confirmations
+                    if let ScriptStatus::Confirmed(confirmed) = status {
+                        event_emitter.emit_swap_progress_event(swap_id, TauriSwapProgressEvent::BtcLockTxInMempool { 
+                            btc_lock_txid: state3.tx_lock_id(), 
+                            btc_lock_confirmations: u64::from(confirmed.confirmations())
+                        });
+                    }
+                    // Stop when the cancel timelock expires
+                    status.is_confirmed_with(state3.cancel_timelock)
+                });
 
             select! {
                 // Alice sent us the transfer proof for the Monero she locked
