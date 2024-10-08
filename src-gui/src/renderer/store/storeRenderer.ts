@@ -18,7 +18,10 @@ const rootPersistConfig = {
 };
 
 // Use Tauri's store plugin for persistent settings
+// TODO: Lazily load the storage here. Currently this will prevent the frontend from rendering until a request to the Tauri backend is made
+// See: https://github.com/tauri-apps/plugins-workspace/pull/1860
 const tauriStore = await createStore(`${getNetworkName()}_settings.bin`, {
+  // Workaround for https://github.com/tauri-apps/plugins-workspace/issues/1865
   autoSave: 1000 as unknown as boolean,
 });
 

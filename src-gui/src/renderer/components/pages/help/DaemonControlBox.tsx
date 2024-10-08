@@ -29,7 +29,7 @@ export default function DaemonControlBox() {
     (s) => s.rpc.status?.type === "Initializing",
   );
 
-  const stringifiedDaemonStatus = useAppSelector((s) => s.rpc.status?.type ?? "not started");
+  const stringifiedDaemonStatus = useAppSelector((s) => s.rpc.status?.type ?? "Not started");
 
   return (
     <InfoBox
