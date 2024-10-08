@@ -72,9 +72,9 @@ export default function SettingsBox() {
   );
 }
 
-// URL validation function, forces the URL to be in the format of "protocol://host:port/path"
+// URL validation function, forces the URL to be in the format of "protocol://host:port/"
 function isValidUrl(url: string, allowedProtocols: string[]): boolean {
-  const urlPattern = new RegExp(`^(${allowedProtocols.join("|")})://[^\\s]+`);
+  const urlPattern = new RegExp(`^(${allowedProtocols.join("|")})://[^\\s]+:\\d+/?$`);
   return urlPattern.test(url);
 }
 

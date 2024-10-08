@@ -1,5 +1,5 @@
+import { TextFieldProps, TextField } from "@material-ui/core";
 import { useState, useEffect, useCallback } from "react";
-import { TextField, TextFieldProps } from "@mui/material";
 
 interface ValidatedTextFieldProps extends Omit<TextFieldProps, "onChange" | "value"> {
   value: string | null;
@@ -39,7 +39,7 @@ export default function ValidatedTextField({
     setInputValue(value || "");
   }, [value]);
 
-  const isError = !allowEmpty && (inputValue === "" || !isValid(inputValue));
+  const isError = allowEmpty && inputValue === "" ? false : !isValid(inputValue);
 
   return (
     <TextField
