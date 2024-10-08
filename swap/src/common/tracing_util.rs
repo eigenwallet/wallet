@@ -64,13 +64,13 @@ pub fn init(
             .with(file_layer)
             .with(tauri_layer)
             .with(terminal_layer.json().with_filter(level_filter))
-            .init();
+            .try_init()?;
     } else {
         tracing_subscriber::registry()
             .with(file_layer)
             .with(tauri_layer)
             .with(terminal_layer.with_filter(level_filter))
-            .init();
+            .try_init()?;
     }
 
     // Now we can use the tracing macros to log messages

@@ -435,7 +435,7 @@ async fn init_bitcoin_wallet(
     seed: &Seed,
     data_dir: PathBuf,
     env_config: EnvConfig,
-    bitcoin_target_block: usize,
+    bitcoin_target_block: u16,
 ) -> Result<bitcoin::Wallet> {
     let wallet_dir = data_dir.join("wallet");
 
