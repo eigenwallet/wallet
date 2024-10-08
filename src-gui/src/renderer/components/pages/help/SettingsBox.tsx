@@ -20,6 +20,7 @@ import { useAppDispatch, useAppSelector } from "store/hooks";
 import ValidatedTextField from "renderer/components/other/ValidatedTextField";
 import RefreshIcon from "@material-ui/icons/Refresh";
 import HelpIcon from '@material-ui/icons/HelpOutline';
+import { ReactNode } from "react";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -108,7 +109,7 @@ function ElectrumRpcUrlSetting() {
   );
 }
 
-function SettingLabel({ label, tooltip }: { label: string, tooltip: string | null }) {
+function SettingLabel({ label, tooltip }: { label: ReactNode, tooltip: string | null }) {
   return <Box style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
     <Box>
       {label}

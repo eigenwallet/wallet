@@ -726,8 +726,10 @@ impl Client {
         let config = bdk::electrum_client::ConfigBuilder::default()
             .retry(5)
             .build();
+
         let electrum = bdk::electrum_client::Client::from_config(electrum_rpc_url.as_str(), config)
             .context("Failed to initialize Electrum RPC client")?;
+            
         // Initially fetch the latest block for storing the height.
         // We do not act on this subscription after this call.
         let latest_block = electrum
@@ -736,6 +738,7 @@ impl Client {
 
         let client = bdk::electrum_client::Client::new(electrum_rpc_url.as_str())
             .context("Failed to initialize Electrum RPC client")?;
+
         let blockchain = ElectrumBlockchain::from(client);
         let last_sync = Instant::now()
             .checked_sub(interval)
