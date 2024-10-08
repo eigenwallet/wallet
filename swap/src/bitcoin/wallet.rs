@@ -589,7 +589,7 @@ pub struct StaticFeeRate {
 
 #[cfg(test)]
 impl EstimateFeeRate for StaticFeeRate {
-    fn estimate_feerate(&self, _target_block: usize) -> Result<FeeRate> {
+    fn estimate_feerate(&self, _target_block: u16) -> Result<FeeRate> {
         Ok(self.fee_rate)
     }
 

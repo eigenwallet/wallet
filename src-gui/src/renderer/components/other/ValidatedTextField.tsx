@@ -1,28 +1,17 @@
-import { useState, useEffect } from "react";
-import {
-  TextField,
-  TextFieldProps,
-  StandardTextFieldProps,
-  FilledTextFieldProps,
-  OutlinedTextFieldProps,
-} from "@material-ui/core";
+import { useState, useEffect, useCallback } from "react";
+import { TextField, TextFieldProps } from "@mui/material";
 
-type VariantTextFieldProps =
-  | StandardTextFieldProps
-  | FilledTextFieldProps
-  | OutlinedTextFieldProps;
-
-interface ValidatedTextFieldProps
-  extends Omit<VariantTextFieldProps, "onChange" | "value"> {
+interface ValidatedTextFieldProps extends Omit<TextFieldProps, "onChange" | "value"> {
   value: string | null;
-  isValid: (value: string | null) => boolean;
-  onValidatedChange: (value: string) => void;
+  isValid: (value: string) => boolean;
+  onValidatedChange: (value: string | null) => void;
   allowEmpty?: boolean;
+  helperText?: string;
 }
 
 export default function ValidatedTextField({
   label,
-  value,
+  value = "",
   isValid,
   onValidatedChange,
   helperText = "Invalid input",
@@ -30,39 +19,35 @@ export default function ValidatedTextField({
   allowEmpty = false,
   ...props
 }: ValidatedTextFieldProps) {
-  const [inputValue, setInputValue] = useState(value);
-  const [errorState, setErrorState] = useState(false);
+  const [inputValue, setInputValue] = useState(value || "");
 
-  function handleChange(newValue: string | null): void {
-    newValue = newValue == null ? "" : newValue.trim();
+  const handleChange = useCallback(
+    (newValue: string) => {
+      const trimmedValue = newValue.trim();
+      setInputValue(trimmedValue);
 
-    setInputValue(newValue);
+      if (trimmedValue === "" && allowEmpty) {
+        onValidatedChange(null);
+      } else if (isValid(trimmedValue)) {
+        onValidatedChange(trimmedValue);
+      }
+    },
+    [allowEmpty, isValid, onValidatedChange]
+  );
 
-    if (newValue === "" && allowEmpty) {
-      setErrorState(false);
-      onValidatedChange(null);
-    } else if (newValue === "" && !allowEmpty) {
-      setErrorState(true);
-    } else if (isValid(newValue)) {
-      setErrorState(false);
-      onValidatedChange(newValue);
-    } else {
-      setErrorState(true);
-    }
-  };
-
-  // In case the value changes from the outside, we need to update the input value
   useEffect(() => {
-    handleChange(value);
+    setInputValue(value || "");
   }, [value]);
+
+  const isError = !allowEmpty && (inputValue === "" || !isValid(inputValue));
 
   return (
     <TextField
       label={label}
-      value={inputValue ?? ""}
+      value={inputValue}
       onChange={(e) => handleChange(e.target.value)}
-      error={errorState}
-      helperText={errorState ? helperText : ""}
+      error={isError}
+      helperText={isError ? helperText : ""}
       variant={variant}
       {...props}
     />
