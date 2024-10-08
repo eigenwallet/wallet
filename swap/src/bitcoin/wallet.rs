@@ -729,7 +729,7 @@ impl Client {
 
         let electrum = bdk::electrum_client::Client::from_config(electrum_rpc_url.as_str(), config)
             .context("Failed to initialize Electrum RPC client")?;
-            
+
         // Initially fetch the latest block for storing the height.
         // We do not act on this subscription after this call.
         let latest_block = electrum
