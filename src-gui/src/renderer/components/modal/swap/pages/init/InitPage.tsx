@@ -108,7 +108,6 @@ export default function InitPage() {
           endIcon={<PlayArrowIcon />}
           onInvoke={init}
           displayErrorSnackbar
-          onPendingChange={}
         >
           Request quote and start swap
         </PromiseInvokeButton>
