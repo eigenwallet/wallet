@@ -6,7 +6,6 @@ import { parseDateString } from "utils/parseUtils";
 import { useMemo } from "react";
 import { isCliLogRelatedToSwap } from "models/cliModel";
 
-// Use throughout your app instead of plain `useDispatch` and `useSelector`
 export const useAppDispatch = () => useDispatch<AppDispatch>();
 export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
 
@@ -34,7 +33,7 @@ export function useSwapInfo(
   swapId: string | null,
 ): GetSwapInfoResponseExt | null {
   return useAppSelector((state) =>
-    swapId ? (state.rpc.state.swapInfos[swapId] ?? null) : null,
+    swapId ? state.rpc.state.swapInfos[swapId] ?? null : null,
   );
 }
 
@@ -72,4 +71,8 @@ export function useSwapInfosSortedByDate() {
     Object.values(swapInfos),
     (swap) => -parseDateString(swap.start_date),
   );
+}
+
+export function useSettings() {
+  return useAppSelector((state) => state.settings);
 }

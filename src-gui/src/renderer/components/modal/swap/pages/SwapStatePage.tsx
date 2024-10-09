@@ -18,15 +18,11 @@ import InitiatedPage from "./init/InitiatedPage";
 import InitPage from "./init/InitPage";
 import WaitingForBitcoinDepositPage from "./init/WaitingForBitcoinDepositPage";
 
-export default function SwapStatePage({
-  state,
-}: {
-  state: SwapState | null
-}) {
-
+export default function SwapStatePage({ state }: { state: SwapState | null }) {
   if (state === null) {
     return <InitPage />;
   }
+  
   switch (state.curr.type) {
     case "Initiated":
       return <InitiatedPage />;

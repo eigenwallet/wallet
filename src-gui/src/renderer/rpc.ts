@@ -35,6 +35,7 @@ import { Provider } from "models/apiModel";
 import { providerToConcatenatedMultiAddr } from "utils/multiAddrUtils";
 import { MoneroRecoveryResponse } from "models/rpcModel";
 import { ListSellersResponse } from "../models/tauriModel";
+import logger from "utils/logger";
 
 export async function initEventListeners() {
   // This operation is in-expensive
@@ -42,6 +43,12 @@ export async function initEventListeners() {
   // TOOD: Replace this with a more reliable mechanism (such as an event replay mechanism)
   if (await checkContextAvailability()) {
     store.dispatch(contextStatusEventReceived({ type: "Available" }));
+  } else {
+    // Warning: If we reload the page while the Context is being initialized, this function will throw an error
+    initializeContext().catch((e) => {
+      logger.error(e, "Failed to initialize context on page load. This might be because we reloaded the page while the context was being initialized");
+    });
+    initializeContext();
   }
 
   listen<TauriSwapProgressEventWrapper>("swap-progress-update", (event) => {
@@ -184,5 +191,12 @@ export async function listSellersAtRendezvousPoint(
 ): Promise<ListSellersResponse> {
   return await invoke<ListSellersArgs, ListSellersResponse>("list_sellers", {
     rendezvous_point: rendezvousPointAddress,
+  });
+}
+
+export async function initializeContext() {
+  const settings = store.getState().settings;
+  await invokeUnsafe<void>("initialize_context", {
+    settings,
   });
 }

@@ -1,9 +1,10 @@
 use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
 use anyhow::Result;
 use bitcoin::Txid;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use strum::Display;
 use typeshare::typeshare;
+use url::Url;
 use uuid::Uuid;
 
 const CLI_LOG_EMITTED_EVENT_NAME: &str = "cli-log-emitted";
@@ -99,6 +100,7 @@ pub enum TauriContextInitializationProgress {
 #[derive(Display, Clone, Serialize)]
 #[serde(tag = "type", content = "content")]
 pub enum TauriContextStatusEvent {
+    NotInitialized,
     Initializing(TauriContextInitializationProgress),
     Available,
     Failed,
@@ -206,4 +208,17 @@ pub struct TauriTimelockChangeEvent {
     #[typeshare(serialized_as = "string")]
     swap_id: Uuid,
     timelock: Option<ExpiredTimelocks>,
+}
+  
+/// This struct contains the settings for the Context
+#[typeshare]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TauriSettings {
+    /// This is used for estimating the target block for Bitcoin (fee)
+    pub bitcoin_confirmation_target: u16,
+    /// The URL of the Monero node e.g `http://xmr.node:18081`
+    pub monero_node_url: Option<String>,
+    /// The URL of the Electrum RPC server e.g `ssl://bitcoin.com:50001`
+    #[typeshare(serialized_as = "string")]
+    pub electrum_rpc_url: Option<Url>,
 }
