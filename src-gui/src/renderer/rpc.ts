@@ -69,6 +69,11 @@ export async function initEventListeners() {
   listen<TauriDatabaseStateEvent>("swap-database-state-update", (event) => {
     console.log("Received swap database state update event", event.payload);
     getSwapInfo(event.payload.swap_id);
+
+    // This is ugly but it's the best we can do for now
+    // Sometimes we are too quick to fetch the swap info and the new state is not yet reflected
+    // in the database. So we wait a bit before fetching the new state
+    setTimeout(() => getSwapInfo(event.payload.swap_id), 3000);
   });
 
   listen<TauriTimelockChangeEvent>('timelock-change', (event) => {
