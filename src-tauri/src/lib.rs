@@ -124,6 +124,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -201,6 +202,7 @@ async fn is_context_available(context: tauri::State<'_, RwLock<State>>) -> Resul
 #[tauri::command]
 async fn initialize_context(
     settings: TauriSettings,
+    testnet: bool,
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, RwLock<State>>,
 ) -> Result<(), String> {
@@ -213,13 +215,13 @@ async fn initialize_context(
     // Get app handle and create a Tauri handle
     let tauri_handle = TauriHandle::new(app_handle.clone());
 
-    let context_result = ContextBuilder::new(true)
+    let context_result = ContextBuilder::new(testnet)
         .with_bitcoin(Bitcoin {
-            bitcoin_electrum_rpc_url: settings.electrum_rpc_url,
-            bitcoin_target_block: settings.bitcoin_confirmation_target.into(),
+            bitcoin_electrum_rpc_url: settings.electrum_rpc_url.clone(),
+            bitcoin_target_block: None,
         })
         .with_monero(Monero {
-            monero_daemon_address: settings.monero_node_url,
+            monero_daemon_address: settings.monero_node_url.clone(),
         })
         .with_json(false)
         .with_debug(true)
