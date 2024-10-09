@@ -13,13 +13,8 @@ export default defineConfig(async () => ({
   plugins: [
     react(),
     tsconfigPaths(),
-    topLevelAwait({
-      // The export name of top-level await promise for each chunk module
-      promiseExportName: "__tla",
-      // The function to generate import names of top-level await promise in each chunk module
-      promiseImportName: i => `__tla_${i}`
-    }),
-    // automatically regenerate the typescript bindings when there's a change
+    topLevelAwait(),
+    // Automatically regenerate the typescript bindings when there's a change to the rust code
     watch({
       pattern: ["../swap/src/**/*"],
       command: "yarn run gen-bindings",
