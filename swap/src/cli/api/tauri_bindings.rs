@@ -64,7 +64,7 @@ pub trait TauriEmitter {
         );
     }
 
-    fn emit_timelock_change_event(&self, swap_id: Uuid, timelock: ExpiredTimelocks) {
+    fn emit_timelock_change_event(&self, swap_id: Uuid, timelock: Option<ExpiredTimelocks>) {
         let _ = self.emit_tauri_event(
             TIMELOCK_CHANGE_EVENT_NAME,
             TauriTimelockChangeEvent { swap_id, timelock },
@@ -205,5 +205,5 @@ pub struct TauriDatabaseStateEvent {
 pub struct TauriTimelockChangeEvent {
     #[typeshare(serialized_as = "string")]
     swap_id: Uuid,
-    timelock: ExpiredTimelocks,
+    timelock: Option<ExpiredTimelocks>,
 }

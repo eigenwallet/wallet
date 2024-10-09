@@ -215,11 +215,9 @@ impl Database for SqliteDatabase {
         let mut conn = self.pool.acquire().await?;
         let entered_at = OffsetDateTime::now_utc();
 
-        self.tauri_handle.emit_swap_state_change_event(swap_id);
-
-        let swap_id = swap_id.to_string();
         let swap = serde_json::to_string(&Swap::from(state))?;
         let entered_at = entered_at.to_string();
+        let swap_id_str = swap_id.to_string();
 
         sqlx::query!(
             r#"
@@ -229,12 +227,16 @@ impl Database for SqliteDatabase {
                 state
                 ) values (?, ?, ?);
         "#,
-            swap_id,
+            swap_id_str,
             entered_at,
             swap
         )
         .execute(&mut conn)
         .await?;
+
+        // Emit event to Tauri, the frontend will then send another request to get the latest state
+        // This is why we don't send the state here
+        self.tauri_handle.emit_swap_state_change_event(swap_id);
 
         Ok(())
     }

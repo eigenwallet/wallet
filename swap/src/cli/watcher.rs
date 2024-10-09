@@ -9,14 +9,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-/// A long running task which watches for changes to timelocks and the number of confirmations.
+/// A long running task which watches for changes to timelocks
 #[derive(Clone)]
 pub struct Watcher {
     wallet: Arc<Wallet>,
     database: Arc<dyn Database + Send + Sync>,
     tauri: Option<TauriHandle>,
     /// This saves for every running swap the last known timelock status
-    cached_timelocks: HashMap<Uuid, ExpiredTimelocks>,
+    cached_timelocks: HashMap<Uuid, Option<ExpiredTimelocks>>,
 }
 
 impl Watcher {
@@ -53,32 +53,34 @@ impl Watcher {
             };
 
             // Check for changes for every current swap
-            for (uuid, state) in current_swaps {
-                // Check if the timelock has expired
+            for (swap_id, state) in current_swaps {
+                // Determine if the timelock has expired for the current swap.
+                // We intentionally do not skip swaps with a None timelock status, as this represents a valid state.
+                // When a swap reaches its final state, the timelock becomes irrelevant, but it is still important to explicitly send None
+                // This indicates that the timelock no longer needs to be displayed in the GUI
                 let new_timelock_status = match state.expired_timelocks(self.wallet.clone()).await {
-                    Ok(Some(val)) => val,
-                    Ok(None) => continue, // ignore finished swaps
+                    Ok(val) => val,
                     Err(e) => {
-                        tracing::error!(error=%e, "Failed to fetch expired timelocks, retrying later");
+                        tracing::error!(error=%e, swap_id=%swap_id, "Failed to check timelock status, retrying later");
                         continue;
                     }
                 };
 
                 // Check if the status changed
-                if let Some(old_status) = self.cached_timelocks.get(&uuid) {
+                if let Some(old_status) = self.cached_timelocks.get(&swap_id) {
                     // And send a tauri event if it did
                     if *old_status != new_timelock_status {
                         self.tauri
-                            .emit_timelock_change_event(uuid, new_timelock_status);
+                            .emit_timelock_change_event(swap_id, new_timelock_status);
                     }
                 } else {
                     // If this is the first time we see this swap, send a tauri event, too
                     self.tauri
-                        .emit_timelock_change_event(uuid, new_timelock_status);
+                        .emit_timelock_change_event(swap_id, new_timelock_status);
                 }
 
                 // Insert new status
-                self.cached_timelocks.insert(uuid, new_timelock_status);
+                self.cached_timelocks.insert(swap_id, new_timelock_status);
             }
 
             // Sleep and check again later
