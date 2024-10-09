@@ -23,16 +23,6 @@ export default function SwapStatePage({
 }: {
   state: SwapState | null
 }) {
-  // TODO: Reimplement this using tauri events
-  /*
-  const isSyncingMoneroWallet = useAppSelector(
-    (state) => state.rpc.state.moneroWallet.isSyncing,
-  );
-
-  if (isSyncingMoneroWallet) {
-    return <SyncingMoneroWalletPage />;
-  }
-  */
 
   if (state === null) {
     return <InitPage />;

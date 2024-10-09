@@ -1,4 +1,4 @@
-use crate::{monero, network::quote::BidQuote};
+use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
 use anyhow::Result;
 use bitcoin::Txid;
 use serde::Serialize;
@@ -60,16 +60,14 @@ pub trait TauriEmitter {
     fn emit_swap_state_change_event(&self, swap_id: Uuid) {
         let _ = self.emit_tauri_event(
             SWAP_STATE_CHANGE_EVENT_NAME,
-            TauriDatabaseStateEvent {
-                swap_id,
-            },
+            TauriDatabaseStateEvent { swap_id },
         );
     }
 
-    fn emit_timelock_change_event(&self, swap_id: Uuid) {
+    fn emit_timelock_change_event(&self, swap_id: Uuid, timelock: ExpiredTimelocks) {
         let _ = self.emit_tauri_event(
             TIMELOCK_CHANGE_EVENT_NAME,
-            TauriTimelockChangeEvent { swap_id },
+            TauriTimelockChangeEvent { swap_id, timelock },
         );
     }
 }
@@ -206,6 +204,6 @@ pub struct TauriDatabaseStateEvent {
 #[typeshare]
 pub struct TauriTimelockChangeEvent {
     #[typeshare(serialized_as = "string")]
-    swap_id: Uuid
-    // Maybe add which timelock changed? E.g. cancel, refund, punish
+    swap_id: Uuid,
+    timelock: ExpiredTimelocks,
 }

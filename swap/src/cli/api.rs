@@ -308,23 +308,13 @@ impl ContextBuilder {
                 TauriContextInitializationProgress::OpeningBitcoinWallet,
             ));
 
-        let bitcoin_wallet = 'block: {
-            let Some(bitcoin) = self.bitcoin else {
-                break 'block None;
-            };
-
-            let (bitcoin_electrum_rpc_url, bitcoin_target_block) =
-                bitcoin.apply_defaults(self.is_testnet)?;
+        let bitcoin_wallet = if let Some(bitcoin) = self.bitcoin {
+            let (url, target_block) = bitcoin.apply_defaults(self.is_testnet)?;
             Some(Arc::new(
-                init_bitcoin_wallet(
-                    bitcoin_electrum_rpc_url,
-                    &seed,
-                    data_dir.clone(),
-                    env_config,
-                    bitcoin_target_block,
-                )
-                .await?,
+                init_bitcoin_wallet(url, &seed, data_dir.clone(), env_config, target_block).await?,
             ))
+        } else {
+            None
         };
 
         let db = open_db(
@@ -334,11 +324,13 @@ impl ContextBuilder {
         )
         .await?;
 
-        // If we are connected to the Bitcoin blockchain
+        // If we are connected to the Bitcoin blockchain and if there is a handle to Tauri present,
         // we start a background task to watch for timelock changes.
         if let Some(wallet) = bitcoin_wallet.clone() {
-            let watcher = Watcher::new(wallet, db.clone(), self.tauri_handle.clone());
-            tokio::spawn(watcher.run());
+            if self.tauri_handle.is_some() {
+                let watcher = Watcher::new(wallet, db.clone(), self.tauri_handle.clone());
+                tokio::spawn(watcher.run());
+            }
         }
 
         // We initialize the Monero wallet below
@@ -367,8 +359,6 @@ impl ContextBuilder {
             ));
 
         let tor_socks5_port = self.tor.map_or(9050, |tor| tor.tor_socks5_port);
-
-        
 
         let context = Context {
             db,

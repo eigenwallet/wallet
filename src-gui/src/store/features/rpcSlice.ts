@@ -11,6 +11,7 @@ import { MoneroRecoveryResponse } from "../../models/rpcModel";
 import { GetSwapInfoResponseExt } from "models/tauriModelExt";
 import { getLogsAndStringsFromRawFileString } from "utils/parseUtils";
 import { CliLog } from "models/cliModel";
+import logger from "utils/logger";
 
 interface State {
   balance: number | null;
@@ -65,18 +66,15 @@ export const rpcSlice = createSlice({
     ) {
       slice.status = action.payload;
     },
-    databaseStateEventReceived(
-      slice,
-      action: PayloadAction<TauriDatabaseStateEvent>,
-    ) {
-      const swap = slice.state.swapInfos[action.payload.swap_id];
-      // TODO: refetch details for this swap
-    },
     timelockChangeEventReceived(
       slice,
       action: PayloadAction<TauriTimelockChangeEvent>
     ) {
-      // TODO: refetch timelock details of this swap
+      if (slice.state.swapInfos[action.payload.swap_id]) {
+        slice.state.swapInfos[action.payload.swap_id].timelock = action.payload.timelock;
+      } else {
+        logger.warn(`Received timelock change event for unknown swap ${action.payload.swap_id}`);
+      }
     },
     rpcSetBalance(slice, action: PayloadAction<number>) {
       slice.state.balance = action.payload;
@@ -118,7 +116,6 @@ export const rpcSlice = createSlice({
 export const {
   contextStatusEventReceived,
   receivedCliLog,
-  databaseStateEventReceived,
   rpcSetBalance,
   rpcSetWithdrawTxId,
   rpcResetWithdrawTxId,
@@ -126,6 +123,7 @@ export const {
   rpcSetSwapInfo,
   rpcSetMoneroRecoveryKeys,
   rpcResetMoneroRecoveryKeys,
+  timelockChangeEventReceived
 } = rpcSlice.actions;
 
 export default rpcSlice.reducer;

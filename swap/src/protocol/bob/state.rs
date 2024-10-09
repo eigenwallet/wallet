@@ -78,13 +78,16 @@ impl fmt::Display for BobState {
 }
 
 impl BobState {
-    /// Fetch the expired timelocks for the swap. 
+    /// Fetch the expired timelocks for the swap.
     /// Depending on the State, there are no locks to expire.
-    pub async fn expired_timelocks(&self, bitcoin_wallet: Arc<Wallet>) -> Result<Option<ExpiredTimelocks>> {
+    pub async fn expired_timelocks(
+        &self,
+        bitcoin_wallet: Arc<Wallet>,
+    ) -> Result<Option<ExpiredTimelocks>> {
         Ok(match self.clone() {
-            BobState::Started { .. } | BobState::SafelyAborted | BobState::SwapSetupCompleted(_) => {
-                None
-            }
+            BobState::Started { .. }
+            | BobState::SafelyAborted
+            | BobState::SwapSetupCompleted(_) => None,
             BobState::BtcLocked { state3: state, .. }
             | BobState::XmrLockProofReceived { state, .. } => {
                 Some(state.expired_timelock(&bitcoin_wallet).await?)
@@ -96,21 +99,10 @@ impl BobState {
                 Some(state.expired_timelock(&bitcoin_wallet).await?)
             }
             BobState::BtcPunished { .. } => Some(ExpiredTimelocks::Punish),
-            BobState::BtcRefunded(_) | BobState::BtcRedeemed(_) | BobState::XmrRedeemed { .. } => None,
+            BobState::BtcRefunded(_) | BobState::BtcRedeemed(_) | BobState::XmrRedeemed { .. } => {
+                None
+            }
         })
-    }
-
-    /// Get the BTC lock transaction for this swap, if 
-    /// it is in a state where the transaction is generated. 
-    pub fn tx_lock(&self) -> Option<TxLock> {
-        match self {
-            BobState::SwapSetupCompleted(state) => Some(state.tx_lock.clone()),
-            BobState::BtcLocked { state3: state, .. } | BobState::XmrLockProofReceived { state, .. } => Some(state.tx_lock.clone()),
-            BobState::XmrLocked(state) | BobState::EncSigSent(state) => Some(state.tx_lock.clone()),
-            BobState::BtcRedeemed(state) => Some(state.tx_lock.clone()),
-            BobState::CancelTimelockExpired(state) | BobState::BtcCancelled(state) | BobState::BtcRefunded(state) | BobState::BtcPunished { state, .. } => Some(state.tx_lock.clone()),
-            BobState::Started { .. } | BobState::XmrRedeemed { .. } | BobState::SafelyAborted => None,
-        }
     }
 }
 

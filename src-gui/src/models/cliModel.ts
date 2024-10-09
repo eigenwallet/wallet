@@ -44,7 +44,7 @@ export function isCliLogRelatedToSwap(
   //  - there exists a span which has the swap id as an attribute
   return (
     log.fields["swap_id"] === swapId ||
-    log.spans?.findIndex((span) => span["swap_id"] === swapId) !== -1
+    (log.spans?.some((span) => span["swap_id"] === swapId) ?? false)
   );
 }
 

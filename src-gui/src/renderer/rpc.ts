@@ -20,13 +20,14 @@ import {
   WithdrawBtcResponse,
   TauriDatabaseStateEvent,
   TauriTimelockChangeEvent,
+  GetSwapInfoArgs,
 } from "models/tauriModel";
 import {
   contextStatusEventReceived,
   receivedCliLog,
-  databaseStateEventReceived,
   rpcSetBalance,
   rpcSetSwapInfo,
+  timelockChangeEventReceived,
 } from "store/features/rpcSlice";
 import { swapProgressEventReceived } from "store/features/swapSlice";
 import { store } from "./store/storeRenderer";
@@ -60,7 +61,7 @@ export async function initEventListeners() {
 
   listen<TauriDatabaseStateEvent>("swap-database-state-update", (event) => {
     console.log("Received swap database state update event", event.payload);
-    store.dispatch(databaseStateEventReceived(event.payload));
+    getSwapInfo(event.payload.swap_id);
   });
 
   listen<TauriTimelockChangeEvent>('timelock-change', (event) => {
@@ -97,6 +98,17 @@ export async function getAllSwapInfos() {
   response.forEach((swapInfo) => {
     store.dispatch(rpcSetSwapInfo(swapInfo));
   });
+}
+
+export async function getSwapInfo(swapId: string) {
+  const response = await invoke<GetSwapInfoArgs, GetSwapInfoResponse>(
+    "get_swap_info",
+    {
+      swap_id: swapId,
+    },
+  );
+
+  store.dispatch(rpcSetSwapInfo(response));
 }
 
 export async function withdrawBtc(address: string): Promise<string> {
@@ -174,7 +186,3 @@ export async function listSellersAtRendezvousPoint(
     rendezvous_point: rendezvousPointAddress,
   });
 }
-function timelockChangeEventReceived(payload: TauriTimelockChangeEvent): any {
-  throw new Error("Function not implemented.");
-}
-

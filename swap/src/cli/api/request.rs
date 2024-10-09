@@ -492,7 +492,7 @@ pub async fn get_swap_info(
             let Ok(tx_lock_fee) = state2.tx_lock.fee() else {
                 return None;
             };
-            
+
             Some((
                 xmr_amount,
                 btc_amount,
