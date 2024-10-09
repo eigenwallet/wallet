@@ -12,8 +12,6 @@ use sha2::Sha256;
 use sigma_fun::ext::dl_secp256k1_ed25519_eq::{CrossCurveDLEQ, CrossCurveDLEQProof};
 use sigma_fun::HashTranscript;
 use std::convert::TryInto;
-use std::fmt::Display;
-use std::fmt::Formatter;
 use uuid::Uuid;
 
 pub mod alice;

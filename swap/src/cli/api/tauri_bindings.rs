@@ -209,7 +209,7 @@ pub struct TauriTimelockChangeEvent {
     swap_id: Uuid,
     timelock: Option<ExpiredTimelocks>,
 }
-  
+
 /// This struct contains the settings for the Context
 #[typeshare]
 #[derive(Debug, Serialize, Deserialize, Clone)]
