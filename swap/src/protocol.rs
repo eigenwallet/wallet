@@ -82,15 +82,6 @@ pub enum State {
     Bob(BobState),
 }
 
-impl Display for State {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            State::Alice(state) => Display::fmt(state, f),
-            State::Bob(state) => Display::fmt(state, f),
-        }
-    }
-}
-
 impl State {
     pub fn swap_finished(&self) -> bool {
         match self {
