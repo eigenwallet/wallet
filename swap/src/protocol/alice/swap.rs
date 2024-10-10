@@ -165,35 +165,22 @@ where
         } => {
             let tx_lock_status = bitcoin_wallet.subscribe_to(state3.tx_lock.clone()).await;
 
-            loop {
-                tokio::select! {
-                    result = event_loop_handle.send_transfer_proof(transfer_proof.clone()) => {
-                        match result {
-                            Ok(_) => {
-                                return AliceState::XmrLockTransferProofSent {
-                                    monero_wallet_restore_blockheight,
-                                    transfer_proof,
-                                    state3,
-                                };
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    error = %e,
-                                    swap_id = %state3.swap_id,
-                                    "Failed to send transfer proof, retrying in 5 seconds"
-                                );
-                                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                                continue;
-                            }
-                        }
-                    },
-                    result = tx_lock_status.wait_until_confirmed_with(state3.cancel_timelock) => {
-                        result?;
-                        return AliceState::CancelTimelockExpired {
-                            monero_wallet_restore_blockheight,
-                            transfer_proof,
-                            state3,
-                        };
+            tokio::select! {
+                result = event_loop_handle.send_transfer_proof(transfer_proof.clone()) => {
+                   result?;
+
+                   AliceState::XmrLockTransferProofSent {
+                       monero_wallet_restore_blockheight,
+                       transfer_proof,
+                       state3,
+                   }
+                },
+                result = tx_lock_status.wait_until_confirmed_with(state3.cancel_timelock) => {
+                    result?;
+                    AliceState::CancelTimelockExpired {
+                        monero_wallet_restore_blockheight,
+                        transfer_proof,
+                        state3,
                     }
                 }
             }

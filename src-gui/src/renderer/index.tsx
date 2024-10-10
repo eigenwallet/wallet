@@ -24,12 +24,7 @@ const root = createRoot(container!);
 
 root.render(
   <Provider store={store}>
-    <PersistGate loading={
-      <Box>
-        Loading...
-        {console.log("Loading...")}
-      </Box>
-    } persistor={persistor}>
+    <PersistGate loading={null} persistor={persistor}>
       <App />
     </PersistGate>
   </Provider>,

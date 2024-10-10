@@ -29,4 +29,4 @@ tauri-plugin-store = "2.0.0"
 tracing = "0.1.40"
 
 [target."cfg(not(any(target_os = \"]
-tauri-plugin-cli = "2.0.0-rc"
+tauri-plugin-cli = "2.0.0"
