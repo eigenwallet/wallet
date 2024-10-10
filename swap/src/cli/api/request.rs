@@ -1025,12 +1025,16 @@ pub async fn list_sellers(
         .extract_peer_id()
         .context("Rendezvous node address must contain peer ID")?;
 
+    println!("extracted peer id");
+
     let identity = context
         .config
         .seed
         .as_ref()
         .context("Cannot extract seed")?
         .derive_libp2p_identity();
+
+    println!("identity init done");
 
     let sellers = list_sellers_impl(
         rendezvous_node_peer_id,
