@@ -291,7 +291,6 @@ impl Database for SqliteDatabase {
                         return None;
                     }
                 };
-                
                 let state = match serde_json::from_str::<Swap>(&row.state) {
                     Ok(a) => State::from(a),
                     Err(e) => {
@@ -299,7 +298,7 @@ impl Database for SqliteDatabase {
                         return None;
                     }
                 };
-                
+
                 Some((swap_id, state))
             })
             .collect::<Vec<(Uuid, State)>>();
