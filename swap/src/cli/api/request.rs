@@ -605,6 +605,10 @@ pub async fn buy_xmr(
 
     context.swap_lock.acquire_swap_lock(swap_id).await?;
 
+    context
+        .tauri_handle
+        .emit_swap_progress_event(swap_id, TauriSwapProgressEvent::Initiated);
+
     let initialize_swap = tokio::select! {
         biased;
         _ = context.swap_lock.listen_for_swap_force_suspension() => {
