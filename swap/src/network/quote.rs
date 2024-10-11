@@ -55,7 +55,9 @@ pub fn asb() -> Behaviour {
     Behaviour::new(
         JsonPullCodec::default(),
         vec![(BidQuoteProtocol, ProtocolSupport::Inbound)],
-        RequestResponseConfig::default(),
+        RequestResponseConfig::default()
+            .set_request_timeout(Duration::from_secs(60))
+            .clone(),
     )
 }
 
@@ -67,7 +69,9 @@ pub fn cli() -> Behaviour {
     Behaviour::new(
         JsonPullCodec::default(),
         vec![(BidQuoteProtocol, ProtocolSupport::Outbound)],
-        RequestResponseConfig::default(),
+        RequestResponseConfig::default()
+            .set_request_timeout(Duration::from_secs(60))
+            .clone(),
     )
 }
 
