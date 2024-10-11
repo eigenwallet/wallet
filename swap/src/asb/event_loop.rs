@@ -349,11 +349,6 @@ where
                 next_transfer_proof = self.send_transfer_proof.next() => {
                     match next_transfer_proof {
                         Some(Ok((peer, transfer_proof, responder))) => {
-                            if !self.swarm.behaviour_mut().transfer_proof.is_connected(&peer) {
-                                tracing::warn!(%peer, "No active connection to peer, buffering transfer proof");
-                                self.buffered_transfer_proofs.entry(peer).or_default().push((transfer_proof, responder));
-                                continue;
-                            }
                             let id = self.swarm.behaviour_mut().transfer_proof.send_request(&peer, transfer_proof);
                             self.inflight_transfer_proofs.insert(id, responder);
                         },
