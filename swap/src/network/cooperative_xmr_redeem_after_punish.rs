@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::monero::Scalar;
 use crate::network::cbor_request_response::CborCodec;
 use crate::{asb, cli};
