@@ -12,7 +12,7 @@ const SWAP_PROGRESS_EVENT_NAME: &str = "swap-progress-update";
 const SWAP_STATE_CHANGE_EVENT_NAME: &str = "swap-database-state-update";
 const TIMELOCK_CHANGE_EVENT_NAME: &str = "timelock-change";
 const CONTEXT_INIT_PROGRESS_EVENT_NAME: &str = "context-init-progress-update";
-
+const BALANCE_CHANGE_EVENT_NAME: &str = "balance-change";
 #[derive(Debug, Clone)]
 pub struct TauriHandle(
     #[cfg(feature = "tauri")]
@@ -70,6 +70,10 @@ pub trait TauriEmitter {
             TIMELOCK_CHANGE_EVENT_NAME,
             TauriTimelockChangeEvent { swap_id, timelock },
         );
+    }
+
+    fn emit_balance_change_event(&self, new_balance: bitcoin::Amount) {
+        let _ = self.emit_tauri_event(BALANCE_CHANGE_EVENT_NAME, TauriBalanceChangeEvent { new_balance });
     }
 }
 
@@ -220,4 +224,13 @@ pub struct TauriSettings {
     /// The URL of the Electrum RPC server e.g `ssl://bitcoin.com:50001`
     #[typeshare(serialized_as = "string")]
     pub electrum_rpc_url: Option<Url>,
+}
+/// This event is emitted when the Bitcoin balance changes.
+#[typeshare]
+#[derive(Debug, Serialize, Clone)]
+pub struct TauriBalanceChangeEvent {
+    /// The new Bitcoin balance in satoshis.
+    #[typeshare(serialized_as = "number")]
+    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    pub new_balance: bitcoin::Amount,
 }

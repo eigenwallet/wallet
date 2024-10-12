@@ -9,12 +9,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-/// A long running task which watches for changes to timelocks
+/// A long running task which watches for changes to timelocks and balance
 #[derive(Clone)]
 pub struct Watcher {
     wallet: Arc<Wallet>,
     database: Arc<dyn Database + Send + Sync>,
     tauri: Option<TauriHandle>,
+    /// Current balance
+    balance: bitcoin::Amount,
     /// This saves for every running swap the last known timelock status
     cached_timelocks: HashMap<Uuid, Option<ExpiredTimelocks>>,
 }
@@ -33,6 +35,7 @@ impl Watcher {
             wallet,
             database,
             cached_timelocks: HashMap::new(),
+            balance: bitcoin::Amount::ZERO, // TODO: actual balance when initializing? maybe passed as arg
             tauri,
         }
     }
@@ -44,6 +47,25 @@ impl Watcher {
         // (which in our case means logging the error message and trying again later)
         loop {
             tokio::time::sleep(Duration::from_secs(Watcher::CHECK_INTERVAL)).await;
+
+            // Fetch the current Bitcoin balance
+            match self.wallet.balance().await {
+                Ok(new_balance) => {
+                    // Check if the balance has changed
+                    if new_balance != self.balance {
+                        // Emit the balance change event
+                        if let Some(tauri) = &self.tauri {
+                            tauri.emit_balance_change_event(new_balance);
+                        }
+                        // Update the stored balance
+                        self.balance = new_balance;
+                    }
+                }
+                // Log any errors
+                Err(e) => {
+                    tracing::error!("Failed to fetch Bitcoin balance: {}", e);
+                }
+            }
 
             // Fetch current transactions and timelocks
             let current_swaps = match self.get_current_swaps().await {

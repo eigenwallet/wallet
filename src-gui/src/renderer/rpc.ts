@@ -20,6 +20,7 @@ import {
   WithdrawBtcResponse,
   TauriDatabaseStateEvent,
   TauriTimelockChangeEvent,
+  TauriBalanceChangeEvent,
   GetSwapInfoArgs,
 } from "models/tauriModel";
 import {
@@ -65,6 +66,11 @@ export async function initEventListeners() {
   listen<TauriLogEvent>("cli-log-emitted", (event) => {
     console.log("Received cli log event", event.payload);
     store.dispatch(receivedCliLog(event.payload));
+  });
+
+  listen<TauriBalanceChangeEvent>("balance-change", (event) => {
+    console.log("Received balance change event", event.payload);
+    store.dispatch(rpcSetBalance(event.payload.new_balance));
   });
 
   listen<TauriDatabaseStateEvent>("swap-database-state-update", (event) => {
