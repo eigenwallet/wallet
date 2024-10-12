@@ -73,7 +73,10 @@ pub trait TauriEmitter {
     }
 
     fn emit_balance_change_event(&self, new_balance: bitcoin::Amount) {
-        let _ = self.emit_tauri_event(BALANCE_CHANGE_EVENT_NAME, TauriBalanceChangeEvent { new_balance });
+        let _ = self.emit_tauri_event(
+            BALANCE_CHANGE_EVENT_NAME,
+            TauriBalanceChangeEvent { new_balance },
+        );
     }
 }
 
