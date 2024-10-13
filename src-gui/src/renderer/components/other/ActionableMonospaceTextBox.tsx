@@ -63,7 +63,7 @@ function QRCodeModal({ open, onClose, content }: ModalProps) {
   );
 }
 
-export default function ActionableMonerospaceTextBox({
+export default function ActionableMonospaceTextBox({
   content,
   displayCopyIcon = true,
   enableQrCode = true,
