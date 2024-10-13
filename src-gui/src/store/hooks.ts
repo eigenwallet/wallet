@@ -11,17 +11,17 @@ export const useAppDispatch = () => useDispatch<AppDispatch>();
 export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
 
 export function useResumeableSwapsCount(
-  filter?: (s: GetSwapInfoResponseExt) => boolean,
+  additionalFilter?: (s: GetSwapInfoResponseExt) => boolean,
 ) {
   return useAppSelector(
     (state) =>
       Object.values(state.rpc.state.swapInfos).filter(
-        (swapInfo) => !swapInfo.completed,
         (swapInfo: GetSwapInfoResponseExt) =>
-          !swapInfo.completed && (filter == null || filter(swapInfo)),
+          !swapInfo.completed && (additionalFilter == null || additionalFilter(swapInfo))
       ).length,
   );
 }
+
 
 export function useResumeableSwapsCountExcludingPunished() {
   return useResumeableSwapsCount(
