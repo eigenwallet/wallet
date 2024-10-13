@@ -90,7 +90,7 @@ export default function HistoryRowExpanded({
               <TableCell>
                 <Box>
                   {swap.seller.addresses.map((addr) => (
-                    <CopyableMonospaceTextBox key={addr} address={addr} />
+                    <CopyableMonospaceTextBox key={addr} content={addr} displayCopyIcon={false} enableQrCode={false} />
                   ))}
                 </Box>
               </TableCell>
