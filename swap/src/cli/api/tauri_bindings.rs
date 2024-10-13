@@ -7,6 +7,8 @@ use typeshare::typeshare;
 use url::Url;
 use uuid::Uuid;
 
+use super::request::BalanceResponse;
+
 const CLI_LOG_EMITTED_EVENT_NAME: &str = "cli-log-emitted";
 const SWAP_PROGRESS_EVENT_NAME: &str = "swap-progress-update";
 const SWAP_STATE_CHANGE_EVENT_NAME: &str = "swap-database-state-update";
@@ -72,10 +74,12 @@ pub trait TauriEmitter {
         );
     }
 
-    fn emit_balance_change_event(&self, new_balance: bitcoin::Amount) {
+    fn emit_balance_update_event(&self, new_balance: bitcoin::Amount) {
         let _ = self.emit_tauri_event(
             BALANCE_CHANGE_EVENT_NAME,
-            TauriBalanceChangeEvent { new_balance },
+            BalanceResponse {
+                balance: new_balance,
+            },
         );
     }
 }
@@ -227,13 +231,4 @@ pub struct TauriSettings {
     /// The URL of the Electrum RPC server e.g `ssl://bitcoin.com:50001`
     #[typeshare(serialized_as = "string")]
     pub electrum_rpc_url: Option<Url>,
-}
-/// This event is emitted when the Bitcoin balance changes.
-#[typeshare]
-#[derive(Debug, Serialize, Clone)]
-pub struct TauriBalanceChangeEvent {
-    /// The new Bitcoin balance in satoshis.
-    #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
-    pub new_balance: bitcoin::Amount,
 }
