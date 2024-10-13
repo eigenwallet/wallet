@@ -15,8 +15,6 @@ pub struct Watcher {
     wallet: Arc<Wallet>,
     database: Arc<dyn Database + Send + Sync>,
     tauri: Option<TauriHandle>,
-    /// Current balance
-    balance: bitcoin::Amount,
     /// This saves for every running swap the last known timelock status
     cached_timelocks: HashMap<Uuid, Option<ExpiredTimelocks>>,
 }
@@ -35,7 +33,6 @@ impl Watcher {
             wallet,
             database,
             cached_timelocks: HashMap::new(),
-            balance: bitcoin::Amount::ZERO, // TODO: actual balance when initializing? maybe passed as arg
             tauri,
         }
     }
@@ -66,10 +63,8 @@ impl Watcher {
             .balance()
             .await
             .context("Failed to fetch Bitcoin balance, retrying later")?;
-        // Emit the balance change event
+        // Emit a balance update event
         self.tauri.emit_balance_update_event(new_balance);
-        // Update the stored balance
-        self.balance = new_balance;
 
         // Fetch current transactions and timelocks
         let current_swaps = self
