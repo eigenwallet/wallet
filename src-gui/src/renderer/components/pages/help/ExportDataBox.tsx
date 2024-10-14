@@ -29,29 +29,20 @@ export default function ExportDataBox() {
   const classes = useStyles();
   const [walletDescriptor, setWalletDescriptor] = useState<ExportBitcoinWalletResponse | null>(null);
 
-  const handleSuccess = (value: ExportBitcoinWalletResponse) => {
-    setWalletDescriptor(value) 
-  }
-
   const handleCloseDialog = () => {
     setWalletDescriptor(null);
   };
 
-  const parseWalletDescriptor = (walletDescriptor: ExportBitcoinWalletResponse) => {
-    const descriptor = JSON.parse(walletDescriptor.wallet_descriptor.descriptor);
-    return descriptor;
-  }
-
   return (
     <InfoBox
-      title="Export Data"
+      title="Export Bitcoin Wallet"
       icon={null}
       loading={false}
       mainContent={
         <Box className={classes.content}>
-          <Typography variant="body1">
-            Export your Bitcoin wallet descriptor for backup or recovery purposes.
-            The wallet descriptor is a JSON object that can be used to derive the wallet's private keys.
+          <Typography variant="subtitle2">
+            You can export the wallet descriptor of the interal Bitcoin wallet for backup or recovery purposes.
+            The wallet descriptor contains your private key and can be used to derive your wallet.
             It can be imported into other Bitcoin wallets or services that support the descriptor format.
             It should thus be stored securely.
           </Typography>
@@ -61,37 +52,58 @@ export default function ExportDataBox() {
               documentation
             </Link>.
           </Typography>
-          <PromiseInvokeButton
-            variant="outlined"
-            onInvoke={getWalletDescriptor}
-            onSuccess={handleSuccess}
-            displayErrorSnackbar={true}
-          >
-            Export Bitcoin Wallet Descriptor
-          </PromiseInvokeButton>
         </Box>
       }
       additionalContent={
-        <Dialog open={walletDescriptor !== null} onClose={handleCloseDialog} maxWidth="md" fullWidth>
-          <DialogTitle>Bitcoin Wallet Descriptor</DialogTitle>
-          <DialogContent>
-            {walletDescriptor && (
-              <ActionableMonospaceTextBox
-                content={JSON.stringify(parseWalletDescriptor(walletDescriptor), null, 4)}
-                displayCopyIcon={true}
-                enableQrCode={false}
-              />
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleCloseDialog} color="primary">
-              Close
-            </Button>
-          </DialogActions>
-        </Dialog>
+        <>
+          <PromiseInvokeButton
+            variant="outlined"
+            onInvoke={getWalletDescriptor}
+            onSuccess={setWalletDescriptor}
+            displayErrorSnackbar={true}
+          >
+            Reveal Bitcoin Wallet Private Key
+          </PromiseInvokeButton>
+          {walletDescriptor !== null && (
+            <WalletDescriptorModal
+              open={walletDescriptor !== null}
+              onClose={handleCloseDialog}
+              walletDescriptor={walletDescriptor}
+            />
+          )}
+        </>
       }
     />
   );
 }
 
+function WalletDescriptorModal({
+  open,
+  onClose,
+  walletDescriptor,
+}: {
+  open: boolean;
+  onClose: () => void;
+  walletDescriptor: ExportBitcoinWalletResponse;
+}) {
+  const parsedDescriptor = JSON.parse(walletDescriptor.wallet_descriptor.descriptor);
+  const stringifiedDescriptor = JSON.stringify(parsedDescriptor, null, 4);
 
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Bitcoin Wallet Descriptor</DialogTitle>
+      <DialogContent>
+        <ActionableMonospaceTextBox
+          content={stringifiedDescriptor}
+          displayCopyIcon={true}
+          enableQrCode={false}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} color="primary" variant="contained">
+          Done
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
