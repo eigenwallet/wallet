@@ -36,6 +36,11 @@ export default function ExportDataBox() {
     setWalletDescriptor(null);
   };
 
+  const parseWalletDescriptor = (walletDescriptor: ExportBitcoinWalletResponse) => {
+    const descriptor = JSON.parse(walletDescriptor.wallet_descriptor.descriptor);
+    return descriptor;
+  }
+
   return (
     <InfoBox
       title="Export Data"
@@ -65,7 +70,7 @@ export default function ExportDataBox() {
           <DialogContent>
             {walletDescriptor && (
               <ActionableMonospaceTextBox
-                content={JSON.stringify(walletDescriptor, null, 4)}
+                content={JSON.stringify(parseWalletDescriptor(walletDescriptor), null, 4)}
                 displayCopyIcon={true}
                 enableQrCode={false}
               />
