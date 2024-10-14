@@ -8,6 +8,7 @@ import {
   DialogActions,
   Button,
   Link,
+  DialogContentText,
 } from "@material-ui/core";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import { useState } from "react";
@@ -41,16 +42,7 @@ export default function ExportDataBox() {
       mainContent={
         <Box className={classes.content}>
           <Typography variant="subtitle2">
-            You can export the wallet descriptor of the interal Bitcoin wallet for backup or recovery purposes.
-            The wallet descriptor contains your private key and can be used to derive your wallet.
-            It can be imported into other Bitcoin wallets or services that support the descriptor format.
-            It should thus be stored securely.
-          </Typography>
-          <Typography variant="body1">
-            For more information on what to do with the descriptor, see our 
-            {" "}<Link href="https://github.com/UnstoppableSwap/core/blob/master/docs/asb/README.md#exporting-the-bitcoin-wallet-descriptor" target="_blank">
-              documentation
-            </Link>.
+            You can export the wallet descriptor of the interal Bitcoin wallet for backup or recovery purposes. Please make sure to store it securely.
           </Typography>
         </Box>
       }
@@ -93,6 +85,20 @@ function WalletDescriptorModal({
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>Bitcoin Wallet Descriptor</DialogTitle>
       <DialogContent>
+        <DialogContentText>
+          <ul style={{ marginTop: 0 }}>
+            <li>
+              The text below contains the wallet descriptor of the internal Bitcoin wallet. It contains your private key and can be used to derive your wallet. It should thus be stored securely.
+            </li>
+            <li>
+              It can be imported into other Bitcoin wallets or services that support the descriptor format.
+            </li>
+            <li>
+              For more information on what to do with the descriptor, see our 
+              {" "}<Link href="https://github.com/UnstoppableSwap/core/blob/master/docs/asb/README.md#exporting-the-bitcoin-wallet-descriptor" target="_blank">documentation</Link>
+            </li>
+          </ul>
+        </DialogContentText>
         <ActionableMonospaceTextBox
           content={stringifiedDescriptor}
           displayCopyIcon={true}
