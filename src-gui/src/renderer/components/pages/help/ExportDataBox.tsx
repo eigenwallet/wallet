@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  Link,
 } from "@material-ui/core";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import { useState } from "react";
@@ -53,6 +54,12 @@ export default function ExportDataBox() {
             The wallet descriptor is a JSON object that can be used to derive the wallet's private keys.
             It can be imported into other Bitcoin wallets or services that support the descriptor format.
             It should thus be stored securely.
+          </Typography>
+          <Typography variant="body1">
+            For more information on what to do with the descriptor, see our 
+            {" "}<Link href="https://github.com/UnstoppableSwap/core/blob/master/docs/asb/README.md#exporting-the-bitcoin-wallet-descriptor" target="_blank">
+              documentation
+            </Link>.
           </Typography>
           <PromiseInvokeButton
             variant="outlined"
