@@ -11,9 +11,7 @@ use futures::{AsyncWriteExt, FutureExt};
 use libp2p::core::connection::ConnectionId;
 use libp2p::core::upgrade;
 use libp2p::swarm::{
-    KeepAlive, NegotiatedSubstream, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler,
-    PollParameters, ProtocolsHandler, ProtocolsHandlerEvent, ProtocolsHandlerUpgrErr,
-    SubstreamProtocol,
+    ConnectionDenied, ConnectionHandler, FromSwarm, KeepAlive, NegotiatedSubstream, NetworkBehaviour, NetworkBehaviourAction, NotifyHandler, PollParameters, ProtocolsHandler, ProtocolsHandlerEvent, ProtocolsHandlerUpgrErr, SubstreamProtocol, THandler, THandlerInEvent, THandlerOutEvent, ToSwarm
 };
 use libp2p::{Multiaddr, PeerId};
 use std::collections::VecDeque;
@@ -53,42 +51,62 @@ impl From<Completed> for cli::OutEvent {
 }
 
 impl NetworkBehaviour for Behaviour {
-    type ProtocolsHandler = Handler;
-    type OutEvent = Completed;
+    type ConnectionHandler = Handler;
+    type ToSwarm = ToSwarm<Completed, Self::ConnectionHandler>;
 
-    fn new_handler(&mut self) -> Self::ProtocolsHandler {
-        Handler::new(self.env_config, self.bitcoin_wallet.clone())
+    fn handle_established_inbound_connection(
+        &mut self,
+        connection_id: ConnectionId,
+        peer: PeerId,
+        local_addr: &Multiaddr,
+        remote_addr: &Multiaddr,
+    ) -> Result<THandler<Self>, ConnectionDenied> {
+        Ok(Handler::new(self.env_config, self.bitcoin_wallet.clone()))
     }
 
-    fn addresses_of_peer(&mut self, _: &PeerId) -> Vec<Multiaddr> {
-        Vec::new()
+    fn handle_established_outbound_connection(
+        &mut self,
+        connection_id: ConnectionId,
+        peer: PeerId,
+        addr: &Multiaddr,
+        role_override: libp2p::core::Endpoint,
+    ) -> Result<THandler<Self>, ConnectionDenied> {
+        Ok(Handler::new(self.env_config, self.bitcoin_wallet.clone()))
     }
 
-    fn inject_connected(&mut self, _: &PeerId) {}
+    fn on_swarm_event(&mut self, event: FromSwarm) {
+        match event {
+            FromSwarm::ConnectionEstablished(_) => {},
+            FromSwarm::ConnectionClosed(_) => {},
+            _ => {},
+        }
+    }
 
-    fn inject_disconnected(&mut self, _: &PeerId) {}
+    /*fn on_connection_handler_event(
+        &mut self,
+        peer_id: PeerId,
+        _connection_id: ConnectionId,
+        event: <Self::ConnectionHandler as ConnectionHandler>::OutEvent,
+    ) {
+        self.completed_swaps.push_back((peer_id, event));
+    }*/
 
-    fn inject_event(&mut self, peer: PeerId, _: ConnectionId, completed: Completed) {
-        self.completed_swaps.push_back((peer, completed));
+    fn on_connection_handler_event(
+            &mut self,
+            peer_id: PeerId,
+            _connection_id: libp2p::swarm::ConnectionId,
+            event: THandlerOutEvent<Self>,
+    ) {
+        self.completed_swaps.push_back((peer_id, event));
     }
 
     fn poll(
         &mut self,
-        _cx: &mut Context<'_>,
-        _params: &mut impl PollParameters,
-    ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ProtocolsHandler>> {
-        if let Some((_, event)) = self.completed_swaps.pop_front() {
-            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
+        cx: &mut Context<'_>,
+    ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
+        if let Some((peer, completed)) = self.completed_swaps.pop_front() {
+            return Poll::Ready(ToSwarm::GenerateEvent(completed));
         }
-
-        if let Some((peer, event)) = self.new_swaps.pop_front() {
-            return Poll::Ready(NetworkBehaviourAction::NotifyHandler {
-                peer_id: peer,
-                handler: NotifyHandler::Any,
-                event,
-            });
-        }
-
         Poll::Pending
     }
 }

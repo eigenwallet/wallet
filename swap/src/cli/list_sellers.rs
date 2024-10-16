@@ -7,7 +7,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::ping::{Ping, PingConfig, PingEvent};
 use libp2p::request_response::{RequestResponseEvent, RequestResponseMessage};
 use libp2p::swarm::dial_opts::DialOpts;
-use libp2p::swarm::SwarmEvent;
+use libp2p::swarm::{behaviour, NetworkBehaviour, SwarmEvent};
 use libp2p::{identity, rendezvous, Multiaddr, PeerId, Swarm};
 use serde::Serialize;
 use serde_with::{serde_as, DisplayFromStr};
@@ -98,7 +98,7 @@ impl From<quote::OutEvent> for OutEvent {
     }
 }
 
-#[derive(libp2p::NetworkBehaviour)]
+#[derive(NetworkBehaviour)]
 #[behaviour(event_process = false)]
 #[behaviour(out_event = "OutEvent")]
 struct Behaviour {
