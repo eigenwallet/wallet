@@ -59,7 +59,10 @@ impl Transport for TorDialOnlyTransport {
     fn address_translation(&self, _: &Multiaddr, _: &Multiaddr) -> Option<Multiaddr> {
         None
     }
-    fn dial_as_listener(&mut self, addr: Multiaddr) -> Result<Self::Dial, TransportError<Self::Error>> {
+    fn dial_as_listener(
+        &mut self,
+        addr: Multiaddr,
+    ) -> Result<Self::Dial, TransportError<Self::Error>> {
         let address = TorCompatibleAddress::from_multiaddr(Cow::Borrowed(&addr))?;
 
         if address.is_certainly_not_reachable_via_tor_daemon() {

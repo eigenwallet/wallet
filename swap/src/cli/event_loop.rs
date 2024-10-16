@@ -1,6 +1,5 @@
 use crate::bitcoin::EncryptedSignature;
 use crate::cli::behaviour::{Behaviour, OutEvent};
-use libp2p::swarm::NetworkBehaviour;
 use crate::monero;
 use crate::network::cooperative_xmr_redeem_after_punish::{Request, Response};
 use crate::network::encrypted_signature;
@@ -13,6 +12,7 @@ use futures::future::{BoxFuture, OptionFuture};
 use futures::{FutureExt, StreamExt};
 use libp2p::request_response::{RequestId, ResponseChannel};
 use libp2p::swarm::dial_opts::DialOpts;
+use libp2p::swarm::NetworkBehaviour;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{PeerId, Swarm};
 use std::collections::HashMap;

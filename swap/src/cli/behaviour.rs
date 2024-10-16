@@ -10,8 +10,8 @@ use crate::protocol::bob::State2;
 use crate::{bitcoin, env};
 use anyhow::{anyhow, Error, Result};
 use libp2p::core::Multiaddr;
-use libp2p::request_response::{ResponseChannel, InboundRequestId};
-use libp2p::swarm::{NetworkBehaviour};
+use libp2p::request_response::{InboundRequestId, ResponseChannel};
+use libp2p::swarm::NetworkBehaviour;
 use libp2p::{identify, identity, ping, PeerId};
 use std::sync::Arc;
 use std::time::Duration;
@@ -97,8 +97,12 @@ impl Behaviour {
     ) -> Self {
         let agentVersion = format!("cli/{} ({})", env!("CARGO_PKG_VERSION"), identify_params.1);
         let protocolVersion = "/comit/xmr/btc/1.0.0".to_string();
+
         let identifyConfig = identify::Config::new(protocolVersion, identify_params.0.public())
             .with_agent_version(agentVersion);
+
+        // TOOD: Keep alive connection forever
+        let pingConfig = ping::Config::new();
 
         Self {
             quote: quote::cli(),
@@ -107,8 +111,8 @@ impl Behaviour {
             encrypted_signature: encrypted_signature::bob(),
             cooperative_xmr_redeem: cooperative_xmr_redeem_after_punish::bob(),
             redial: redial::Behaviour::new(alice, Duration::from_secs(2)),
-            ping: Ping::new(PingConfig::new().with_keep_alive(true)),
-            identify: Identify::new(identifyConfig),
+            ping: ping::Behaviour::new(pingConfig),
+            identify: identify::Behaviour::new(identifyConfig),
         }
     }
 
