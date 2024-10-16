@@ -8,7 +8,7 @@ macro_rules! impl_from_rr_event {
     ($protocol_event:ty, $behaviour_out_event:ty, $protocol:ident) => {
         impl From<$protocol_event> for $behaviour_out_event {
             fn from(event: $protocol_event) -> Self {
-                use ::libp2p::request_response::RequestResponseEvent::*;
+                use ::libp2p::request_response::Event::*;
                 use anyhow::anyhow;
 
                 match event {
