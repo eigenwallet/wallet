@@ -71,7 +71,7 @@ impl OutEvent {
 
 /// A `NetworkBehaviour` that represents an XMR/BTC swap node as Bob.
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "OutEvent", event_process = false)]
+#[behaviour(to_swarm = "OutEvent")]
 #[allow(missing_debug_implementations)]
 pub struct Behaviour {
     pub quote: quote::Behaviour,
