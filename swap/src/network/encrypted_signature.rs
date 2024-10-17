@@ -1,6 +1,5 @@
 use crate::network::cbor_request_response::CborCodec;
 use crate::{asb, cli};
-use libp2p::core::ProtocolName;
 use libp2p::request_response::{
     ProtocolSupport, RequestResponse, RequestResponseConfig, RequestResponseEvent,
     RequestResponseMessage,
@@ -18,8 +17,8 @@ pub type Behaviour = RequestResponse<CborCodec<EncryptedSignatureProtocol, Reque
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EncryptedSignatureProtocol;
 
-impl ProtocolName for EncryptedSignatureProtocol {
-    fn protocol_name(&self) -> &[u8] {
+impl AsRef<str> for EncryptedSignatureProtocol {
+    fn as_ref(&self) -> &str {
         PROTOCOL.as_bytes()
     }
 }

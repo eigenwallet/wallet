@@ -1,7 +1,6 @@
 use crate::monero::Scalar;
 use crate::network::cbor_request_response::CborCodec;
 use crate::{asb, cli};
-use libp2p::core::ProtocolName;
 use libp2p::request_response::{
     ProtocolSupport, RequestResponse, RequestResponseConfig, RequestResponseEvent,
     RequestResponseMessage,
@@ -19,9 +18,9 @@ pub type Behaviour = RequestResponse<CborCodec<CooperativeXmrRedeemProtocol, Req
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CooperativeXmrRedeemProtocol;
 
-impl ProtocolName for CooperativeXmrRedeemProtocol {
-    fn protocol_name(&self) -> &[u8] {
-        PROTOCOL.as_bytes()
+impl AsRef<str> for CooperativeXmrRedeemProtocol {
+    fn as_ref(&self) -> &str {
+        PROTOCOL
     }
 }
 

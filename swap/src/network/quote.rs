@@ -1,6 +1,5 @@
 use crate::network::json_pull_codec::JsonPullCodec;
 use crate::{asb, bitcoin, cli};
-use libp2p::core::ProtocolName;
 use libp2p::request_response::{
     ProtocolSupport, RequestResponse, RequestResponseConfig, RequestResponseEvent,
     RequestResponseMessage,
@@ -18,8 +17,8 @@ pub type Behaviour = RequestResponse<JsonPullCodec<BidQuoteProtocol, BidQuote>>;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BidQuoteProtocol;
 
-impl ProtocolName for BidQuoteProtocol {
-    fn protocol_name(&self) -> &[u8] {
+impl AsRef<str> for BidQuoteProtocol {
+    fn as_ref(&self) -> &str {
         PROTOCOL.as_bytes()
     }
 }

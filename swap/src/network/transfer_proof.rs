@@ -1,6 +1,5 @@
 use crate::network::cbor_request_response::CborCodec;
 use crate::{asb, cli, monero};
-use libp2p::core::ProtocolName;
 use libp2p::request_response::{
     ProtocolSupport, RequestResponse, RequestResponseConfig, RequestResponseEvent,
     RequestResponseMessage,
@@ -18,8 +17,8 @@ pub type Behaviour = RequestResponse<CborCodec<TransferProofProtocol, Request, (
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TransferProofProtocol;
 
-impl ProtocolName for TransferProofProtocol {
-    fn protocol_name(&self) -> &[u8] {
+impl AsRef<str> for TransferProofProtocol {
+    fn as_ref(&self) -> &str {
         PROTOCOL.as_bytes()
     }
 }
