@@ -34,7 +34,7 @@ use uuid::Uuid;
 /// This trait is implemented by all types of request args that
 /// the CLI can handle.
 /// It provides a unified abstraction that can be useful for generics.
-#[allow(async_fn_in_trait)]
+#[async_trait::async_trait]
 pub trait Request {
     type Response: Serialize;
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response>;
@@ -65,6 +65,7 @@ pub struct BuyXmrResponse {
     pub quote: BidQuote,
 }
 
+#[async_trait::async_trait]
 impl Request for BuyXmrArgs {
     type Response = BuyXmrResponse;
 
@@ -90,6 +91,7 @@ pub struct ResumeSwapResponse {
     pub result: String,
 }
 
+#[async_trait::async_trait]
 impl Request for ResumeSwapArgs {
     type Response = ResumeSwapResponse;
 
@@ -108,6 +110,7 @@ pub struct CancelAndRefundArgs {
     pub swap_id: Uuid,
 }
 
+#[async_trait::async_trait]
 impl Request for CancelAndRefundArgs {
     type Response = serde_json::Value;
 
@@ -126,6 +129,7 @@ pub struct MoneroRecoveryArgs {
     pub swap_id: Uuid,
 }
 
+#[async_trait::async_trait]
 impl Request for MoneroRecoveryArgs {
     type Response = serde_json::Value;
 
@@ -154,6 +158,7 @@ pub struct WithdrawBtcResponse {
     pub txid: String,
 }
 
+#[async_trait::async_trait]
 impl Request for WithdrawBtcArgs {
     type Response = WithdrawBtcResponse;
 
@@ -176,6 +181,7 @@ pub struct ListSellersResponse {
     sellers: Vec<Seller>,
 }
 
+#[async_trait::async_trait]
 impl Request for ListSellersArgs {
     type Response = ListSellersResponse;
 
@@ -192,6 +198,7 @@ pub struct StartDaemonArgs {
     pub server_address: Option<SocketAddr>,
 }
 
+#[async_trait::async_trait]
 impl Request for StartDaemonArgs {
     type Response = serde_json::Value;
 
@@ -240,6 +247,7 @@ pub struct GetSwapInfoResponse {
     pub timelock: Option<ExpiredTimelocks>,
 }
 
+#[async_trait::async_trait]
 impl Request for GetSwapInfoArgs {
     type Response = GetSwapInfoResponse;
 
@@ -263,6 +271,7 @@ pub struct BalanceResponse {
     pub balance: bitcoin::Amount,
 }
 
+#[async_trait::async_trait]
 impl Request for BalanceArgs {
     type Response = BalanceResponse;
 
@@ -290,6 +299,7 @@ pub struct GetHistoryResponse {
     pub swaps: Vec<GetHistoryEntry>,
 }
 
+#[async_trait::async_trait]
 impl Request for GetHistoryArgs {
     type Response = GetHistoryResponse;
 
@@ -318,6 +328,7 @@ pub struct SuspendCurrentSwapResponse {
     pub swap_id: Uuid,
 }
 
+#[async_trait::async_trait]
 impl Request for SuspendCurrentSwapArgs {
     type Response = SuspendCurrentSwapResponse;
 
@@ -328,6 +339,7 @@ impl Request for SuspendCurrentSwapArgs {
 
 pub struct GetCurrentSwapArgs;
 
+#[async_trait::async_trait]
 impl Request for GetCurrentSwapArgs {
     type Response = serde_json::Value;
 
@@ -338,6 +350,7 @@ impl Request for GetCurrentSwapArgs {
 
 pub struct GetConfig;
 
+#[async_trait::async_trait]
 impl Request for GetConfig {
     type Response = serde_json::Value;
 
@@ -356,6 +369,7 @@ pub struct ExportBitcoinWalletResponse {
     pub wallet_descriptor: serde_json::Value,
 }
 
+#[async_trait::async_trait]
 impl Request for ExportBitcoinWalletArgs {
     type Response = ExportBitcoinWalletResponse;
 
@@ -367,6 +381,7 @@ impl Request for ExportBitcoinWalletArgs {
 
 pub struct GetConfigArgs;
 
+#[async_trait::async_trait]
 impl Request for GetConfigArgs {
     type Response = serde_json::Value;
 
@@ -377,6 +392,7 @@ impl Request for GetConfigArgs {
 
 pub struct GetSwapInfosAllArgs;
 
+#[async_trait::async_trait]
 impl Request for GetSwapInfosAllArgs {
     type Response = Vec<GetSwapInfoResponse>;
 
@@ -401,6 +417,7 @@ pub struct GetLogsResponse {
     logs: Vec<String>,
 }
 
+#[async_trait::async_trait] 
 impl Request for GetLogsArgs {
     type Response = GetLogsResponse;
 
