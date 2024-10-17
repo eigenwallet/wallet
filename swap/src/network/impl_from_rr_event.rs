@@ -30,8 +30,14 @@ macro_rules! impl_from_rr_event {
                                     peer,
                                 }
                             }
+                            Io(err) => {
+                                Self::Failure {
+                                    error: anyhow!("{} failed because of an IO error: {}", $protocol, err),
+                                    peer,
+                                }
+                            }
                             UnsupportedProtocols => Self::Other, // TODO: Report this and disconnected / ban the peer?
-                            ResponseOmission => Self::Other
+                            ResponseOmission => Self::Other,
                         }
                     }
                     OutboundFailure { peer, error, .. } => {
@@ -57,8 +63,14 @@ macro_rules! impl_from_rr_event {
                                     peer,
                                 }
                             }
+                            Io(err) => {
+                                Self::Failure {
+                                    error: anyhow!("{} failed because of an IO error: {}", $protocol, err),
+                                    peer,
+                                }
+                            }
                         }
-                    }
+                    },
                 }
             }
         }
