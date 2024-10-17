@@ -1,12 +1,12 @@
 use crate::fs::ensure_directory_exists;
 use anyhow::{Context, Result};
 use bdk::bitcoin::util::bip32::ExtendedPrivKey;
-use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1::constants::SECRET_KEY_SIZE;
 use bitcoin::secp256k1::{self, SecretKey};
 use libp2p::identity;
 use pem::{encode, Pem};
 use rand::prelude::*;
+use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{self, File};
@@ -78,14 +78,14 @@ impl Seed {
     /// function for deriving specific secret material from the root seed
     /// like the libp2p identity or the seed for the Bitcoin wallet.
     fn derive(&self, scope: &[u8]) -> Self {
-        let mut engine = sha256::HashEngine::default();
+        let mut hasher = Sha256::new();
 
-        engine.input(&self.bytes());
-        engine.input(scope);
+        hasher.update(&self.bytes());
+        hasher.update(scope);
 
-        let hash = sha256::Hash::from_engine(engine);
+        let result = hasher.finalize();
 
-        Self(hash.into_inner())
+        Self(result.into())
     }
 
     fn bytes(&self) -> [u8; SEED_LENGTH] {
