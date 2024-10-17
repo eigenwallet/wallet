@@ -1,4 +1,4 @@
-/// Helper macro to map a [`RequestResponseEvent`] to our [`OutEvent`].
+/// Helper macro to map a [`request_response::Event`] to our [`OutEvent`].
 ///
 /// This is primarily a macro and not a regular function because we use it for
 /// Alice and Bob and they have different [`OutEvent`]s that just happen to

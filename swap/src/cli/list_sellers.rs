@@ -4,11 +4,10 @@ use crate::network::{quote, swarm};
 use anyhow::{Context, Result};
 use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
-use libp2p::ping::{Ping, PingConfig, PingEvent};
-use libp2p::request_response::{RequestResponseEvent, RequestResponseMessage};
+use libp2p::request_response;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{behaviour, NetworkBehaviour, SwarmEvent};
-use libp2p::{identity, rendezvous, Multiaddr, PeerId, Swarm};
+use libp2p::{identity, ping, rendezvous, Multiaddr, PeerId, Swarm};
 use serde::Serialize;
 use serde_with::{serde_as, DisplayFromStr};
 use std::collections::hash_map::Entry;
@@ -32,9 +31,10 @@ pub async fn list_sellers(
     let behaviour = Behaviour {
         rendezvous: rendezvous::client::Behaviour::new(identity.clone()),
         quote: quote::cli(),
-        ping: Ping::new(
-            PingConfig::new()
-                .with_keep_alive(false)
+        ping: ping::Behaviour::new(
+            ping::Config::new()
+                // TODO (libp2p upgrade): Keep alive the connection here
+                //.with_keep_alive(false)
                 .with_interval(Duration::from_secs(86_400)),
         ),
     };
@@ -83,7 +83,7 @@ pub enum Status {
 enum OutEvent {
     Rendezvous(rendezvous::client::Event),
     Quote(quote::OutEvent),
-    Ping(PingEvent),
+    Ping(ping::Event),
 }
 
 impl From<rendezvous::client::Event> for OutEvent {
@@ -104,7 +104,7 @@ impl From<quote::OutEvent> for OutEvent {
 struct Behaviour {
     rendezvous: rendezvous::client::Behaviour,
     quote: quote::Behaviour,
-    ping: Ping,
+    ping: ping::Behaviour,
 }
 
 #[derive(Debug)]
@@ -237,18 +237,18 @@ impl EventLoop {
                         }
                         SwarmEvent::Behaviour(OutEvent::Quote(quote_response)) => {
                             match quote_response {
-                                RequestResponseEvent::Message { peer, message } => {
+                                request_response::Event::Message { peer, message } => {
                                     match message {
-                                        RequestResponseMessage::Response { response, .. } => {
+                                        request_response::Message::Response { response, .. } => {
                                             if self.asb_quote_status.insert(peer, QuoteStatus::Received(Status::Online(response))).is_none() {
                                                 tracing::error!(%peer, "Received bid quote from unexpected peer, this record will be removed!");
                                                 self.asb_quote_status.remove(&peer);
                                             }
                                         }
-                                        RequestResponseMessage::Request { .. } => unreachable!()
+                                        request_response::Message::Request { .. } => unreachable!()
                                     }
                                 }
-                                RequestResponseEvent::OutboundFailure { peer, error, .. } => {
+                                request_response::Event::OutboundFailure { peer, error, .. } => {
                                     if peer == self.rendezvous_peer_id {
                                         tracing::debug!(%peer, "Outbound failure when communicating with rendezvous node: {:#}", error);
                                     } else {
@@ -256,7 +256,7 @@ impl EventLoop {
                                         self.asb_quote_status.remove(&peer);
                                     }
                                 }
-                                RequestResponseEvent::InboundFailure { peer, error, .. } => {
+                                request_response::Event::InboundFailure { peer, error, .. } => {
                                     if peer == self.rendezvous_peer_id {
                                         tracing::debug!(%peer, "Inbound failure when communicating with rendezvous node: {:#}", error);
                                     } else {
@@ -264,7 +264,7 @@ impl EventLoop {
                                         self.asb_quote_status.remove(&peer);
                                     }
                                 },
-                                RequestResponseEvent::ResponseSent { .. } => unreachable!()
+                                request_response::Event::ResponseSent { .. } => unreachable!()
                             }
                         }
                         _ => {}
@@ -323,8 +323,8 @@ impl EventLoop {
 #[derive(Debug)]
 struct StillPending {}
 
-impl From<PingEvent> for OutEvent {
-    fn from(event: PingEvent) -> Self {
+impl From<ping::Event> for OutEvent {
+    fn from(event: ping::Event) -> Self {
         OutEvent::Ping(event)
     }
 }

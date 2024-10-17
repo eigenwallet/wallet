@@ -1,19 +1,15 @@
 use crate::monero::Scalar;
-use crate::network::cbor_request_response::CborCodec;
 use crate::{asb, cli};
-use libp2p::request_response::{
-    ProtocolSupport, RequestResponse, RequestResponseConfig, RequestResponseEvent,
-    RequestResponseMessage,
-};
-use libp2p::PeerId;
+use libp2p::request_response::ProtocolSupport;
+use libp2p::{request_response, PeerId};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 const PROTOCOL: &str = "/comit/xmr/btc/cooperative_xmr_redeem_after_punish/1.0.0";
-type OutEvent = RequestResponseEvent<Request, Response>;
-type Message = RequestResponseMessage<Request, Response>;
+type OutEvent = request_response::Event<Request, Response>;
+type Message = request_response::Message<Request, Response>;
 
-pub type Behaviour = RequestResponse<CborCodec<CooperativeXmrRedeemProtocol, Request, Response>>;
+pub type Behaviour = request_response::cbor::Behaviour<Request, Response>;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CooperativeXmrRedeemProtocol;
@@ -50,19 +46,18 @@ pub enum Response {
         reason: CooperativeXmrRedeemRejectReason,
     },
 }
+
 pub fn alice() -> Behaviour {
     Behaviour::new(
-        CborCodec::default(),
         vec![(CooperativeXmrRedeemProtocol, ProtocolSupport::Inbound)],
-        RequestResponseConfig::default(),
+        request_response::Config::default(),
     )
 }
 
 pub fn bob() -> Behaviour {
     Behaviour::new(
-        CborCodec::default(),
         vec![(CooperativeXmrRedeemProtocol, ProtocolSupport::Outbound)],
-        RequestResponseConfig::default(),
+        request_response::Config::default(),
     )
 }
 

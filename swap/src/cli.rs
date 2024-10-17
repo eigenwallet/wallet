@@ -24,7 +24,7 @@ mod tests {
     use crate::network::test::{new_swarm, SwarmExt};
     use futures::StreamExt;
     use libp2p::multiaddr::Protocol;
-    use libp2p::request_response::RequestResponseEvent;
+    use libp2p::request_response::request_response::Event;
     use libp2p::swarm::{AddressScore, NetworkBehaviourEventProcess};
     use libp2p::{identity, rendezvous, Multiaddr, PeerId};
     use std::collections::HashSet;
@@ -144,7 +144,7 @@ mod tests {
     }
     impl NetworkBehaviourEventProcess<quote::OutEvent> for StaticQuoteAsbBehaviour {
         fn inject_event(&mut self, event: quote::OutEvent) {
-            if let RequestResponseEvent::Message {
+            if let request_response::Event::Message {
                 message: quote::Message::Request { channel, .. },
                 ..
             } = event
