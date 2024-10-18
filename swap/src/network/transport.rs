@@ -21,12 +21,12 @@ pub fn authenticate_and_multiplex<T>(
 where
     T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let auth_upgrade = {
-        let noise_identity = noise::Keypair::<X25519Spec>::new().into_authentic(identity)?;
-        NoiseConfig::xx(noise_identity).into_authenticated()
-    };
-    let multiplex_upgrade = SelectUpgrade::new(yamux::YamuxConfig::default(), MplexConfig::new());
-
+    let auth_upgrade = noise::Config::new(&identity);
+    let multiplex_upgrade: SelectUpgrade<_, _> = SelectUpgrade::new(
+        yamux::Config::default(),
+        mplex::MplexConfig::new()
+    );
+    
     let transport = transport
         .upgrade(Version::V1)
         .authenticate(auth_upgrade)
