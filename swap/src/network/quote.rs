@@ -8,7 +8,7 @@ const PROTOCOL: &str = "/comit/xmr/btc/bid-quote/1.0.0";
 type OutEvent = request_response::Event<(), BidQuote>;
 type Message = request_response::Message<(), BidQuote>;
 
-pub type Behaviour = request_response::cbor::Behaviour<(), BidQuote>;
+pub type Behaviour = request_response::json::Behaviour<(), BidQuote>;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BidQuoteProtocol;
