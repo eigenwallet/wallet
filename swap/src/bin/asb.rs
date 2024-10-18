@@ -193,11 +193,7 @@ pub async fn main() -> Result<()> {
             tracing::info!(peer_id = %swarm.local_peer_id(), "Network layer initialized");
 
             for external_address in config.network.external_addresses {
-                let _ = Swarm::add_external_address(
-                    &mut swarm,
-                    external_address,
-                    AddressScore::Infinite,
-                );
+                let _ = Swarm::add_external_address(&mut swarm, external_address);
             }
 
             let (event_loop, mut swap_receiver) = EventLoop::new(
