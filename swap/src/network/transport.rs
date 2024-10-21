@@ -22,11 +22,9 @@ where
     T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     let auth_upgrade = noise::Config::new(&identity);
-    let multiplex_upgrade: SelectUpgrade<_, _> = SelectUpgrade::new(
-        yamux::Config::default(),
-        mplex::MplexConfig::new()
-    );
-    
+    let multiplex_upgrade: SelectUpgrade<_, _> =
+        SelectUpgrade::new(yamux::Config::default(), mplex::MplexConfig::new());
+
     let transport = transport
         .upgrade(Version::V1)
         .authenticate(auth_upgrade)

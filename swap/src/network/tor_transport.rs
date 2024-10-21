@@ -2,9 +2,9 @@ use anyhow::Result;
 use data_encoding::BASE32;
 use futures::future::{BoxFuture, FutureExt, Ready};
 use libp2p::core::multiaddr::{Multiaddr, Protocol};
-use libp2p::core::transport::TransportError;
+use libp2p::core::transport::{ListenerId, TransportError};
 use libp2p::core::Transport;
-use libp2p::tcp::tokio::{Tcp, TcpStream};
+use libp2p::tcp::tokio::TcpStream;
 use std::borrow::Cow;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::{fmt, io};
@@ -25,11 +25,14 @@ impl TorDialOnlyTransport {
 impl Transport for TorDialOnlyTransport {
     type Output = TcpStream;
     type Error = io::Error;
-    type Listener = TcpListenStream<Tcp>;
     type ListenerUpgrade = Ready<Result<Self::Output, Self::Error>>;
     type Dial = BoxFuture<'static, Result<Self::Output, Self::Error>>;
 
-    fn listen_on(self, addr: Multiaddr) -> Result<Self::Listener, TransportError<Self::Error>> {
+    fn listen_on(
+        &mut self,
+        id: ListenerId,
+        addr: Multiaddr,
+    ) -> Result<(), TransportError<Self::Error>> {
         Err(TransportError::MultiaddrNotSupported(addr))
     }
 
@@ -59,6 +62,7 @@ impl Transport for TorDialOnlyTransport {
     fn address_translation(&self, _: &Multiaddr, _: &Multiaddr) -> Option<Multiaddr> {
         None
     }
+
     fn dial_as_listener(
         &mut self,
         addr: Multiaddr,
@@ -83,6 +87,25 @@ impl Transport for TorDialOnlyTransport {
         };
 
         Ok(dial_future.boxed())
+    }
+
+    fn remove_listener(&mut self, id: ListenerId) -> bool {
+        // TODO: Libp2p Upgrade: What do we need to do here?
+        // I believe nothing because we are not using the transport to listen.
+        false
+    }
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<libp2p::core::transport::TransportEvent<Self::ListenerUpgrade, Self::Error>>
+    {
+        // TODO: Libp2p Upgrade: What do we need to do here?
+        // See: https://github.com/libp2p/rust-libp2p/pull/2652
+        // I believe we do not need to do anything here because we are not using the transport to listen.
+        // But we need to verify this before merging.
+
+        return std::task::Poll::Pending;
     }
 }
 
