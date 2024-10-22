@@ -1,7 +1,10 @@
 use crate::monero;
 use anyhow::{Context, Result};
+use asynchronous_codec::{Bytes, Framed, FramedRead, FramedWrite, LengthCodec};
+use futures::{SinkExt, StreamExt};
 use libp2p::core::upgrade;
-use libp2p::swarm::NegotiatedSubstream;
+
+use libp2p::swarm::Stream;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -12,9 +15,8 @@ pub const BUF_SIZE: usize = 1024 * 1024;
 
 pub mod protocol {
     use futures::future;
-    use libp2p::core::upgrade::{from_fn, FromFnUpgrade};
     use libp2p::core::Endpoint;
-    use libp2p::swarm::NegotiatedSubstream;
+    use libp2p::swarm::Stream;
     use void::Void;
 
     pub fn new() -> SwapSetup {
@@ -26,14 +28,7 @@ pub mod protocol {
 
     pub type SwapSetup = FromFnUpgrade<
         &'static [u8],
-        Box<
-            dyn Fn(
-                    NegotiatedSubstream,
-                    Endpoint,
-                ) -> future::Ready<Result<NegotiatedSubstream, Void>>
-                + Send
-                + 'static,
-        >,
+        Box<dyn Fn(Stream, Endpoint) -> future::Ready<Result<Stream, Void>> + Send + 'static>,
     >;
 }
 
@@ -86,13 +81,17 @@ pub enum SpotPriceError {
     Other,
 }
 
-pub async fn read_cbor_message<T>(substream: &mut NegotiatedSubstream) -> Result<T>
+pub async fn read_cbor_message<T>(substream: &mut Stream) -> Result<T>
 where
     T: DeserializeOwned,
 {
-    let bytes = upgrade::read_length_prefixed(substream, BUF_SIZE)
+    let mut frame = Framed::new(substream, LengthCodec {});
+
+    let bytes = frame
+        .next()
         .await
-        .context("Failed to read length-prefixed message from stream")?;
+        .context("Failed to read length-prefixed message from stream")??;
+
     let mut de = serde_cbor::Deserializer::from_slice(&bytes);
     let message =
         T::deserialize(&mut de).context("Failed to deserialize bytes into message using CBOR")?;
@@ -100,13 +99,17 @@ where
     Ok(message)
 }
 
-pub async fn write_cbor_message<T>(substream: &mut NegotiatedSubstream, message: T) -> Result<()>
+pub async fn write_cbor_message<T>(substream: &mut Stream, message: T) -> Result<()>
 where
     T: Serialize,
 {
+    let mut frame = Framed::new(substream, LengthCodec {});
+
     let bytes =
         serde_cbor::to_vec(&message).context("Failed to serialize message as bytes using CBOR")?;
-    upgrade::write_length_prefixed(substream, &bytes)
+
+    frame
+        .send(Bytes::from(bytes))
         .await
         .context("Failed to write bytes as length-prefixed message")?;
 

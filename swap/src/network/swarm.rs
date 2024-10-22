@@ -47,12 +47,11 @@ where
     );
 
     let transport = asb::transport::new(&identity)?;
-    let peer_id = identity.public().into();
 
-    let swarm = SwarmBuilder::new(transport, behaviour, peer_id)
-        .executor(Box::new(|f| {
-            tokio::spawn(f);
-        }))
+    let swarm = SwarmBuilder::with_existing_identity(identity)
+        .with_tokio()
+        .with_other_transport(|_| transport)?
+        .with_behaviour(|_| behaviour)?
         .build();
 
     Ok(swarm)
@@ -72,12 +71,11 @@ where
     };
 
     let transport = cli::transport::new(&identity, maybe_tor_socks5_port)?;
-    let peer_id = identity.public().into();
 
-    let swarm = SwarmBuilder::new(transport, behaviour, peer_id)
-        .executor(Box::new(|f| {
-            tokio::spawn(f);
-        }))
+    let swarm = SwarmBuilder::with_existing_identity(identity)
+        .with_tokio()
+        .with_other_transport(|_| transport)?
+        .with_behaviour(|_| behaviour)?
         .build();
 
     Ok(swarm)

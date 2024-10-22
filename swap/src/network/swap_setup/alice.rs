@@ -220,7 +220,7 @@ pub struct Handler<LR> {
     resume_only: bool,
 
     timeout: Duration,
-    // keep_alive: KeepAlive,
+    keep_alive: KeepAlive,
 }
 
 impl<LR> Handler<LR> {
@@ -240,7 +240,7 @@ impl<LR> Handler<LR> {
             latest_rate,
             resume_only,
             timeout: Duration::from_secs(120),
-            // keep_alive: KeepAlive::Until(Instant::now() + Duration::from_secs(10)),
+            keep_alive: KeepAlive::Until(Instant::now() + Duration::from_secs(10)),
         }
     }
 }
@@ -313,7 +313,7 @@ where
     ) {
         match event {
             ConnectionEvent::FullyNegotiatedInbound(substream) => {
-                // self.keep_alive = KeepAlive::Yes;
+                self.keep_alive = KeepAlive::Yes;
 
                 let (sender, receiver) = bmrng::channel_with_timeout::<bitcoin::Amount, WalletSnapshot>(
                     1,
