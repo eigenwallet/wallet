@@ -22,19 +22,16 @@ use std::time::Duration;
 use uuid::Uuid;
 
 pub mod transport {
-    use libp2p::{dns, identity, tcp, websocket::WsConfig};
+    use libp2p::{dns, identity, tcp};
 
     use super::*;
 
     /// Creates the libp2p transport for the ASB.
     pub fn new(identity: &identity::Keypair) -> Result<Boxed<(PeerId, StreamMuxerBox)>> {
-        let tcp = tcp::Config::new().nodelay(true);
-        let tcp_with_dns = dns::ResolverConfig::default::system(tcp)?;
-        let websocket_with_dns = WsConfig::new(tcp_with_dns.clone());
+        let tcp = tcp::tokio::Transport::new(tcp::Config::new().nodelay(true));
+        let tcp_with_dns = dns::tokio::Transport::system(tcp)?;
 
-        let transport = tcp_with_dns.or_transport(websocket_with_dns).boxed();
-
-        authenticate_and_multiplex(transport, identity)
+        authenticate_and_multiplex(Boxed::new(tcp_with_dns), identity)
     }
 }
 

@@ -19,7 +19,7 @@ pub fn new(
     identity: &identity::Keypair,
     maybe_tor_socks5_port: Option<u16>,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>> {
-    let tcp = tcp::Config::new().nodelay(true);
+    let tcp = tcp::tokio::Transport::new(tcp::Config::new().nodelay(true));
     let tcp_with_dns = dns::tokio::Transport::system(tcp)?;
 
     let maybe_tor_transport = match maybe_tor_socks5_port {
