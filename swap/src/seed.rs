@@ -43,9 +43,9 @@ impl Seed {
 
     pub fn derive_libp2p_identity(&self) -> identity::Keypair {
         let bytes = self.derive(b"NETWORK").derive(b"LIBP2P_IDENTITY").bytes();
-        let key = identity::ed25519::SecretKey::from_bytes(bytes).expect("we always pass 32 bytes");
+        let key = identity::Keypair::ed25519_from_bytes(bytes).expect("we always pass 32 bytes");
 
-        identity::Keypair::Ed25519(key.into())
+        key
     }
 
     pub fn derive_torv3_key(&self) -> TorSecretKeyV3 {
