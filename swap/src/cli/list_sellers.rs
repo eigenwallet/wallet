@@ -173,7 +173,7 @@ impl EventLoop {
                                 self.reachable_asb_address.insert(peer_id, address.clone());
                             }
                         }
-                        SwarmEvent::OutgoingConnectionError { peer_id, error } => {
+                        SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                             if let Some(peer_id) = peer_id {
                                 if peer_id == self.rendezvous_peer_id {
                                     tracing::error!(
@@ -216,7 +216,7 @@ impl EventLoop {
                                 for address in registration.record.addresses() {
                                     tracing::info!(peer_id=%peer, address=%address, "Discovered peer");
 
-                                    let p2p_suffix = Protocol::P2p(*peer.as_ref());
+                                    let p2p_suffix = Protocol::P2p(peer.into());
                                     let _address_with_p2p = if !address
                                         .ends_with(&Multiaddr::empty().with(p2p_suffix.clone()))
                                     {
@@ -228,7 +228,7 @@ impl EventLoop {
                                     self.asb_quote_status.insert(peer, QuoteStatus::Pending);
 
                                     // add all external addresses of that peer to the quote behaviour
-                                    self.swarm.behaviour_mut().quote.add_address(&peer, address.clone());
+                                    self.swarm.add_peer_address(peer, address.clone());
                                 }
 
                                 // request the quote, if we are not connected to the peer it will be dialed automatically

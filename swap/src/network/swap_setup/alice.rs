@@ -9,20 +9,20 @@ use crate::protocol::{Message0, Message2, Message4};
 use crate::{asb, bitcoin, env, monero};
 use anyhow::{anyhow, Context, Result};
 use futures::future::{BoxFuture, OptionFuture};
-use futures::{AsyncWriteExt, FutureExt};
-use libp2p::core::connection::ConnectionId;
+use futures::FutureExt;
+use libp2p::swarm::handler::ConnectionEvent;
+use libp2p::swarm::{ConnectionHandler, ConnectionId};
 use libp2p::core::upgrade;
 use libp2p::swarm::{
-    KeepAlive, NegotiatedSubstream, NetworkBehaviour, NetworkBehaviourAction, PollParameters,
-    ProtocolsHandler, ProtocolsHandlerEvent, ProtocolsHandlerUpgrErr, SubstreamProtocol,
+    NetworkBehaviour, ToSwarm,
+    SubstreamProtocol, ConnectionHandlerEvent,
 };
 use libp2p::{Multiaddr, PeerId};
 use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::task::Poll;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use uuid::Uuid;
-use void::Void;
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -147,28 +147,10 @@ impl<LR> NetworkBehaviour for Behaviour<LR>
 where
     LR: LatestRate + Send + 'static + Clone,
 {
-    type ProtocolsHandler = Handler<LR>;
-    type OutEvent = OutEvent;
+    type ConnectionHandler = Handler<LR>;
+    type ToSwarm = OutEvent;
 
-    fn new_handler(&mut self) -> Self::ProtocolsHandler {
-        Handler::new(
-            self.min_buy,
-            self.max_buy,
-            self.env_config,
-            self.latest_rate.clone(),
-            self.resume_only,
-        )
-    }
-
-    fn addresses_of_peer(&mut self, _: &PeerId) -> Vec<Multiaddr> {
-        Vec::new()
-    }
-
-    fn inject_connected(&mut self, _: &PeerId) {}
-
-    fn inject_disconnected(&mut self, _: &PeerId) {}
-
-    fn inject_event(&mut self, peer_id: PeerId, _: ConnectionId, event: HandlerOutEvent) {
+    fn on_connection_handler_event(&mut self, peer_id: PeerId, _: ConnectionId, event: HandlerOutEvent) {
         match event {
             HandlerOutEvent::Initiated(send_wallet_snapshot) => {
                 self.events.push_back(OutEvent::Initiated {
@@ -190,15 +172,38 @@ where
 
     fn poll(
         &mut self,
-        _cx: &mut std::task::Context<'_>,
-        _params: &mut impl PollParameters,
-    ) -> Poll<NetworkBehaviourAction<Self::OutEvent, Self::ProtocolsHandler>> {
+        _cx: &mut std::task::Context<'_>
+    ) -> Poll<ToSwarm<Self::ToSwarm, ()>> {
         if let Some(event) = self.events.pop_front() {
-            return Poll::Ready(NetworkBehaviourAction::GenerateEvent(event));
+            return Poll::Ready(ToSwarm::GenerateEvent(event));
         }
 
         Poll::Pending
     }
+    
+    fn handle_established_inbound_connection(
+        &mut self,
+        _connection_id: libp2p::swarm::ConnectionId,
+        peer: PeerId,
+        local_addr: &Multiaddr,
+        remote_addr: &Multiaddr,
+    ) -> std::result::Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
+        todo!()
+    }
+    
+    fn handle_established_outbound_connection(
+        &mut self,
+        _connection_id: libp2p::swarm::ConnectionId,
+        peer: PeerId,
+        addr: &Multiaddr,
+        role_override: libp2p::core::Endpoint,
+    ) -> std::result::Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
+        todo!()
+    }
+    
+    fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm<'_>) {
+        todo!()
+    }    
 }
 
 type InboundStream = BoxFuture<'static, Result<(Uuid, State3)>>;
@@ -215,7 +220,7 @@ pub struct Handler<LR> {
     resume_only: bool,
 
     timeout: Duration,
-    keep_alive: KeepAlive,
+    // keep_alive: KeepAlive,
 }
 
 impl<LR> Handler<LR> {
@@ -235,7 +240,7 @@ impl<LR> Handler<LR> {
             latest_rate,
             resume_only,
             timeout: Duration::from_secs(120),
-            keep_alive: KeepAlive::Until(Instant::now() + Duration::from_secs(10)),
+            // keep_alive: KeepAlive::Until(Instant::now() + Duration::from_secs(10)),
         }
     }
 }
@@ -247,13 +252,12 @@ pub enum HandlerOutEvent {
     Completed(Result<(Uuid, State3)>),
 }
 
-impl<LR> ProtocolsHandler for Handler<LR>
+impl<LR> ConnectionHandler for Handler<LR>
 where
     LR: LatestRate + Send + 'static,
 {
-    type InEvent = ();
-    type OutEvent = HandlerOutEvent;
-    type Error = Error;
+    type FromBehaviour = ();
+    type ToBehaviour = HandlerOutEvent;
     type InboundProtocol = protocol::SwapSetup;
     type OutboundProtocol = upgrade::DeniedUpgrade;
     type InboundOpenInfo = ();
@@ -263,178 +267,9 @@ where
         SubstreamProtocol::new(protocol::new(), ())
     }
 
-    fn inject_fully_negotiated_inbound(
-        &mut self,
-        mut substream: NegotiatedSubstream,
-        _: Self::InboundOpenInfo,
-    ) {
-        self.keep_alive = KeepAlive::Yes;
-
-        let (sender, receiver) = bmrng::channel_with_timeout::<bitcoin::Amount, WalletSnapshot>(
-            1,
-            Duration::from_secs(5),
-        );
-        let resume_only = self.resume_only;
-        let min_buy = self.min_buy;
-        let max_buy = self.max_buy;
-        let latest_rate = self.latest_rate.latest_rate();
-        let env_config = self.env_config;
-
-        let protocol = tokio::time::timeout(self.timeout, async move {
-            let request = swap_setup::read_cbor_message::<SpotPriceRequest>(&mut substream)
-                .await
-                .context("Failed to read spot price request")?;
-
-            let wallet_snapshot = sender
-                .send_receive(request.btc)
-                .await
-                .context("Failed to receive wallet snapshot")?;
-
-            // wrap all of these into another future so we can `return` from all the
-            // different blocks
-            let validate = async {
-                if resume_only {
-                    return Err(Error::ResumeOnlyMode);
-                };
-
-                let blockchain_network = BlockchainNetwork {
-                    bitcoin: env_config.bitcoin_network,
-                    monero: env_config.monero_network,
-                };
-
-                if request.blockchain_network != blockchain_network {
-                    return Err(Error::BlockchainNetworkMismatch {
-                        cli: request.blockchain_network,
-                        asb: blockchain_network,
-                    });
-                }
-
-                let btc = request.btc;
-
-                if btc < min_buy {
-                    return Err(Error::AmountBelowMinimum {
-                        min: min_buy,
-                        buy: btc,
-                    });
-                }
-
-                if btc > max_buy {
-                    return Err(Error::AmountAboveMaximum {
-                        max: max_buy,
-                        buy: btc,
-                    });
-                }
-
-                let rate = latest_rate.map_err(|e| Error::LatestRateFetchFailed(Box::new(e)))?;
-                let xmr = rate
-                    .sell_quote(btc)
-                    .map_err(Error::SellQuoteCalculationFailed)?;
-
-                let unlocked = Amount::from_piconero(wallet_snapshot.balance.unlocked_balance);
-                if unlocked < xmr + wallet_snapshot.lock_fee {
-                    return Err(Error::BalanceTooLow {
-                        balance: wallet_snapshot.balance,
-                        buy: btc,
-                    });
-                }
-
-                Ok(xmr)
-            };
-
-            let result = validate.await;
-
-            swap_setup::write_cbor_message(
-                &mut substream,
-                SpotPriceResponse::from_result_ref(&result),
-            )
-            .await
-            .context("Failed to write spot price response")?;
-
-            let xmr = result?;
-
-            let state0 = State0::new(
-                request.btc,
-                xmr,
-                env_config,
-                wallet_snapshot.redeem_address,
-                wallet_snapshot.punish_address,
-                wallet_snapshot.redeem_fee,
-                wallet_snapshot.punish_fee,
-                &mut rand::thread_rng(),
-            );
-
-            let message0 = swap_setup::read_cbor_message::<Message0>(&mut substream)
-                .await
-                .context("Failed to read message0")?;
-            let (swap_id, state1) = state0
-                .receive(message0)
-                .context("Failed to transition state0 -> state1 using message0")?;
-
-            swap_setup::write_cbor_message(&mut substream, state1.next_message())
-                .await
-                .context("Failed to send message1")?;
-
-            let message2 = swap_setup::read_cbor_message::<Message2>(&mut substream)
-                .await
-                .context("Failed to read message2")?;
-            let state2 = state1
-                .receive(message2)
-                .context("Failed to transition state1 -> state2 using message2")?;
-
-            swap_setup::write_cbor_message(&mut substream, state2.next_message())
-                .await
-                .context("Failed to send message3")?;
-
-            let message4 = swap_setup::read_cbor_message::<Message4>(&mut substream)
-                .await
-                .context("Failed to read message4")?;
-            let state3 = state2
-                .receive(message4)
-                .context("Failed to transition state2 -> state3 using message4")?;
-
-            substream
-                .flush()
-                .await
-                .context("Failed to flush substream after all messages were sent")?;
-            substream
-                .close()
-                .await
-                .context("Failed to close substream after all messages were sent")?;
-
-            Ok((swap_id, state3))
-        });
-
-        let max_seconds = self.timeout.as_secs();
-        self.inbound_stream = OptionFuture::from(Some(
-            async move {
-                protocol.await.with_context(|| {
-                    format!("Failed to complete execution setup within {}s", max_seconds)
-                })?
-            }
-            .boxed(),
-        ));
-
-        self.events.push_back(HandlerOutEvent::Initiated(receiver));
-    }
-
-    fn inject_fully_negotiated_outbound(&mut self, _: Void, _: Self::OutboundOpenInfo) {
-        unreachable!("Alice does not support outbound in the handler")
-    }
-
-    fn inject_event(&mut self, _: Self::InEvent) {
-        unreachable!("Alice does not receive events from the Behaviour in the handler")
-    }
-
-    fn inject_dial_upgrade_error(
-        &mut self,
-        _: Self::OutboundOpenInfo,
-        _: ProtocolsHandlerUpgrErr<Void>,
-    ) {
-        unreachable!("Alice does not dial")
-    }
-
-    fn connection_keep_alive(&self) -> KeepAlive {
-        self.keep_alive
+    fn connection_keep_alive(&self) -> bool {
+        // self.keep_alive
+        false
     }
 
     #[allow(clippy::type_complexity)]
@@ -442,25 +277,198 @@ where
         &mut self,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<
-        ProtocolsHandlerEvent<
+        ConnectionHandlerEvent<
             Self::OutboundProtocol,
             Self::OutboundOpenInfo,
-            Self::OutEvent,
-            Self::Error,
+            Self::ToBehaviour,
         >,
     > {
         if let Some(event) = self.events.pop_front() {
-            return Poll::Ready(ProtocolsHandlerEvent::Custom(event));
+            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(event));
         }
 
         if let Some(result) = futures::ready!(self.inbound_stream.poll_unpin(cx)) {
             self.inbound_stream = OptionFuture::from(None);
-            return Poll::Ready(ProtocolsHandlerEvent::Custom(HandlerOutEvent::Completed(
+            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(HandlerOutEvent::Completed(
                 result,
             )));
         }
 
         Poll::Pending
+    }
+    
+    fn on_behaviour_event(&mut self, _event: Self::FromBehaviour) {
+        unreachable!("Alice does not receive events from the Behaviour in the handler")
+    }
+    
+    fn on_connection_event(
+        &mut self,
+        event: libp2p::swarm::handler::ConnectionEvent<
+            '_,
+            Self::InboundProtocol,
+            Self::OutboundProtocol,
+            Self::InboundOpenInfo,
+            Self::OutboundOpenInfo,
+        >,
+    ) {
+        match event {
+            ConnectionEvent::FullyNegotiatedInbound(substream) => {
+                // self.keep_alive = KeepAlive::Yes;
+
+                let (sender, receiver) = bmrng::channel_with_timeout::<bitcoin::Amount, WalletSnapshot>(
+                    1,
+                    Duration::from_secs(5),
+                );
+                let resume_only = self.resume_only;
+                let min_buy = self.min_buy;
+                let max_buy = self.max_buy;
+                let latest_rate = self.latest_rate.latest_rate();
+                let env_config = self.env_config;
+
+                let protocol = tokio::time::timeout(self.timeout, async move {
+                    let request = swap_setup::read_cbor_message::<SpotPriceRequest>(&mut substream)
+                        .await
+                        .context("Failed to read spot price request")?;
+
+                    let wallet_snapshot = sender
+                        .send_receive(request.btc)
+                        .await
+                        .context("Failed to receive wallet snapshot")?;
+
+                    // wrap all of these into another future so we can `return` from all the
+                    // different blocks
+                    let validate = async {
+                        if resume_only {
+                            return Err(Error::ResumeOnlyMode);
+                        };
+
+                        let blockchain_network = BlockchainNetwork {
+                            bitcoin: env_config.bitcoin_network,
+                            monero: env_config.monero_network,
+                        };
+
+                        if request.blockchain_network != blockchain_network {
+                            return Err(Error::BlockchainNetworkMismatch {
+                                cli: request.blockchain_network,
+                                asb: blockchain_network,
+                            });
+                        }
+
+                        let btc = request.btc;
+
+                        if btc < min_buy {
+                            return Err(Error::AmountBelowMinimum {
+                                min: min_buy,
+                                buy: btc,
+                            });
+                        }
+
+                        if btc > max_buy {
+                            return Err(Error::AmountAboveMaximum {
+                                max: max_buy,
+                                buy: btc,
+                            });
+                        }
+
+                        let rate = latest_rate.map_err(|e| Error::LatestRateFetchFailed(Box::new(e)))?;
+                        let xmr = rate
+                            .sell_quote(btc)
+                            .map_err(Error::SellQuoteCalculationFailed)?;
+
+                        let unlocked = Amount::from_piconero(wallet_snapshot.balance.unlocked_balance);
+                        if unlocked < xmr + wallet_snapshot.lock_fee {
+                            return Err(Error::BalanceTooLow {
+                                balance: wallet_snapshot.balance,
+                                buy: btc,
+                            });
+                        }
+
+                        Ok(xmr)
+                    };
+
+                    let result = validate.await;
+
+                    swap_setup::write_cbor_message(
+                        &mut substream,
+                        SpotPriceResponse::from_result_ref(&result),
+                    )
+                    .await
+                    .context("Failed to write spot price response")?;
+
+                    let xmr = result?;
+
+                    let state0 = State0::new(
+                        request.btc,
+                        xmr,
+                        env_config,
+                        wallet_snapshot.redeem_address,
+                        wallet_snapshot.punish_address,
+                        wallet_snapshot.redeem_fee,
+                        wallet_snapshot.punish_fee,
+                        &mut rand::thread_rng(),
+                    );
+
+                    let message0 = swap_setup::read_cbor_message::<Message0>(&mut substream)
+                        .await
+                        .context("Failed to read message0")?;
+                    let (swap_id, state1) = state0
+                        .receive(message0)
+                        .context("Failed to transition state0 -> state1 using message0")?;
+
+                    swap_setup::write_cbor_message(&mut substream, state1.next_message())
+                        .await
+                        .context("Failed to send message1")?;
+
+                    let message2 = swap_setup::read_cbor_message::<Message2>(&mut substream)
+                        .await
+                        .context("Failed to read message2")?;
+                    let state2 = state1
+                        .receive(message2)
+                        .context("Failed to transition state1 -> state2 using message2")?;
+
+                    swap_setup::write_cbor_message(&mut substream, state2.next_message())
+                        .await
+                        .context("Failed to send message3")?;
+
+                    let message4 = swap_setup::read_cbor_message::<Message4>(&mut substream)
+                        .await
+                        .context("Failed to read message4")?;
+                    let state3 = state2
+                        .receive(message4)
+                        .context("Failed to transition state2 -> state3 using message4")?;
+
+                    substream
+                        .flush()
+                        .await
+                        .context("Failed to flush substream after all messages were sent")?;
+                    substream
+                        .close()
+                        .await
+                        .context("Failed to close substream after all messages were sent")?;
+
+                    Ok((swap_id, state3))
+                });
+
+                let max_seconds = self.timeout.as_secs();
+                self.inbound_stream = OptionFuture::from(Some(
+                    async move {
+                        protocol.await.with_context(|| {
+                            format!("Failed to complete execution setup within {}s", max_seconds)
+                        })?
+                    }
+                    .boxed(),
+                ));
+
+                self.events.push_back(HandlerOutEvent::Initiated(receiver));
+            }
+            ConnectionEvent::DialUpgradeError(..) => {
+                unreachable!("Alice does not dial")
+            }
+            ConnectionEvent::FullyNegotiatedOutbound(..) => {
+                unreachable!("Alice does not support outbound in the handler")
+            }
+            _ => unreachable!("this wasn't implemented before..."),
+        }
     }
 }
 
