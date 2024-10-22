@@ -108,7 +108,7 @@ pub trait SwarmExt {
     async fn block_on_connection<T>(&mut self, other: &mut Swarm<T>)
     where
         T: NetworkBehaviour,
-        <T as NetworkBehaviour>::OutEvent: Debug;
+        <T as NetworkBehaviour>::ToSwarm: Debug;
 
     /// Listens on a random memory address, polling the [`Swarm`] until the
     /// transport is ready to accept connections.
@@ -123,12 +123,12 @@ pub trait SwarmExt {
 impl<B> SwarmExt for Swarm<B>
 where
     B: NetworkBehaviour,
-    <B as NetworkBehaviour>::OutEvent: Debug,
+    <B as NetworkBehaviour>::ToSwarm: Debug,
 {
     async fn block_on_connection<T>(&mut self, other: &mut Swarm<T>)
     where
         T: NetworkBehaviour,
-        <T as NetworkBehaviour>::OutEvent: Debug,
+        <T as NetworkBehaviour>::ToSwarm: Debug,
     {
         let addr_to_dial = other.external_addresses().next().unwrap().addr.clone();
         let local_peer_id = *other.local_peer_id();
