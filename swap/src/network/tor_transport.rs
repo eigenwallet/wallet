@@ -43,20 +43,20 @@ impl Transport for TorDialOnlyTransport {
             return Err(TransportError::MultiaddrNotSupported(addr));
         }
 
-        let dial_future = async move {
+        let socks_port = self.socks_port.clone();
+
+        Ok(Box::pin(async move {
             tracing::debug!(address = %addr, "Establishing connection through Tor proxy");
 
             let stream =
-                Socks5Stream::connect((Ipv4Addr::LOCALHOST, self.socks_port), address.to_string())
+                Socks5Stream::connect((Ipv4Addr::LOCALHOST, socks_port), address.to_string())
                     .await
                     .map_err(|e| io::Error::new(io::ErrorKind::ConnectionRefused, e))?;
 
             tracing::debug!("Connection through Tor established");
 
             Ok(TcpStream(stream.into_inner()))
-        };
-
-        Ok(dial_future.boxed())
+        }))
     }
 
     fn address_translation(&self, _: &Multiaddr, _: &Multiaddr) -> Option<Multiaddr> {
@@ -73,20 +73,20 @@ impl Transport for TorDialOnlyTransport {
             return Err(TransportError::MultiaddrNotSupported(addr));
         }
 
-        let dial_future = async move {
+        let socks_port = self.socks_port.clone();
+
+        Ok(Box::pin(async move {
             tracing::debug!(address = %addr, "Establishing connection through Tor proxy");
 
             let stream =
-                Socks5Stream::connect((Ipv4Addr::LOCALHOST, self.socks_port), address.to_string())
+                Socks5Stream::connect((Ipv4Addr::LOCALHOST, socks_port), address.to_string())
                     .await
                     .map_err(|e| io::Error::new(io::ErrorKind::ConnectionRefused, e))?;
 
             tracing::debug!("Connection through Tor established");
 
             Ok(TcpStream(stream.into_inner()))
-        };
-
-        Ok(dial_future.boxed())
+        }))
     }
 
     fn remove_listener(&mut self, id: ListenerId) -> bool {

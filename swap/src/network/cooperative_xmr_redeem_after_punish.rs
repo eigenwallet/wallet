@@ -1,7 +1,7 @@
 use crate::monero::Scalar;
 use crate::{asb, cli};
 use libp2p::request_response::ProtocolSupport;
-use libp2p::{request_response, PeerId};
+use libp2p::{request_response, PeerId, StreamProtocol};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -49,14 +49,14 @@ pub enum Response {
 
 pub fn alice() -> Behaviour {
     Behaviour::new(
-        vec![(CooperativeXmrRedeemProtocol, ProtocolSupport::Inbound)],
+        vec![(StreamProtocol::new(CooperativeXmrRedeemProtocol.as_ref()), ProtocolSupport::Inbound)],
         request_response::Config::default(),
     )
 }
 
 pub fn bob() -> Behaviour {
     Behaviour::new(
-        vec![(CooperativeXmrRedeemProtocol, ProtocolSupport::Outbound)],
+        vec![(StreamProtocol::new(CooperativeXmrRedeemProtocol.as_ref()), ProtocolSupport::Outbound)],
         request_response::Config::default(),
     )
 }

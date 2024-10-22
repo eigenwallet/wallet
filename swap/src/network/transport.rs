@@ -20,8 +20,8 @@ pub fn authenticate_and_multiplex<T>(
 where
     T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let auth_upgrade = noise::Config::new(&identity);
-    let multiplex_upgrade: yamux::Config::default();
+    let auth_upgrade = noise::Config::new(&identity)?;
+    let multiplex_upgrade = yamux::Config::default();
 
     let transport = transport
         .upgrade(Version::V1)

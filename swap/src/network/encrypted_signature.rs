@@ -1,6 +1,6 @@
 use crate::{asb, cli};
 use libp2p::request_response::{self, ProtocolSupport};
-use libp2p::PeerId;
+use libp2p::{PeerId, StreamProtocol};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -15,7 +15,7 @@ pub struct EncryptedSignatureProtocol;
 
 impl AsRef<str> for EncryptedSignatureProtocol {
     fn as_ref(&self) -> &str {
-        PROTOCOL.as_bytes()
+        PROTOCOL
     }
 }
 
@@ -27,7 +27,10 @@ pub struct Request {
 
 pub fn alice() -> Behaviour {
     Behaviour::new(
-        vec![(EncryptedSignatureProtocol, ProtocolSupport::Inbound)],
+        vec![(
+            StreamProtocol::new(EncryptedSignatureProtocol.as_ref()),
+            request_response::ProtocolSupport::Inbound,
+        )],
         request_response::Config::default(),
     )
 }
@@ -35,7 +38,7 @@ pub fn alice() -> Behaviour {
 pub fn bob() -> Behaviour {
     Behaviour::new(
         vec![(
-            EncryptedSignatureProtocol,
+            StreamProtocol::new(EncryptedSignatureProtocol.as_ref()),
             request_response::ProtocolSupport::Outbound,
         )],
         request_response::Config::default(),

@@ -4,7 +4,8 @@ use crate::network::rendezvous::XmrBtcNamespace;
 use crate::seed::Seed;
 use crate::{asb, bitcoin, cli, env, tor};
 use anyhow::Result;
-use libp2p::swarm::{NetworkBehaviour, SwarmBuilder};
+use libp2p::swarm::NetworkBehaviour;
+use libp2p::SwarmBuilder;
 use libp2p::{identity, Multiaddr, Swarm};
 use std::fmt::Debug;
 

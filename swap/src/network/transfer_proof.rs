@@ -1,6 +1,6 @@
 use crate::{asb, cli, monero};
 use libp2p::request_response::{self, ProtocolSupport};
-use libp2p::PeerId;
+use libp2p::{PeerId, StreamProtocol};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -15,7 +15,7 @@ pub struct TransferProofProtocol;
 
 impl AsRef<str> for TransferProofProtocol {
     fn as_ref(&self) -> &str {
-        PROTOCOL.as_bytes()
+        PROTOCOL
     }
 }
 
@@ -27,14 +27,14 @@ pub struct Request {
 
 pub fn alice() -> Behaviour {
     Behaviour::new(
-        vec![(TransferProofProtocol, ProtocolSupport::Outbound)],
+        vec![(StreamProtocol::new(PROTOCOL), ProtocolSupport::Outbound)],
         request_response::Config::default(),
     )
 }
 
 pub fn bob() -> Behaviour {
     Behaviour::new(
-        vec![(TransferProofProtocol, ProtocolSupport::Inbound)],
+        vec![(StreamProtocol::new(PROTOCOL), ProtocolSupport::Inbound)],
         request_response::Config::default(),
     )
 }

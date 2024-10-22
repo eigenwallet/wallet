@@ -10,7 +10,7 @@ use crate::protocol::bob::State2;
 use crate::{bitcoin, env};
 use anyhow::{anyhow, Error, Result};
 use libp2p::core::Multiaddr;
-use libp2p::request_response::{InboundRequestId, ResponseChannel};
+use libp2p::request_response::{OutboundRequestId, ResponseChannel};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{identify, identity, ping, PeerId};
 use std::sync::Arc;
@@ -19,7 +19,7 @@ use std::time::Duration;
 #[derive(Debug)]
 pub enum OutEvent {
     QuoteReceived {
-        id: InboundRequestId,
+        id: OutboundRequestId,
         response: BidQuote,
     },
     SwapSetupCompleted(Box<Result<State2>>),
@@ -29,15 +29,15 @@ pub enum OutEvent {
         peer: PeerId,
     },
     EncryptedSignatureAcknowledged {
-        id: InboundRequestId,
+        id: OutboundRequestId,
     },
     CooperativeXmrRedeemFulfilled {
-        id: InboundRequestId,
+        id: OutboundRequestId,
         s_a: Scalar,
         swap_id: uuid::Uuid,
     },
     CooperativeXmrRedeemRejected {
-        id: InboundRequestId,
+        id: OutboundRequestId,
         reason: CooperativeXmrRedeemRejectReason,
         swap_id: uuid::Uuid,
     },

@@ -1,10 +1,10 @@
 use crate::{asb, bitcoin, cli};
 use libp2p::request_response::{self, ProtocolSupport};
-use libp2p::PeerId;
+use libp2p::{PeerId, StreamProtocol};
 use serde::{Deserialize, Serialize};
 use typeshare::typeshare;
 
-const PROTOCOL: &str = "/comit/xmr/btc/bid-quote/1.0.0";
+const PROTOCOL: &str = BidQuoteProtocol::PROTOCOL_ID;
 pub(crate) type OutEvent = request_response::Event<(), BidQuote>;
 type Message = request_response::Message<(), BidQuote>;
 
@@ -13,9 +13,13 @@ pub type Behaviour = request_response::json::Behaviour<(), BidQuote>;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BidQuoteProtocol;
 
+impl BidQuoteProtocol {
+    const PROTOCOL_ID: &str = "/comit/xmr/btc/bid-quote/1.0.0";
+}
+
 impl AsRef<str> for BidQuoteProtocol {
     fn as_ref(&self) -> &str {
-        PROTOCOL.as_bytes()
+        PROTOCOL
     }
 }
 
@@ -48,7 +52,7 @@ pub struct ZeroQuoteReceived;
 /// handing out quotes.
 pub fn asb() -> Behaviour {
     Behaviour::new(
-        vec![(BidQuoteProtocol, ProtocolSupport::Inbound)],
+        vec![(StreamProtocol::new(BidQuoteProtocol::PROTOCOL_ID), ProtocolSupport::Inbound)],
         request_response::Config::default(),
     )
 }
@@ -59,7 +63,7 @@ pub fn asb() -> Behaviour {
 /// requesting quotes.
 pub fn cli() -> Behaviour {
     Behaviour::new(
-        vec![(BidQuoteProtocol, ProtocolSupport::Outbound)],
+        vec![(StreamProtocol::new(BidQuoteProtocol::PROTOCOL_ID), ProtocolSupport::Outbound)],
         request_response::Config::default(),
     )
 }

@@ -16,7 +16,7 @@ use libp2p::core::transport::Boxed;
 use libp2p::request_response::ResponseChannel;
 use libp2p::swarm::dial_opts::PeerCondition;
 use libp2p::swarm::NetworkBehaviour;
-use libp2p::{Multiaddr, PeerId, Transport};
+use libp2p::{Multiaddr, PeerId};
 use std::task::Poll;
 use std::time::Duration;
 use uuid::Uuid;
@@ -40,7 +40,7 @@ pub mod transport {
 
 pub mod behaviour {
     use libp2p::{
-        identify, identity, ping, request_response::InboundRequestId,
+        identify, identity, ping, request_response::OutboundRequestId,
         swarm::behaviour::toggle::Toggle,
     };
 
@@ -67,7 +67,7 @@ pub mod behaviour {
         },
         TransferProofAcknowledged {
             peer: PeerId,
-            id: InboundRequestId,
+            id: OutboundRequestId,
         },
         EncryptedSignatureReceived {
             msg: encrypted_signature::Request,
@@ -312,7 +312,7 @@ pub mod rendezvous {
             )
         }
 
-        fn on_swarm_event(&mut self, event: FromSwarm) {
+        fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
             match event {
                 FromSwarm::ConnectionEstablished(e) => {
                     let peer_id = e.peer_id;
