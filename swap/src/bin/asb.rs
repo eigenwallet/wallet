@@ -16,7 +16,6 @@ use anyhow::{bail, Context, Result};
 use comfy_table::Table;
 use libp2p::core::multiaddr::Protocol;
 use libp2p::core::Multiaddr;
-use libp2p::swarm::AddressScore;
 use libp2p::Swarm;
 use std::convert::TryInto;
 use std::env;

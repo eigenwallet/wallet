@@ -189,7 +189,15 @@ where
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
     ) -> std::result::Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        todo!()
+        let handler = Handler::new(
+            self.min_buy,
+            self.max_buy,
+            self.env_config.clone(),
+            self.latest_rate.clone(),
+            self.resume_only,
+        );
+
+        Ok(handler)
     }
     
     fn handle_established_outbound_connection(
@@ -199,11 +207,12 @@ where
         addr: &Multiaddr,
         role_override: libp2p::core::Endpoint,
     ) -> std::result::Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        todo!()
+        // TODO: Libp2p ugprade: Is this true?
+        unreachable!("Alice does not support outbound connections")
     }
     
     fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm<'_>) {
-        todo!()
+        // todo!()
     }    
 }
 
@@ -273,6 +282,7 @@ where
     }
 
     fn connection_keep_alive(&self) -> bool {
+        return true;
         match self.keep_alive_until {
             None => true,
             Some(keep_alive_until) => Instant::now() < keep_alive_until,
@@ -476,7 +486,9 @@ where
             ConnectionEvent::FullyNegotiatedOutbound(..) => {
                 unreachable!("Alice does not support outbound in the handler")
             }
-            _ => unreachable!("this wasn't implemented before..."),
+            _ => {
+                // TODO: not quite sure what to do here
+            }
         }
     }
 }

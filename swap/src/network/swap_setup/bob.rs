@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use uuid::Uuid;
+use futures::AsyncWriteExt;
 
 use super::{read_cbor_message, write_cbor_message, SpotPriceRequest};
 
@@ -100,7 +101,7 @@ impl NetworkBehaviour for Behaviour {
     }
 }
 
-type OutboundStream = BoxFuture<'static, Result<State2>>;
+type OutboundStream = BoxFuture<'static, Result<State2, Error>>;
 
 pub struct Handler {
     outbound_stream: OptionFuture<OutboundStream>,
@@ -169,12 +170,10 @@ impl ConnectionHandler for Handler {
             });
         }
 
-        if let Some(outbound_stream) = self.outbound_stream.as_mut() {
-            if let Poll::Ready(result) = outbound_stream.poll_unpin(cx) {
-                self.outbound_stream = None.into();
-                self.keep_alive = false; // Set to false after completing the stream
-                return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Completed(result)));
-            }
+        if let Poll::Ready(Some(result)) = self.outbound_stream.poll_unpin(cx) {
+            self.outbound_stream = None.into();
+            self.keep_alive = false;
+            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Completed(result.map_err(anyhow::Error::from))));
         }
 
         Poll::Pending
@@ -250,14 +249,14 @@ impl ConnectionHandler for Handler {
                 });
 
                 let max_seconds = self.timeout.as_secs();
-                self.outbound_stream = Some(Box::pin(
-                    async move {
-                        protocol.await.map_err(|_| Error::Timeout {
+                self.outbound_stream = OptionFuture::from(Some(Box::pin(async move {
+                    protocol.await.map_err(|e| match e {
+                        tokio::time::error::Elapsed { .. } => Error::Timeout {
                             seconds: max_seconds,
-                        })?
-                    }
-                    .boxed(),
-                ));
+                        },
+                        _ => Error::Other,
+                    })?
+                }) as OutboundStream));
                 self.keep_alive = true; // Ensure the connection stays alive while processing
             }
             libp2p::swarm::handler::ConnectionEvent::DialUpgradeError(dial_upgrade_err) => {
@@ -326,5 +325,22 @@ impl From<SpotPriceError> for Error {
             }
             SpotPriceError::Other => Error::Other,
         }
+    }
+}
+
+impl From<anyhow::Error> for Error {
+    fn from(error: anyhow::Error) -> Self {
+        // This is not good we are just swallowing the error here
+        // TODO: Libp2p Upgrade: We should find a better way to convert these errors in the entire file here into each other
+        // This doesnt seem optimal at all
+        // Incredibly ugly code and we lose a lot of valueale information here
+        Error::Other
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(error: std::io::Error) -> Self {
+        // This is not good we are just swallowing the error here
+        Error::Other
     }
 }
