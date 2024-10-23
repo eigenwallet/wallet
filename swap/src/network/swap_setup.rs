@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod alice;
 pub mod bob;
+mod vendor_from_fn;
 
 pub const BUF_SIZE: usize = 1024 * 1024;
 
@@ -18,15 +19,17 @@ pub mod protocol {
     use libp2p::swarm::Stream;
     use void::Void;
 
+    use super::vendor_from_fn::{from_fn, FromFnUpgrade};
+
     pub fn new() -> SwapSetup {
         from_fn(
-            b"/comit/xmr/btc/swap_setup/1.0.0",
+            "/comit/xmr/btc/swap_setup/1.0.0",
             Box::new(|socket, _| future::ready(Ok(socket))),
         )
     }
 
     pub type SwapSetup = FromFnUpgrade<
-        &'static [u8],
+        &'static str,
         Box<dyn Fn(Stream, Endpoint) -> future::Ready<Result<Stream, Void>> + Send + 'static>,
     >;
 }
