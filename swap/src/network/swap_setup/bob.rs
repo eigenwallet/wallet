@@ -171,9 +171,9 @@ impl ConnectionHandler for Handler {
 
         if let Some(outbound_stream) = self.outbound_stream.as_mut() {
             if let Poll::Ready(result) = outbound_stream.poll_unpin(cx) {
-                self.outbound_stream = None;
+                self.outbound_stream = None.into();
                 self.keep_alive = false; // Set to false after completing the stream
-                return Poll::Ready(ConnectionHandlerEvent::Custom(Completed(result)));
+                return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Completed(result)));
             }
         }
 
@@ -190,7 +190,7 @@ impl ConnectionHandler for Handler {
         >,
     ) {
         match event {
-            libp2p::swarm::handler::ConnectionEvent::FullyNegotiatedInbound(_, _) => {
+            libp2p::swarm::handler::ConnectionEvent::FullyNegotiatedInbound(_) => {
                 unreachable!("Bob does not support inbound substreams")
             }
             libp2p::swarm::handler::ConnectionEvent::FullyNegotiatedOutbound(outbound) => {
