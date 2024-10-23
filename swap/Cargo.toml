@@ -15,6 +15,7 @@ tauri = [ "dep:tauri" ]
 anyhow = "1"
 async-compression = { version = "0.3", features = [ "bzip2", "tokio" ] }
 async-trait = "0.1"
+asynchronous-codec = { version = "0.7.0", features = [ "cbor" ] }
 atty = "0.2"
 backoff = { version = "0.4", features = [ "tokio" ] }
 base64 = "0.22"
@@ -116,6 +117,7 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
     "json",
 ] }
 typeshare = "1.0.3"
+unsigned-varint = { version = "0.8.0", features = [ "codec", "asynchronous_codec" ] }
 url = { version = "2", features = [ "serde" ] }
 uuid = { version = "1.9", features = [ "serde", "v4" ] }
 void = "1"

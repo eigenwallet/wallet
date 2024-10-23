@@ -1,8 +1,7 @@
 use crate::monero;
 use anyhow::{Context, Result};
-use asynchronous_codec::{Bytes, Framed, FramedRead, FramedWrite, LengthCodec};
+use asynchronous_codec::{Bytes, Framed};
 use futures::{SinkExt, StreamExt};
-use libp2p::core::upgrade;
 
 use libp2p::swarm::Stream;
 use serde::de::DeserializeOwned;
@@ -81,11 +80,13 @@ pub enum SpotPriceError {
     Other,
 }
 
-pub async fn read_cbor_message<T>(substream: &mut Stream) -> Result<T>
+pub async fn read_cbor_message<T>(stream: &mut Stream) -> Result<T>
 where
     T: DeserializeOwned,
 {
-    let mut frame = Framed::new(substream, LengthCodec {});
+    let codec = unsigned_varint::codec::UviBytes::<Bytes>::default();
+
+    let mut frame = Framed::new(stream, codec);
 
     let bytes = frame
         .next()
@@ -99,14 +100,14 @@ where
     Ok(message)
 }
 
-pub async fn write_cbor_message<T>(substream: &mut Stream, message: T) -> Result<()>
+pub async fn write_cbor_message<T>(stream: &mut Stream, message: T) -> Result<()>
 where
     T: Serialize,
 {
-    let mut frame = Framed::new(substream, LengthCodec {});
+    let bytes = serde_cbor::to_vec(&message).context("Failed to serialize message as bytes using CBOR")?;
 
-    let bytes =
-        serde_cbor::to_vec(&message).context("Failed to serialize message as bytes using CBOR")?;
+    let codec = unsigned_varint::codec::UviBytes::default();
+    let mut frame = Framed::new(stream, codec);
 
     frame
         .send(Bytes::from(bytes))
