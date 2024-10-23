@@ -69,7 +69,7 @@ impl NetworkBehaviour for Behaviour {
         if peer == self.peer {
             self.sleep = None; // Cancel any active re-dialling
         }
-        Ok(Self::ConnectionHandler::default())
+        Ok(Self::ConnectionHandler {})
     }
 
     fn handle_established_outbound_connection(
@@ -82,7 +82,7 @@ impl NetworkBehaviour for Behaviour {
         if peer == self.peer {
             self.sleep = None; // Cancel any active re-dialling
         }
-        Ok(Self::ConnectionHandler::default())
+        Ok(Self::ConnectionHandler {})
     }
 
     fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm<'_>) {
