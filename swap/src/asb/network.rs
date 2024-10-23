@@ -22,7 +22,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 pub mod transport {
-    use libp2p::{dns, identity, tcp};
+    use libp2p::{dns, identity, tcp, Transport};
 
     use super::*;
 
@@ -31,7 +31,7 @@ pub mod transport {
         let tcp = tcp::tokio::Transport::new(tcp::Config::new().nodelay(true));
         let tcp_with_dns = dns::tokio::Transport::system(tcp)?;
 
-        authenticate_and_multiplex(Boxed::new(tcp_with_dns), identity)
+        authenticate_and_multiplex(tcp_with_dns.boxed(), identity)
     }
 }
 
