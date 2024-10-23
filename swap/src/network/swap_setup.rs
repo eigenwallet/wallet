@@ -80,13 +80,17 @@ pub enum SpotPriceError {
     Other,
 }
 
+fn codec() -> unsigned_varint::codec::UviBytes<Bytes> {
+    let mut codec = unsigned_varint::codec::UviBytes::<Bytes>::default();
+    codec.set_max_len(BUF_SIZE);
+    codec
+}
+
 pub async fn read_cbor_message<T>(stream: &mut Stream) -> Result<T>
 where
     T: DeserializeOwned,
 {
-    let codec = unsigned_varint::codec::UviBytes::<Bytes>::default();
-
-    let mut frame = Framed::new(stream, codec);
+    let mut frame = Framed::new(stream, codec());
 
     let bytes = frame
         .next()
@@ -106,8 +110,7 @@ where
 {
     let bytes = serde_cbor::to_vec(&message).context("Failed to serialize message as bytes using CBOR")?;
 
-    let codec = unsigned_varint::codec::UviBytes::default();
-    let mut frame = Framed::new(stream, codec);
+    let mut frame = Framed::new(stream, codec());
 
     frame
         .send(Bytes::from(bytes))
