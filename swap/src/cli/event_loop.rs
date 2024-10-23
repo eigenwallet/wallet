@@ -10,7 +10,7 @@ use crate::protocol::Database;
 use anyhow::{Context, Result};
 use futures::future::{BoxFuture, OptionFuture};
 use futures::{FutureExt, StreamExt};
-use libp2p::request_response::{InboundRequestId, ResponseChannel};
+use libp2p::request_response::{InboundRequestId, OutboundRequestId, ResponseChannel};
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{PeerId, Swarm};
@@ -35,10 +35,10 @@ pub struct EventLoop {
     // these represents requests that are currently in-flight.
     // once we get a response to a matching [`RequestId`], we will use the responder to relay the
     // response.
-    inflight_quote_requests: HashMap<InboundRequestId, bmrng::Responder<BidQuote>>,
-    inflight_encrypted_signature_requests: HashMap<InboundRequestId, bmrng::Responder<()>>,
+    inflight_quote_requests: HashMap<OutboundRequestId, bmrng::Responder<BidQuote>>,
+    inflight_encrypted_signature_requests: HashMap<OutboundRequestId, bmrng::Responder<()>>,
     inflight_swap_setup: Option<bmrng::Responder<Result<State2>>>,
-    inflight_cooperative_xmr_redeem_requests: HashMap<InboundRequestId, bmrng::Responder<Response>>,
+    inflight_cooperative_xmr_redeem_requests: HashMap<OutboundRequestId, bmrng::Responder<Response>>,
     /// The sender we will use to relay incoming transfer proofs.
     transfer_proof: bmrng::RequestSender<monero::TransferProof, ()>,
     /// The future representing the successful handling of an incoming transfer
