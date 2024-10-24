@@ -39,9 +39,7 @@ pub async fn list_sellers(
     let mut swarm = swarm::cli(identity, tor_socks5_port, behaviour).await?;
 
     swarm
-        .behaviour_mut()
-        .quote
-        .add_address(&rendezvous_node_peer_id, rendezvous_node_addr.clone());
+        .add_peer_address(rendezvous_node_peer_id, rendezvous_node_addr.clone());
 
     swarm
         .dial(DialOpts::from(rendezvous_node_peer_id))
