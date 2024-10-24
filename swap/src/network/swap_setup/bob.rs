@@ -97,6 +97,15 @@ impl NetworkBehaviour for Behaviour {
         if let Some((peer, completed)) = self.completed_swaps.pop_front() {
             return Poll::Ready(ToSwarm::GenerateEvent(completed));
         }
+    
+        if let Some((peer, event)) = self.new_swaps.pop_front() {
+            return Poll::Ready(ToSwarm::NotifyHandler {
+                peer_id: peer,
+                handler: libp2p::swarm::NotifyHandler::Any,
+                event,
+            });
+        }
+
         Poll::Pending
     }
 }
@@ -193,6 +202,8 @@ impl ConnectionHandler for Handler {
                 unreachable!("Bob does not support inbound substreams")
             }
             libp2p::swarm::handler::ConnectionEvent::FullyNegotiatedOutbound(outbound) => {
+                println!("swap_setup: bob: FullyNegotiatedOutbound reached");
+
                 let mut substream = outbound.protocol;
                 let info = outbound.info;
 

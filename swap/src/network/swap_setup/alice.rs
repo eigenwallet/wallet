@@ -212,7 +212,7 @@ where
     }
     
     fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm<'_>) {
-        // todo!()
+        // TODO: Do we need to do anything here?
     }    
 }
 
