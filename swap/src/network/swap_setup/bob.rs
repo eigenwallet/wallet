@@ -158,38 +158,6 @@ impl ConnectionHandler for Handler {
         SubstreamProtocol::new(upgrade::DeniedUpgrade, ())
     }
 
-    fn on_behaviour_event(&mut self, new_swap: Self::FromBehaviour) {
-        self.new_swaps.push_back(new_swap);
-    }
-
-    fn connection_keep_alive(&self) -> bool {
-        self.keep_alive
-    }
-
-    fn poll(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<
-        ConnectionHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::ToBehaviour>,
-    > {
-        if let Some(new_swap) = self.new_swaps.pop_front() {
-            self.keep_alive = true;
-            return Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
-                protocol: SubstreamProtocol::new(protocol::new(), new_swap),
-            });
-        }
-
-        if let Poll::Ready(Some(result)) = self.outbound_stream.poll_unpin(cx) {
-            self.outbound_stream = None.into();
-            self.keep_alive = false;
-            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Completed(
-                result.map_err(anyhow::Error::from),
-            )));
-        }
-
-        Poll::Pending
-    }
-
     fn on_connection_event(
         &mut self,
         event: libp2p::swarm::handler::ConnectionEvent<
@@ -279,6 +247,38 @@ impl ConnectionHandler for Handler {
             }
             _ => {}
         }
+    }
+
+    fn on_behaviour_event(&mut self, new_swap: Self::FromBehaviour) {
+        self.new_swaps.push_back(new_swap);
+    }
+
+    fn connection_keep_alive(&self) -> bool {
+        self.keep_alive
+    }
+
+    fn poll(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<
+        ConnectionHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::ToBehaviour>,
+    > {
+        if let Some(new_swap) = self.new_swaps.pop_front() {
+            self.keep_alive = true;
+            return Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
+                protocol: SubstreamProtocol::new(protocol::new(), new_swap),
+            });
+        }
+
+        if let Poll::Ready(Some(result)) = self.outbound_stream.poll_unpin(cx) {
+            self.outbound_stream = None.into();
+            self.keep_alive = false;
+            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Completed(
+                result.map_err(anyhow::Error::from),
+            )));
+        }
+
+        Poll::Pending
     }
 }
 

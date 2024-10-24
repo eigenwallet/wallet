@@ -148,6 +148,24 @@ where
     type ConnectionHandler = Handler<LR>;
     type ToSwarm = OutEvent;
 
+    fn handle_established_inbound_connection(
+        &mut self,
+        _connection_id: libp2p::swarm::ConnectionId,
+        peer: PeerId,
+        local_addr: &Multiaddr,
+        remote_addr: &Multiaddr,
+    ) -> std::result::Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
+        let handler = Handler::new(
+            self.min_buy,
+            self.max_buy,
+            self.env_config.clone(),
+            self.latest_rate.clone(),
+            self.resume_only,
+        );
+
+        Ok(handler)
+    }
+
     fn on_connection_handler_event(
         &mut self,
         peer_id: PeerId,
@@ -179,24 +197,6 @@ where
         }
 
         Poll::Pending
-    }
-
-    fn handle_established_inbound_connection(
-        &mut self,
-        _connection_id: libp2p::swarm::ConnectionId,
-        peer: PeerId,
-        local_addr: &Multiaddr,
-        remote_addr: &Multiaddr,
-    ) -> std::result::Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        let handler = Handler::new(
-            self.min_buy,
-            self.max_buy,
-            self.env_config.clone(),
-            self.latest_rate.clone(),
-            self.resume_only,
-        );
-
-        Ok(handler)
     }
 
     fn handle_established_outbound_connection(
@@ -278,39 +278,6 @@ where
 
     fn listen_protocol(&self) -> SubstreamProtocol<Self::InboundProtocol, Self::InboundOpenInfo> {
         SubstreamProtocol::new(protocol::new(), ())
-    }
-
-    fn connection_keep_alive(&self) -> bool {
-        return true;
-        match self.keep_alive_until {
-            None => true,
-            Some(keep_alive_until) => Instant::now() < keep_alive_until,
-        }
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn poll(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<
-        ConnectionHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::ToBehaviour>,
-    > {
-        if let Some(event) = self.events.pop_front() {
-            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(event));
-        }
-
-        if let Some(result) = futures::ready!(self.inbound_stream.poll_unpin(cx)) {
-            self.inbound_stream = OptionFuture::from(None);
-            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
-                HandlerOutEvent::Completed(result),
-            ));
-        }
-
-        Poll::Pending
-    }
-
-    fn on_behaviour_event(&mut self, _event: Self::FromBehaviour) {
-        unreachable!("Alice does not receive events from the Behaviour in the handler")
     }
 
     fn on_connection_event(
@@ -487,6 +454,38 @@ where
                 // TODO: not quite sure what to do here
             }
         }
+    }
+
+    fn on_behaviour_event(&mut self, _event: Self::FromBehaviour) {
+        unreachable!("Alice does not receive events from the Behaviour in the handler")
+    }
+
+    fn connection_keep_alive(&self) -> bool {
+        match self.keep_alive_until {
+            None => true,
+            Some(keep_alive_until) => Instant::now() < keep_alive_until,
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn poll(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<
+        ConnectionHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::ToBehaviour>,
+    > {
+        if let Some(event) = self.events.pop_front() {
+            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(event));
+        }
+
+        if let Some(result) = futures::ready!(self.inbound_stream.poll_unpin(cx)) {
+            self.inbound_stream = OptionFuture::from(None);
+            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                HandlerOutEvent::Completed(result),
+            ));
+        }
+
+        Poll::Pending
     }
 }
 
