@@ -1,14 +1,10 @@
 {
   "productName": "unstoppableswap-gui-rs",
-  "version": "0.1.0",
+  "version": "1.0.0-alpha.1",
   "identifier": "net.unstoppableswap.gui",
   "build": {
     "devUrl": "http://localhost:1420",
     "frontendDist": "../src-gui/dist",
-    "beforeDevCommand": {
-      "cwd": "../src-gui",
-      "script": "yarn run dev"
-    },
     "beforeBuildCommand": {
       "cwd": "../src-gui",
       "script": "yarn run build"
@@ -27,6 +23,7 @@
     }
   },
   "bundle": {
+    "createUpdaterArtifacts": true,
     "active": true,
     "targets": "all",
     "icon": [
@@ -36,5 +33,23 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "dialog": true,
+      "endpoints": [
+        "https://cdn.crabnebula.app/update/unstoppableswap/unstoppableswap-gui-rs/{{target}}-{{arch}}/{{current_version}}"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQyNTQ3NTQxQTQ2MkI4N0IKUldSN3VHS2tRWFZVMGpWYytkRFg4dFBzNEh5ZnlxaHBubGpRalVMMG5nVytiR3JPOUE3QjRxc00K"
+    },
+    "cli": {
+      "description": "Start the GUI application",
+      "args": [
+        {
+          "name": "testnet"
+        }
+      ]
+    }
   }
 }

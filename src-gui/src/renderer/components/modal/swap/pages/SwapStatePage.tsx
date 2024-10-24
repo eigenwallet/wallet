@@ -1,5 +1,5 @@
 import { Box } from "@material-ui/core";
-import { SwapSlice, SwapState } from "models/storeModel";
+import { SwapState } from "models/storeModel";
 import CircularProgressWithSubtitle from "../CircularProgressWithSubtitle";
 import BitcoinPunishedPage from "./done/BitcoinPunishedPage";
 import BitcoinRefundedPage from "./done/BitcoinRefundedPage";
@@ -14,7 +14,6 @@ import ReceivedQuotePage from "./in_progress/ReceivedQuotePage";
 import StartedPage from "./in_progress/StartedPage";
 import XmrLockedPage from "./in_progress/XmrLockedPage";
 import XmrLockTxInMempoolPage from "./in_progress/XmrLockInMempoolPage";
-import InitiatedPage from "./init/InitiatedPage";
 import InitPage from "./init/InitPage";
 import WaitingForBitcoinDepositPage from "./init/WaitingForBitcoinDepositPage";
 
@@ -24,8 +23,10 @@ export default function SwapStatePage({ state }: { state: SwapState | null }) {
   }
   
   switch (state.curr.type) {
-    case "Initiated":
-      return <InitiatedPage />;
+    case "RequestingQuote":
+      return <CircularProgressWithSubtitle description="Requesting quote..." />;
+    case "Resuming":
+      return <CircularProgressWithSubtitle description="Resuming swap..." />;
     case "ReceivedQuote":
       return <ReceivedQuotePage />;
     case "WaitingForBtcDeposit":
@@ -51,7 +52,7 @@ export default function SwapStatePage({ state }: { state: SwapState | null }) {
     case "BtcRefunded":
       return <BitcoinRefundedPage {...state.curr.content} />;
     case "BtcPunished":
-      return <BitcoinPunishedPage />;
+      return <BitcoinPunishedPage state={state.curr} />;
     case "AttemptingCooperativeRedeem":
       return (
         <CircularProgressWithSubtitle description="Attempting to redeem the Monero with the help of the other party" />
@@ -61,7 +62,7 @@ export default function SwapStatePage({ state }: { state: SwapState | null }) {
         <CircularProgressWithSubtitle description="The other party is cooperating with us to redeem the Monero..." />
       );
     case "CooperativeRedeemRejected":
-      return <BitcoinPunishedPage />;
+      return <BitcoinPunishedPage state={state.curr} />;
     case "Released":
       return <ProcessExitedPage prevState={state.prev} swapId={state.swapId} />;
     default:

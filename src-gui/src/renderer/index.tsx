@@ -6,20 +6,24 @@ import {
   registryConnectionFailed,
   setRegistryProviders,
 } from "store/features/providersSlice";
-import { setBtcPrice, setXmrPrice } from "store/features/ratesSlice";
+import { setBtcPrice, setXmrBtcRate, setXmrPrice } from "store/features/ratesSlice";
 import logger from "../utils/logger";
 import {
   fetchAlertsViaHttp,
   fetchBtcPrice,
   fetchProvidersViaHttp,
+  fetchXmrBtcRate,
   fetchXmrPrice,
 } from "./api";
 import App from "./components/App";
 import { initEventListeners } from "./rpc";
 import { persistor, store } from "./store/storeRenderer";
+import { Box } from "@material-ui/core";
+import { checkForAppUpdates } from "./updater";
 
 const container = document.getElementById("root");
 const root = createRoot(container!);
+
 root.render(
   <Provider store={store}>
     <PersistGate loading={null} persistor={persistor}>
@@ -61,7 +65,16 @@ async function fetchInitialData() {
   } catch (e) {
     logger.error(e, "Error retrieving fiat prices");
   }
+
+  try {
+    const xmrBtcRate = await fetchXmrBtcRate();
+    store.dispatch(setXmrBtcRate(xmrBtcRate));
+    logger.info({ xmrBtcRate }, "Fetched XMR/BTC rate");
+  } catch (e) {
+    logger.error(e, "Error retrieving XMR/BTC rate");
+  }
 }
 
 fetchInitialData();
 initEventListeners();
+checkForAppUpdates();

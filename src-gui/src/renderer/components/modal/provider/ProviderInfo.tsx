@@ -7,6 +7,9 @@ import {
   SatsAmount,
 } from "renderer/components/other/Units";
 import { satsToBtc, secondsToDays } from "utils/conversionUtils";
+import { isProviderOutdated } from 'utils/multiAddrUtils';
+import WarningIcon from '@material-ui/icons/Warning';
+import { useAppSelector } from "store/hooks";
 
 const useStyles = makeStyles((theme) => ({
   content: {
@@ -23,12 +26,31 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
+function ProviderSpreadChip({ provider }: { provider: ExtendedProviderStatus }) {
+  const xmrBtcPrice = useAppSelector(s => s.rates?.xmrBtcRate);
+
+  if (xmrBtcPrice === null) {
+    return null;
+  }
+
+  const providerPrice = satsToBtc(provider.price);
+  const spread = ((providerPrice - xmrBtcPrice) / xmrBtcPrice) * 100;
+
+  return (
+    <Tooltip title="The spread is the difference between the provider's exchange rate and the market rate. A high spread indicates that the provider is charging more than the market rate.">
+      <Chip label={`Spread: ${spread.toFixed(2)} %`} />
+    </Tooltip>
+  );
+
+}
+
 export default function ProviderInfo({
   provider,
 }: {
   provider: ExtendedProviderStatus;
 }) {
   const classes = useStyles();
+  const isOutdated = isProviderOutdated(provider);
 
   return (
     <Box className={classes.content}>
@@ -70,6 +92,12 @@ export default function ProviderInfo({
             <Chip label="Recommended" icon={<VerifiedUser />} color="primary" />
           </Tooltip>
         )}
+        {isOutdated && (
+          <Tooltip title="This provider is running an outdated version of the software. Outdated providers may be unreliable and cause swaps to take longer to complete or fail entirely.">
+            <Chip label="Outdated" icon={<WarningIcon />} color="primary" />
+          </Tooltip>
+        )}
+        <ProviderSpreadChip provider={provider} />
       </Box>
     </Box>
   );

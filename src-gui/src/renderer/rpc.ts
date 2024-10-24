@@ -21,6 +21,7 @@ import {
   TauriDatabaseStateEvent,
   TauriTimelockChangeEvent,
   GetSwapInfoArgs,
+  ExportBitcoinWalletResponse,
 } from "models/tauriModel";
 import {
   contextStatusEventReceived,
@@ -36,6 +37,7 @@ import { providerToConcatenatedMultiAddr } from "utils/multiAddrUtils";
 import { MoneroRecoveryResponse } from "models/rpcModel";
 import { ListSellersResponse } from "../models/tauriModel";
 import logger from "utils/logger";
+import { isTestnet } from "store/config";
 
 export async function initEventListeners() {
   // This operation is in-expensive
@@ -64,6 +66,11 @@ export async function initEventListeners() {
   listen<TauriLogEvent>("cli-log-emitted", (event) => {
     console.log("Received cli log event", event.payload);
     store.dispatch(receivedCliLog(event.payload));
+  });
+
+  listen<BalanceResponse>("balance-change", (event) => {
+    console.log("Received balance change event", event.payload);
+    store.dispatch(rpcSetBalance(event.payload.balance));
   });
 
   listen<TauriDatabaseStateEvent>("swap-database-state-update", (event) => {
@@ -201,7 +208,14 @@ export async function listSellersAtRendezvousPoint(
 
 export async function initializeContext() {
   const settings = store.getState().settings;
+  const testnet = isTestnet();
+
   await invokeUnsafe<void>("initialize_context", {
     settings,
+    testnet,
   });
+}
+
+export async function getWalletDescriptor() {
+  return await invokeNoArgs<ExportBitcoinWalletResponse>("get_wallet_descriptor");
 }

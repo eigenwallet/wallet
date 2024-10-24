@@ -256,7 +256,7 @@ pub struct BalanceArgs {
 }
 
 #[typeshare]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BalanceResponse {
     #[typeshare(serialized_as = "number")]
     #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
@@ -346,13 +346,22 @@ impl Request for GetConfig {
     }
 }
 
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ExportBitcoinWalletArgs;
 
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ExportBitcoinWalletResponse {
+    pub wallet_descriptor: serde_json::Value,
+}
+
 impl Request for ExportBitcoinWalletArgs {
-    type Response = serde_json::Value;
+    type Response = ExportBitcoinWalletResponse;
 
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
-        export_bitcoin_wallet(ctx).await
+        let wallet_descriptor = export_bitcoin_wallet(ctx).await?;
+        Ok(ExportBitcoinWalletResponse { wallet_descriptor })
     }
 }
 
@@ -570,12 +579,14 @@ pub async fn buy_xmr(
             .as_ref()
             .context("Could not get Monero wallet")?,
     );
+
     let env_config = context.config.env_config;
     let seed = context.config.seed.clone().context("Could not get seed")?;
 
     let seller_peer_id = seller
         .extract_peer_id()
         .context("Seller address must contain peer ID")?;
+
     context
         .db
         .insert_address(seller_peer_id, seller.clone())
@@ -587,6 +598,7 @@ pub async fn buy_xmr(
         bitcoin_wallet.clone(),
         (seed.derive_libp2p_identity(), context.config.namespace),
     );
+
     let mut swarm = swarm::cli(
         seed.derive_libp2p_identity(),
         context.config.tor_socks5_port,
@@ -604,6 +616,10 @@ pub async fn buy_xmr(
     tracing::debug!(peer_id = %swarm.local_peer_id(), "Network layer initialized");
 
     context.swap_lock.acquire_swap_lock(swap_id).await?;
+
+    context
+        .tauri_handle
+        .emit_swap_progress_event(swap_id, TauriSwapProgressEvent::RequestingQuote);
 
     let initialize_swap = tokio::select! {
         biased;
@@ -632,6 +648,7 @@ pub async fn buy_xmr(
         Ok(result) => result,
         Err(error) => {
             tracing::error!(%swap_id, "Swap initialization failed: {:#}", error);
+
             context
                 .swap_lock
                 .release_swap_lock()
@@ -750,7 +767,6 @@ pub async fn resume_swap(
     context: Arc<Context>,
 ) -> Result<ResumeSwapResponse> {
     let ResumeSwapArgs { swap_id } = resume;
-    context.swap_lock.acquire_swap_lock(swap_id).await?;
 
     let seller_peer_id = context.db.get_peer_id(swap_id).await?;
     let seller_addresses = context.db.get_addresses(seller_peer_id).await?;
@@ -778,6 +794,7 @@ pub async fn resume_swap(
 
     tracing::debug!(peer_id = %our_peer_id, "Network layer initialized");
 
+    // Fetch the seller's addresses from the database and add them to the swarm
     for seller_address in seller_addresses {
         swarm
             .behaviour_mut()
@@ -786,7 +803,9 @@ pub async fn resume_swap(
 
     let (event_loop, event_loop_handle) =
         EventLoop::new(swap_id, swarm, seller_peer_id, context.db.clone())?;
+
     let monero_receive_address = context.db.get_monero_address(swap_id).await?;
+
     let swap = Swap::from_db(
         Arc::clone(&context.db),
         swap_id,
@@ -808,6 +827,12 @@ pub async fn resume_swap(
     )
     .await?
     .with_event_emitter(context.tauri_handle.clone());
+
+    context.swap_lock.acquire_swap_lock(swap_id).await?;
+
+    context
+        .tauri_handle
+        .emit_swap_progress_event(swap_id, TauriSwapProgressEvent::Resuming);
 
     context.tasks.clone().spawn(
         async move {

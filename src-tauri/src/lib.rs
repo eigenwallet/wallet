@@ -4,8 +4,8 @@ use std::sync::Arc;
 use swap::cli::{
     api::{
         request::{
-            BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, GetHistoryArgs, GetLogsArgs,
-            GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs, MoneroRecoveryArgs,
+            BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, ExportBitcoinWalletArgs, GetHistoryArgs,
+            GetLogsArgs, GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs, MoneroRecoveryArgs,
             ResumeSwapArgs, SuspendCurrentSwapArgs, WithdrawBtcArgs,
         },
         tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle, TauriSettings},
@@ -114,6 +114,9 @@ impl State {
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let app_handle = app.app_handle().to_owned();
 
+    #[cfg(desktop)]
+    app_handle.plugin(tauri_plugin_cli::init())?;
+
     // We need to set a value for the Tauri state right at the start
     // If we don't do this, Tauri commands will panic at runtime if no value is present
     app_handle.manage::<RwLock<State>>(RwLock::new(State::new()));
@@ -124,6 +127,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -143,6 +148,7 @@ pub fn run() {
             cancel_and_refund,
             is_context_available,
             initialize_context,
+            get_wallet_descriptor,
         ])
         .setup(setup)
         .build(tauri::generate_context!())
@@ -183,8 +189,8 @@ tauri_command!(monero_recovery, MoneroRecoveryArgs);
 tauri_command!(get_logs, GetLogsArgs);
 tauri_command!(list_sellers, ListSellersArgs);
 tauri_command!(cancel_and_refund, CancelAndRefundArgs);
-
 // These commands require no arguments
+tauri_command!(get_wallet_descriptor, ExportBitcoinWalletArgs, no_args);
 tauri_command!(suspend_current_swap, SuspendCurrentSwapArgs, no_args);
 tauri_command!(get_swap_info, GetSwapInfoArgs);
 tauri_command!(get_swap_infos_all, GetSwapInfosAllArgs, no_args);
@@ -201,6 +207,7 @@ async fn is_context_available(context: tauri::State<'_, RwLock<State>>) -> Resul
 #[tauri::command]
 async fn initialize_context(
     settings: TauriSettings,
+    testnet: bool,
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, RwLock<State>>,
 ) -> Result<(), String> {
@@ -213,13 +220,13 @@ async fn initialize_context(
     // Get app handle and create a Tauri handle
     let tauri_handle = TauriHandle::new(app_handle.clone());
 
-    let context_result = ContextBuilder::new(true)
+    let context_result = ContextBuilder::new(testnet)
         .with_bitcoin(Bitcoin {
-            bitcoin_electrum_rpc_url: settings.electrum_rpc_url,
-            bitcoin_target_block: settings.bitcoin_confirmation_target.into(),
+            bitcoin_electrum_rpc_url: settings.electrum_rpc_url.clone(),
+            bitcoin_target_block: None,
         })
         .with_monero(Monero {
-            monero_daemon_address: settings.monero_node_url,
+            monero_daemon_address: settings.monero_node_url.clone(),
         })
         .with_json(false)
         .with_debug(true)
