@@ -10,7 +10,7 @@ use crate::protocol::Database;
 use anyhow::{Context, Result};
 use futures::future::{BoxFuture, OptionFuture};
 use futures::{FutureExt, StreamExt};
-use libp2p::request_response::{InboundRequestId, OutboundRequestId, ResponseChannel};
+use libp2p::request_response::{OutboundRequestId, ResponseChannel};
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{PeerId, Swarm};

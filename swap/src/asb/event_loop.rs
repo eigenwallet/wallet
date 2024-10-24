@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use futures::future;
 use futures::future::{BoxFuture, FutureExt};
 use futures::stream::{FuturesUnordered, StreamExt};
-use libp2p::request_response::{InboundRequestId, OutboundRequestId, ResponseChannel};
+use libp2p::request_response::{OutboundRequestId, ResponseChannel};
 use libp2p::swarm::SwarmEvent;
 use libp2p::{PeerId, Swarm};
 use rust_decimal::Decimal;

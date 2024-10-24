@@ -6,7 +6,7 @@ use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
 use libp2p::request_response;
 use libp2p::swarm::dial_opts::DialOpts;
-use libp2p::swarm::{behaviour, NetworkBehaviour, SwarmEvent};
+use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use libp2p::{identity, ping, rendezvous, Multiaddr, PeerId, Swarm};
 use serde::Serialize;
 use serde_with::{serde_as, DisplayFromStr};
@@ -31,15 +31,11 @@ pub async fn list_sellers(
     let behaviour = Behaviour {
         rendezvous: rendezvous::client::Behaviour::new(identity.clone()),
         quote: quote::cli(),
-        ping: ping::Behaviour::new(
-            ping::Config::new()
-                .with_interval(Duration::from_secs(86_400)),
-        ),
+        ping: ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(86_400))),
     };
     let mut swarm = swarm::cli(identity, tor_socks5_port, behaviour).await?;
 
-    swarm
-        .add_peer_address(rendezvous_node_peer_id, rendezvous_node_addr.clone());
+    swarm.add_peer_address(rendezvous_node_peer_id, rendezvous_node_addr.clone());
 
     swarm
         .dial(DialOpts::from(rendezvous_node_peer_id))
@@ -212,7 +208,7 @@ impl EventLoop {
                                 for address in registration.record.addresses() {
                                     tracing::info!(peer_id=%peer, address=%address, "Discovered peer");
 
-                                    let p2p_suffix = Protocol::P2p(peer.into());
+                                    let p2p_suffix = Protocol::P2p(peer);
                                     let _address_with_p2p = if !address
                                         .ends_with(&Multiaddr::empty().with(p2p_suffix.clone()))
                                     {

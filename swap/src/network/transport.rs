@@ -2,7 +2,7 @@ use anyhow::Result;
 use futures::{AsyncRead, AsyncWrite};
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::Boxed;
-use libp2p::core::upgrade::{SelectUpgrade, Version};
+use libp2p::core::upgrade::Version;
 use libp2p::noise;
 use libp2p::{identity, yamux, PeerId, Transport};
 use std::time::Duration;
@@ -20,7 +20,7 @@ pub fn authenticate_and_multiplex<T>(
 where
     T: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let auth_upgrade = noise::Config::new(&identity)?;
+    let auth_upgrade = noise::Config::new(identity)?;
     let multiplex_upgrade = yamux::Config::default();
 
     let transport = transport

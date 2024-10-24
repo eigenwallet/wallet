@@ -1,6 +1,6 @@
 use anyhow::Result;
 use data_encoding::BASE32;
-use futures::future::{BoxFuture, FutureExt, Ready};
+use futures::future::{BoxFuture, Ready};
 use libp2p::core::multiaddr::{Multiaddr, Protocol};
 use libp2p::core::transport::{ListenerId, TransportError};
 use libp2p::core::Transport;
@@ -43,7 +43,7 @@ impl Transport for TorDialOnlyTransport {
             return Err(TransportError::MultiaddrNotSupported(addr));
         }
 
-        let socks_port = self.socks_port.clone();
+        let socks_port = self.socks_port;
 
         Ok(Box::pin(async move {
             tracing::debug!(address = %addr, "Establishing connection through Tor proxy");
@@ -73,7 +73,7 @@ impl Transport for TorDialOnlyTransport {
             return Err(TransportError::MultiaddrNotSupported(addr));
         }
 
-        let socks_port = self.socks_port.clone();
+        let socks_port = self.socks_port;
 
         Ok(Box::pin(async move {
             tracing::debug!(address = %addr, "Establishing connection through Tor proxy");
@@ -105,7 +105,7 @@ impl Transport for TorDialOnlyTransport {
         // I believe we do not need to do anything here because we are not using the transport to listen.
         // But we need to verify this before merging.
 
-        return std::task::Poll::Pending;
+        std::task::Poll::Pending
     }
 }
 

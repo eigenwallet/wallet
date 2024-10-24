@@ -158,7 +158,7 @@ where
         let handler = Handler::new(
             self.min_buy,
             self.max_buy,
-            self.env_config.clone(),
+            self.env_config,
             self.latest_rate.clone(),
             self.resume_only,
         );
