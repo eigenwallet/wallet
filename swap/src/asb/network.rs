@@ -449,7 +449,7 @@ pub mod rendezvous {
         #[tokio::test]
         async fn given_no_initial_connection_when_constructed_asb_connects_and_registers_with_rendezvous_node(
         ) {
-            let mut rendezvous_node = new_swarm(|_, _| {
+            let mut rendezvous_node = new_swarm(|_| {
                 rendezvous::server::Behaviour::new(rendezvous::server::Config::default())
             });
             let address = rendezvous_node.listen_on_random_memory_address().await;
@@ -460,7 +460,7 @@ pub mod rendezvous {
                 None,
             );
 
-            let mut asb = new_swarm(|_, identity| {
+            let mut asb = new_swarm(|identity| {
                 super::rendezvous::Behaviour::new(identity, vec![rendezvous_point])
             });
             asb.listen_on_random_memory_address().await; // this adds an external address
@@ -488,7 +488,7 @@ pub mod rendezvous {
 
         #[tokio::test]
         async fn asb_automatically_re_registers() {
-            let mut rendezvous_node = new_swarm(|_, _| {
+            let mut rendezvous_node = new_swarm(|_| {
                 rendezvous::server::Behaviour::new(
                     rendezvous::server::Config::default().with_min_ttl(2),
                 )
@@ -501,7 +501,7 @@ pub mod rendezvous {
                 Some(5),
             );
 
-            let mut asb = new_swarm(|_, identity| {
+            let mut asb = new_swarm(|identity| {
                 super::rendezvous::Behaviour::new(identity, vec![rendezvous_point])
             });
             asb.listen_on_random_memory_address().await; // this adds an external address
@@ -540,7 +540,7 @@ pub mod rendezvous {
             let mut registrations = HashMap::new();
             // register with 5 rendezvous nodes
             for _ in 0..5 {
-                let mut rendezvous = new_swarm(|_, _| {
+                let mut rendezvous = new_swarm(|_| {
                     rendezvous::server::Behaviour::new(
                         rendezvous::server::Config::default().with_min_ttl(2),
                     )
@@ -561,7 +561,7 @@ pub mod rendezvous {
                 });
             }
 
-            let mut asb = new_swarm(|_, identity| {
+            let mut asb = new_swarm(|identity| {
                 super::rendezvous::Behaviour::new(identity, rendezvous_nodes)
             });
             asb.listen_on_random_memory_address().await; // this adds an external address
