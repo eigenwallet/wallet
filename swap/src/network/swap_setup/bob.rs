@@ -345,7 +345,7 @@ impl From<SpotPriceError> for Error {
 impl From<anyhow::Error> for Error {
     fn from(error: anyhow::Error) -> Self {
         // This is not good we are just swallowing the error here
-        // TODO: Libp2p Upgrade: We should find a better way to convert these errors in the entire file here into each other
+        // TODO(Libp2p Migration): We should find a better way to convert these errors in the entire file here into each other
         // This doesnt seem optimal at all
         // Incredibly ugly code and we lose a lot of valueale information here
         Error::Other

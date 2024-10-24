@@ -86,7 +86,7 @@ impl NetworkBehaviour for Behaviour {
     }
 
     fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm<'_>) {
-        // TODO: Libp2p Upgrade: Maybe we also need to match for FromSwarm::DialFailure here?
+        // TODO(Libp2p Migration): Maybe we also need to match for FromSwarm::DialFailure here?
 
         if let libp2p::swarm::FromSwarm::ConnectionClosed(closed) = event {
             if closed.peer_id == self.peer {

@@ -90,7 +90,7 @@ impl Transport for TorDialOnlyTransport {
     }
 
     fn remove_listener(&mut self, id: ListenerId) -> bool {
-        // TODO: Libp2p Upgrade: What do we need to do here?
+        // TODO(Libp2p Migration): What do we need to do here?
         // I believe nothing because we are not using the transport to listen.
         false
     }
@@ -100,7 +100,7 @@ impl Transport for TorDialOnlyTransport {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<libp2p::core::transport::TransportEvent<Self::ListenerUpgrade, Self::Error>>
     {
-        // TODO: Libp2p Upgrade: What do we need to do here?
+        // TODO(Libp2p Migration): What do we need to do here?
         // See: https://github.com/libp2p/rust-libp2p/pull/2652
         // I believe we do not need to do anything here because we are not using the transport to listen.
         // But we need to verify this before merging.
