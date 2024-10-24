@@ -4,7 +4,7 @@ use libp2p::{PeerId, StreamProtocol};
 use serde::{Deserialize, Serialize};
 use typeshare::typeshare;
 
-const PROTOCOL: &str = BidQuoteProtocol::PROTOCOL_ID;
+const PROTOCOL: &str = "/comit/xmr/btc/bid-quote/1.0.0";
 pub(crate) type OutEvent = request_response::Event<(), BidQuote>;
 type Message = request_response::Message<(), BidQuote>;
 
@@ -12,10 +12,6 @@ pub type Behaviour = request_response::json::Behaviour<(), BidQuote>;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BidQuoteProtocol;
-
-impl BidQuoteProtocol {
-    const PROTOCOL_ID: &str = "/comit/xmr/btc/bid-quote/1.0.0";
-}
 
 impl AsRef<str> for BidQuoteProtocol {
     fn as_ref(&self) -> &str {
@@ -53,7 +49,7 @@ pub struct ZeroQuoteReceived;
 pub fn asb() -> Behaviour {
     Behaviour::new(
         vec![(
-            StreamProtocol::new(BidQuoteProtocol::PROTOCOL_ID),
+            StreamProtocol::new(PROTOCOL),
             ProtocolSupport::Inbound,
         )],
         request_response::Config::default(),
