@@ -4,6 +4,7 @@ use crate::protocol::{Message1, Message3};
 use crate::{bitcoin, cli, env, monero};
 use anyhow::Result;
 use futures::future::{BoxFuture, OptionFuture};
+use futures::AsyncWriteExt;
 use futures::FutureExt;
 use libp2p::core::upgrade;
 use libp2p::swarm::{
@@ -16,7 +17,6 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use uuid::Uuid;
-use futures::AsyncWriteExt;
 
 use super::{read_cbor_message, write_cbor_message, SpotPriceRequest};
 
@@ -97,7 +97,7 @@ impl NetworkBehaviour for Behaviour {
         if let Some((peer, completed)) = self.completed_swaps.pop_front() {
             return Poll::Ready(ToSwarm::GenerateEvent(completed));
         }
-    
+
         if let Some((peer, event)) = self.new_swaps.pop_front() {
             return Poll::Ready(ToSwarm::NotifyHandler {
                 peer_id: peer,
@@ -182,7 +182,9 @@ impl ConnectionHandler for Handler {
         if let Poll::Ready(Some(result)) = self.outbound_stream.poll_unpin(cx) {
             self.outbound_stream = None.into();
             self.keep_alive = false;
-            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Completed(result.map_err(anyhow::Error::from))));
+            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Completed(
+                result.map_err(anyhow::Error::from),
+            )));
         }
 
         Poll::Pending
@@ -267,7 +269,8 @@ impl ConnectionHandler for Handler {
                         },
                         _ => Error::Other,
                     })?
-                }) as OutboundStream));
+                })
+                    as OutboundStream));
                 self.keep_alive = true; // Ensure the connection stays alive while processing
             }
             libp2p::swarm::handler::ConnectionEvent::DialUpgradeError(dial_upgrade_err) => {

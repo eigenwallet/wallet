@@ -38,7 +38,8 @@ pub struct EventLoop {
     inflight_quote_requests: HashMap<OutboundRequestId, bmrng::Responder<BidQuote>>,
     inflight_encrypted_signature_requests: HashMap<OutboundRequestId, bmrng::Responder<()>>,
     inflight_swap_setup: Option<bmrng::Responder<Result<State2>>>,
-    inflight_cooperative_xmr_redeem_requests: HashMap<OutboundRequestId, bmrng::Responder<Response>>,
+    inflight_cooperative_xmr_redeem_requests:
+        HashMap<OutboundRequestId, bmrng::Responder<Response>>,
     /// The sender we will use to relay incoming transfer proofs.
     transfer_proof: bmrng::RequestSender<monero::TransferProof, ()>,
     /// The future representing the successful handling of an incoming transfer

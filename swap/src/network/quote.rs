@@ -52,7 +52,10 @@ pub struct ZeroQuoteReceived;
 /// handing out quotes.
 pub fn asb() -> Behaviour {
     Behaviour::new(
-        vec![(StreamProtocol::new(BidQuoteProtocol::PROTOCOL_ID), ProtocolSupport::Inbound)],
+        vec![(
+            StreamProtocol::new(BidQuoteProtocol::PROTOCOL_ID),
+            ProtocolSupport::Inbound,
+        )],
         request_response::Config::default(),
     )
 }
@@ -63,7 +66,10 @@ pub fn asb() -> Behaviour {
 /// requesting quotes.
 pub fn cli() -> Behaviour {
     Behaviour::new(
-        vec![(StreamProtocol::new(BidQuoteProtocol::PROTOCOL_ID), ProtocolSupport::Outbound)],
+        vec![(
+            StreamProtocol::new(BidQuoteProtocol::PROTOCOL_ID),
+            ProtocolSupport::Outbound,
+        )],
         request_response::Config::default(),
     )
 }

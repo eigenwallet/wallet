@@ -9,21 +9,18 @@ use crate::protocol::{Message0, Message2, Message4};
 use crate::{asb, bitcoin, env, monero};
 use anyhow::{anyhow, Context, Result};
 use futures::future::{BoxFuture, OptionFuture};
+use futures::AsyncWriteExt;
 use futures::FutureExt;
+use libp2p::core::upgrade;
 use libp2p::swarm::handler::ConnectionEvent;
 use libp2p::swarm::{ConnectionHandler, ConnectionId};
-use libp2p::core::upgrade;
-use libp2p::swarm::{
-    NetworkBehaviour, ToSwarm,
-    SubstreamProtocol, ConnectionHandlerEvent,
-};
+use libp2p::swarm::{ConnectionHandlerEvent, NetworkBehaviour, SubstreamProtocol, ToSwarm};
 use libp2p::{Multiaddr, PeerId};
 use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::task::Poll;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
-use futures::AsyncWriteExt;
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -151,7 +148,12 @@ where
     type ConnectionHandler = Handler<LR>;
     type ToSwarm = OutEvent;
 
-    fn on_connection_handler_event(&mut self, peer_id: PeerId, _: ConnectionId, event: HandlerOutEvent) {
+    fn on_connection_handler_event(
+        &mut self,
+        peer_id: PeerId,
+        _: ConnectionId,
+        event: HandlerOutEvent,
+    ) {
         match event {
             HandlerOutEvent::Initiated(send_wallet_snapshot) => {
                 self.events.push_back(OutEvent::Initiated {
@@ -171,17 +173,14 @@ where
         }
     }
 
-    fn poll(
-        &mut self,
-        _cx: &mut std::task::Context<'_>
-    ) -> Poll<ToSwarm<Self::ToSwarm, ()>> {
+    fn poll(&mut self, _cx: &mut std::task::Context<'_>) -> Poll<ToSwarm<Self::ToSwarm, ()>> {
         if let Some(event) = self.events.pop_front() {
             return Poll::Ready(ToSwarm::GenerateEvent(event));
         }
 
         Poll::Pending
     }
-    
+
     fn handle_established_inbound_connection(
         &mut self,
         _connection_id: libp2p::swarm::ConnectionId,
@@ -199,7 +198,7 @@ where
 
         Ok(handler)
     }
-    
+
     fn handle_established_outbound_connection(
         &mut self,
         _connection_id: libp2p::swarm::ConnectionId,
@@ -210,10 +209,10 @@ where
         // TODO: Libp2p ugprade: Is this true?
         unreachable!("Alice does not support outbound connections")
     }
-    
+
     fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm<'_>) {
         // TODO: Do we need to do anything here?
-    }    
+    }
 }
 
 type InboundStream = BoxFuture<'static, Result<(Uuid, State3)>>;
@@ -294,11 +293,7 @@ where
         &mut self,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<
-        ConnectionHandlerEvent<
-            Self::OutboundProtocol,
-            Self::OutboundOpenInfo,
-            Self::ToBehaviour,
-        >,
+        ConnectionHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::ToBehaviour>,
     > {
         if let Some(event) = self.events.pop_front() {
             return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(event));
@@ -306,18 +301,18 @@ where
 
         if let Some(result) = futures::ready!(self.inbound_stream.poll_unpin(cx)) {
             self.inbound_stream = OptionFuture::from(None);
-            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(HandlerOutEvent::Completed(
-                result,
-            )));
+            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                HandlerOutEvent::Completed(result),
+            ));
         }
 
         Poll::Pending
     }
-    
+
     fn on_behaviour_event(&mut self, _event: Self::FromBehaviour) {
         unreachable!("Alice does not receive events from the Behaviour in the handler")
     }
-    
+
     fn on_connection_event(
         &mut self,
         event: libp2p::swarm::handler::ConnectionEvent<
@@ -331,13 +326,13 @@ where
         match event {
             ConnectionEvent::FullyNegotiatedInbound(substream) => {
                 self.keep_alive_until = None;
-                
+
                 let mut substream = substream.protocol;
 
-                let (sender, receiver) = bmrng::channel_with_timeout::<bitcoin::Amount, WalletSnapshot>(
-                    1,
-                    Duration::from_secs(5),
-                );
+                let (sender, receiver) = bmrng::channel_with_timeout::<
+                    bitcoin::Amount,
+                    WalletSnapshot,
+                >(1, Duration::from_secs(5));
                 let resume_only = self.resume_only;
                 let min_buy = self.min_buy;
                 let max_buy = self.max_buy;
@@ -389,12 +384,14 @@ where
                             });
                         }
 
-                        let rate = latest_rate.map_err(|e| Error::LatestRateFetchFailed(Box::new(e)))?;
+                        let rate =
+                            latest_rate.map_err(|e| Error::LatestRateFetchFailed(Box::new(e)))?;
                         let xmr = rate
                             .sell_quote(btc)
                             .map_err(Error::SellQuoteCalculationFailed)?;
 
-                        let unlocked = Amount::from_piconero(wallet_snapshot.balance.unlocked_balance);
+                        let unlocked =
+                            Amount::from_piconero(wallet_snapshot.balance.unlocked_balance);
                         if unlocked < xmr + wallet_snapshot.lock_fee {
                             return Err(Error::BalanceTooLow {
                                 balance: wallet_snapshot.balance,

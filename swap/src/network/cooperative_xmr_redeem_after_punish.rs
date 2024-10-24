@@ -49,14 +49,20 @@ pub enum Response {
 
 pub fn alice() -> Behaviour {
     Behaviour::new(
-        vec![(StreamProtocol::new(CooperativeXmrRedeemProtocol.as_ref()), ProtocolSupport::Inbound)],
+        vec![(
+            StreamProtocol::new(CooperativeXmrRedeemProtocol.as_ref()),
+            ProtocolSupport::Inbound,
+        )],
         request_response::Config::default(),
     )
 }
 
 pub fn bob() -> Behaviour {
     Behaviour::new(
-        vec![(StreamProtocol::new(CooperativeXmrRedeemProtocol.as_ref()), ProtocolSupport::Outbound)],
+        vec![(
+            StreamProtocol::new(CooperativeXmrRedeemProtocol.as_ref()),
+            ProtocolSupport::Outbound,
+        )],
         request_response::Config::default(),
     )
 }

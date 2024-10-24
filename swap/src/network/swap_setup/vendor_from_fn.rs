@@ -23,7 +23,10 @@
 // We replaced ProtocolName with AsRef<str>. See: https://github.com/libp2p/rust-libp2p/pull/3746/files
 
 use futures::prelude::*;
-use libp2p::{core::{Endpoint, UpgradeInfo}, InboundUpgrade, OutboundUpgrade};
+use libp2p::{
+    core::{Endpoint, UpgradeInfo},
+    InboundUpgrade, OutboundUpgrade,
+};
 use std::iter;
 
 /// Initializes a new [`FromFnUpgrade`].

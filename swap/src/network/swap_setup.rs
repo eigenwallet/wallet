@@ -111,7 +111,8 @@ pub async fn write_cbor_message<T>(stream: &mut Stream, message: T) -> Result<()
 where
     T: Serialize,
 {
-    let bytes = serde_cbor::to_vec(&message).context("Failed to serialize message as bytes using CBOR")?;
+    let bytes =
+        serde_cbor::to_vec(&message).context("Failed to serialize message as bytes using CBOR")?;
 
     let mut frame = Framed::new(stream, codec());
 
