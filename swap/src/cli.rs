@@ -24,7 +24,7 @@ mod tests {
     use crate::network::test::{new_swarm, SwarmExt};
     use futures::StreamExt;
     use libp2p::multiaddr::Protocol;
-    use libp2p::{identity, rendezvous, Multiaddr, PeerId};
+    use libp2p::{identity, rendezvous, Multiaddr, PeerId, request_response};
     use std::collections::HashSet;
     use std::iter::FromIterator;
     use std::time::Duration;
@@ -86,7 +86,6 @@ mod tests {
 
             StaticQuoteAsbBehaviour {
                 rendezvous,
-                ping: Default::default(),
                 quote: quote::asb(),
                 // static_quote,
                 // registered: false,
@@ -119,8 +118,6 @@ mod tests {
     #[derive(libp2p::swarm::NetworkBehaviour)]
     struct StaticQuoteAsbBehaviour {
         rendezvous: asb::rendezvous::Behaviour,
-        // Support `Ping` as a workaround until https://github.com/libp2p/rust-libp2p/issues/2109 is fixed.
-        ping: libp2p::ping::Behaviour,
         quote: quote::Behaviour,
 
         // TODO(Libp2p Migration): Support for this macro attribute has been removed: https://github.com/libp2p/rust-libp2p/pull/2842
@@ -141,6 +138,7 @@ mod tests {
     impl NetworkBehaviourEventProcess<libp2p::ping::Event> for StaticQuoteAsbBehaviour {
         fn inject_event(&mut self, _: libp2p::ping::Event) {}
     }
+
     impl NetworkBehaviourEventProcess<quote::OutEvent> for StaticQuoteAsbBehaviour {
         fn inject_event(&mut self, event: quote::OutEvent) {
             if let request_response::Event::Message {
@@ -158,15 +156,10 @@ mod tests {
     #[derive(libp2p::swarm::NetworkBehaviour)]
     struct RendezvousPointBehaviour {
         rendezvous: rendezvous::server::Behaviour,
-        // Support `Ping` as a workaround until https://github.com/libp2p/rust-libp2p/issues/2109 is fixed.
-        ping: libp2p::ping::Behaviour,
     }
 
     impl NetworkBehaviourEventProcess<rendezvous::server::Event> for RendezvousPointBehaviour {
         fn inject_event(&mut self, _: rendezvous::server::Event) {}
-    }
-    impl NetworkBehaviourEventProcess<libp2p::ping::Event> for RendezvousPointBehaviour {
-        fn inject_event(&mut self, _: libp2p::ping::Event) {}
     }
 
     impl Default for RendezvousPointBehaviour {
@@ -175,7 +168,6 @@ mod tests {
                 rendezvous: rendezvous::server::Behaviour::new(
                     rendezvous::server::Config::default(),
                 ),
-                ping: Default::default(),
             }
         }
     }
