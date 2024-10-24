@@ -101,7 +101,6 @@ impl Behaviour {
         let identifyConfig = identify::Config::new(protocolVersion, identify_params.0.public())
             .with_agent_version(agentVersion);
 
-        // TOOD: Keep alive connection forever
         let pingConfig = ping::Config::new();
 
         Self {

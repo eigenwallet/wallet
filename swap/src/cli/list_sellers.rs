@@ -33,8 +33,6 @@ pub async fn list_sellers(
         quote: quote::cli(),
         ping: ping::Behaviour::new(
             ping::Config::new()
-                // TODO (libp2p upgrade): Keep alive the connection here
-                //.with_keep_alive(false)
                 .with_interval(Duration::from_secs(86_400)),
         ),
     };
