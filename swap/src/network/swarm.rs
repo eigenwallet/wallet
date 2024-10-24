@@ -8,6 +8,7 @@ use libp2p::swarm::NetworkBehaviour;
 use libp2p::SwarmBuilder;
 use libp2p::{identity, Multiaddr, Swarm};
 use std::fmt::Debug;
+use std::time::Duration;
 
 #[allow(clippy::too_many_arguments)]
 pub fn asb<LR>(
@@ -52,6 +53,7 @@ where
         .with_tokio()
         .with_other_transport(|_| transport)?
         .with_behaviour(|_| behaviour)?
+        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::MAX))
         .build();
 
     Ok(swarm)
@@ -76,6 +78,7 @@ where
         .with_tokio()
         .with_other_transport(|_| transport)?
         .with_behaviour(|_| behaviour)?
+        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::MAX))
         .build();
 
     Ok(swarm)
