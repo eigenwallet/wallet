@@ -131,6 +131,8 @@ impl NetworkBehaviour for Behaviour {
     ) {
         // the dummy connection handler does not produce any events
         // therefore we do not need to handle any events here
+        // TODO(Libp2p Migration): Is this correct?
+        unreachable!("The re-dial dummy connection handler does not produce any events");
     }
 }
 
