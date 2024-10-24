@@ -60,7 +60,8 @@ impl NetworkBehaviour for Behaviour {
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        Ok(Handler::new(self.env_config, self.bitcoin_wallet.clone()))
+        // TODO(Libp2p Migration): Is this correct?
+        unreachable!("Bob does not support inbound connections")
     }
 
     fn handle_established_outbound_connection(
