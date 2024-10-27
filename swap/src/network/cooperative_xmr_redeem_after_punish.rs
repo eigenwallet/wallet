@@ -4,6 +4,7 @@ use libp2p::request_response::ProtocolSupport;
 use libp2p::{request_response, PeerId, StreamProtocol};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use std::time::Duration;
 
 const PROTOCOL: &str = "/comit/xmr/btc/cooperative_xmr_redeem_after_punish/1.0.0";
 type OutEvent = request_response::Event<Request, Response>;
@@ -53,7 +54,7 @@ pub fn alice() -> Behaviour {
             StreamProtocol::new(CooperativeXmrRedeemProtocol.as_ref()),
             ProtocolSupport::Inbound,
         )],
-        request_response::Config::default(),
+        request_response::Config::default().with_request_timeout(Duration::from_secs(60)),
     )
 }
 
@@ -63,7 +64,7 @@ pub fn bob() -> Behaviour {
             StreamProtocol::new(CooperativeXmrRedeemProtocol.as_ref()),
             ProtocolSupport::Outbound,
         )],
-        request_response::Config::default(),
+        request_response::Config::default().with_request_timeout(Duration::from_secs(60)),
     )
 }
 

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::{asb, cli, monero};
 use libp2p::request_response::{self, ProtocolSupport};
 use libp2p::{PeerId, StreamProtocol};
@@ -28,14 +30,14 @@ pub struct Request {
 pub fn alice() -> Behaviour {
     Behaviour::new(
         vec![(StreamProtocol::new(PROTOCOL), ProtocolSupport::Outbound)],
-        request_response::Config::default(),
+        request_response::Config::default().with_request_timeout(Duration::from_secs(60)),
     )
 }
 
 pub fn bob() -> Behaviour {
     Behaviour::new(
         vec![(StreamProtocol::new(PROTOCOL), ProtocolSupport::Inbound)],
-        request_response::Config::default(),
+        request_response::Config::default().with_request_timeout(Duration::from_secs(60)),
     )
 }
 

@@ -3,6 +3,7 @@ use libp2p::request_response::{self};
 use libp2p::{PeerId, StreamProtocol};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use std::time::Duration;
 
 const PROTOCOL: &str = "/comit/xmr/btc/encrypted_signature/1.0.0";
 type OutEvent = request_response::Event<Request, ()>;
@@ -31,7 +32,7 @@ pub fn alice() -> Behaviour {
             StreamProtocol::new(EncryptedSignatureProtocol.as_ref()),
             request_response::ProtocolSupport::Inbound,
         )],
-        request_response::Config::default(),
+        request_response::Config::default().with_request_timeout(Duration::from_secs(60)),
     )
 }
 
@@ -41,7 +42,7 @@ pub fn bob() -> Behaviour {
             StreamProtocol::new(EncryptedSignatureProtocol.as_ref()),
             request_response::ProtocolSupport::Outbound,
         )],
-        request_response::Config::default(),
+        request_response::Config::default().with_request_timeout(Duration::from_secs(60)),
     )
 }
 

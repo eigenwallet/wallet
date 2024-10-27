@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::{asb, bitcoin, cli};
 use libp2p::request_response::{self, ProtocolSupport};
 use libp2p::{PeerId, StreamProtocol};
@@ -49,7 +51,7 @@ pub struct ZeroQuoteReceived;
 pub fn asb() -> Behaviour {
     Behaviour::new(
         vec![(StreamProtocol::new(PROTOCOL), ProtocolSupport::Inbound)],
-        request_response::Config::default(),
+        request_response::Config::default().with_request_timeout(Duration::from_secs(60)),
     )
 }
 
@@ -60,7 +62,7 @@ pub fn asb() -> Behaviour {
 pub fn cli() -> Behaviour {
     Behaviour::new(
         vec![(StreamProtocol::new(PROTOCOL), ProtocolSupport::Outbound)],
-        request_response::Config::default(),
+        request_response::Config::default().with_request_timeout(Duration::from_secs(60)),
     )
 }
 
