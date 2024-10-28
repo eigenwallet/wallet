@@ -21,7 +21,10 @@ import { useAppDispatch, useSettings } from "store/hooks";
 import ValidatedTextField from "renderer/components/other/ValidatedTextField";
 import RefreshIcon from "@material-ui/icons/Refresh";
 import HelpIcon from '@material-ui/icons/HelpOutline';
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
+import { Theme } from "renderer/components/theme";
+import { getNetwork } from "store/config";
+import { Add, Check, Delete, Edit, PlusOne, VisibilityOffRounded, VisibilityRounded } from "@material-ui/icons";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -84,28 +87,32 @@ function ElectrumRpcUrlSetting() {
   const electrumRpcUrl = useSettings((s) => s.electrum_rpc_url);
   const dispatch = useAppDispatch();
 
+  const [tableVisible, setTableVisible] = useState(false);
+
   function isValid(url: string): boolean {
     return isValidUrl(url, ["ssl", "tcp"]);
   }
 
   return (
-    <TableRow>
-      <TableCell>
-        <SettingLabel label="Custom Electrum RPC URL" tooltip="This is the URL of the Electrum server that the GUI will connect to. It is used to sync Bitcoin transactions. If you leave this field empty, the GUI will choose from a list of known servers at random." />
+      <TableRow>
+        <TableCell>
+          <SettingLabel label="Custom Electrum RPC URL" tooltip="This is the URL of the Electrum server that the GUI will connect to. It is used to sync Bitcoin transactions. If you leave this field empty, the GUI will choose from a list of known servers at random." />
       </TableCell>
       <TableCell>
-        <ValidatedTextField
-          label="Electrum RPC URL"
-          value={electrumRpcUrl}
-          isValid={isValid}
-          onValidatedChange={(value) => {
-            dispatch(setElectrumRpcUrl(value));
-          }}
-          fullWidth
-          placeholder={PLACEHOLDER_ELECTRUM_RPC_URL}
-          allowEmpty
-        />
-      </TableCell>
+        <IconButton 
+            onClick={() => setTableVisible(!tableVisible)}
+          >
+            {tableVisible ? <VisibilityOffRounded /> : <VisibilityRounded />}
+          </IconButton>
+        </TableCell>
+        <TableCell>
+          {tableVisible ? <NodeTable
+            network={network}
+            blockchain={Blockchain.Bitcoin}
+            isValid={isValid}
+            placeholder={PLACEHOLDER_ELECTRUM_RPC_URL}
+          /> : <></>}
+        </TableCell>
     </TableRow>
   );
 }
@@ -131,23 +138,31 @@ function MoneroNodeUrlSetting() {
     return isValidUrl(url, ["http"]);
   }
 
+  const [tableVisible, setTableVisible] = useState(false);
+
   return (
     <TableRow>
       <TableCell>
        <SettingLabel label="Custom Monero Node URL" tooltip="This is the URL of the Monero node that the GUI will connect to. Ensure the node is listening for RPC connections over HTTP. If you leave this field empty, the GUI will choose from a list of known nodes at random." />
       </TableCell>
+      <TableCell>  
+        <IconButton 
+          onClick={() => setTableVisible(!tableVisible)}
+        >
+          {tableVisible ? <VisibilityOffRounded /> : <VisibilityRounded /> } 
+        </IconButton>
+      </TableCell>
       <TableCell>
-        <ValidatedTextField
-          label="Monero Node URL"
-          value={moneroNodeUrl}
+        {tableVisible ? <NodeTable
+          network={network}
+          blockchain={Blockchain.Monero}
           isValid={isValid}
           onValidatedChange={(value) => {
             dispatch(setMoneroNodeUrl(value));
           }}
           fullWidth
           placeholder={PLACEHOLDER_MONERO_NODE_URL}
-          allowEmpty
-        />
+        /> : <></>}
       </TableCell>
     </TableRow>
   );

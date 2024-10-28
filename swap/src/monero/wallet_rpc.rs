@@ -4,14 +4,18 @@ use big_bytes::BigByte;
 use data_encoding::HEXLOWER;
 use futures::{StreamExt, TryStreamExt};
 use monero_rpc::wallet::{Client, MoneroWalletRpc as _};
+use once_cell::sync::Lazy;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::Url;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use thiserror::Error;
+use typeshare::typeshare;
 use std::fmt::{Debug, Display, Formatter};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
 use tokio::fs::{remove_file, OpenOptions};
@@ -19,6 +23,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use tokio_util::io::StreamReader;
+
+use crate::cli::api::request::Request;
 
 // See: https://www.moneroworld.com/#nodes, https://monero.fail
 // We don't need any testnet nodes because we don't support testnet at all
@@ -87,17 +93,17 @@ pub struct WalletRpcProcess {
     port: u16,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 struct MoneroDaemon {
-    address: &'static str,
+    address: String,
     port: u16,
     network: Network,
 }
 
 impl MoneroDaemon {
-    const fn new(address: &'static str, port: u16, network: Network) -> Self {
+    fn new(address: impl Into<String>, port: u16, network: Network) -> Self {
         Self {
-            address,
+            address: address.into(),
             port,
             network,
         }
@@ -107,7 +113,7 @@ impl MoneroDaemon {
         let (address, port) = extract_host_and_port(address)?;
 
         Ok(Self {
-            address,
+            address: address.into(),
             port,
             network,
         })
@@ -152,6 +158,48 @@ struct MoneroDaemonGetInfoResponse {
     mainnet: bool,
     stagenet: bool,
     testnet: bool,
+}
+
+#[typeshare]
+#[derive(Deserialize, Serialize)]
+pub struct CheckMoneroNodeArgs {
+    pub url: String,
+    pub port: u64,
+    pub network: String
+}
+
+#[typeshare]
+#[derive(Deserialize, Serialize)]
+pub struct CheckMoneroNodeResponse {
+    pub available: bool
+}
+
+#[derive(Error, Debug)]
+#[error("this is not one of the known monero networks")]
+struct UnknownMoneroNetwork(String);
+
+impl Request for CheckMoneroNodeArgs {
+    type Response = CheckMoneroNodeResponse;
+
+    async fn request(self, _ctx: Arc<crate::cli::api::Context>) -> Result<Self::Response> {
+        let network = match self.network.to_lowercase().as_str() {
+            "stagenet" => Network::Stagenet,
+            "mainnet" => Network::Mainnet,
+            "testnet" => Network::Testnet,
+            otherwise => anyhow::bail!(UnknownMoneroNetwork(otherwise.to_string()))
+        };
+
+        static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .https_only(false)
+                .build().expect("whoops")
+        });
+    
+        let monero_daemon = MoneroDaemon::new(&self.url, self.port.try_into().context("Port number too large")?, network);
+
+        Ok(CheckMoneroNodeResponse { available: false })
+    }
 }
 
 /// Chooses an available Monero daemon based on the specified network.
@@ -486,7 +534,7 @@ impl WalletRpc {
     }
 }
 
-fn extract_host_and_port(address: String) -> Result<(&'static str, u16), Error> {
+fn extract_host_and_port(address: String) -> Result<(String, u16), Error> {
     // Strip the protocol (anything before "://")
     let stripped_address = if let Some(pos) = address.find("://") {
         address[(pos + 3)..].to_string()
@@ -501,9 +549,7 @@ fn extract_host_and_port(address: String) -> Result<(&'static str, u16), Error> 
         let host = parts[0].to_string();
         let port = parts[1].parse::<u16>()?;
 
-        // Leak the host string to create a 'static lifetime string
-        let static_str_host: &'static str = Box::leak(host.into_boxed_str());
-        return Ok((static_str_host, port));
+        return Ok((host, port));
     }
 
     bail!(
