@@ -23,10 +23,15 @@ mod tests {
     use crate::network::rendezvous::XmrBtcNamespace;
     use crate::network::test::{new_swarm, SwarmExt};
     use futures::StreamExt;
+    use libp2p::core::Endpoint;
     use libp2p::multiaddr::Protocol;
-    use libp2p::{identity, rendezvous, Multiaddr, PeerId, request_response};
+    use libp2p::swarm::{
+        ConnectionDenied, ConnectionId, FromSwarm, THandlerInEvent, THandlerOutEvent, ToSwarm,
+    };
+    use libp2p::{identity, rendezvous, request_response, Multiaddr, PeerId};
     use std::collections::HashSet;
     use std::iter::FromIterator;
+    use std::task::Poll;
     use std::time::Duration;
 
     #[tokio::test]
@@ -85,10 +90,12 @@ mod tests {
             let rendezvous = asb::rendezvous::Behaviour::new(identity, vec![rendezvous_node]);
 
             StaticQuoteAsbBehaviour {
-                rendezvous,
-                quote: quote::asb(),
-                // static_quote,
-                // registered: false,
+                inner: StaticQuoteAsbBehaviourInner {
+                    rendezvous,
+                    quote: quote::asb(),
+                },
+                static_quote,
+                registered: false,
             }
         });
 
@@ -116,51 +123,139 @@ mod tests {
     }
 
     #[derive(libp2p::swarm::NetworkBehaviour)]
-    struct StaticQuoteAsbBehaviour {
+    struct StaticQuoteAsbBehaviourInner {
         rendezvous: asb::rendezvous::Behaviour,
         quote: quote::Behaviour,
+    }
 
-        // TODO(Libp2p Migration): Support for this macro attribute has been removed: https://github.com/libp2p/rust-libp2p/pull/2842
-        // We need to find a way to ignore this field, put it somewhere else
-        #[behaviour(ignore)]
+    struct StaticQuoteAsbBehaviour {
+        inner: StaticQuoteAsbBehaviourInner,
         static_quote: BidQuote,
-        #[behaviour(ignore)]
         registered: bool,
     }
-    impl NetworkBehaviourEventProcess<rendezvous::client::Event> for StaticQuoteAsbBehaviour {
-        fn inject_event(&mut self, event: rendezvous::client::Event) {
-            if let rendezvous::client::Event::Registered { .. } = event {
-                self.registered = true;
+
+    impl libp2p::swarm::NetworkBehaviour for StaticQuoteAsbBehaviour {
+        type ConnectionHandler =
+            <StaticQuoteAsbBehaviourInner as libp2p::swarm::NetworkBehaviour>::ConnectionHandler;
+        type ToSwarm = <StaticQuoteAsbBehaviourInner as libp2p::swarm::NetworkBehaviour>::ToSwarm;
+
+        fn handle_established_inbound_connection(
+            &mut self,
+            connection_id: ConnectionId,
+            peer: PeerId,
+            local_addr: &Multiaddr,
+            remote_addr: &Multiaddr,
+        ) -> Result<libp2p::swarm::THandler<Self>, ConnectionDenied> {
+            self.inner.handle_established_inbound_connection(
+                connection_id,
+                peer,
+                local_addr,
+                remote_addr,
+            )
+        }
+
+        fn handle_established_outbound_connection(
+            &mut self,
+            connection_id: ConnectionId,
+            peer: PeerId,
+            addr: &Multiaddr,
+            role_override: Endpoint,
+        ) -> Result<libp2p::swarm::THandler<Self>, ConnectionDenied> {
+            self.inner.handle_established_outbound_connection(
+                connection_id,
+                peer,
+                addr,
+                role_override,
+            )
+        }
+
+        fn on_swarm_event(&mut self, event: FromSwarm) {
+            self.inner.on_swarm_event(event);
+        }
+
+        fn on_connection_handler_event(
+            &mut self,
+            peer_id: PeerId,
+            connection_id: ConnectionId,
+            event: THandlerOutEvent<Self>,
+        ) {
+            self.inner
+                .on_connection_handler_event(peer_id, connection_id, event);
+        }
+
+        fn poll(
+            &mut self,
+            cx: &mut std::task::Context<'_>,
+        ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
+            match self.inner.poll(cx) {
+                Poll::Ready(ToSwarm::GenerateEvent(event)) => match event {
+                    StaticQuoteAsbBehaviourInnerEvent::Rendezvous(rendezvous_event) => {
+                        if let rendezvous::client::Event::Registered { .. } = rendezvous_event {
+                            self.registered = true;
+                            return Poll::Pending;
+                        }
+                        Poll::Ready(ToSwarm::GenerateEvent(
+                            StaticQuoteAsbBehaviourInnerEvent::Rendezvous(rendezvous_event),
+                        ))
+                    }
+                    StaticQuoteAsbBehaviourInnerEvent::Quote(quote_event) => {
+                        if let request_response::Event::Message {
+                            message: quote::Message::Request { channel, .. },
+                            ..
+                        } = quote_event
+                        {
+                            self.inner
+                                .quote
+                                .send_response(channel, self.static_quote)
+                                .unwrap();
+
+                            return Poll::Pending;
+                        }
+
+                        Poll::Ready(ToSwarm::GenerateEvent(
+                            StaticQuoteAsbBehaviourInnerEvent::Quote(quote_event),
+                        ))
+                    }
+                },
+                other => other,
             }
         }
     }
 
-    impl NetworkBehaviourEventProcess<libp2p::ping::Event> for StaticQuoteAsbBehaviour {
-        fn inject_event(&mut self, _: libp2p::ping::Event) {}
-    }
+    // impl NetworkBehaviourEventProcess<rendezvous::client::Event> for StaticQuoteAsbBehaviour {
+    //     fn inject_event(&mut self, event: rendezvous::client::Event) {
+    //         if let rendezvous::client::Event::Registered { .. } = event {
+    //             self.registered = true;
+    //         }
+    //     }
+    // }
 
-    impl NetworkBehaviourEventProcess<quote::OutEvent> for StaticQuoteAsbBehaviour {
-        fn inject_event(&mut self, event: quote::OutEvent) {
-            if let request_response::Event::Message {
-                message: quote::Message::Request { channel, .. },
-                ..
-            } = event
-            {
-                self.quote
-                    .send_response(channel, self.static_quote)
-                    .unwrap();
-            }
-        }
-    }
+    // impl NetworkBehaviourEventProcess<libp2p::ping::Event> for StaticQuoteAsbBehaviour {
+    //     fn inject_event(&mut self, _: libp2p::ping::Event) {}
+    // }
+
+    // impl NetworkBehaviourEventProcess<quote::OutEvent> for StaticQuoteAsbBehaviour {
+    //     fn inject_event(&mut self, event: quote::OutEvent) {
+    //         if let request_response::Event::Message {
+    //             message: quote::Message::Request { channel, .. },
+    //             ..
+    //         } = event
+    //         {
+    //             self.quote
+    //                 .send_response(channel, self.static_quote)
+    //                 .unwrap();
+    //         }
+    //     }
+    // }
 
     #[derive(libp2p::swarm::NetworkBehaviour)]
     struct RendezvousPointBehaviour {
         rendezvous: rendezvous::server::Behaviour,
     }
 
-    impl NetworkBehaviourEventProcess<rendezvous::server::Event> for RendezvousPointBehaviour {
-        fn inject_event(&mut self, _: rendezvous::server::Event) {}
-    }
+    // impl NetworkBehaviourEventProcess<rendezvous::server::Event> for RendezvousPointBehaviour {
+    //     fn inject_event(&mut self, _: rendezvous::server::Event) {}
+    // }
 
     impl Default for RendezvousPointBehaviour {
         fn default() -> Self {

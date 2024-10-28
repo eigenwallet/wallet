@@ -2,8 +2,8 @@ use crate::{asb, cli};
 use libp2p::request_response::{self};
 use libp2p::{PeerId, StreamProtocol};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::time::Duration;
+use uuid::Uuid;
 
 const PROTOCOL: &str = "/comit/xmr/btc/encrypted_signature/1.0.0";
 type OutEvent = request_response::Event<Request, ()>;

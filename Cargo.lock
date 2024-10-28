@@ -307,6 +307,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "asn1_der"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "155a5a185e42c6b77ac7b88a15143d930a9e9727a5b7b77eed417404ab15c247"
+
+[[package]]
 name = "assert-json-diff"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4014,7 +4020,7 @@ dependencies = [
  "jsonrpsee-types",
  "pin-project",
  "rustls-native-certs 0.6.3",
- "soketto 0.7.1",
+ "soketto",
  "thiserror",
  "tokio",
  "tokio-rustls 0.24.1",
@@ -4045,7 +4051,7 @@ dependencies = [
  "rustc-hash 1.1.0",
  "serde",
  "serde_json",
- "soketto 0.7.1",
+ "soketto",
  "thiserror",
  "tokio",
  "tracing",
@@ -4065,7 +4071,7 @@ dependencies = [
  "jsonrpsee-types",
  "serde",
  "serde_json",
- "soketto 0.7.1",
+ "soketto",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -4253,7 +4259,6 @@ dependencies = [
  "libp2p-swarm",
  "libp2p-tcp",
  "libp2p-upnp",
- "libp2p-websocket",
  "libp2p-yamux",
  "multiaddr",
  "pin-project",
@@ -4391,12 +4396,14 @@ version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55cca1eb2bc1fd29f099f3daaab7effd01e1a54b7c577d0ed082521034d912e8"
 dependencies = [
+ "asn1_der",
  "bs58",
  "ed25519-dalek 2.1.1",
  "hkdf",
  "multihash",
  "quick-protobuf",
  "rand 0.8.5",
+ "ring 0.17.8",
  "serde",
  "sha2 0.10.8",
  "thiserror",
@@ -4673,27 +4680,6 @@ dependencies = [
  "tokio",
  "tracing",
  "void",
-]
-
-[[package]]
-name = "libp2p-websocket"
-version = "0.43.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85b953b6803a1f3161a989538974d72511c4e48a4af355337b6fb90723c56c05"
-dependencies = [
- "either",
- "futures",
- "futures-rustls",
- "libp2p-core",
- "libp2p-identity",
- "parking_lot 0.12.3",
- "pin-project-lite",
- "rw-stream-sink",
- "soketto 0.8.0",
- "thiserror",
- "tracing",
- "url",
- "webpki-roots 0.25.4",
 ]
 
 [[package]]
@@ -7895,21 +7881,6 @@ dependencies = [
  "log",
  "rand 0.8.5",
  "sha-1",
-]
-
-[[package]]
-name = "soketto"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37468c595637c10857701c990f93a40ce0e357cedb0953d1c26c8d8027f9bb53"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "futures",
- "httparse",
- "log",
- "rand 0.8.5",
- "sha1",
 ]
 
 [[package]]

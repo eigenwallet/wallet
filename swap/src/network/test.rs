@@ -1,29 +1,18 @@
 use async_trait::async_trait;
-use futures::stream::FusedStream;
-use futures::{future, Future, StreamExt};
+use futures::StreamExt;
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::upgrade::Version;
 use libp2p::core::transport::MemoryTransport;
-use libp2p::core::{Multiaddr, PeerId, Transport};
+use libp2p::core::{Multiaddr, Transport};
 use libp2p::identity;
 use libp2p::noise;
-use libp2p::swarm::{Executor, NetworkBehaviour, Swarm, SwarmEvent};
-use libp2p::tcp::Config as TokioTcpConfig;
+use libp2p::swarm::dial_opts::DialOpts;
+use libp2p::swarm::{NetworkBehaviour, Swarm, SwarmEvent};
+use libp2p::tcp;
 use libp2p::yamux;
 use libp2p::SwarmBuilder;
 use std::fmt::Debug;
-use std::pin::Pin;
 use std::time::Duration;
-
-/// An adaptor struct for libp2p that spawns futures into the current
-/// thread-local runtime.
-struct GlobalSpawnTokioExecutor;
-
-impl Executor for GlobalSpawnTokioExecutor {
-    fn exec(&self, future: Pin<Box<dyn Future<Output = ()> + Send>>) {
-        tokio::spawn(future);
-    }
-}
 
 pub fn new_swarm<B, F>(behaviour_fn: F) -> Swarm<B>
 where
@@ -33,11 +22,11 @@ where
     F: FnOnce(identity::Keypair) -> B,
 {
     let identity = identity::Keypair::generate_ed25519();
-    let peer_id = PeerId::from(identity.public());
-    let noise = noise::Config::new(&identity)?;
+    let noise = noise::Config::new(&identity).unwrap();
+    let tcp = tcp::tokio::Transport::new(tcp::Config::new());
 
     let transport = MemoryTransport::new()
-        .or_transport(TokioTcpConfig::new())
+        .or_transport(tcp)
         .upgrade(Version::V1)
         .authenticate(noise)
         .multiplex(yamux::Config::default())
@@ -46,10 +35,11 @@ where
         .boxed();
 
     SwarmBuilder::with_existing_identity(identity)
-        .with_executor(Box::new(GlobalSpawnTokioExecutor))
-        .with_other_transport(|_| transport)
-        .with_behaviour(|keypair| behaviour_fn(keypair.clone()))
-        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::MAX))
+        .with_tokio()
+        .with_other_transport(|_| Ok(transport))
+        .unwrap()
+        .with_behaviour(|keypair| Ok(behaviour_fn(keypair.clone())))
+        .unwrap()
         .build()
 }
 
@@ -78,7 +68,7 @@ pub trait SwarmExt {
     /// until the connection is established.
     async fn block_on_connection<T>(&mut self, other: &mut Swarm<T>)
     where
-        T: NetworkBehaviour,
+        T: NetworkBehaviour + Send,
         <T as NetworkBehaviour>::ToSwarm: Debug;
 
     /// Listens on a random memory address, polling the [`Swarm`] until the
@@ -93,18 +83,24 @@ pub trait SwarmExt {
 #[async_trait]
 impl<B> SwarmExt for Swarm<B>
 where
-    B: NetworkBehaviour,
+    B: NetworkBehaviour + Send,
     <B as NetworkBehaviour>::ToSwarm: Debug,
 {
     async fn block_on_connection<T>(&mut self, other: &mut Swarm<T>)
     where
-        T: NetworkBehaviour,
+        T: NetworkBehaviour + Send,
         <T as NetworkBehaviour>::ToSwarm: Debug,
     {
-        let addr_to_dial = other.external_addresses().next().unwrap().addr.clone();
+        let addr_to_dial = other.external_addresses().next().unwrap().clone();
         let local_peer_id = *other.local_peer_id();
 
-        self.dial(addr_to_dial).unwrap();
+        self.dial(
+            DialOpts::peer_id(local_peer_id)
+                .addresses(vec![addr_to_dial])
+                .extend_addresses_through_behaviour()
+                .build(),
+        )
+        .unwrap();
 
         let mut dialer_done = false;
         let mut listener_done = false;
@@ -118,7 +114,7 @@ where
                         SwarmEvent::ConnectionEstablished { .. } => {
                             dialer_done = true;
                         }
-                        SwarmEvent::OutgoingConnectionError { peer_id, error } if matches!(peer_id, Some(alice_peer_id) if alice_peer_id == local_peer_id) => {
+                        SwarmEvent::OutgoingConnectionError { peer_id, error, .. } if matches!(peer_id, Some(alice_peer_id) if alice_peer_id == local_peer_id) => {
                                 panic!("Failed to dial address {}: {}", peer_id.unwrap(), error)
                         }
                         other => {

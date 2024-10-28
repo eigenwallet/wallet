@@ -3,8 +3,8 @@ use crate::{asb, cli};
 use libp2p::request_response::ProtocolSupport;
 use libp2p::{request_response, PeerId, StreamProtocol};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::time::Duration;
+use uuid::Uuid;
 
 const PROTOCOL: &str = "/comit/xmr/btc/cooperative_xmr_redeem_after_punish/1.0.0";
 type OutEvent = request_response::Event<Request, Response>;

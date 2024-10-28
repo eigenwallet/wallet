@@ -55,10 +55,10 @@ impl NetworkBehaviour for Behaviour {
 
     fn handle_established_inbound_connection(
         &mut self,
-        connection_id: ConnectionId,
-        peer: PeerId,
-        local_addr: &Multiaddr,
-        remote_addr: &Multiaddr,
+        _connection_id: ConnectionId,
+        _peer: PeerId,
+        _local_addr: &Multiaddr,
+        _remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         // TODO(Libp2p Migration): Is this correct?
         unreachable!("Bob does not support inbound connections")
@@ -66,10 +66,10 @@ impl NetworkBehaviour for Behaviour {
 
     fn handle_established_outbound_connection(
         &mut self,
-        connection_id: ConnectionId,
-        peer: PeerId,
-        addr: &Multiaddr,
-        role_override: libp2p::core::Endpoint,
+        _connection_id: ConnectionId,
+        _peer: PeerId,
+        _addr: &Multiaddr,
+        _role_override: libp2p::core::Endpoint,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         Ok(Handler::new(self.env_config, self.bitcoin_wallet.clone()))
     }
@@ -93,9 +93,9 @@ impl NetworkBehaviour for Behaviour {
 
     fn poll(
         &mut self,
-        cx: &mut Context<'_>,
+        _cx: &mut Context<'_>,
     ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
-        if let Some((peer, completed)) = self.completed_swaps.pop_front() {
+        if let Some((_peer, completed)) = self.completed_swaps.pop_front() {
             return Poll::Ready(ToSwarm::GenerateEvent(completed));
         }
 
@@ -177,9 +177,6 @@ impl ConnectionHandler for Handler {
 
                 let mut substream = outbound.protocol;
                 let info = outbound.info;
-
-                let bitcoin_wallet = self.bitcoin_wallet.clone();
-                let env_config = self.env_config;
 
                 let bitcoin_wallet = self.bitcoin_wallet.clone();
                 let env_config = self.env_config;

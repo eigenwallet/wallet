@@ -561,9 +561,8 @@ pub mod rendezvous {
                 });
             }
 
-            let mut asb = new_swarm(|identity| {
-                super::rendezvous::Behaviour::new(identity, rendezvous_nodes)
-            });
+            let mut asb =
+                new_swarm(|identity| super::rendezvous::Behaviour::new(identity, rendezvous_nodes));
             asb.listen_on_random_memory_address().await; // this adds an external address
 
             let handle = tokio::spawn(async move {
