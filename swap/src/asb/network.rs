@@ -37,7 +37,8 @@ pub mod transport {
 
 pub mod behaviour {
     use libp2p::{
-        identify, identity, ping, request_response::OutboundRequestId,
+        identify, identity, ping,
+        request_response::{InboundFailure, InboundRequestId, OutboundFailure, OutboundRequestId},
         swarm::behaviour::toggle::Toggle,
     };
 
@@ -77,6 +78,16 @@ pub mod behaviour {
             peer: PeerId,
         },
         Rendezvous(libp2p::rendezvous::client::Event),
+        OutboundRequestResponseFailure {
+            peer: PeerId,
+            error: OutboundFailure,
+            request_id: OutboundRequestId,
+        },
+        InboundRequestResponseFailure {
+            peer: PeerId,
+            error: InboundFailure,
+            request_id: InboundRequestId,
+        },
         Failure {
             peer: PeerId,
             error: Error,

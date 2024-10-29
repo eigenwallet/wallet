@@ -8,11 +8,11 @@ use crate::network::transfer_proof;
 use crate::protocol::alice::{AliceState, State3, Swap};
 use crate::protocol::{Database, State};
 use crate::{bitcoin, env, kraken, monero};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use futures::future;
 use futures::future::{BoxFuture, FutureExt};
 use futures::stream::{FuturesUnordered, StreamExt};
-use libp2p::request_response::{OutboundRequestId, ResponseChannel};
+use libp2p::request_response::{OutboundFailure, OutboundRequestId, ResponseChannel};
 use libp2p::swarm::SwarmEvent;
 use libp2p::{PeerId, Swarm};
 use rust_decimal::Decimal;
@@ -30,8 +30,14 @@ use uuid::Uuid;
 /// the peer identified by the `PeerId`. Once the request has been acknowledged
 /// by the peer, i.e. a `()` response has been received, the `Responder` shall
 /// be used to let the original sender know about the successful transfer.
-type OutgoingTransferProof =
-    BoxFuture<'static, Result<(PeerId, transfer_proof::Request, bmrng::Responder<()>)>>;
+type OutgoingTransferProof = BoxFuture<
+    'static,
+    Result<(
+        PeerId,
+        transfer_proof::Request,
+        bmrng::Responder<Result<(), OutboundFailure>>,
+    )>,
+>;
 
 #[allow(missing_debug_implementations)]
 pub struct EventLoop<LR>
@@ -58,11 +64,12 @@ where
 
     /// Tracks [`transfer_proof::Request`]s which could not yet be sent because
     /// we are currently disconnected from the peer.
-    buffered_transfer_proofs: HashMap<PeerId, Vec<(transfer_proof::Request, bmrng::Responder<()>)>>,
+    buffered_transfer_proofs: HashMap<PeerId, Vec<(transfer_proof::Request, bmrng::Responder<Result<(), OutboundFailure>>)>>,
 
     /// Tracks [`transfer_proof::Request`]s which are currently inflight and
     /// awaiting an acknowledgement.
-    inflight_transfer_proofs: HashMap<OutboundRequestId, bmrng::Responder<()>>,
+    inflight_transfer_proofs:
+        HashMap<OutboundRequestId, bmrng::Responder<Result<(), OutboundFailure>>>,
 }
 
 impl<LR> EventLoop<LR>
@@ -202,7 +209,7 @@ where
                         SwarmEvent::Behaviour(OutEvent::TransferProofAcknowledged { peer, id }) => {
                             tracing::debug!(%peer, "Bob acknowledged transfer proof");
                             if let Some(responder) = self.inflight_transfer_proofs.remove(&id) {
-                                let _ = responder.respond(());
+                                let _ = responder.respond(Ok(()));
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::EncryptedSignatureReceived{ msg, channel, peer }) => {
@@ -313,6 +320,24 @@ where
                         SwarmEvent::Behaviour(OutEvent::Rendezvous(libp2p::rendezvous::client::Event::RegisterFailed { rendezvous_node, namespace, error })) => {
                             tracing::error!("Registration with rendezvous node {} failed for namespace {}: {:?}", rendezvous_node, namespace, error);
                         }
+                        SwarmEvent::Behaviour(OutEvent::OutboundRequestResponseFailure {peer, error, request_id}) => {
+                            tracing::error!(
+                                %peer,
+                                %request_id,
+                                %error,
+                                "Failed to send request to peer");
+
+                            if let Some(responder) = self.inflight_transfer_proofs.remove(&request_id) {
+                                let _ = responder.respond(Err(error));
+                            }
+                        }
+                        SwarmEvent::Behaviour(OutEvent::InboundRequestResponseFailure {peer, error, request_id}) => {
+                            tracing::error!(
+                                %peer,
+                                %request_id,
+                                %error,
+                                "Failed to receive request from peer");
+                        }
                         SwarmEvent::Behaviour(OutEvent::Failure {peer, error}) => {
                             tracing::error!(
                                 %peer,
@@ -325,8 +350,11 @@ where
                                 for (transfer_proof, responder) in transfer_proofs {
                                     tracing::debug!(%peer, "Found buffered transfer proof for peer");
 
-                                    let id = self.swarm.behaviour_mut().transfer_proof.send_request(&peer, transfer_proof);
-                                    self.inflight_transfer_proofs.insert(id, responder);
+                                    // Once we have a connection, we can append the transfer proof to the stream
+                                    // 
+                                    self.send_transfer_proof.push(async move {
+                                        Ok((peer, transfer_proof, responder))
+                                    }.boxed());
                                 }
                             }
                         }
@@ -562,7 +590,8 @@ impl LatestRate for KrakenRate {
 #[derive(Debug)]
 pub struct EventLoopHandle {
     recv_encrypted_signature: Option<bmrng::RequestReceiver<bitcoin::EncryptedSignature, ()>>,
-    send_transfer_proof: Option<bmrng::RequestSender<monero::TransferProof, ()>>,
+    send_transfer_proof:
+        Option<bmrng::RequestSender<monero::TransferProof, Result<(), OutboundFailure>>>,
 }
 
 impl EventLoopHandle {
@@ -582,14 +611,20 @@ impl EventLoopHandle {
     }
 
     pub async fn send_transfer_proof(&mut self, msg: monero::TransferProof) -> Result<()> {
-        self.send_transfer_proof
-            .take()
-            .context("Transfer proof was already sent")?
+        let sender = self
+            .send_transfer_proof
+            .as_ref()
+            .context("Transfer proof was already sent")?;
+
+        let result = sender
             .send_receive(msg)
             .await
-            .context("Failed to send transfer proof")?;
+            .context("Failed to send transfer proof")?
+            .map_err(|e| anyhow!(e))?;
 
-        Ok(())
+        self.send_transfer_proof.take();
+
+        Ok(result)
     }
 }
 

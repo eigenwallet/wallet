@@ -10,7 +10,9 @@ use crate::protocol::bob::State2;
 use crate::{bitcoin, env};
 use anyhow::{anyhow, Error, Result};
 use libp2p::core::Multiaddr;
-use libp2p::request_response::{OutboundRequestId, ResponseChannel};
+use libp2p::request_response::{
+    InboundFailure, InboundRequestId, OutboundFailure, OutboundRequestId, ResponseChannel,
+};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{identify, identity, ping, PeerId};
 use std::sync::Arc;
@@ -47,6 +49,16 @@ pub enum OutEvent {
     Failure {
         peer: PeerId,
         error: Error,
+    },
+    OutboundRequestResponseFailure {
+        peer: PeerId,
+        error: OutboundFailure,
+        request_id: OutboundRequestId,
+    },
+    InboundRequestResponseFailure {
+        peer: PeerId,
+        error: InboundFailure,
+        request_id: InboundRequestId,
     },
     /// "Fallback" variant that allows the event mapping code to swallow certain
     /// events that we don't want the caller to deal with.
