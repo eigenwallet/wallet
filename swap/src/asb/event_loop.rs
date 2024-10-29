@@ -60,11 +60,22 @@ where
     recv_encrypted_signature: HashMap<Uuid, bmrng::RequestSender<bitcoin::EncryptedSignature, ()>>,
     inflight_encrypted_signatures: FuturesUnordered<BoxFuture<'static, ResponseChannel<()>>>,
 
+    /// Tracks [`transfer_proof::Request`]s which are in queue to be sent to a peer.
+    /// The future resolves to a tuple of `PeerId`, `transfer_proof::Request` and `Responder`.
+    /// The `PeerId` is the peer to which the request shall be sent, the `transfer_proof::Request`
+    /// is the request itself and the `Responder` is used to let the original sender know about
+    /// the success or failure of the transfer.
     send_transfer_proof: FuturesUnordered<OutgoingTransferProof>,
 
     /// Tracks [`transfer_proof::Request`]s which could not yet be sent because
     /// we are currently disconnected from the peer.
-    buffered_transfer_proofs: HashMap<PeerId, Vec<(transfer_proof::Request, bmrng::Responder<Result<(), OutboundFailure>>)>>,
+    buffered_transfer_proofs: HashMap<
+        PeerId,
+        Vec<(
+            transfer_proof::Request,
+            bmrng::Responder<Result<(), OutboundFailure>>,
+        )>,
+    >,
 
     /// Tracks [`transfer_proof::Request`]s which are currently inflight and
     /// awaiting an acknowledgement.
@@ -346,12 +357,14 @@ where
                         SwarmEvent::ConnectionEstablished { peer_id: peer, endpoint, .. } => {
                             tracing::debug!(%peer, address = %endpoint.get_remote_address(), "New connection established");
 
+                            // If we have buffered transfer proofs for this peer, we can now send them
                             if let Some(transfer_proofs) = self.buffered_transfer_proofs.remove(&peer) {
                                 for (transfer_proof, responder) in transfer_proofs {
                                     tracing::debug!(%peer, "Found buffered transfer proof for peer");
 
-                                    // Once we have a connection, we can append the transfer proof to the stream
-                                    // 
+                                    // Once we have a connection, we can append transfer proof to the queue
+                                    // This is then polled in the next iteration of the event loop
+                                    // and attempted to be sent to the peer
                                     self.send_transfer_proof.push(async move {
                                         Ok((peer, transfer_proof, responder))
                                     }.boxed());
@@ -376,12 +389,15 @@ where
                 next_transfer_proof = self.send_transfer_proof.next() => {
                     match next_transfer_proof {
                         Some(Ok((peer, transfer_proof, responder))) => {
+                            // If we are not connected to the peer, we buffer the transfer proof
+                            // We remove the transfer proof from the queue (send_transfer_proof), and append it buffered_transfer_proofs
                             if !self.swarm.behaviour_mut().transfer_proof.is_connected(&peer) {
                                 tracing::warn!(%peer, "No active connection to peer, buffering transfer proof");
                                 self.buffered_transfer_proofs.entry(peer).or_default().push((transfer_proof, responder));
                                 continue;
                             }
 
+                            // If we are connected to the peer, we attempt to send the transfer proof
                             let id = self.swarm.behaviour_mut().transfer_proof.send_request(&peer, transfer_proof);
                             self.inflight_transfer_proofs.insert(id, responder);
                         },
