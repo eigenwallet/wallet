@@ -298,6 +298,7 @@ impl EventLoopHandle {
         tracing::debug!("Requesting quote");
         Ok(self.quote.send_receive(()).await?)
     }
+
     pub async fn request_cooperative_xmr_redeem(&mut self, swap_id: Uuid) -> Result<Response> {
         Ok(self.cooperative_xmr_redeem.send_receive(swap_id).await?)
     }

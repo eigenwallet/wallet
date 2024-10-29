@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::convert::{Infallible, TryInto};
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -61,7 +62,7 @@ where
     inflight_encrypted_signatures: FuturesUnordered<BoxFuture<'static, ResponseChannel<()>>>,
 
     /// Tracks [`transfer_proof::Request`]s which are in queue to be sent to a peer.
-    /// The future resolves to a tuple of `PeerId`, `transfer_proof::Request` and `Responder`.
+    /// The future resolves to a tuple of [`PeerId`], [`transfer_proof::Request`] and [`Responder`].
     /// The `PeerId` is the peer to which the request shall be sent, the `transfer_proof::Request`
     /// is the request itself and the `Responder` is used to let the original sender know about
     /// the success or failure of the transfer.
@@ -69,6 +70,8 @@ where
 
     /// Tracks [`transfer_proof::Request`]s which could not yet be sent because
     /// we are currently disconnected from the peer.
+    ///
+    /// If we are not connected to the peer, the transfer proof is essentially moved from [`send_transfer_proof`] to here.
     buffered_transfer_proofs: HashMap<
         PeerId,
         Vec<(
@@ -632,11 +635,29 @@ impl EventLoopHandle {
             .as_ref()
             .context("Transfer proof was already sent")?;
 
-        let result = sender
-            .send_receive(msg)
-            .await
-            .context("Failed to send transfer proof")?
-            .map_err(|e| anyhow!(e))?;
+        // We will retry indefinitely until we succeed
+        let backoff = backoff::ExponentialBackoffBuilder::new()
+            .with_max_elapsed_time(None)
+            .with_max_interval(Duration::from_secs(60))
+            .build();
+
+        let result = backoff::future::retry(backoff, || async {
+            match sender.send_receive(msg.clone()).await {
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(err)) => {
+                    // We encountered a libp2p error and failed to send the message
+                    tracing::warn!(%err, "Failed to send transfer proof due to a network error. We will retry");
+                    Err(backoff::Error::transient(anyhow::anyhow!(err)))
+                }
+                Err(err) => {
+                    // The MSCP channel has failed
+                    // TODO(Libp2p Migration): Can we even retry here? Pointless?
+                    tracing::error!(%err, "Failed to send transfer proof due to error in MSCP channel. We will retry");
+                    Err(backoff::Error::transient(anyhow::anyhow!(err)))
+                }
+            }
+        })
+            .await?;
 
         self.send_transfer_proof.take();
 
