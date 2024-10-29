@@ -66,7 +66,7 @@ where
     /// The `PeerId` is the peer to which the request shall be sent, the `transfer_proof::Request`
     /// is the request itself and the `Responder` is used to let the original sender know about
     /// the success or failure of the transfer.
-    send_transfer_proof: FuturesUnordered<OutgoingTransferProof>,
+    outgoing_transfer_proof_queue: FuturesUnordered<OutgoingTransferProof>,
 
     /// Tracks [`transfer_proof::Request`]s which could not yet be sent because
     /// we are currently disconnected from the peer.
@@ -117,7 +117,7 @@ where
             external_redeem_address,
             recv_encrypted_signature: Default::default(),
             inflight_encrypted_signatures: Default::default(),
-            send_transfer_proof: Default::default(),
+            outgoing_transfer_proof_queue: Default::default(),
             buffered_transfer_proofs: Default::default(),
             inflight_transfer_proofs: Default::default(),
         };
@@ -131,7 +131,7 @@ where
     pub async fn run(mut self) {
         // ensure that these streams are NEVER empty, otherwise it will
         // terminate forever.
-        self.send_transfer_proof.push(future::pending().boxed());
+        self.outgoing_transfer_proof_queue.push(future::pending().boxed());
         self.inflight_encrypted_signatures
             .push(future::pending().boxed());
 
@@ -368,7 +368,7 @@ where
                                     // Once we have a connection, we can append transfer proof to the queue
                                     // This is then polled in the next iteration of the event loop
                                     // and attempted to be sent to the peer
-                                    self.send_transfer_proof.push(async move {
+                                    self.outgoing_transfer_proof_queue.push(async move {
                                         Ok((peer, transfer_proof, responder))
                                     }.boxed());
                                 }
@@ -389,7 +389,7 @@ where
                         _ => {}
                     }
                 },
-                next_transfer_proof = self.send_transfer_proof.next() => {
+                next_transfer_proof = self.outgoing_transfer_proof_queue.next() => {
                     match next_transfer_proof {
                         Some(Ok((peer, transfer_proof, responder))) => {
                             // If we are not connected to the peer, we buffer the transfer proof
@@ -437,7 +437,7 @@ where
         let xmr = Amount::from_piconero(balance.unlocked_balance);
 
         let max_bitcoin_for_monero = xmr.max_bitcoin_for_price(ask_price).ok_or_else(|| {
-            anyhow::anyhow!("Bitcoin price ({}) x Monero ({}) overflow", ask_price, xmr)
+            anyhow!("Bitcoin price ({}) x Monero ({}) overflow", ask_price, xmr)
         })?;
 
         tracing::debug!(%ask_price, %xmr, %max_bitcoin_for_monero);
@@ -523,7 +523,7 @@ where
         self.recv_encrypted_signature
             .insert(swap_id, encrypted_signature.0);
 
-        self.send_transfer_proof.push(
+        self.outgoing_transfer_proof_queue.push(
             async move {
                 let (transfer_proof, responder) = transfer_proof_receiver.recv().await?;
 
@@ -539,7 +539,7 @@ where
 
         EventLoopHandle {
             recv_encrypted_signature: Some(encrypted_signature.1),
-            send_transfer_proof: Some(transfer_proof_sender),
+            transfer_proof_sender: Some(transfer_proof_sender),
         }
     }
 }
@@ -609,7 +609,7 @@ impl LatestRate for KrakenRate {
 #[derive(Debug)]
 pub struct EventLoopHandle {
     recv_encrypted_signature: Option<bmrng::RequestReceiver<bitcoin::EncryptedSignature, ()>>,
-    send_transfer_proof:
+    transfer_proof_sender:
         Option<bmrng::RequestSender<monero::TransferProof, Result<(), OutboundFailure>>>,
 }
 
@@ -631,7 +631,7 @@ impl EventLoopHandle {
 
     pub async fn send_transfer_proof(&mut self, msg: monero::TransferProof) -> Result<()> {
         let sender = self
-            .send_transfer_proof
+            .transfer_proof_sender
             .as_ref()
             .context("Transfer proof was already sent")?;
 
@@ -647,19 +647,19 @@ impl EventLoopHandle {
                 Ok(Err(err)) => {
                     // We encountered a libp2p error and failed to send the message
                     tracing::warn!(%err, "Failed to send transfer proof due to a network error. We will retry");
-                    Err(backoff::Error::transient(anyhow::anyhow!(err)))
+                    Err(backoff::Error::transient(anyhow!(err)))
                 }
                 Err(err) => {
                     // The MSCP channel has failed
                     // TODO(Libp2p Migration): Can we even retry here? Pointless?
                     tracing::error!(%err, "Failed to communicate transfer proof through event loop channel. We will retry");
-                    Err(backoff::Error::transient(anyhow::anyhow!(err)))
+                    Err(backoff::Error::transient(anyhow!(err)))
                 }
             }
         })
             .await?;
 
-        self.send_transfer_proof.take();
+        self.transfer_proof_sender.take();
 
         Ok(result)
     }
