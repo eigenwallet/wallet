@@ -334,8 +334,10 @@ async fn next_state(
                 result = event_loop_handle.send_encrypted_signature(state.tx_redeem_encsig()) => {
                     match result {
                         Ok(_) => BobState::EncSigSent(state),
-                        Err(bmrng::error::RequestError::RecvError | bmrng::error::RequestError::SendError(_)) => bail!("Failed to communicate encrypted signature through event loop channel"),
-                        Err(bmrng::error::RequestError::RecvTimeoutError) => unreachable!("We construct the channel with no timeout"),
+                        Err(err) => {
+                            tracing::error!(%err, "Failed to send encrypted signature to Alice");
+                            bail!("Failed to send encrypted signature to Alice");
+                        }
                     }
                 },
                 result = tx_lock_status.wait_until_confirmed_with(state.cancel_timelock) => {

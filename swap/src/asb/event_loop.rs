@@ -339,7 +339,7 @@ where
                                 %peer,
                                 %request_id,
                                 %error,
-                                "Failed to send request to peer");
+                                "Failed to send request-response request to peer");
 
                             if let Some(responder) = self.inflight_transfer_proofs.remove(&request_id) {
                                 let _ = responder.respond(Err(error));
@@ -350,7 +350,7 @@ where
                                 %peer,
                                 %request_id,
                                 %error,
-                                "Failed to receive request from peer");
+                                "Failed to receive request-response request from peer");
                         }
                         SwarmEvent::Behaviour(OutEvent::Failure {peer, error}) => {
                             tracing::error!(
@@ -652,7 +652,7 @@ impl EventLoopHandle {
                 Err(err) => {
                     // The MSCP channel has failed
                     // TODO(Libp2p Migration): Can we even retry here? Pointless?
-                    tracing::error!(%err, "Failed to send transfer proof due to error in MSCP channel. We will retry");
+                    tracing::error!(%err, "Failed to communicate transfer proof through event loop channel. We will retry");
                     Err(backoff::Error::transient(anyhow::anyhow!(err)))
                 }
             }

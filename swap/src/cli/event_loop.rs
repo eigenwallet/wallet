@@ -10,7 +10,7 @@ use crate::protocol::Database;
 use anyhow::{Context, Result};
 use futures::future::{BoxFuture, OptionFuture};
 use futures::{FutureExt, StreamExt};
-use libp2p::request_response::{OutboundRequestId, ResponseChannel};
+use libp2p::request_response::{OutboundFailure, OutboundRequestId, ResponseChannel};
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{PeerId, Swarm};
@@ -29,14 +29,16 @@ pub struct EventLoop {
     // these streams represents outgoing requests that we have to make
     quote_requests: bmrng::RequestReceiverStream<(), BidQuote>,
     cooperative_xmr_redeem_requests: bmrng::RequestReceiverStream<Uuid, Response>,
-    encrypted_signatures: bmrng::RequestReceiverStream<EncryptedSignature, ()>,
+    encrypted_signatures:
+        bmrng::RequestReceiverStream<EncryptedSignature, Result<(), OutboundFailure>>,
     swap_setup_requests: bmrng::RequestReceiverStream<NewSwap, Result<State2>>,
 
     // these represents requests that are currently in-flight.
     // once we get a response to a matching [`RequestId`], we will use the responder to relay the
     // response.
     inflight_quote_requests: HashMap<OutboundRequestId, bmrng::Responder<BidQuote>>,
-    inflight_encrypted_signature_requests: HashMap<OutboundRequestId, bmrng::Responder<()>>,
+    inflight_encrypted_signature_requests:
+        HashMap<OutboundRequestId, bmrng::Responder<Result<(), OutboundFailure>>>,
     inflight_swap_setup: Option<bmrng::Responder<Result<State2>>>,
     inflight_cooperative_xmr_redeem_requests:
         HashMap<OutboundRequestId, bmrng::Responder<Response>>,
@@ -179,7 +181,7 @@ impl EventLoop {
                         }
                         SwarmEvent::Behaviour(OutEvent::EncryptedSignatureAcknowledged { id }) => {
                             if let Some(responder) = self.inflight_encrypted_signature_requests.remove(&id) {
-                                let _ = responder.respond(());
+                                let _ = responder.respond(Ok(()));
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::CooperativeXmrRedeemFulfilled { id, swap_id, s_a }) => {
@@ -221,6 +223,24 @@ impl EventLoop {
                                 tracing::info!(seconds_until_next_redial = %duration.as_secs(), "Waiting for next redial attempt");
                             }
 
+                        }
+                        SwarmEvent::Behaviour(OutEvent::OutboundRequestResponseFailure {peer, error, request_id}) => {
+                            tracing::error!(
+                                %peer,
+                                %request_id,
+                                %error,
+                                "Failed to send request-response request to peer");
+
+                            if let Some(responder) = self.inflight_encrypted_signature_requests.remove(&request_id) {
+                                let _ = responder.respond(Err(error));
+                            }
+                        }
+                        SwarmEvent::Behaviour(OutEvent::InboundRequestResponseFailure {peer, error, request_id}) => {
+                            tracing::error!(
+                                %peer,
+                                %request_id,
+                                %error,
+                                "Failed to receive request-response request from peer");
                         }
                         _ => {}
                     }
@@ -271,7 +291,7 @@ impl EventLoop {
 pub struct EventLoopHandle {
     swap_setup: bmrng::RequestSender<NewSwap, Result<State2>>,
     transfer_proof: bmrng::RequestReceiver<monero::TransferProof, ()>,
-    encrypted_signature: bmrng::RequestSender<EncryptedSignature, ()>,
+    encrypted_signature: bmrng::RequestSender<EncryptedSignature, Result<(), OutboundFailure>>,
     quote: bmrng::RequestSender<(), BidQuote>,
     cooperative_xmr_redeem: bmrng::RequestSender<Uuid, Response>,
 }
@@ -306,9 +326,26 @@ impl EventLoopHandle {
     pub async fn send_encrypted_signature(
         &mut self,
         tx_redeem_encsig: EncryptedSignature,
-    ) -> Result<(), bmrng::error::RequestError<EncryptedSignature>> {
-        self.encrypted_signature
-            .send_receive(tx_redeem_encsig)
+    ) -> Result<()> {
+        // We will retry indefinitely until we succeed
+        let backoff = backoff::ExponentialBackoffBuilder::new()
+            .with_max_elapsed_time(None)
+            .with_max_interval(Duration::from_secs(60))
+            .build();
+
+        backoff::future::retry(backoff, || async {
+            match self.encrypted_signature.send_receive(tx_redeem_encsig.clone()).await {
+                    Ok(Ok(_)) => Ok(()),
+                    Ok(Err(err)) => {
+                        tracing::warn!(%err, "Failed to send encrypted signature due to a network error. Will retry");
+                        Err(backoff::Error::transient(anyhow::anyhow!(err)))
+                    }
+                    Err(err) => {
+                        tracing::error!(%err, "Failed to communicate encrypted signature through event loop channel. Will retry");
+                        Err(backoff::Error::transient(anyhow::anyhow!(err)))
+                    }
+                }
+            })
             .await
     }
 }

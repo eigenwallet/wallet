@@ -192,8 +192,8 @@ mod tests {
                     StaticQuoteAsbBehaviourInnerEvent::Rendezvous(rendezvous_event) => {
                         if let rendezvous::client::Event::Registered { .. } = rendezvous_event {
                             self.registered = true;
-                            return Poll::Pending;
                         }
+
                         Poll::Ready(ToSwarm::GenerateEvent(
                             StaticQuoteAsbBehaviourInnerEvent::Rendezvous(rendezvous_event),
                         ))
