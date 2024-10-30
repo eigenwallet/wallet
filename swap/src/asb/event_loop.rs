@@ -131,7 +131,8 @@ where
     pub async fn run(mut self) {
         // ensure that these streams are NEVER empty, otherwise it will
         // terminate forever.
-        self.outgoing_transfer_proof_queue.push(future::pending().boxed());
+        self.outgoing_transfer_proof_queue
+            .push(future::pending().boxed());
         self.inflight_encrypted_signatures
             .push(future::pending().boxed());
 
@@ -436,9 +437,9 @@ where
         // use unlocked monero balance for quote
         let xmr = Amount::from_piconero(balance.unlocked_balance);
 
-        let max_bitcoin_for_monero = xmr.max_bitcoin_for_price(ask_price).ok_or_else(|| {
-            anyhow!("Bitcoin price ({}) x Monero ({}) overflow", ask_price, xmr)
-        })?;
+        let max_bitcoin_for_monero = xmr
+            .max_bitcoin_for_price(ask_price)
+            .ok_or_else(|| anyhow!("Bitcoin price ({}) x Monero ({}) overflow", ask_price, xmr))?;
 
         tracing::debug!(%ask_price, %xmr, %max_bitcoin_for_monero);
 

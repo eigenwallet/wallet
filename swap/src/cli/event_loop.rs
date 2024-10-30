@@ -5,7 +5,8 @@ use crate::network::cooperative_xmr_redeem_after_punish::{Request, Response};
 use crate::network::encrypted_signature;
 use crate::network::quote::BidQuote;
 use crate::network::swap_setup::bob::NewSwap;
-use crate::protocol::bob::State2;
+use crate::protocol::bob::swap::has_already_processed_transfer_proof;
+use crate::protocol::bob::{BobState, State2};
 use crate::protocol::Database;
 use anyhow::{Context, Result};
 use futures::future::{BoxFuture, OptionFuture};
@@ -129,6 +130,29 @@ impl EventLoop {
                                                 peer,
                                                 self.alice_peer_id);
                                             continue;
+                                }
+
+                                // If we are in a state where it is clear that we have already processed the transfer proof, we will acknowledge it immediately
+                                // We do this because, if Alice most likely did not receive the acknowledgment when we sent it before.
+                                // Therefore, we will acknowledge the transfer proof immediately
+                                if let Ok(state) = self.db.get_state(swap_id).await {
+                                    let state: BobState = state.try_into()
+                                        .expect("The CLI database only contains Bob states");
+
+                                    if has_already_processed_transfer_proof(&state) {
+                                        tracing::info!("Received transfer proof for swap {} in state {:?}. Acknowledging immediately.", swap_id, state);
+
+                                        // We set this to a future that will resolve immediately, and returns the channel
+                                        // This will be resolved in the next iteration of the event loop, and a response will be sent to Alice
+                                        self.pending_transfer_proof = OptionFuture::from(Some(async move {
+                                            channel
+                                        }.boxed()));
+
+                                        continue;
+                                    }
+                                } else {
+                                    tracing::error!("Failed to retrieve state for swap {}. Ignoring transfer proof", swap_id);
+                                    continue;
                                 }
 
                                 let mut responder = match self.transfer_proof.send(msg.tx_lock_proof).await {
@@ -267,9 +291,19 @@ impl EventLoop {
                 },
 
                 Some(response_channel) = &mut self.pending_transfer_proof => {
-                    let _ = self.swarm.behaviour_mut().transfer_proof.send_response(response_channel, ());
+                    if let Err(_) = self.swarm.behaviour_mut().transfer_proof.send_response(response_channel, ()) {
+                        tracing::warn!("Failed to send transfer proof acknowledgment. We will retry in 10s");
 
-                    self.pending_transfer_proof = OptionFuture::from(None);
+                        // TOOD(Libp2p  Migration): If we fail to respond we should send it again repeatedly until we succeed
+
+                        // self.pending_transfer_proof = OptionFuture::from(Some(async move {
+                        //     tokio::time::sleep(Duration::from_secs(10)).await;
+
+                        //     response_channel.clone()
+                        // }.boxed()));
+                    } else {
+                        self.pending_transfer_proof = OptionFuture::from(None);
+                    }
                 },
 
                 Some((swap_id, responder)) = self.cooperative_xmr_redeem_requests.next().fuse(), if self.is_connected_to_alice() => {
@@ -307,6 +341,7 @@ impl EventLoopHandle {
             .recv()
             .await
             .context("Failed to receive transfer proof")?;
+
         responder
             .respond(())
             .context("Failed to acknowledge receipt of transfer proof")?;

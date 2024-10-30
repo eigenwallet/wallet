@@ -19,6 +19,15 @@ pub fn is_complete(state: &BobState) -> bool {
     )
 }
 
+pub fn has_already_processed_transfer_proof(state: &BobState) -> bool {
+    // After the XmrLockProofReceived state, we have already processed the transfer proof
+    // This match statement MUST match all states before XmrLockProofReceived
+    !matches!(
+        state,
+        BobState::Started { .. } | BobState::SwapSetupCompleted { .. } | BobState::BtcLocked { .. }
+    )
+}
+
 // Identifies states that should be run at most once before exiting.
 // This is used to prevent infinite retry loops while still allowing manual resumption.
 //
