@@ -165,8 +165,11 @@ where
         } => {
             let tx_lock_status = bitcoin_wallet.subscribe_to(state3.tx_lock.clone()).await;
 
+            let send_transfer_proof = event_loop_handle.send_transfer_proof(transfer_proof.clone());
+            let recv_encrypted_signature = event_loop_handle.recv_encrypted_signature();
+
             tokio::select! {
-                result = event_loop_handle.send_transfer_proof(transfer_proof.clone()) => {
+                result = send_transfer_proof => {
                    result?;
 
                    AliceState::XmrLockTransferProofSent {
@@ -175,6 +178,21 @@ where
                        state3,
                    }
                 },
+                // Why are we already receiving the encrypted signature here?
+                //
+                // If we send Bob the transfer proof, but for whatever reason we do not receive an acknoledgement from him
+                // we would be stuck in this state forever (deadlock). By listening for the encrypted signature here we
+                // can still proceed to the next state even if Bob does not respond with an acknoledgement.
+                enc_sig = recv_encrypted_signature => {
+                    tracing::info!("Received encrypted signature");
+
+                    AliceState::EncSigLearned {
+                        monero_wallet_restore_blockheight,
+                        transfer_proof,
+                        encrypted_signature: Box::new(enc_sig?),
+                        state3,
+                    }
+                }
                 result = tx_lock_status.wait_until_confirmed_with(state3.cancel_timelock) => {
                     result?;
                     AliceState::CancelTimelockExpired {
@@ -194,7 +212,6 @@ where
 
             select! {
                 biased; // make sure the cancel timelock expiry future is polled first
-
                 result = tx_lock_status.wait_until_confirmed_with(state3.cancel_timelock) => {
                     result?;
                     AliceState::CancelTimelockExpired {

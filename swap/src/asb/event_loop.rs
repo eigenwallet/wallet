@@ -616,16 +616,18 @@ pub struct EventLoopHandle {
 
 impl EventLoopHandle {
     pub async fn recv_encrypted_signature(&mut self) -> Result<bitcoin::EncryptedSignature> {
-        let (tx_redeem_encsig, responder) = self
-            .recv_encrypted_signature
-            .take()
-            .context("Encrypted signature was already received")?
-            .recv()
-            .await?;
+        let receiver = self.recv_encrypted_signature
+            .as_mut()
+            .context("Encrypted signature was already received")?;
+
+        let (tx_redeem_encsig, responder) = receiver.recv().await?;
 
         responder
             .respond(())
             .context("Failed to acknowledge receipt of encrypted signature")?;
+
+        // Only take after successful receipt and acknowledgement
+        self.recv_encrypted_signature.take();
 
         Ok(tx_redeem_encsig)
     }
