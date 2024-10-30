@@ -380,11 +380,17 @@ pub mod rendezvous {
             if let Some(peer_id) = self.to_dial.pop_front() {
                 return Poll::Ready(ToSwarm::Dial {
                     opts: DialOpts::peer_id(peer_id)
+                        .addresses(vec![self.rendezvous_nodes
+                            .iter()
+                            .find(|node| node.peer_id == peer_id)
+                            .map(|node| node.address.clone())
+                            .unwrap()])
                         .condition(PeerCondition::Disconnected)
+                        .extend_addresses_through_behaviour()
                         .build(),
                 });
             }
-            // check the status of each rendezvous node
+            // Check the status of each rendezvous node
             for i in 0..self.rendezvous_nodes.len() {
                 let connection_status = self.rendezvous_nodes[i].connection_status.clone();
                 match &mut self.rendezvous_nodes[i].registration_status {

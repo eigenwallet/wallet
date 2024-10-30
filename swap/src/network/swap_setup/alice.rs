@@ -207,7 +207,21 @@ where
         role_override: libp2p::core::Endpoint,
     ) -> std::result::Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
         // TODO: Libp2p ugprade: Is this true?
-        unreachable!("Alice does not support outbound connections")
+        // This sometimes crashes
+        // unreachable!("Alice does not support outbound connections")
+        // return Err(libp2p::swarm::ConnectionDenied::new(anyhow!("Alice does not support outbound connections")));
+
+        // I dont understand why we need to return a handler here but if we dont then rendezvous doesnt work
+        
+        let handler = Handler::new(
+            self.min_buy,
+            self.max_buy,
+            self.env_config,
+            self.latest_rate.clone(),
+            self.resume_only,
+        );
+
+        Ok(handler)
     }
 
     fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm<'_>) {
