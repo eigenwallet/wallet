@@ -140,7 +140,7 @@ impl EventLoop {
                                         .expect("The CLI database only contains Bob states");
 
                                     if has_already_processed_transfer_proof(&state) {
-                                        tracing::info!("Received transfer proof for swap {} in state {:?}. Acknowledging immediately.", swap_id, state);
+                                        tracing::warn!("Received transfer proof for swap {} but we are already in state {}. Acknowledging immediately. Alice most likely did not receive the acknowledgment when we sent it before", swap_id, state);
 
                                         // We set this to a future that will resolve immediately, and returns the channel
                                         // This will be resolved in the next iteration of the event loop, and a response will be sent to Alice
