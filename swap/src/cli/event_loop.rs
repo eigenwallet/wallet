@@ -63,7 +63,7 @@ impl EventLoop {
         db: Arc<dyn Database + Send + Sync>,
     ) -> Result<(Self, EventLoopHandle)> {
         let execution_setup = bmrng::channel_with_timeout(1, Duration::from_secs(60));
-        let transfer_proof = bmrng::channel_with_timeout(1, Duration::from_secs(60));
+        let transfer_proof = bmrng::channel(1); // TODO(Libp2p Migration): Is it okay to have a channel without a timeout here?
         let encrypted_signature = bmrng::channel(1);
         let quote = bmrng::channel_with_timeout(1, Duration::from_secs(60));
         let cooperative_xmr_redeem = bmrng::channel_with_timeout(1, Duration::from_secs(60));
@@ -374,8 +374,18 @@ impl EventLoopHandle {
                         Err(backoff::Error::transient(anyhow::anyhow!(err)))
                     }
                     Err(err) => {
-                        tracing::error!(%err, "Failed to communicate encrypted signature through event loop channel. Will retry");
-                        Err(backoff::Error::transient(anyhow::anyhow!(err)))
+                        match err {
+                            bmrng::error::RequestError::RecvTimeoutError => {
+                                unreachable!("We construct the channel without a timeout, so this should never happen")
+                            }
+                            bmrng::error::RequestError::RecvError | bmrng::error::RequestError::SendError(_) => {
+                                // The MSCP channel has failed. We do not retry this because this error means that either the channel was closed or the receiver has been dropped.
+                                // Both of these cases are permanent and we should not retry.
+                                // TODO(Libp2p Migration): Is this correct?
+                                tracing::error!(%err, "Failed to communicate transfer proof through event loop channel. We will not retry.");
+                                Err(backoff::Error::permanent(anyhow::anyhow!(err).context("Failed to communicate transfer proof through event loop channel")))
+                            }
+                        }
                     }
                 }
             })
