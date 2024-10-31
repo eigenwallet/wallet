@@ -380,19 +380,15 @@ impl EventLoopHandle {
                         tracing::warn!(%err, "Failed to send encrypted signature due to a network error. Will retry");
                         Err(backoff::Error::transient(anyhow::anyhow!(err)))
                     }
+                    Err(bmrng::error::RequestError::RecvTimeoutError) => {
+                        unreachable!("We construct the channel without a timeout, so this should never happen")
+                    }
                     Err(err) => {
-                        match err {
-                            bmrng::error::RequestError::RecvTimeoutError => {
-                                unreachable!("We construct the channel without a timeout, so this should never happen")
-                            }
-                            bmrng::error::RequestError::RecvError | bmrng::error::RequestError::SendError(_) => {
-                                // The MSCP channel has failed. We do not retry this because this error means that either the channel was closed or the receiver has been dropped.
-                                // Both of these cases are permanent and we should not retry.
-                                // TODO(Libp2p Migration): Is this correct?
-                                tracing::error!(%err, "Failed to communicate transfer proof through event loop channel. We will not retry.");
-                                Err(backoff::Error::permanent(anyhow::anyhow!(err).context("Failed to communicate transfer proof through event loop channel")))
-                            }
-                        }
+                        // The MSCP channel has failed. We do not retry this because this error means that either the channel was closed or the receiver has been dropped.
+                        // Both of these cases are permanent and we should not retry.
+                        // TODO(Libp2p Migration): Is this correct?
+                        tracing::error!(%err, "Failed to communicate transfer proof through event loop channel. We will not retry.");
+                        Err(backoff::Error::permanent(anyhow::anyhow!(err).context("Failed to communicate transfer proof through event loop channel")))
                     }
                 }
             })
