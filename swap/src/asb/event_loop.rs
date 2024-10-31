@@ -366,9 +366,8 @@ where
                                 for (transfer_proof, responder) in transfer_proofs {
                                     tracing::debug!(%peer, "Found buffered transfer proof for peer");
 
-                                    // Once we have a connection, we can append transfer proof to the queue
-                                    // This is then polled in the next iteration of the event loop
-                                    // and attempted to be sent to the peer
+                                    // We have an established connection to the peer, so we can add the transfer proof to the queue
+                                    // This is then polled in the next iteration of the event loop, and attempted to be sent to the peer
                                     self.outgoing_transfer_proof_queue.push(async move {
                                         Ok((peer, transfer_proof, responder))
                                     }.boxed());
@@ -379,10 +378,10 @@ where
                             tracing::warn!(%address, "Failed to set up connection with peer: {:#}", error);
                         }
                         SwarmEvent::ConnectionClosed { peer_id: peer, num_established: 0, endpoint, cause: Some(error), connection_id } => {
-                            tracing::debug!(%peer, address = %endpoint.get_remote_address(), "Lost connection to peer: {:#}", error);
+                            tracing::debug!(%peer, address = %endpoint.get_remote_address(), %connection_id, "Lost connection to peer: {:#}", error);
                         }
                         SwarmEvent::ConnectionClosed { peer_id: peer, num_established: 0, endpoint, cause: None, connection_id } => {
-                            tracing::info!(%peer, address = %endpoint.get_remote_address(), "Successfully closed connection");
+                            tracing::info!(%peer, address = %endpoint.get_remote_address(), %connection_id,  "Successfully closed connection");
                         }
                         SwarmEvent::NewListenAddr{address, ..} => {
                             tracing::info!(%address, "New listen address reported");
@@ -648,15 +647,26 @@ impl EventLoopHandle {
             match sender.send_receive(msg.clone()).await {
                 Ok(Ok(_)) => Ok(()),
                 Ok(Err(err)) => {
-                    // We encountered a libp2p error and failed to send the message
-                    tracing::warn!(%err, "Failed to send transfer proof due to a network error. We will retry");
+                    // We failed to send the transfer proof due to a network error
+                    // We will retry by sending the transfer proof into the event loop channel again
+                    tracing::warn!(%err, retry_interval_secs = backoff.current_interval.as_secs(), "Failed to send transfer proof due to a network error. We will retry");
                     Err(backoff::Error::transient(anyhow!(err)))
                 }
                 Err(err) => {
-                    // The MSCP channel has failed
-                    // TODO(Libp2p Migration): Can we even retry here? Pointless?
-                    tracing::error!(%err, "Failed to communicate transfer proof through event loop channel. We will retry");
-                    Err(backoff::Error::transient(anyhow!(err)))
+                    match err {
+                        bmrng::error::RequestError::RecvTimeoutError => {
+                            // TODO(Libp2p Migration): Is this correct?
+                            unreachable!("We construct the channel without a timeout, so this should never happen")
+                        }
+                        bmrng::error::RequestError::RecvError | bmrng::error::RequestError::SendError(_) => {
+                            // The MSCP channel has failed. We do not retry this because this error means that either the channel was closed or the receiver has been dropped.
+                            // Both of these cases are permanent and we should not retry.
+
+                            // TODO(Libp2p Migration): Is this correct?
+                            tracing::error!(%err, "Failed to communicate transfer proof through event loop channel. We will not retry.");
+                            Err(backoff::Error::permanent(anyhow!(err).context("Failed to communicate transfer proof through event loop channel")))
+                        }
+                    }
                 }
             }
         })
