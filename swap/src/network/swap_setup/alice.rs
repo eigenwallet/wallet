@@ -320,7 +320,7 @@ where
                 let (sender, receiver) = bmrng::channel_with_timeout::<
                     bitcoin::Amount,
                     WalletSnapshot,
-                >(1, Duration::from_secs(5));
+                >(1, Duration::from_secs(60));
 
                 let resume_only = self.resume_only;
                 let min_buy = self.min_buy;
