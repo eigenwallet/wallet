@@ -43,9 +43,6 @@ pub enum OutEvent {
         reason: CooperativeXmrRedeemRejectReason,
         swap_id: uuid::Uuid,
     },
-    AllRedialAttemptsExhausted {
-        peer: PeerId,
-    },
     Failure {
         peer: PeerId,
         error: Error,

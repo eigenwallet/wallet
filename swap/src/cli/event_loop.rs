@@ -218,10 +218,6 @@ impl EventLoop {
                                 let _ = responder.respond(Response::Rejected { reason, swap_id });
                             }
                         }
-                        SwarmEvent::Behaviour(OutEvent::AllRedialAttemptsExhausted { peer }) if peer == self.alice_peer_id => {
-                            tracing::error!("Exhausted all re-dial attempts to Alice");
-                            return;
-                        }
                         SwarmEvent::Behaviour(OutEvent::Failure { peer, error }) => {
                             tracing::warn!(%peer, err = %error, "Communication error");
                             return;
@@ -230,10 +226,10 @@ impl EventLoop {
                             tracing::info!(peer_id = %endpoint.get_remote_address(), "Connected to Alice");
                         }
                         SwarmEvent::Dialing { peer_id: Some(alice_peer_id), connection_id } if alice_peer_id == self.alice_peer_id => {
-                            tracing::debug!(%alice_peer_id, "Dialling Alice");
+                            tracing::debug!(%alice_peer_id, %connection_id, "Dialing Alice");
                         }
                         SwarmEvent::ConnectionClosed { peer_id, endpoint, num_established, cause: Some(error), connection_id } if peer_id == self.alice_peer_id && num_established == 0 => {
-                            tracing::warn!(peer_id = %endpoint.get_remote_address(), cause = %error, "Lost connection to Alice");
+                            tracing::warn!(peer_id = %endpoint.get_remote_address(), cause = %error, %connection_id, "Lost connection to Alice");
                         }
                         SwarmEvent::ConnectionClosed { peer_id, num_established, cause: None, .. } if peer_id == self.alice_peer_id && num_established == 0 => {
                             // no error means the disconnection was requested
@@ -241,29 +237,31 @@ impl EventLoop {
                             return;
                         }
                         SwarmEvent::OutgoingConnectionError { peer_id: Some(alice_peer_id),  error, connection_id } if alice_peer_id == self.alice_peer_id => {
-                            tracing::warn!(%error, "Failed to dial Alice");
+                            tracing::warn!(%alice_peer_id, %connection_id, %error, "Failed to connect to Alice");
 
                             if let Some(duration) = self.swarm.behaviour_mut().redial.until_next_redial() {
                                 tracing::info!(seconds_until_next_redial = %duration.as_secs(), "Waiting for next redial attempt");
                             }
 
                         }
-                        SwarmEvent::Behaviour(OutEvent::OutboundRequestResponseFailure {peer, error, request_id}) => {
+                        SwarmEvent::Behaviour(OutEvent::OutboundRequestResponseFailure {peer, error, request_id, protocol}) => {
                             tracing::error!(
                                 %peer,
                                 %request_id,
                                 %error,
+                                %protocol,
                                 "Failed to send request-response request to peer");
 
                             if let Some(responder) = self.inflight_encrypted_signature_requests.remove(&request_id) {
                                 let _ = responder.respond(Err(error));
                             }
                         }
-                        SwarmEvent::Behaviour(OutEvent::InboundRequestResponseFailure {peer, error, request_id}) => {
+                        SwarmEvent::Behaviour(OutEvent::InboundRequestResponseFailure {peer, error, request_id, protocol}) => {
                             tracing::error!(
                                 %peer,
                                 %request_id,
                                 %error,
+                                %protocol,
                                 "Failed to receive request-response request from peer");
                         }
                         _ => {}

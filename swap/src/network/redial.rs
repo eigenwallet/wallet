@@ -1,4 +1,3 @@
-use crate::cli;
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use futures::future::FutureExt;
@@ -11,10 +10,6 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::time::{Instant, Sleep};
 use void::Void;
-
-pub enum OutEvent {
-    AllAttemptsExhausted { peer: PeerId },
-}
 
 /// A [`NetworkBehaviour`] that tracks whether we are connected to the given
 /// peer and attempts to re-establish a connection with an exponential backoff
@@ -29,16 +24,15 @@ pub struct Behaviour {
 }
 
 impl Behaviour {
-    pub fn new(peer: PeerId, interval: Duration) -> Self {
+    pub fn new(peer: PeerId, interval: Duration, max_interval: Duration) -> Self {
         Self {
             peer,
             sleep: None,
             backoff: ExponentialBackoff {
                 initial_interval: interval,
                 current_interval: interval,
-                // Never give up dialing
-                // TOOD: Libp2p Upgrade: Is this the right approach?
-                max_elapsed_time: None,
+                max_interval,
+                max_elapsed_time: None, // We never give up on re-dialling
                 ..ExponentialBackoff::default()
             },
         }
@@ -57,7 +51,7 @@ impl Behaviour {
 
 impl NetworkBehaviour for Behaviour {
     type ConnectionHandler = libp2p::swarm::dummy::ConnectionHandler;
-    type ToSwarm = OutEvent;
+    type ToSwarm = ();
 
     fn handle_established_inbound_connection(
         &mut self,
@@ -66,8 +60,10 @@ impl NetworkBehaviour for Behaviour {
         _local_addr: &Multiaddr,
         _remote_addr: &Multiaddr,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
+        // We establish an inbound connection to the peer we are interested in.
+        // We stop re-dialling.
         if peer == self.peer {
-            self.sleep = None; // Cancel any active re-dialling
+            self.sleep = None;
         }
         Ok(Self::ConnectionHandler {})
     }
@@ -79,21 +75,24 @@ impl NetworkBehaviour for Behaviour {
         _addr: &Multiaddr,
         _role_override: libp2p::core::Endpoint,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
+        // We establish an outbound connection to the peer we are interested in.
+        // We stop re-dialling.
         if peer == self.peer {
-            self.sleep = None; // Cancel any active re-dialling
+            self.sleep = None;
         }
         Ok(Self::ConnectionHandler {})
     }
 
     fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm<'_>) {
-        // TODO(Libp2p Migration): Maybe we also need to match for FromSwarm::DialFailure here?
+        let redial = match event {
+            libp2p::swarm::FromSwarm::ConnectionClosed(e) if e.peer_id == self.peer => true,
+            libp2p::swarm::FromSwarm::DialFailure(e) if e.peer_id == Some(self.peer) => true,
+            _ => false,
+        };
 
-        if let libp2p::swarm::FromSwarm::ConnectionClosed(closed) = event {
-            if closed.peer_id == self.peer {
-                // Lost connection, trigger re-dialling with exponential backoff
-                self.backoff.reset();
-                self.sleep = Some(Box::pin(tokio::time::sleep(self.backoff.initial_interval)));
-            }
+        if (redial) {
+            self.backoff.reset();
+            self.sleep = Some(Box::pin(tokio::time::sleep(self.backoff.initial_interval)));
         }
     }
 
@@ -108,9 +107,7 @@ impl NetworkBehaviour for Behaviour {
         let next_dial_in = match self.backoff.next_backoff() {
             Some(next_dial_in) => next_dial_in,
             None => {
-                return Poll::Ready(ToSwarm::GenerateEvent(OutEvent::AllAttemptsExhausted {
-                    peer: self.peer,
-                }));
+                unreachable!("The backoff should never run out of attempts");
             }
         };
 
@@ -129,19 +126,6 @@ impl NetworkBehaviour for Behaviour {
         _connection_id: libp2p::swarm::ConnectionId,
         _event: libp2p::swarm::THandlerOutEvent<Self>,
     ) {
-        // the dummy connection handler does not produce any events
-        // therefore we do not need to handle any events here
-        // TODO(Libp2p Migration): Is this correct?
         unreachable!("The re-dial dummy connection handler does not produce any events");
-    }
-}
-
-impl From<OutEvent> for cli::OutEvent {
-    fn from(event: OutEvent) -> Self {
-        match event {
-            OutEvent::AllAttemptsExhausted { peer } => {
-                cli::OutEvent::AllRedialAttemptsExhausted { peer }
-            }
-        }
     }
 }
