@@ -21,6 +21,7 @@ macro_rules! impl_from_rr_event {
                         peer,
                         error,
                         request_id,
+                        protocol: $protocol.to_string(),
                     },
                     OutboundFailure {
                         peer,
@@ -30,6 +31,7 @@ macro_rules! impl_from_rr_event {
                         peer,
                         error,
                         request_id,
+                        protocol: $protocol.to_string(),
                     },
                 }
             }

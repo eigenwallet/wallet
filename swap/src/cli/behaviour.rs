@@ -54,11 +54,13 @@ pub enum OutEvent {
         peer: PeerId,
         error: OutboundFailure,
         request_id: OutboundRequestId,
+        protocol: String,
     },
     InboundRequestResponseFailure {
         peer: PeerId,
         error: InboundFailure,
         request_id: InboundRequestId,
+        protocol: String,
     },
     /// "Fallback" variant that allows the event mapping code to swallow certain
     /// events that we don't want the caller to deal with.
@@ -121,7 +123,11 @@ impl Behaviour {
             transfer_proof: transfer_proof::bob(),
             encrypted_signature: encrypted_signature::bob(),
             cooperative_xmr_redeem: cooperative_xmr_redeem_after_punish::bob(),
-            redial: redial::Behaviour::new(alice, Duration::from_secs(2)),
+            redial: redial::Behaviour::new(
+                alice,
+                Duration::from_secs(2),
+                Duration::from_secs(5 * 60),
+            ),
             ping: ping::Behaviour::new(pingConfig),
             identify: identify::Behaviour::new(identifyConfig),
         }

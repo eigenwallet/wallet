@@ -82,11 +82,13 @@ pub mod behaviour {
             peer: PeerId,
             error: OutboundFailure,
             request_id: OutboundRequestId,
+            protocol: String,
         },
         InboundRequestResponseFailure {
             peer: PeerId,
             error: InboundFailure,
             request_id: InboundRequestId,
+            protocol: String,
         },
         Failure {
             peer: PeerId,

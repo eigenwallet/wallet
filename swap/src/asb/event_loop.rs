@@ -335,22 +335,24 @@ where
                         SwarmEvent::Behaviour(OutEvent::Rendezvous(libp2p::rendezvous::client::Event::RegisterFailed { rendezvous_node, namespace, error })) => {
                             tracing::error!("Registration with rendezvous node {} failed for namespace {}: {:?}", rendezvous_node, namespace, error);
                         }
-                        SwarmEvent::Behaviour(OutEvent::OutboundRequestResponseFailure {peer, error, request_id}) => {
+                        SwarmEvent::Behaviour(OutEvent::OutboundRequestResponseFailure {peer, error, request_id, protocol}) => {
                             tracing::error!(
                                 %peer,
                                 %request_id,
                                 %error,
+                                %protocol
                                 "Failed to send request-response request to peer");
 
                             if let Some(responder) = self.inflight_transfer_proofs.remove(&request_id) {
                                 let _ = responder.respond(Err(error));
                             }
                         }
-                        SwarmEvent::Behaviour(OutEvent::InboundRequestResponseFailure {peer, error, request_id}) => {
+                        SwarmEvent::Behaviour(OutEvent::InboundRequestResponseFailure {peer, error, request_id, protocol}) => {
                             tracing::error!(
                                 %peer,
                                 %request_id,
                                 %error,
+                                %protocol,
                                 "Failed to receive request-response request from peer");
                         }
                         SwarmEvent::Behaviour(OutEvent::Failure {peer, error}) => {
@@ -651,13 +653,12 @@ impl EventLoopHandle {
                     // We failed to send the transfer proof due to a network error
                     // We will retry by sending the transfer proof into the event loop channel again
                     // TODO(Libp2p Migration): This does not work currently because there is a only a single receiver for the channel (spawned in new_handle). Once the first proof has been received, the receiver is dropped and we cannot send another proof
-                    tracing::warn!(%err, retry_interval_secs = backoff.current_interval.as_secs(), "Failed to send transfer proof due to a network error. We will retry");
+                    tracing::warn!(%err, "Failed to send transfer proof due to a network error. We will retry");
                     Err(backoff::Error::transient(anyhow!(err)))
                 }
                 Err(err) => {
                     match err {
                         bmrng::error::RequestError::RecvTimeoutError => {
-                            // TODO(Libp2p Migration): Is this correct?
                             unreachable!("We construct the channel without a timeout, so this should never happen")
                         }
                         bmrng::error::RequestError::RecvError | bmrng::error::RequestError::SendError(_) => {
