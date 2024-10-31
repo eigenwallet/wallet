@@ -321,7 +321,7 @@ where
                     bitcoin::Amount,
                     WalletSnapshot,
                 >(1, Duration::from_secs(5));
-                
+
                 let resume_only = self.resume_only;
                 let min_buy = self.min_buy;
                 let max_buy = self.max_buy;
