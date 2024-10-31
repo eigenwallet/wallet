@@ -11,6 +11,8 @@ use std::time::Duration;
 use tokio::time::{Instant, Sleep};
 use void::Void;
 
+use crate::cli;
+
 /// A [`NetworkBehaviour`] that tracks whether we are connected to the given
 /// peer and attempts to re-establish a connection with an exponential backoff
 /// if we lose the connection.
@@ -63,6 +65,7 @@ impl NetworkBehaviour for Behaviour {
         // We establish an inbound connection to the peer we are interested in.
         // We stop re-dialling.
         if peer == self.peer {
+            self.backoff.reset();
             self.sleep = None;
         }
         Ok(Self::ConnectionHandler {})
@@ -78,6 +81,7 @@ impl NetworkBehaviour for Behaviour {
         // We establish an outbound connection to the peer we are interested in.
         // We stop re-dialling.
         if peer == self.peer {
+            self.backoff.reset();
             self.sleep = None;
         }
         Ok(Self::ConnectionHandler {})
@@ -90,7 +94,7 @@ impl NetworkBehaviour for Behaviour {
             _ => false,
         };
 
-        if (redial) {
+        if redial && self.sleep.is_none() {
             self.backoff.reset();
             self.sleep = Some(Box::pin(tokio::time::sleep(self.backoff.initial_interval)));
         }
@@ -129,3 +133,9 @@ impl NetworkBehaviour for Behaviour {
         unreachable!("The re-dial dummy connection handler does not produce any events");
     }
 }
+
+impl From<()> for cli::OutEvent {
+    fn from(_: ()) -> Self {
+        Self::Other
+    }
+}   

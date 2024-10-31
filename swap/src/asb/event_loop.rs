@@ -340,7 +340,7 @@ where
                                 %peer,
                                 %request_id,
                                 %error,
-                                %protocol
+                                %protocol,
                                 "Failed to send request-response request to peer");
 
                             if let Some(responder) = self.inflight_transfer_proofs.remove(&request_id) {
