@@ -71,7 +71,7 @@ where
     /// Tracks [`transfer_proof::Request`]s which could not yet be sent because
     /// we are currently disconnected from the peer.
     ///
-    /// If we are not connected to the peer, the transfer proof is essentially moved from [`send_transfer_proof`] to here.
+    /// If we are not connected to the peer, the transfer proof is essentially moved from [`outgoing_transfer_proof_queue`] to here.
     buffered_transfer_proofs: HashMap<
         PeerId,
         Vec<(
@@ -615,7 +615,8 @@ pub struct EventLoopHandle {
 
 impl EventLoopHandle {
     pub async fn recv_encrypted_signature(&mut self) -> Result<bitcoin::EncryptedSignature> {
-        let receiver = self.recv_encrypted_signature
+        let receiver = self
+            .recv_encrypted_signature
             .as_mut()
             .context("Encrypted signature was already received")?;
 
@@ -649,6 +650,7 @@ impl EventLoopHandle {
                 Ok(Err(err)) => {
                     // We failed to send the transfer proof due to a network error
                     // We will retry by sending the transfer proof into the event loop channel again
+                    // TODO(Libp2p Migration): This does not work currently because there is a only a single receiver for the channel (spawned in new_handle). Once the first proof has been received, the receiver is dropped and we cannot send another proof
                     tracing::warn!(%err, retry_interval_secs = backoff.current_interval.as_secs(), "Failed to send transfer proof due to a network error. We will retry");
                     Err(backoff::Error::transient(anyhow!(err)))
                 }

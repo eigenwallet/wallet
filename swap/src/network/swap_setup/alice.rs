@@ -212,7 +212,7 @@ where
         // return Err(libp2p::swarm::ConnectionDenied::new(anyhow!("Alice does not support outbound connections")));
 
         // I dont understand why we need to return a handler here but if we dont then rendezvous doesnt work
-        
+
         let handler = Handler::new(
             self.min_buy,
             self.max_buy,

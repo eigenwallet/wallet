@@ -380,7 +380,8 @@ pub mod rendezvous {
             if let Some(peer_id) = self.to_dial.pop_front() {
                 return Poll::Ready(ToSwarm::Dial {
                     opts: DialOpts::peer_id(peer_id)
-                        .addresses(vec![self.rendezvous_nodes
+                        .addresses(vec![self
+                            .rendezvous_nodes
                             .iter()
                             .find(|node| node.peer_id == peer_id)
                             .map(|node| node.address.clone())
