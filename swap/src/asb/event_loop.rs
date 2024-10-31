@@ -61,12 +61,16 @@ where
     recv_encrypted_signature: HashMap<Uuid, bmrng::RequestSender<bitcoin::EncryptedSignature, ()>>,
     inflight_encrypted_signatures: FuturesUnordered<BoxFuture<'static, ResponseChannel<()>>>,
 
-    /// Tracks [`transfer_proof::Request`]s which are in queue to be sent to a peer.
-    /// The future resolves to a tuple of [`PeerId`], [`transfer_proof::Request`] and [`Responder`].
-    /// The `PeerId` is the peer to which the request shall be sent, the `transfer_proof::Request`
-    /// is the request itself and the `Responder` is used to let the original sender know about
-    /// the success or failure of the transfer.
-    outgoing_transfer_proof_queue: FuturesUnordered<OutgoingTransferProof>,
+    outgoing_transfer_proofs: mpsc::UnboundedReceiver<(
+        PeerId,
+        transfer_proof::Request,
+        bmrng::Responder<Result<(), OutboundFailure>>,
+    )>,
+    outgoing_transfer_proofs_sender: mpsc::UnboundedSender<(
+        PeerId,
+        transfer_proof::Request,
+        bmrng::Responder<Result<(), OutboundFailure>>,
+    )>,
 
     /// Tracks [`transfer_proof::Request`]s which could not yet be sent because
     /// we are currently disconnected from the peer.
@@ -103,6 +107,7 @@ where
         external_redeem_address: Option<bitcoin::Address>,
     ) -> Result<(Self, mpsc::Receiver<Swap>)> {
         let swap_channel = MpscChannels::default();
+        let (outgoing_transfer_proofs_sender, outgoing_transfer_proofs) = mpsc::unbounded_channel();
 
         let event_loop = EventLoop {
             swarm,
@@ -117,7 +122,8 @@ where
             external_redeem_address,
             recv_encrypted_signature: Default::default(),
             inflight_encrypted_signatures: Default::default(),
-            outgoing_transfer_proof_queue: Default::default(),
+            outgoing_transfer_proofs,
+            outgoing_transfer_proofs_sender,
             buffered_transfer_proofs: Default::default(),
             inflight_transfer_proofs: Default::default(),
         };
@@ -131,8 +137,6 @@ where
     pub async fn run(mut self) {
         // ensure that these streams are NEVER empty, otherwise it will
         // terminate forever.
-        self.outgoing_transfer_proof_queue
-            .push(future::pending().boxed());
         self.inflight_encrypted_signatures
             .push(future::pending().boxed());
 
@@ -370,9 +374,9 @@ where
 
                                     // We have an established connection to the peer, so we can add the transfer proof to the queue
                                     // This is then polled in the next iteration of the event loop, and attempted to be sent to the peer
-                                    self.outgoing_transfer_proof_queue.push(async move {
-                                        Ok((peer, transfer_proof, responder))
-                                    }.boxed());
+                                    if let Err(e) = self.outgoing_transfer_proofs_sender.send((peer, transfer_proof, responder)) {
+                                        tracing::error!(%peer, error = %e, "Failed to forward buffered transfer proof to event loop channel");
+                                    }
                                 }
                             }
                         }
@@ -391,29 +395,18 @@ where
                         _ => {}
                     }
                 },
-                next_transfer_proof = self.outgoing_transfer_proof_queue.next() => {
-                    match next_transfer_proof {
-                        Some(Ok((peer, transfer_proof, responder))) => {
-                            // If we are not connected to the peer, we buffer the transfer proof
-                            // We remove the transfer proof from the queue (send_transfer_proof), and append it buffered_transfer_proofs
-                            if !self.swarm.behaviour_mut().transfer_proof.is_connected(&peer) {
-                                tracing::warn!(%peer, "No active connection to peer, buffering transfer proof");
-                                self.buffered_transfer_proofs.entry(peer).or_default().push((transfer_proof, responder));
-                                continue;
-                            }
-
-                            // If we are connected to the peer, we attempt to send the transfer proof
-                            let id = self.swarm.behaviour_mut().transfer_proof.send_request(&peer, transfer_proof);
-                            self.inflight_transfer_proofs.insert(id, responder);
-                        },
-                        Some(Err(error)) => {
-                            tracing::debug!("A swap stopped without sending a transfer proof: {:#}", error);
-                        }
-                        None => {
-                            unreachable!("stream of transfer proof receivers must never terminate")
-                        }
+                Some((peer, transfer_proof, responder)) = self.outgoing_transfer_proofs.recv() => {
+                    // If we are not connected to the peer, we buffer the transfer proof
+                    if !self.swarm.behaviour_mut().transfer_proof.is_connected(&peer) {
+                        tracing::warn!(%peer, "No active connection to peer, buffering transfer proof");
+                        self.buffered_transfer_proofs.entry(peer).or_default().push((transfer_proof, responder));
+                        continue;
                     }
-                }
+
+                    // If we are connected to the peer, we attempt to send the transfer proof
+                    let id = self.swarm.behaviour_mut().transfer_proof.send_request(&peer, transfer_proof);
+                    self.inflight_transfer_proofs.insert(id, responder);
+                },
                 Some(response_channel) = self.inflight_encrypted_signatures.next() => {
                     let _ = self.swarm.behaviour_mut().encrypted_signature.send_response(response_channel, ());
                 }
@@ -516,28 +509,46 @@ where
     /// Create a new [`EventLoopHandle`] that is scoped for communication with
     /// the given peer.
     fn new_handle(&mut self, peer: PeerId, swap_id: Uuid) -> EventLoopHandle {
-        // we deliberately don't put timeouts on these channels because the swap always
+        // We deliberately don't put timeouts on these channels because the swap always
         // races these futures against a timelock
-
         let (transfer_proof_sender, mut transfer_proof_receiver) = bmrng::channel(1);
         let encrypted_signature = bmrng::channel(1);
 
         self.recv_encrypted_signature
             .insert(swap_id, encrypted_signature.0);
 
-        self.outgoing_transfer_proof_queue.push(
-            async move {
-                let (transfer_proof, responder) = transfer_proof_receiver.recv().await?;
+        // Spawn a task that waits for transfer proofs and forwards them to the event loop
+        let outgoing_sender = self.outgoing_transfer_proofs_sender.clone();
+        tokio::spawn(async move {
+            loop {
+                match transfer_proof_receiver.recv().await {
+                    Ok((transfer_proof, responder)) => {
+                        let request = transfer_proof::Request {
+                            swap_id,
+                            tx_lock_proof: transfer_proof,
+                        };
 
-                let request = transfer_proof::Request {
-                    swap_id,
-                    tx_lock_proof: transfer_proof,
-                };
-
-                Ok((peer, request, responder))
+                        if let Err(error) = outgoing_sender.send((peer, request, responder)) {
+                            tracing::error!(
+                                %swap_id,
+                                %peer,
+                                "Failed to forward transfer proof to event loop: {:#}",
+                                error
+                            );
+                        }
+                    }
+                    Err(error) => {
+                        tracing::debug!(
+                            %swap_id,
+                            %peer,
+                            "Transfer proof channel closed, stopping task: {:#}",
+                            error
+                        );
+                        break;
+                    }
+                }
             }
-            .boxed(),
-        );
+        });
 
         EventLoopHandle {
             recv_encrypted_signature: Some(encrypted_signature.1),
