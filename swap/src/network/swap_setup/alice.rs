@@ -151,10 +151,13 @@ where
     fn handle_established_inbound_connection(
         &mut self,
         _connection_id: libp2p::swarm::ConnectionId,
-        peer: PeerId,
-        local_addr: &Multiaddr,
-        remote_addr: &Multiaddr,
+        _peer: PeerId,
+        _local_addr: &Multiaddr,
+        _remote_addr: &Multiaddr,
     ) -> std::result::Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
+        // A new inbound connection has been established by Bob
+        // He wants to negotiate a swap setup with us
+        // We create a new Handler to handle the negotiation
         let handler = Handler::new(
             self.min_buy,
             self.max_buy,
@@ -172,6 +175,9 @@ where
         _: ConnectionId,
         event: HandlerOutEvent,
     ) {
+        // Here we receive events from the Handler, add some context and forward them to the swarm
+        // This is done by pushing the event to the [`events`] queue
+        // The queue is then polled in the [`poll`] function, and the events are sent to the swarm
         match event {
             HandlerOutEvent::Initiated(send_wallet_snapshot) => {
                 self.events.push_back(OutEvent::Initiated {
@@ -192,6 +198,7 @@ where
     }
 
     fn poll(&mut self, _cx: &mut std::task::Context<'_>) -> Poll<ToSwarm<Self::ToSwarm, ()>> {
+        // Poll events from the queue and send them to the swarm
         if let Some(event) = self.events.pop_front() {
             return Poll::Ready(ToSwarm::GenerateEvent(event));
         }
@@ -224,8 +231,8 @@ where
         Ok(handler)
     }
 
-    fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm<'_>) {
-        // TODO: Do we need to do anything here?
+    fn on_swarm_event(&mut self, _event: libp2p::swarm::FromSwarm<'_>) {
+        // We do not need to handle any swarm events here
     }
 }
 
@@ -314,12 +321,14 @@ where
                     bitcoin::Amount,
                     WalletSnapshot,
                 >(1, Duration::from_secs(5));
+                
                 let resume_only = self.resume_only;
                 let min_buy = self.min_buy;
                 let max_buy = self.max_buy;
                 let latest_rate = self.latest_rate.latest_rate();
                 let env_config = self.env_config;
 
+                // We wrap the entire handshake in a timeout future
                 let protocol = tokio::time::timeout(self.negotiation_timeout, async move {
                     let request = swap_setup::read_cbor_message::<SpotPriceRequest>(&mut substream)
                         .await
@@ -373,6 +382,7 @@ where
 
                         let unlocked =
                             Amount::from_piconero(wallet_snapshot.balance.unlocked_balance);
+
                         if unlocked < xmr + wallet_snapshot.lock_fee {
                             return Err(Error::BalanceTooLow {
                                 balance: wallet_snapshot.balance,
@@ -462,11 +472,9 @@ where
                 unreachable!("Alice does not dial")
             }
             ConnectionEvent::FullyNegotiatedOutbound(..) => {
-                unreachable!("Alice does not support outbound in the handler")
+                unreachable!("Alice does not support outbound connections")
             }
-            _ => {
-                // TODO: not quite sure what to do here
-            }
+            _ => {}
         }
     }
 
@@ -475,6 +483,8 @@ where
     }
 
     fn connection_keep_alive(&self) -> bool {
+        // If keep_alive_until is None, we keep the connection alive indefinitely
+        // If keep_alive_until is Some, we keep the connection alive until the given instant
         match self.keep_alive_until {
             None => true,
             Some(keep_alive_until) => Instant::now() < keep_alive_until,
@@ -488,12 +498,16 @@ where
     ) -> Poll<
         ConnectionHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::ToBehaviour>,
     > {
+        // Send events in the queue to the behaviour
+        // This is currently only used to notify the behaviour that the negotiation phase has been initiated
         if let Some(event) = self.events.pop_front() {
             return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(event));
         }
 
         if let Some(result) = futures::ready!(self.inbound_stream.poll_unpin(cx)) {
             self.inbound_stream = OptionFuture::from(None);
+
+            // Notify the behaviour that the negotiation phase has been completed
             return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                 HandlerOutEvent::Completed(result),
             ));

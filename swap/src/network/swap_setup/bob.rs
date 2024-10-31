@@ -75,11 +75,7 @@ impl NetworkBehaviour for Behaviour {
     }
 
     fn on_swarm_event(&mut self, event: FromSwarm) {
-        match event {
-            FromSwarm::ConnectionEstablished(_) => {}
-            FromSwarm::ConnectionClosed(_) => {}
-            _ => {}
-        }
+        // We do not need to handle swarm events
     }
 
     fn on_connection_handler_event(
@@ -95,10 +91,12 @@ impl NetworkBehaviour for Behaviour {
         &mut self,
         _cx: &mut Context<'_>,
     ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
+        // Send completed swaps to the swarm
         if let Some((_peer, completed)) = self.completed_swaps.pop_front() {
             return Poll::Ready(ToSwarm::GenerateEvent(completed));
         }
 
+        // If there is a new swap to be started, send it to the connection handler
         if let Some((peer, event)) = self.new_swaps.pop_front() {
             return Poll::Ready(ToSwarm::NotifyHandler {
                 peer_id: peer,
@@ -156,6 +154,7 @@ impl ConnectionHandler for Handler {
     type OutboundOpenInfo = NewSwap;
 
     fn listen_protocol(&self) -> SubstreamProtocol<Self::InboundProtocol, Self::InboundOpenInfo> {
+        // Bob does not support inbound substreams
         SubstreamProtocol::new(upgrade::DeniedUpgrade, ())
     }
 
@@ -173,8 +172,6 @@ impl ConnectionHandler for Handler {
                 unreachable!("Bob does not support inbound substreams")
             }
             libp2p::swarm::handler::ConnectionEvent::FullyNegotiatedOutbound(outbound) => {
-                println!("swap_setup: bob: FullyNegotiatedOutbound reached");
-
                 let mut substream = outbound.protocol;
                 let info = outbound.info;
 
@@ -241,7 +238,8 @@ impl ConnectionHandler for Handler {
             }
             libp2p::swarm::handler::ConnectionEvent::DialUpgradeError(dial_upgrade_err) => {
                 // Handle dial upgrade error if needed
-                self.keep_alive = false; // Consider setting to false on error
+                // TOOD(Libp2p Migration): Is this correct?
+                self.keep_alive = false;
             }
             _ => {}
         }
@@ -261,16 +259,22 @@ impl ConnectionHandler for Handler {
     ) -> Poll<
         ConnectionHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::ToBehaviour>,
     > {
+        // Check if there is a new swap to be started
         if let Some(new_swap) = self.new_swaps.pop_front() {
             self.keep_alive = true;
+
+            // We instruct the swarm to start a new outbound substream
             return Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
                 protocol: SubstreamProtocol::new(protocol::new(), new_swap),
             });
         }
 
+        // Check if the outbound stream has completed
         if let Poll::Ready(Some(result)) = self.outbound_stream.poll_unpin(cx) {
             self.outbound_stream = None.into();
             self.keep_alive = false;
+
+            // We notify the swarm that the swap setup is completed / failed
             return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Completed(
                 result.map_err(anyhow::Error::from),
             )));

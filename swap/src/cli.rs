@@ -222,40 +222,10 @@ mod tests {
         }
     }
 
-    // impl NetworkBehaviourEventProcess<rendezvous::client::Event> for StaticQuoteAsbBehaviour {
-    //     fn inject_event(&mut self, event: rendezvous::client::Event) {
-    //         if let rendezvous::client::Event::Registered { .. } = event {
-    //             self.registered = true;
-    //         }
-    //     }
-    // }
-
-    // impl NetworkBehaviourEventProcess<libp2p::ping::Event> for StaticQuoteAsbBehaviour {
-    //     fn inject_event(&mut self, _: libp2p::ping::Event) {}
-    // }
-
-    // impl NetworkBehaviourEventProcess<quote::OutEvent> for StaticQuoteAsbBehaviour {
-    //     fn inject_event(&mut self, event: quote::OutEvent) {
-    //         if let request_response::Event::Message {
-    //             message: quote::Message::Request { channel, .. },
-    //             ..
-    //         } = event
-    //         {
-    //             self.quote
-    //                 .send_response(channel, self.static_quote)
-    //                 .unwrap();
-    //         }
-    //     }
-    // }
-
     #[derive(libp2p::swarm::NetworkBehaviour)]
     struct RendezvousPointBehaviour {
         rendezvous: rendezvous::server::Behaviour,
     }
-
-    // impl NetworkBehaviourEventProcess<rendezvous::server::Event> for RendezvousPointBehaviour {
-    //     fn inject_event(&mut self, _: rendezvous::server::Event) {}
-    // }
 
     impl Default for RendezvousPointBehaviour {
         fn default() -> Self {

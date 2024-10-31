@@ -50,7 +50,6 @@ impl GetConfig for Mainnet {
             bitcoin_lock_confirmed_timeout: 2.std_hours(),
             bitcoin_finality_confirmations: 1,
             bitcoin_avg_block_time: 10.std_minutes(),
-            // TODO(Libp2p Migration): This was temporarily increased for testing. testnet3 block time is too low at the moment
             bitcoin_cancel_timelock: CancelTimelock::new(72),
             bitcoin_punish_timelock: PunishTimelock::new(72),
             bitcoin_network: bitcoin::Network::Bitcoin,
@@ -68,6 +67,7 @@ impl GetConfig for Testnet {
             bitcoin_lock_confirmed_timeout: 1.std_hours(),
             bitcoin_finality_confirmations: 1,
             bitcoin_avg_block_time: 10.std_minutes(),
+            // TODO(Libp2p Migration): This was temporarily increased for testing. testnet3 block time is too low at the moment
             bitcoin_cancel_timelock: CancelTimelock::new(72),
             bitcoin_punish_timelock: PunishTimelock::new(72),
             bitcoin_network: bitcoin::Network::Testnet,
