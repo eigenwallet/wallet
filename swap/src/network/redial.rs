@@ -138,4 +138,4 @@ impl From<()> for cli::OutEvent {
     fn from(_: ()) -> Self {
         Self::Other
     }
-}   
+}

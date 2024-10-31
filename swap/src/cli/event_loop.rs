@@ -28,7 +28,7 @@ pub struct EventLoop {
     db: Arc<dyn Database + Send + Sync>,
 
     // these streams represents outgoing requests that we have to make
-    quote_requests: bmrng::RequestReceiverStream<(), BidQuote>,
+    quote_requests: bmrng::RequestReceiverStream<(), Result<BidQuote, OutboundFailure>>,
     cooperative_xmr_redeem_requests: bmrng::RequestReceiverStream<Uuid, Response>,
     encrypted_signatures:
         bmrng::RequestReceiverStream<EncryptedSignature, Result<(), OutboundFailure>>,
@@ -37,7 +37,8 @@ pub struct EventLoop {
     // these represents requests that are currently in-flight.
     // once we get a response to a matching [`RequestId`], we will use the responder to relay the
     // response.
-    inflight_quote_requests: HashMap<OutboundRequestId, bmrng::Responder<BidQuote>>,
+    inflight_quote_requests:
+        HashMap<OutboundRequestId, bmrng::Responder<Result<BidQuote, OutboundFailure>>>,
     inflight_encrypted_signature_requests:
         HashMap<OutboundRequestId, bmrng::Responder<Result<(), OutboundFailure>>>,
     inflight_swap_setup: Option<bmrng::Responder<Result<State2>>>,
@@ -65,7 +66,7 @@ impl EventLoop {
         let execution_setup = bmrng::channel_with_timeout(1, Duration::from_secs(60));
         let transfer_proof = bmrng::channel(1); // TODO(Libp2p Migration): Is it okay to have a channel without a timeout here?
         let encrypted_signature = bmrng::channel(1);
-        let quote = bmrng::channel_with_timeout(1, Duration::from_secs(60));
+        let quote = bmrng::channel(1);
         let cooperative_xmr_redeem = bmrng::channel_with_timeout(1, Duration::from_secs(60));
         let event_loop = EventLoop {
             swap_id,
@@ -111,7 +112,7 @@ impl EventLoop {
                     match swarm_event {
                         SwarmEvent::Behaviour(OutEvent::QuoteReceived { id, response }) => {
                             if let Some(responder) = self.inflight_quote_requests.remove(&id) {
-                                let _ = responder.respond(response);
+                                let _ = responder.respond(Ok(response));
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::SwapSetupCompleted(response)) => {
@@ -254,6 +255,8 @@ impl EventLoop {
 
                             if let Some(responder) = self.inflight_encrypted_signature_requests.remove(&request_id) {
                                 let _ = responder.respond(Err(error));
+                            } else if let Some(responder) = self.inflight_quote_requests.remove(&request_id) {
+                                let _ = responder.respond(Err(error));
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::InboundRequestResponseFailure {peer, error, request_id, protocol}) => {
@@ -324,7 +327,7 @@ pub struct EventLoopHandle {
     swap_setup: bmrng::RequestSender<NewSwap, Result<State2>>,
     transfer_proof: bmrng::RequestReceiver<monero::TransferProof, ()>,
     encrypted_signature: bmrng::RequestSender<EncryptedSignature, Result<(), OutboundFailure>>,
-    quote: bmrng::RequestSender<(), BidQuote>,
+    quote: bmrng::RequestSender<(), Result<BidQuote, OutboundFailure>>,
     cooperative_xmr_redeem: bmrng::RequestSender<Uuid, Response>,
 }
 
@@ -349,7 +352,11 @@ impl EventLoopHandle {
 
     pub async fn request_quote(&mut self) -> Result<BidQuote> {
         tracing::debug!("Requesting quote");
-        Ok(self.quote.send_receive(()).await?)
+        self.quote
+            .send_receive(())
+            .await
+            .context("Failed to receive quote through event loop channel")?
+            .context("Failed to request quote over the network")
     }
 
     pub async fn request_cooperative_xmr_redeem(&mut self, swap_id: Uuid) -> Result<Response> {
