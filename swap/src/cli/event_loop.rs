@@ -75,7 +75,7 @@ impl EventLoop {
         let transfer_proof = bmrng::channel(1); // TODO(Libp2p Migration): Is it okay to have a channel without a timeout here?
         let encrypted_signature = bmrng::channel(1);
         let quote = bmrng::channel(1); // TODO(Libp2p Migration): WHY DOES THIS STILL TIMEOUT?
-        let cooperative_xmr_redeem = bmrng::channel_with_timeout(1, Duration::from_secs(60));
+        let cooperative_xmr_redeem = bmrng::channel(1);
 
         let event_loop = EventLoop {
             swap_id,
