@@ -422,3 +422,15 @@ pub(crate) fn is_complete(state: &AliceState) -> bool {
             | AliceState::SafelyAborted
     )
 }
+
+/// This function is used to check if Alice is in a state where it is clear that she has already received the encrypted signature from Bob.
+/// This allows us to acknowledge the encrypted signature multiple times
+/// If our acknowledgement does not reach Bob, he might send the encrypted signature again.
+pub(crate) fn has_already_processed_enc_sig(state: &AliceState) -> bool {
+    matches!(
+        state,
+        AliceState::EncSigLearned { .. }
+            | AliceState::BtcRedeemTransactionPublished { .. }
+            | AliceState::BtcRedeemed
+    )
+}

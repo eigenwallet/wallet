@@ -19,12 +19,22 @@ pub fn is_complete(state: &BobState) -> bool {
     )
 }
 
+/// Identifies states that have already processed the transfer proof.
+/// This is used to be able to acknowledge the transfer proof multiple times (if it was already processed).
+/// This is necessary because sometimes our acknowledgement might not reach Alice.
 pub fn has_already_processed_transfer_proof(state: &BobState) -> bool {
-    // After the XmrLockProofReceived state, we have already processed the transfer proof
-    // This match statement MUST match all states before XmrLockProofReceived
-    !matches!(
+    // This match statement MUST match all states which Bob can enter after receiving the transfer proof.
+    matches!(
         state,
-        BobState::Started { .. } | BobState::SwapSetupCompleted { .. } | BobState::BtcLocked { .. }
+        BobState::XmrLockProofReceived { .. }
+            | BobState::XmrLocked(..)
+            | BobState::EncSigSent(..)
+            | BobState::BtcRedeemed(..)
+            | BobState::CancelTimelockExpired(..)
+            | BobState::BtcCancelled(..)
+            | BobState::BtcRefunded(..)
+            | BobState::XmrRedeemed { .. }
+            | BobState::BtcPunished { .. }
     )
 }
 

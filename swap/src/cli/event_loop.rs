@@ -142,9 +142,9 @@ impl EventLoop {
                                             continue;
                                 }
 
-                                // If we are in a state where it is clear that we have already processed the transfer proof, we will acknowledge it immediately
-                                // We do this because: Alice most likely did not receive the acknowledgment when we sent it before.
-                                // Therefore, we will acknowledge the transfer proof immediately
+                                // Immediately acknowledge if we've already processed this transfer proof
+                                // This handles the case where Alice didn't receive our previous acknowledgment
+                                // and is retrying sending the transfer proof
                                 if let Ok(state) = self.db.get_state(swap_id).await {
                                     let state: BobState = state.try_into()
                                         .expect("Bobs database only contains Bob states");

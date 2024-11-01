@@ -5,6 +5,7 @@ use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, 
 use crate::network::quote::BidQuote;
 use crate::network::swap_setup::alice::WalletSnapshot;
 use crate::network::transfer_proof;
+use crate::protocol::alice::swap::has_already_processed_enc_sig;
 use crate::protocol::alice::{AliceState, State3, Swap};
 use crate::protocol::{Database, State};
 use crate::{bitcoin, env, kraken, monero};
@@ -273,10 +274,33 @@ where
                                 continue;
                             }
 
+                            // Immediately acknowledge if we've already processed this encrypted signature
+                            // This handles the case where Bob didn't receive our previous acknowledgment
+                            // and is retrying sending the encrypted signature
+                            if let Ok(state) = self.db.get_state(swap_id).await {
+                                let state: AliceState = state.try_into()
+                                    .expect("Alices database only contains Alice states");
+
+                                // Check if we have already processed the encrypted signature
+                                if has_already_processed_enc_sig(&state) {
+                                    tracing::info!(%swap_id, "Received encrypted signature for swap in state {}. We have already processed this encrypted signature. Acknowledging immediately.", state);
+
+                                    // We push create a future that will resolve immediately, and returns the channel
+                                    // This will be resolved in the next iteration of the event loop, and the acknowledgment will be sent to Bob
+                                    self.inflight_encrypted_signatures.push(async move {
+                                        channel
+                                    }.boxed());
+
+                                    continue;
+                                }
+                            }
+
                             let sender = match self.recv_encrypted_signature.remove(&swap_id) {
                                 Some(sender) => sender,
                                 None => {
                                     // TODO: Don't just drop encsig if we currently don't have a running swap for it, save in db
+                                    // 1. Save the encrypted signature in the database
+                                    // 2. Acknowledge the receipt of the encrypted signature
                                     tracing::warn!(%swap_id, "No sender for encrypted signature, maybe already handled?");
                                     continue;
                                 }
