@@ -57,8 +57,9 @@ where
 
     swap_sender: mpsc::Sender<Swap>,
 
-    /// Stores incoming [`EncryptedSignature`]s per swap.
+    /// Stores channels to send [`EncryptedSignature`]s to the swap handler per swap.
     recv_encrypted_signature: HashMap<Uuid, bmrng::RequestSender<bitcoin::EncryptedSignature, ()>>,
+
     /// Tracks acknowledgement futures for encrypted signatures that have been forwarded to swap handlers.
     /// Initialized with a permanent pending() future to prevent collection from becoming empty.
     ///
@@ -69,16 +70,20 @@ where
     /// 4. Future automatically removed from collection
     inflight_encrypted_signatures: FuturesUnordered<BoxFuture<'static, ResponseChannel<()>>>,
 
-    outgoing_transfer_proofs: mpsc::UnboundedReceiver<(
-        PeerId,
-        transfer_proof::Request,
-        bmrng::Responder<Result<(), OutboundFailure>>,
-    )>,
-    outgoing_transfer_proofs_sender: mpsc::UnboundedSender<(
-        PeerId,
-        transfer_proof::Request,
-        bmrng::Responder<Result<(), OutboundFailure>>,
-    )>,
+    /// Channel for sending transfer proofs to peers. The sender is shared with swap execution
+    /// handlers while the receiver is polled by the event loop. When a transfer proof needs
+    /// to be sent:
+    /// 1. Swap handler sends (PeerId, Request) through sender
+    /// 2. Event loop receives and attempts to send to peer
+    /// 3. Result (Ok or network failure) is sent back to handler
+    outgoing_transfer_proofs: bmrng::unbounded::UnboundedRequestReceiver<
+        (PeerId, transfer_proof::Request),
+        Result<(), OutboundFailure>,
+    >,
+    outgoing_transfer_proofs_sender: bmrng::unbounded::UnboundedRequestSender<
+        (PeerId, transfer_proof::Request),
+        Result<(), OutboundFailure>,
+    >,
 
     /// Tracks [`transfer_proof::Request`]s which could not yet be sent because
     /// we are currently disconnected from the peer.
@@ -88,14 +93,16 @@ where
         PeerId,
         Vec<(
             transfer_proof::Request,
-            bmrng::Responder<Result<(), OutboundFailure>>,
+            bmrng::unbounded::UnboundedResponder<Result<(), OutboundFailure>>,
         )>,
     >,
 
     /// Tracks [`transfer_proof::Request`]s which are currently inflight and
     /// awaiting an acknowledgement.
-    inflight_transfer_proofs:
-        HashMap<OutboundRequestId, bmrng::Responder<Result<(), OutboundFailure>>>,
+    inflight_transfer_proofs: HashMap<
+        OutboundRequestId,
+        bmrng::unbounded::UnboundedResponder<Result<(), OutboundFailure>>,
+    >,
 }
 
 impl<LR> EventLoop<LR>
@@ -115,7 +122,8 @@ where
         external_redeem_address: Option<bitcoin::Address>,
     ) -> Result<(Self, mpsc::Receiver<Swap>)> {
         let swap_channel = MpscChannels::default();
-        let (outgoing_transfer_proofs_sender, outgoing_transfer_proofs) = mpsc::unbounded_channel();
+        let (outgoing_transfer_proofs_sender, outgoing_transfer_proofs) =
+            bmrng::unbounded::channel();
 
         let event_loop = EventLoop {
             swarm,
@@ -382,7 +390,7 @@ where
 
                                     // We have an established connection to the peer, so we can add the transfer proof to the queue
                                     // This is then polled in the next iteration of the event loop, and attempted to be sent to the peer
-                                    if let Err(e) = self.outgoing_transfer_proofs_sender.send((peer, transfer_proof, responder)) {
+                                    if let Err(e) = self.outgoing_transfer_proofs_sender.send((peer, transfer_proof)) {
                                         tracing::error!(%peer, error = %e, "Failed to forward buffered transfer proof to event loop channel");
                                     }
                                 }
@@ -403,7 +411,7 @@ where
                         _ => {}
                     }
                 },
-                Some((peer, transfer_proof, responder)) = self.outgoing_transfer_proofs.recv() => {
+                Ok(((peer, transfer_proof), responder)) = self.outgoing_transfer_proofs.recv() => {
                     // If we are not connected to the peer, we buffer the transfer proof
                     if !self.swarm.behaviour_mut().transfer_proof.is_connected(&peer) {
                         tracing::warn!(%peer, "No active connection to peer, buffering transfer proof");
@@ -519,46 +527,16 @@ where
     fn new_handle(&mut self, peer: PeerId, swap_id: Uuid) -> EventLoopHandle {
         // We deliberately don't put timeouts on these channels because the swap always
         // races these futures against a timelock
-        let (transfer_proof_sender, mut transfer_proof_receiver) = bmrng::channel(1);
         let (encrypted_signature_sender, encrypted_signature_receiver) = bmrng::channel(1);
 
         self.recv_encrypted_signature
             .insert(swap_id, encrypted_signature_sender);
 
-        // Spawn a task that waits for transfer proofs and forwards them to the event loop
-        let outgoing_sender = self.outgoing_transfer_proofs_sender.clone();
-        tokio::spawn(async move {
-            loop {
-                match transfer_proof_receiver.recv().await {
-                    Ok((transfer_proof, responder)) => {
-                        let request = transfer_proof::Request {
-                            swap_id,
-                            tx_lock_proof: transfer_proof,
-                        };
-
-                        if let Err(error) = outgoing_sender.send((peer, request, responder)) {
-                            tracing::error!(
-                                %swap_id,
-                                %peer,
-                                "Failed to forward transfer proof to event loop: {:#}",
-                                error
-                            );
-                        }
-                    }
-                    Err(error) => {
-                        tracing::debug!(
-                            %swap_id,
-                            %peer,
-                            "Transfer proof channel closed, stopping task: {:#}",
-                            error
-                        );
-                        break;
-                    }
-                }
-            }
-        });
+        let transfer_proof_sender = self.outgoing_transfer_proofs_sender.clone();
 
         EventLoopHandle {
+            swap_id,
+            peer,
             recv_encrypted_signature: Some(encrypted_signature_receiver),
             transfer_proof_sender: Some(transfer_proof_sender),
         }
@@ -629,12 +607,28 @@ impl LatestRate for KrakenRate {
 
 #[derive(Debug)]
 pub struct EventLoopHandle {
+    swap_id: Uuid,
+    peer: PeerId,
     recv_encrypted_signature: Option<bmrng::RequestReceiver<bitcoin::EncryptedSignature, ()>>,
-    transfer_proof_sender:
-        Option<bmrng::RequestSender<monero::TransferProof, Result<(), OutboundFailure>>>,
+    transfer_proof_sender: Option<
+        bmrng::unbounded::UnboundedRequestSender<
+            (PeerId, transfer_proof::Request),
+            Result<(), OutboundFailure>,
+        >,
+    >,
 }
 
 impl EventLoopHandle {
+    fn build_transfer_proof_request(
+        &self,
+        transfer_proof: monero::TransferProof,
+    ) -> transfer_proof::Request {
+        transfer_proof::Request {
+            swap_id: self.swap_id,
+            tx_lock_proof: transfer_proof,
+        }
+    }
+
     pub async fn recv_encrypted_signature(&mut self) -> Result<bitcoin::EncryptedSignature> {
         let receiver = self
             .recv_encrypted_signature
@@ -665,8 +659,10 @@ impl EventLoopHandle {
             .with_max_interval(Duration::from_secs(60))
             .build();
 
+        let transfer_proof = self.build_transfer_proof_request(msg);
+
         let result = backoff::future::retry(backoff, || async {
-            match sender.send_receive(msg.clone()).await {
+            match sender.send_receive((self.peer, transfer_proof.clone())).await {
                 Ok(Ok(_)) => Ok(()),
                 Ok(Err(err)) => {
                     // We failed to send the transfer proof due to a network error
