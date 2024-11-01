@@ -520,10 +520,10 @@ where
         // We deliberately don't put timeouts on these channels because the swap always
         // races these futures against a timelock
         let (transfer_proof_sender, mut transfer_proof_receiver) = bmrng::channel(1);
-        let encrypted_signature = bmrng::channel(1);
+        let (encrypted_signature_sender, encrypted_signature_receiver) = bmrng::channel(1);
 
         self.recv_encrypted_signature
-            .insert(swap_id, encrypted_signature.0);
+            .insert(swap_id, encrypted_signature_sender);
 
         // Spawn a task that waits for transfer proofs and forwards them to the event loop
         let outgoing_sender = self.outgoing_transfer_proofs_sender.clone();
@@ -559,7 +559,7 @@ where
         });
 
         EventLoopHandle {
-            recv_encrypted_signature: Some(encrypted_signature.1),
+            recv_encrypted_signature: Some(encrypted_signature_receiver),
             transfer_proof_sender: Some(transfer_proof_sender),
         }
     }
