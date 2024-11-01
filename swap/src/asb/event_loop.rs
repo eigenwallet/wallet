@@ -25,22 +25,6 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-/// A future that resolves to a tuple of `PeerId`, `transfer_proof::Request` and
-/// `Responder`.
-///
-/// When this future resolves, the `transfer_proof::Request` shall be sent to
-/// the peer identified by the `PeerId`. Once the request has been acknowledged
-/// by the peer, i.e. a `()` response has been received, the `Responder` shall
-/// be used to let the original sender know about the successful transfer.
-type OutgoingTransferProof = BoxFuture<
-    'static,
-    Result<(
-        PeerId,
-        transfer_proof::Request,
-        bmrng::Responder<Result<(), OutboundFailure>>,
-    )>,
->;
-
 #[allow(missing_debug_implementations)]
 pub struct EventLoop<LR>
 where
