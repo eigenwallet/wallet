@@ -59,6 +59,14 @@ where
 
     /// Stores incoming [`EncryptedSignature`]s per swap.
     recv_encrypted_signature: HashMap<Uuid, bmrng::RequestSender<bitcoin::EncryptedSignature, ()>>,
+    /// Tracks acknowledgement futures for encrypted signatures that have been forwarded to swap handlers.
+    /// Initialized with a permanent pending() future to prevent collection from becoming empty.
+    /// 
+    /// Flow:
+    /// 1. When signature forwarded via recv_encrypted_signature sender
+    /// 2. New future pushed here to await swap handler's acknowledgement
+    /// 3. When future completes, ResponseChannel used to confirm to original peer
+    /// 4. Future automatically removed from collection
     inflight_encrypted_signatures: FuturesUnordered<BoxFuture<'static, ResponseChannel<()>>>,
 
     outgoing_transfer_proofs: mpsc::UnboundedReceiver<(

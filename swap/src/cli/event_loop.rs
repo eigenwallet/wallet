@@ -27,7 +27,8 @@ pub struct EventLoop {
     alice_peer_id: PeerId,
     db: Arc<dyn Database + Send + Sync>,
 
-    // these streams represents outgoing requests that we have to make
+    // These streams represents outgoing requests that we have to make
+    // These are essentially queues of requests that we will send to Alice once we are connected to her.
     quote_requests: bmrng::RequestReceiverStream<(), Result<BidQuote, OutboundFailure>>,
     cooperative_xmr_redeem_requests: bmrng::RequestReceiverStream<
         Uuid,
@@ -37,8 +38,9 @@ pub struct EventLoop {
         bmrng::RequestReceiverStream<EncryptedSignature, Result<(), OutboundFailure>>,
     swap_setup_requests: bmrng::RequestReceiverStream<NewSwap, Result<State2>>,
 
-    // these represents requests that are currently in-flight.
-    // once we get a response to a matching [`RequestId`], we will use the responder to relay the
+    // These represents requests that are currently in-flight.
+    // Meaning that we have sent them to Alice, but we have not yet received a response.
+    // Once we get a response to a matching [`RequestId`], we will use the responder to relay the
     // response.
     inflight_quote_requests:
         HashMap<OutboundRequestId, bmrng::Responder<Result<BidQuote, OutboundFailure>>>,
@@ -246,7 +248,6 @@ impl EventLoop {
                             if let Some(duration) = self.swarm.behaviour_mut().redial.until_next_redial() {
                                 tracing::info!(seconds_until_next_redial = %duration.as_secs(), "Waiting for next redial attempt");
                             }
-
                         }
                         SwarmEvent::Behaviour(OutEvent::OutboundRequestResponseFailure {peer, error, request_id, protocol}) => {
                             tracing::error!(
