@@ -53,6 +53,7 @@ pub struct EventLoop {
     >,
     /// The sender we will use to relay incoming transfer proofs.
     transfer_proof: bmrng::RequestSender<monero::TransferProof, ()>,
+
     /// The future representing the successful handling of an incoming transfer
     /// proof.
     ///
