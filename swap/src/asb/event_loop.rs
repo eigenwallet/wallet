@@ -22,7 +22,7 @@ use std::convert::{Infallible, TryInto};
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 #[allow(missing_debug_implementations)]
@@ -61,14 +61,16 @@ where
     /// 1. Swap handler sends (PeerId, Request) through sender
     /// 2. Event loop receives and attempts to send to peer
     /// 3. Result (Ok or network failure) is sent back to handler
-    outgoing_transfer_proofs: bmrng::unbounded::UnboundedRequestReceiver<
-        (PeerId, transfer_proof::Request),
-        Result<(), OutboundFailure>,
-    >,
-    outgoing_transfer_proofs_sender: bmrng::unbounded::UnboundedRequestSender<
-        (PeerId, transfer_proof::Request),
-        Result<(), OutboundFailure>,
-    >,
+    outgoing_transfer_proofs: tokio::sync::mpsc::UnboundedReceiver<(
+        PeerId,
+        transfer_proof::Request,
+        oneshot::Sender<Result<(), OutboundFailure>>,
+    )>,
+    outgoing_transfer_proofs_sender: tokio::sync::mpsc::UnboundedSender<(
+        PeerId,
+        transfer_proof::Request,
+        oneshot::Sender<Result<(), OutboundFailure>>,
+    )>,
 
     /// Tracks [`transfer_proof::Request`]s which could not yet be sent because
     /// we are currently disconnected from the peer.
@@ -78,16 +80,14 @@ where
         PeerId,
         Vec<(
             transfer_proof::Request,
-            bmrng::unbounded::UnboundedResponder<Result<(), OutboundFailure>>,
+            oneshot::Sender<Result<(), OutboundFailure>>,
         )>,
     >,
 
     /// Tracks [`transfer_proof::Request`]s which are currently inflight and
     /// awaiting an acknowledgement.
-    inflight_transfer_proofs: HashMap<
-        OutboundRequestId,
-        bmrng::unbounded::UnboundedResponder<Result<(), OutboundFailure>>,
-    >,
+    inflight_transfer_proofs:
+        HashMap<OutboundRequestId, oneshot::Sender<Result<(), OutboundFailure>>>,
 }
 
 impl<LR> EventLoop<LR>
@@ -108,7 +108,7 @@ where
     ) -> Result<(Self, mpsc::Receiver<Swap>)> {
         let swap_channel = MpscChannels::default();
         let (outgoing_transfer_proofs_sender, outgoing_transfer_proofs) =
-            bmrng::unbounded::channel();
+            tokio::sync::mpsc::unbounded_channel();
 
         let event_loop = EventLoop {
             swarm,
@@ -229,7 +229,7 @@ where
                         SwarmEvent::Behaviour(OutEvent::TransferProofAcknowledged { peer, id }) => {
                             tracing::debug!(%peer, "Bob acknowledged transfer proof");
                             if let Some(responder) = self.inflight_transfer_proofs.remove(&id) {
-                                let _ = responder.respond(Ok(()));
+                                let _ = responder.send(Ok(()));
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::EncryptedSignatureReceived{ msg, channel, peer }) => {
@@ -372,7 +372,7 @@ where
                                 "Failed to send request-response request to peer");
 
                             if let Some(responder) = self.inflight_transfer_proofs.remove(&request_id) {
-                                let _ = responder.respond(Err(error));
+                                let _ = responder.send(Err(error));
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::InboundRequestResponseFailure {peer, error, request_id, protocol}) => {
@@ -398,7 +398,7 @@ where
 
                                     // We have an established connection to the peer, so we can add the transfer proof to the queue
                                     // This is then polled in the next iteration of the event loop, and attempted to be sent to the peer
-                                    if let Err(e) = self.outgoing_transfer_proofs_sender.send((peer, transfer_proof)) {
+                                    if let Err(e) = self.outgoing_transfer_proofs_sender.send((peer, transfer_proof, responder)) {
                                         tracing::error!(%peer, error = %e, "Failed to forward buffered transfer proof to event loop channel");
                                     }
                                 }
@@ -419,7 +419,7 @@ where
                         _ => {}
                     }
                 },
-                Ok(((peer, transfer_proof), responder)) = self.outgoing_transfer_proofs.recv() => {
+                Some((peer, transfer_proof, responder)) = self.outgoing_transfer_proofs.recv() => {
                     // If we are not connected to the peer, we buffer the transfer proof
                     if !self.swarm.behaviour_mut().transfer_proof.is_connected(&peer) {
                         tracing::warn!(%peer, "No active connection to peer, buffering transfer proof");
@@ -453,13 +453,20 @@ where
         let balance = self.monero_wallet.get_balance().await?;
 
         // use unlocked monero balance for quote
-        let xmr = Amount::from_piconero(balance.unlocked_balance);
+        let xmr_balance = Amount::from_piconero(balance.unlocked_balance);
 
-        let max_bitcoin_for_monero = xmr
-            .max_bitcoin_for_price(ask_price)
-            .ok_or_else(|| anyhow!("Bitcoin price ({}) x Monero ({}) overflow", ask_price, xmr))?;
+        let max_bitcoin_for_monero =
+            xmr_balance
+                .max_bitcoin_for_price(ask_price)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Bitcoin price ({}) x Monero ({}) overflow",
+                        ask_price,
+                        xmr_balance
+                    )
+                })?;
 
-        tracing::debug!(%ask_price, %xmr, %max_bitcoin_for_monero);
+        tracing::debug!(%ask_price, %xmr_balance, %max_bitcoin_for_monero, "Computed quote");
 
         if min_buy > max_bitcoin_for_monero {
             tracing::warn!(
@@ -619,10 +626,11 @@ pub struct EventLoopHandle {
     peer: PeerId,
     recv_encrypted_signature: Option<bmrng::RequestReceiver<bitcoin::EncryptedSignature, ()>>,
     transfer_proof_sender: Option<
-        bmrng::unbounded::UnboundedRequestSender<
-            (PeerId, transfer_proof::Request),
-            Result<(), OutboundFailure>,
-        >,
+        tokio::sync::mpsc::UnboundedSender<(
+            PeerId,
+            transfer_proof::Request,
+            oneshot::Sender<Result<(), OutboundFailure>>,
+        )>,
     >,
 }
 
@@ -670,29 +678,29 @@ impl EventLoopHandle {
         let transfer_proof = self.build_transfer_proof_request(msg);
 
         let result = backoff::future::retry(backoff, || async {
-            match sender.send_receive((self.peer, transfer_proof.clone())).await {
-                Ok(Ok(_)) => Ok(()),
-                Ok(Err(err)) => {
-                    // We failed to send the transfer proof due to a network error
-                    // We will retry by sending the transfer proof into the event loop channel again
-                    // TODO(Libp2p Migration): This does not work currently because there is a only a single receiver for the channel (spawned in new_handle). Once the first proof has been received, the receiver is dropped and we cannot send another proof
-                    tracing::warn!(%err, "Failed to send transfer proof due to a network error. We will retry");
-                    Err(backoff::Error::transient(anyhow!(err)))
-                }
-                Err(err) => {
-                    match err {
-                        bmrng::error::RequestError::RecvTimeoutError => {
-                            unreachable!("We construct the channel without a timeout, so this should never happen")
-                        }
-                        bmrng::error::RequestError::RecvError | bmrng::error::RequestError::SendError(_) => {
-                            // The MSCP channel has failed. We do not retry this because this error means that either the channel was closed or the receiver has been dropped.
-                            // Both of these cases are permanent and we should not retry.
+            // Create a oneshot channel to receive the acknowledgment of the transfer proof
+            let (singular_sender, singular_receiver) = oneshot::channel();
 
-                            // TODO(Libp2p Migration): Is this correct?
-                            tracing::error!(%err, "Failed to communicate transfer proof through event loop channel. We will not retry.");
-                            Err(backoff::Error::permanent(anyhow!(err).context("Failed to communicate transfer proof through event loop channel")))
+            match sender.send((self.peer, transfer_proof.clone(), singular_sender)) {
+                Ok(()) => {
+                    match singular_receiver.await
+                        .context("Failed to receive transfer proof acknowledgment")? {
+                        Ok(()) => {
+                            return Ok(());
+                        }
+                        Err(err) => {
+                            // We failed to send the transfer proof due to a network error
+                            // We will retry by sending the transfer proof into the event loop channel again
+                            // TODO(Libp2p Migration): This does not work currently because there is a only a single receiver for the channel (spawned in new_handle). Once the first proof has been received, the receiver is dropped and we cannot send another proof
+                            tracing::warn!(%err, "Failed to send transfer proof due to a network error. We will retry");
+                            Err(backoff::Error::transient(anyhow!(err)))
                         }
                     }
+                }
+                Err(err) => {
+                    // TODO(Libp2p Migration): Is this correct?
+                    tracing::error!(%err, "Failed to communicate transfer proof through event loop channel. We will not retry.");
+                    Err(backoff::Error::permanent(anyhow!(err).context("Failed to communicate transfer proof through event loop channel")))
                 }
             }
         })
