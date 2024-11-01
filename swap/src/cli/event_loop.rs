@@ -1,7 +1,7 @@
 use crate::bitcoin::EncryptedSignature;
 use crate::cli::behaviour::{Behaviour, OutEvent};
 use crate::monero;
-use crate::network::cooperative_xmr_redeem_after_punish::{Request, Response};
+use crate::network::cooperative_xmr_redeem_after_punish::{self, Request, Response};
 use crate::network::encrypted_signature;
 use crate::network::quote::BidQuote;
 use crate::network::swap_setup::bob::NewSwap;
@@ -29,7 +29,10 @@ pub struct EventLoop {
 
     // these streams represents outgoing requests that we have to make
     quote_requests: bmrng::RequestReceiverStream<(), Result<BidQuote, OutboundFailure>>,
-    cooperative_xmr_redeem_requests: bmrng::RequestReceiverStream<Uuid, Response>,
+    cooperative_xmr_redeem_requests: bmrng::RequestReceiverStream<
+        Uuid,
+        Result<cooperative_xmr_redeem_after_punish::Response, OutboundFailure>,
+    >,
     encrypted_signatures:
         bmrng::RequestReceiverStream<EncryptedSignature, Result<(), OutboundFailure>>,
     swap_setup_requests: bmrng::RequestReceiverStream<NewSwap, Result<State2>>,
@@ -42,8 +45,10 @@ pub struct EventLoop {
     inflight_encrypted_signature_requests:
         HashMap<OutboundRequestId, bmrng::Responder<Result<(), OutboundFailure>>>,
     inflight_swap_setup: Option<bmrng::Responder<Result<State2>>>,
-    inflight_cooperative_xmr_redeem_requests:
-        HashMap<OutboundRequestId, bmrng::Responder<Response>>,
+    inflight_cooperative_xmr_redeem_requests: HashMap<
+        OutboundRequestId,
+        bmrng::Responder<Result<cooperative_xmr_redeem_after_punish::Response, OutboundFailure>>,
+    >,
     /// The sender we will use to relay incoming transfer proofs.
     transfer_proof: bmrng::RequestSender<monero::TransferProof, ()>,
     /// The future representing the successful handling of an incoming transfer
@@ -135,11 +140,11 @@ impl EventLoop {
                                 }
 
                                 // If we are in a state where it is clear that we have already processed the transfer proof, we will acknowledge it immediately
-                                // We do this because, if Alice most likely did not receive the acknowledgment when we sent it before.
+                                // We do this because: Alice most likely did not receive the acknowledgment when we sent it before.
                                 // Therefore, we will acknowledge the transfer proof immediately
                                 if let Ok(state) = self.db.get_state(swap_id).await {
                                     let state: BobState = state.try_into()
-                                        .expect("The CLI database only contains Bob states");
+                                        .expect("Bobs database only contains Bob states");
 
                                     if has_already_processed_transfer_proof(&state) {
                                         tracing::warn!("Received transfer proof for swap {} but we are already in state {}. Acknowledging immediately. Alice most likely did not receive the acknowledgment when we sent it before", swap_id, state);
@@ -152,9 +157,6 @@ impl EventLoop {
 
                                         continue;
                                     }
-                                } else {
-                                    tracing::error!("Failed to retrieve state for swap {}. Ignoring transfer proof", swap_id);
-                                    continue;
                                 }
 
                                 let mut responder = match self.transfer_proof.send(msg.tx_lock_proof).await {
@@ -212,12 +214,12 @@ impl EventLoop {
                         }
                         SwarmEvent::Behaviour(OutEvent::CooperativeXmrRedeemFulfilled { id, swap_id, s_a }) => {
                             if let Some(responder) = self.inflight_cooperative_xmr_redeem_requests.remove(&id) {
-                                let _ = responder.respond(Response::Fullfilled { s_a, swap_id });
+                                let _ = responder.respond(Ok(Response::Fullfilled { s_a, swap_id }));
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::CooperativeXmrRedeemRejected { id, swap_id, reason }) => {
                             if let Some(responder) = self.inflight_cooperative_xmr_redeem_requests.remove(&id) {
-                                let _ = responder.respond(Response::Rejected { reason, swap_id });
+                                let _ = responder.respond(Ok(Response::Rejected { reason, swap_id }));
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::Failure { peer, error }) => {
@@ -254,10 +256,25 @@ impl EventLoop {
                                 %protocol,
                                 "Failed to send request-response request to peer");
 
+                            // If we fail to send a request-response request, we should notify the responder that the request failed
+                            // We will remove the responder from the inflight requests and respond with an error
+
+                            // Check for encrypted signature requests
                             if let Some(responder) = self.inflight_encrypted_signature_requests.remove(&request_id) {
                                 let _ = responder.respond(Err(error));
-                            } else if let Some(responder) = self.inflight_quote_requests.remove(&request_id) {
+                                continue;
+                            }
+
+                            // Check for quote requests
+                            if let Some(responder) = self.inflight_quote_requests.remove(&request_id) {
                                 let _ = responder.respond(Err(error));
+                                continue;
+                            }
+
+                            // Check for cooperative xmr redeem requests
+                            if let Some(responder) = self.inflight_cooperative_xmr_redeem_requests.remove(&request_id) {
+                                let _ = responder.respond(Err(error));
+                                continue;
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::InboundRequestResponseFailure {peer, error, request_id, protocol}) => {
@@ -294,15 +311,7 @@ impl EventLoop {
 
                 Some(response_channel) = &mut self.pending_transfer_proof => {
                     if let Err(_) = self.swarm.behaviour_mut().transfer_proof.send_response(response_channel, ()) {
-                        tracing::warn!("Failed to send transfer proof acknowledgment. We will retry in 10s");
-
-                        // TOOD(Libp2p  Migration): If we fail to respond we should send it again repeatedly until we succeed
-
-                        // self.pending_transfer_proof = OptionFuture::from(Some(async move {
-                        //     tokio::time::sleep(Duration::from_secs(10)).await;
-
-                        //     response_channel.clone()
-                        // }.boxed()));
+                        tracing::warn!("Failed to send acknowledgment to Alice that we have received the transfer proof");
                     } else {
                         self.pending_transfer_proof = OptionFuture::from(None);
                     }
@@ -329,7 +338,10 @@ pub struct EventLoopHandle {
     transfer_proof: bmrng::RequestReceiver<monero::TransferProof, ()>,
     encrypted_signature: bmrng::RequestSender<EncryptedSignature, Result<(), OutboundFailure>>,
     quote: bmrng::RequestSender<(), Result<BidQuote, OutboundFailure>>,
-    cooperative_xmr_redeem: bmrng::RequestSender<Uuid, Response>,
+    cooperative_xmr_redeem: bmrng::RequestSender<
+        Uuid,
+        Result<cooperative_xmr_redeem_after_punish::Response, OutboundFailure>,
+    >,
 }
 
 impl EventLoopHandle {
@@ -357,11 +369,15 @@ impl EventLoopHandle {
             .send_receive(())
             .await
             .context("Failed to receive quote through event loop channel")?
-            .context("Failed to request quote over the network")
+            .context("Failed to request quote due to a network error")
     }
 
     pub async fn request_cooperative_xmr_redeem(&mut self, swap_id: Uuid) -> Result<Response> {
-        Ok(self.cooperative_xmr_redeem.send_receive(swap_id).await?)
+        self.cooperative_xmr_redeem
+            .send_receive(swap_id)
+            .await
+            .context("Failed to request cooperative XMR redeem through event loop channel")?
+            .context("Failed to request cooperative XMR redeem due to a network error")
     }
 
     pub async fn send_encrypted_signature(
