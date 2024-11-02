@@ -117,6 +117,7 @@ where
                     // block 0 for scenarios where we create a refund wallet.
                     let monero_wallet_restore_blockheight = monero_wallet.block_height().await?;
 
+                    // TODO: We should retry the transfer if it fails
                     let transfer_proof = monero_wallet
                         .transfer(state3.lock_xmr_transfer_request())
                         .await?;
@@ -240,6 +241,7 @@ where
             ExpiredTimelocks::None { .. } => {
                 let tx_lock_status = bitcoin_wallet.subscribe_to(state3.tx_lock.clone()).await;
                 match state3.signed_redeem_transaction(*encrypted_signature) {
+                    // TODO: We should retry publishing the redeem transaction if it fails
                     Ok(tx) => match bitcoin_wallet.broadcast(tx, "redeem").await {
                         Ok((_, subscription)) => match subscription.wait_until_seen().await {
                             Ok(_) => AliceState::BtcRedeemTransactionPublished { state3 },

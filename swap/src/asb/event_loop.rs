@@ -664,6 +664,7 @@ impl EventLoopHandle {
         }
     }
 
+    /// Wait for an encrypted signature from Bob
     pub async fn recv_encrypted_signature(&mut self) -> Result<bitcoin::EncryptedSignature> {
         let receiver = self
             .recv_encrypted_signature
@@ -685,6 +686,10 @@ impl EventLoopHandle {
         Ok(tx_redeem_encsig)
     }
 
+    /// Send a transfer proof to Bob
+    ///
+    /// This function will retry indefinitely until the transfer proof is sent successfully
+    /// and acknowledged by Bob
     pub async fn send_transfer_proof(&mut self, msg: monero::TransferProof) -> Result<()> {
         let sender = self
             .transfer_proof_sender

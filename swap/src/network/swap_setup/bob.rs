@@ -60,7 +60,6 @@ impl NetworkBehaviour for Behaviour {
         _local_addr: &Multiaddr,
         _remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        // TODO(Libp2p Migration): Is this correct?
         unreachable!("Bob does not support inbound connections")
     }
 
@@ -74,7 +73,7 @@ impl NetworkBehaviour for Behaviour {
         Ok(Handler::new(self.env_config, self.bitcoin_wallet.clone()))
     }
 
-    fn on_swarm_event(&mut self, event: FromSwarm) {
+    fn on_swarm_event(&mut self, _event: FromSwarm<'_>) {
         // We do not need to handle swarm events
     }
 
@@ -173,7 +172,7 @@ impl ConnectionHandler for Handler {
             }
             libp2p::swarm::handler::ConnectionEvent::FullyNegotiatedOutbound(outbound) => {
                 let mut substream = outbound.protocol;
-                let info = outbound.info;
+                let new_swap_request = outbound.info;
 
                 let bitcoin_wallet = self.bitcoin_wallet.clone();
                 let env_config = self.env_config;
@@ -182,7 +181,7 @@ impl ConnectionHandler for Handler {
                     write_cbor_message(
                         &mut substream,
                         SpotPriceRequest {
-                            btc: info.btc,
+                            btc: new_swap_request.btc,
                             blockchain_network: BlockchainNetwork {
                                 bitcoin: env_config.bitcoin_network,
                                 monero: env_config.monero_network,
@@ -196,16 +195,16 @@ impl ConnectionHandler for Handler {
                     )?;
 
                     let state0 = State0::new(
-                        info.swap_id,
+                        new_swap_request.swap_id,
                         &mut rand::thread_rng(),
-                        info.btc,
+                        new_swap_request.btc,
                         xmr,
                         env_config.bitcoin_cancel_timelock,
                         env_config.bitcoin_punish_timelock,
-                        info.bitcoin_refund_address,
+                        new_swap_request.bitcoin_refund_address,
                         env_config.monero_finality_confirmations,
-                        info.tx_refund_fee,
-                        info.tx_cancel_fee,
+                        new_swap_request.tx_refund_fee,
+                        new_swap_request.tx_cancel_fee,
                     );
 
                     write_cbor_message(&mut substream, state0.next_message()).await?;
@@ -225,6 +224,7 @@ impl ConnectionHandler for Handler {
                 });
 
                 let max_seconds = self.timeout.as_secs();
+                
                 self.outbound_stream = OptionFuture::from(Some(Box::pin(async move {
                     protocol.await.map_err(|e| match e {
                         tokio::time::error::Elapsed { .. } => Error::Timeout {
@@ -234,12 +234,9 @@ impl ConnectionHandler for Handler {
                     })?
                 })
                     as OutboundStream));
-                self.keep_alive = true; // Ensure the connection stays alive while processing
-            }
-            libp2p::swarm::handler::ConnectionEvent::DialUpgradeError(dial_upgrade_err) => {
-                // Handle dial upgrade error if needed
-                // TOOD(Libp2p Migration): Is this correct?
-                self.keep_alive = false;
+
+                // Once the outbound stream is created, we keep the connection alive
+                self.keep_alive = true;
             }
             _ => {}
         }
@@ -272,6 +269,8 @@ impl ConnectionHandler for Handler {
         // Check if the outbound stream has completed
         if let Poll::Ready(Some(result)) = self.outbound_stream.poll_unpin(cx) {
             self.outbound_stream = None.into();
+
+            // Once the outbound stream is completed, we no longer keep the connection alive
             self.keep_alive = false;
 
             // We notify the swarm that the swap setup is completed / failed
