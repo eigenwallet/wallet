@@ -31,7 +31,7 @@ pub struct EventLoop {
     // These are essentially queues of requests that we will send to Alice once we are connected to her.
     quote_requests: bmrng::RequestReceiverStream<(), Result<BidQuote, OutboundFailure>>,
     cooperative_xmr_redeem_requests: bmrng::RequestReceiverStream<
-        Uuid,
+        (),
         Result<cooperative_xmr_redeem_after_punish::Response, OutboundFailure>,
     >,
     encrypted_signatures:
@@ -51,8 +51,10 @@ pub struct EventLoop {
         OutboundRequestId,
         bmrng::Responder<Result<cooperative_xmr_redeem_after_punish::Response, OutboundFailure>>,
     >,
-    /// The sender we will use to relay incoming transfer proofs.
-    transfer_proof: bmrng::RequestSender<monero::TransferProof, ()>,
+
+    /// The sender we will use to relay incoming transfer proofs to the EventLoopHandle
+    /// The corresponding receiver is stored in the EventLoopHandle
+    transfer_proof_sender: bmrng::RequestSender<monero::TransferProof, ()>,
 
     /// The future representing the successful handling of an incoming transfer
     /// proof.
@@ -71,21 +73,25 @@ impl EventLoop {
         alice_peer_id: PeerId,
         db: Arc<dyn Database + Send + Sync>,
     ) -> Result<(Self, EventLoopHandle)> {
-        let execution_setup = bmrng::channel_with_timeout(1, Duration::from_secs(60));
-        let transfer_proof = bmrng::channel(1); // TODO(Libp2p Migration): Is it okay to have a channel without a timeout here?
-        let encrypted_signature = bmrng::channel(1);
-        let quote = bmrng::channel(1); // TODO(Libp2p Migration): WHY DOES THIS STILL TIMEOUT?
-        let cooperative_xmr_redeem = bmrng::channel(1);
+        // We still use a timeout here, as it is unclear how the the swap_setup protocol enforces timeouts
+        let (execution_setup_sender, execution_setup_receiver) =
+            bmrng::channel_with_timeout(1, Duration::from_secs(60));
+
+        // It is okay to not have a timeout here, as timeouts are enforced by the request-response protocol
+        let (transfer_proof_sender, transfer_proof_receiver) = bmrng::channel(1);
+        let (encrypted_signature_sender, encrypted_signature_receiver) = bmrng::channel(1);
+        let (quote_sender, quote_receiver) = bmrng::channel(1);
+        let (cooperative_xmr_redeem_sender, cooperative_xmr_redeem_receiver) = bmrng::channel(1);
 
         let event_loop = EventLoop {
             swap_id,
             swarm,
             alice_peer_id,
-            swap_setup_requests: execution_setup.1.into(),
-            transfer_proof: transfer_proof.0,
-            encrypted_signatures: encrypted_signature.1.into(),
-            cooperative_xmr_redeem_requests: cooperative_xmr_redeem.1.into(),
-            quote_requests: quote.1.into(),
+            swap_setup_requests: execution_setup_receiver.into(),
+            transfer_proof_sender,
+            encrypted_signatures: encrypted_signature_receiver.into(),
+            cooperative_xmr_redeem_requests: cooperative_xmr_redeem_receiver.into(),
+            quote_requests: quote_receiver.into(),
             inflight_quote_requests: HashMap::default(),
             inflight_swap_setup: None,
             inflight_encrypted_signature_requests: HashMap::default(),
@@ -95,11 +101,11 @@ impl EventLoop {
         };
 
         let handle = EventLoopHandle {
-            swap_setup: execution_setup.0,
-            transfer_proof: transfer_proof.1,
-            encrypted_signature: encrypted_signature.0,
-            cooperative_xmr_redeem: cooperative_xmr_redeem.0,
-            quote: quote.0,
+            execution_setup_sender,
+            transfer_proof_receiver,
+            encrypted_signature_sender,
+            cooperative_xmr_redeem_sender,
+            quote_sender,
         };
 
         Ok((event_loop, handle))
@@ -162,7 +168,7 @@ impl EventLoop {
                                     }
                                 }
 
-                                let mut responder = match self.transfer_proof.send(msg.tx_lock_proof).await {
+                                let mut responder = match self.transfer_proof_sender.send(msg.tx_lock_proof).await {
                                     Ok(responder) => responder,
                                     Err(e) => {
                                         tracing::warn!("Failed to pass on transfer proof: {:#}", e);
@@ -319,9 +325,9 @@ impl EventLoop {
                     }
                 },
 
-                Some((swap_id, responder)) = self.cooperative_xmr_redeem_requests.next().fuse(), if self.is_connected_to_alice() => {
+                Some((_, responder)) = self.cooperative_xmr_redeem_requests.next().fuse(), if self.is_connected_to_alice() => {
                     let id = self.swarm.behaviour_mut().cooperative_xmr_redeem.send_request(&self.alice_peer_id, Request {
-                        swap_id
+                        swap_id: self.swap_id
                     });
                     self.inflight_cooperative_xmr_redeem_requests.insert(id, responder);
                 },
@@ -336,24 +342,49 @@ impl EventLoop {
 
 #[derive(Debug)]
 pub struct EventLoopHandle {
-    swap_setup: bmrng::RequestSender<NewSwap, Result<State2>>,
-    transfer_proof: bmrng::RequestReceiver<monero::TransferProof, ()>,
-    encrypted_signature: bmrng::RequestSender<EncryptedSignature, Result<(), OutboundFailure>>,
-    quote: bmrng::RequestSender<(), Result<BidQuote, OutboundFailure>>,
-    cooperative_xmr_redeem: bmrng::RequestSender<
-        Uuid,
+    /// When a NewSwap object is sent into this channel, the EventLoop will:
+    /// 1. Trigger the swap setup protocol with Alice to negotiate the swap parameters
+    /// 2. Return the resulting State2 if successful
+    /// 3. Return an anyhow error if the request fails
+    execution_setup_sender: bmrng::RequestSender<NewSwap, Result<State2>>,
+
+    /// Receiver for incoming Monero transfer proofs from Alice.
+    /// When a proof is received, we process it and acknowledge receipt back to the EventLoop
+    /// The EventLoop will then send an acknowledgment back to Alice over the network
+    transfer_proof_receiver: bmrng::RequestReceiver<monero::TransferProof, ()>,
+
+    /// When an encrypted signature is sent into this channel, the EventLoop will:
+    /// 1. Send the encrypted signature to Alice over the network
+    /// 2. Return Ok(()) if Alice acknowledges receipt, or
+    /// 3. Return an OutboundFailure error if the request fails
+    encrypted_signature_sender:
+        bmrng::RequestSender<EncryptedSignature, Result<(), OutboundFailure>>,
+
+    /// When a () is sent into this channel, the EventLoop will:
+    /// 1. Request a price quote from Alice
+    /// 2. Return the quote if successful
+    /// 3. Return an OutboundFailure error if the request fails
+    quote_sender: bmrng::RequestSender<(), Result<BidQuote, OutboundFailure>>,
+
+    /// When a () is sent into this channel, the EventLoop will:
+    /// 1. Request Alice's cooperation in redeeming the Monero
+    /// 2. Return the a response object (Fullfilled or Rejected), if the network request is successful
+    ///    The Fullfilled object contains the keys required to redeem the Monero
+    /// 3. Return an OutboundFailure error if the network request fails
+    cooperative_xmr_redeem_sender: bmrng::RequestSender<
+        (),
         Result<cooperative_xmr_redeem_after_punish::Response, OutboundFailure>,
     >,
 }
 
 impl EventLoopHandle {
     pub async fn setup_swap(&mut self, swap: NewSwap) -> Result<State2> {
-        self.swap_setup.send_receive(swap).await?
+        self.execution_setup_sender.send_receive(swap).await?
     }
 
     pub async fn recv_transfer_proof(&mut self) -> Result<monero::TransferProof> {
         let (transfer_proof, responder) = self
-            .transfer_proof
+            .transfer_proof_receiver
             .recv()
             .await
             .context("Failed to receive transfer proof")?;
@@ -367,16 +398,16 @@ impl EventLoopHandle {
 
     pub async fn request_quote(&mut self) -> Result<BidQuote> {
         tracing::debug!("Requesting quote");
-        self.quote
+        self.quote_sender
             .send_receive(())
             .await
             .context("Failed to receive quote through event loop channel")?
             .context("Failed to request quote due to a network error")
     }
 
-    pub async fn request_cooperative_xmr_redeem(&mut self, swap_id: Uuid) -> Result<Response> {
-        self.cooperative_xmr_redeem
-            .send_receive(swap_id)
+    pub async fn request_cooperative_xmr_redeem(&mut self) -> Result<Response> {
+        self.cooperative_xmr_redeem_sender
+            .send_receive(())
             .await
             .context("Failed to request cooperative XMR redeem through event loop channel")?
             .context("Failed to request cooperative XMR redeem due to a network error")
@@ -393,7 +424,7 @@ impl EventLoopHandle {
             .build();
 
         backoff::future::retry(backoff, || async {
-            match self.encrypted_signature.send_receive(tx_redeem_encsig.clone()).await {
+            match self.encrypted_signature_sender.send_receive(tx_redeem_encsig.clone()).await {
                     Ok(Ok(_)) => Ok(()),
                     Ok(Err(err)) => {
                         tracing::warn!(%err, "Failed to send encrypted signature due to a network error. Will retry");

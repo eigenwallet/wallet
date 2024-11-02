@@ -478,9 +478,7 @@ async fn next_state(
             );
 
             tracing::info!("Attempting to cooperatively redeem XMR after being punished");
-            let response = event_loop_handle
-                .request_cooperative_xmr_redeem(swap_id)
-                .await;
+            let response = event_loop_handle.request_cooperative_xmr_redeem().await;
 
             match response {
                 Ok(Fullfilled { s_a, .. }) => {
