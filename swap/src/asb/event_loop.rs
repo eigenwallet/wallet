@@ -556,10 +556,13 @@ where
     /// Create a new [`EventLoopHandle`] that is scoped for communication with
     /// the given peer.
     fn new_handle(&mut self, peer: PeerId, swap_id: Uuid) -> EventLoopHandle {
-        // We deliberately don't put timeouts on these channels because the swap always
-        // races these futures against a timelock
+        // Create a new bmrng channel for receiving encrypted signatures from Bob
+        // The channel has a capacity of 1 since we only expect one signature per swap
         let (encrypted_signature_sender, encrypted_signature_receiver) = bmrng::channel(1);
 
+        // Store the sender in the EventLoop
+        // The receiver is stored in the EventLoopHandle
+        // When a signature is received, the EventLoop uses the stored channel to notify the EventLoopHandle
         self.recv_encrypted_signature
             .insert(swap_id, encrypted_signature_sender);
 
@@ -669,6 +672,9 @@ impl EventLoopHandle {
 
         let (tx_redeem_encsig, responder) = receiver.recv().await?;
 
+        // Acknowledge receipt of the encrypted signature
+        // This notifies the EventLoop that the signature has been received
+        // The EventLoop can then send an acknowledgement back to Bob over the network
         responder
             .respond(())
             .context("Failed to acknowledge receipt of encrypted signature")?;
