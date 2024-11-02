@@ -58,7 +58,7 @@ where
     /// Flow:
     /// 1. When signature forwarded via recv_encrypted_signature sender
     /// 2. New future pushed here to await EventLoopHandle's acknowledgement
-    /// 3. When future completes, ResponseChannel used to confirm to Bob
+    /// 3. When future completes, the EventLoop uses the ResponseChannel to send an acknowledgment to Bob
     /// 4. Future is removed from this collection
     inflight_encrypted_signatures: FuturesUnordered<BoxFuture<'static, ResponseChannel<()>>>,
 
@@ -556,13 +556,13 @@ where
     /// Create a new [`EventLoopHandle`] that is scoped for communication with
     /// the given peer.
     fn new_handle(&mut self, peer: PeerId, swap_id: Uuid) -> EventLoopHandle {
-        // Create a new bmrng channel for receiving encrypted signatures from Bob
+        // Create a new channel for receiving encrypted signatures from Bob
         // The channel has a capacity of 1 since we only expect one signature per swap
         let (encrypted_signature_sender, encrypted_signature_receiver) = bmrng::channel(1);
 
-        // Store the sender in the EventLoop
+        // The sender is stored in the EventLoop
         // The receiver is stored in the EventLoopHandle
-        // When a signature is received, the EventLoop uses the stored channel to notify the EventLoopHandle
+        // When a signature is received, the EventLoop uses the sender to notify the EventLoopHandle
         self.recv_encrypted_signature
             .insert(swap_id, encrypted_signature_sender);
 
@@ -674,7 +674,7 @@ impl EventLoopHandle {
         let (tx_redeem_encsig, responder) = receiver.recv().await?;
 
         // Acknowledge receipt of the encrypted signature
-        // This notifies the EventLoop that the signature has been received
+        // This notifies the EventLoop that the signature has been processed
         // The EventLoop can then send an acknowledgement back to Bob over the network
         responder
             .respond(())
@@ -690,6 +690,10 @@ impl EventLoopHandle {
     ///
     /// This function will retry indefinitely until the transfer proof is sent successfully
     /// and acknowledged by Bob
+    /// 
+    /// This will fail if
+    /// 1. the transfer proof has already been sent once 
+    /// 2. there is an error with the bmrng channel
     pub async fn send_transfer_proof(&mut self, msg: monero::TransferProof) -> Result<()> {
         let sender = self
             .transfer_proof_sender
