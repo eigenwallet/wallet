@@ -205,6 +205,7 @@ pub mod behaviour {
 pub mod rendezvous {
     use super::*;
     use libp2p::identity;
+    use libp2p::rendezvous::client::RegisterError;
     use libp2p::swarm::dial_opts::DialOpts;
     use libp2p::swarm::{
         ConnectionDenied, ConnectionId, FromSwarm, THandler, THandlerInEvent, THandlerOutEvent,
@@ -235,6 +236,7 @@ pub mod rendezvous {
         to_dial: VecDeque<PeerId>,
     }
 
+    /// A node running the rendezvous server protocol.
     pub struct RendezvousNode {
         pub address: Multiaddr,
         connection_status: ConnectionStatus,
@@ -279,11 +281,13 @@ pub mod rendezvous {
             }
         }
 
-        /// Calls the rendezvous register method of the node at node_index in the Vec of rendezvous nodes
-        fn register(&mut self, node_index: usize) {
-            let node = &self.rendezvous_nodes[node_index];
-            self.inner
-                .register(node.namespace.into(), node.peer_id, node.registration_ttl);
+        /// Registers the rendezvous node at the given index. 
+        /// Also sets the registration status to [`RegistrationStatus::Pending`].
+        pub fn register(&mut self, node_index: usize) -> Result<(), RegisterError> {
+            let node = &mut self.rendezvous_nodes[node_index];
+            node.set_registration(RegistrationStatus::Pending);
+            let (namespace, peer_id, ttl) = (node.namespace.into(), node.peer_id, node.registration_ttl);
+            self.inner.register(namespace, peer_id, ttl)
         }
     }
 
@@ -322,41 +326,59 @@ pub mod rendezvous {
             )
         }
 
+        fn handle_pending_outbound_connection(
+                &mut self,
+                connection_id: ConnectionId,
+                maybe_peer: Option<PeerId>,
+                addresses: &[Multiaddr],
+                effective_role: libp2p::core::Endpoint,
+            ) -> std::result::Result<Vec<Multiaddr>, ConnectionDenied> {
+            self.inner.handle_pending_outbound_connection(connection_id, maybe_peer, addresses, effective_role)
+        }
+
         fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
             match event {
-                FromSwarm::ConnectionEstablished(e) => {
-                    let peer_id = e.peer_id;
-                    for i in 0..self.rendezvous_nodes.len() {
-                        if &peer_id == &self.rendezvous_nodes[i].peer_id {
-                            self.rendezvous_nodes[i].set_connection(ConnectionStatus::Connected);
-                            match &self.rendezvous_nodes[i].registration_status {
-                                RegistrationStatus::RegisterOnNextConnection => {
-                                    self.register(i);
-                                    self.rendezvous_nodes[i]
-                                        .set_registration(RegistrationStatus::Pending);
-                                }
-                                RegistrationStatus::Registered { .. }
-                                | RegistrationStatus::Pending => {}
-                            }
+                FromSwarm::ConnectionEstablished(peer) => {
+                    let peer_id = peer.peer_id;
+
+                    // Find the rendezvous node that matches the peer id, else do nothing.
+                    if let Some(index) = self.rendezvous_nodes
+                        .iter_mut()
+                        .position(|node| node.peer_id == peer_id) 
+                    {
+                        let rendezvous_node = &mut self.rendezvous_nodes[index];
+                        rendezvous_node.set_connection(ConnectionStatus::Connected);
+
+                        if let RegistrationStatus::RegisterOnNextConnection =
+                            rendezvous_node.registration_status
+                        {
+                            let _ = self.register(index)
+                                .inspect_err(|err| {
+                                    tracing::error!(
+                                        error=%err, 
+                                        rendezvous_node=%peer_id, 
+                                        "Failed to register with rendezvous node");
+                                });
                         }
                     }
                 }
-                FromSwarm::ConnectionClosed(e) => {
-                    let peer_id = e.peer_id;
-                    for i in 0..self.rendezvous_nodes.len() {
-                        let node = &mut self.rendezvous_nodes[i];
-                        if &peer_id == &node.peer_id {
-                            node.connection_status = ConnectionStatus::Disconnected;
-                        }
+                FromSwarm::ConnectionClosed(peer) => {
+                    // Update the connection status of the rendezvous node that disconnected.
+                    if let Some(node) = self.rendezvous_nodes
+                        .iter_mut()
+                        .find(|node| node.peer_id == peer.peer_id) 
+                    {
+                        node.set_connection(ConnectionStatus::Disconnected);
                     }
                 }
-                FromSwarm::DialFailure(e) => {
-                    if let Some(peer_id) = e.peer_id {
-                        for i in 0..self.rendezvous_nodes.len() {
-                            let node = &mut self.rendezvous_nodes[i];
-                            if peer_id == node.peer_id {
-                                node.connection_status = ConnectionStatus::Disconnected;
-                            }
+                FromSwarm::DialFailure(peer) => {
+                    // Update the connection status of the rendezvous node that failed to connect.
+                    if let Some(peer_id) = peer.peer_id {
+                        if let Some(node) = self.rendezvous_nodes
+                            .iter_mut()
+                            .find(|node| node.peer_id == peer_id) 
+                        {
+                            node.set_connection(ConnectionStatus::Disconnected);
                         }
                     }
                 }
@@ -389,6 +411,8 @@ pub mod rendezvous {
                             .map(|node| node.address.clone())
                             .unwrap()])
                         .condition(PeerCondition::Disconnected)
+                        // TODO: this makes the behaviour call `NetworkBehaviour::handle_pending_outbound_connection`
+                        // but we don't implement it
                         .extend_addresses_through_behaviour()
                         .build(),
                 });
@@ -404,17 +428,20 @@ pub mod rendezvous {
                         }
                         ConnectionStatus::Dialling => {}
                         ConnectionStatus::Connected => {
-                            self.rendezvous_nodes[i].set_registration(RegistrationStatus::Pending);
-                            self.register(i);
+                            let _ = self.register(i);
                         }
                     },
                     RegistrationStatus::Registered { re_register_in } => {
                         if let Poll::Ready(()) = re_register_in.poll_unpin(cx) {
                             match connection_status {
                                 ConnectionStatus::Connected => {
-                                    self.rendezvous_nodes[i]
-                                        .set_registration(RegistrationStatus::Pending);
-                                    self.register(i);
+                                    let _ = self.register(i)
+                                        .inspect_err(|err| {
+                                            tracing::error!(
+                                                error=%err, 
+                                                rendezvous_node=%self.rendezvous_nodes[i].peer_id, 
+                                                "Failed to register with rendezvous node");
+                                        });
                                 }
                                 ConnectionStatus::Disconnected => {
                                     self.rendezvous_nodes[i].set_registration(
