@@ -31,7 +31,7 @@ pub async fn list_sellers(
     let behaviour = Behaviour {
         rendezvous: rendezvous::client::Behaviour::new(identity.clone()),
         quote: quote::cli(),
-        ping: ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(86_400))),
+        ping: ping::Behaviour::new(ping::Config::new().with_timeout(Duration::from_secs(60))),
     };
     let mut swarm = swarm::cli(identity, tor_socks5_port, behaviour).await?;
 

@@ -112,7 +112,7 @@ impl Behaviour {
         let identifyConfig = identify::Config::new(protocolVersion, identify_params.0.public())
             .with_agent_version(agentVersion);
 
-        let pingConfig = ping::Config::new();
+        let pingConfig = ping::Config::new().with_timeout(Duration::from_secs(60));
 
         Self {
             quote: quote::cli(),

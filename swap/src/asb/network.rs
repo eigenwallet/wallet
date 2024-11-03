@@ -156,7 +156,7 @@ pub mod behaviour {
             let identifyConfig = identify::Config::new(protocol_version, identity.public())
                 .with_agent_version(agent_version);
 
-            let pingConfig = ping::Config::new();
+            let pingConfig = ping::Config::new().with_timeout(Duration::from_secs(60));
 
             let behaviour = if rendezvous_nodes.is_empty() {
                 None
