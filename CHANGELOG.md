@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Breaking change: Increased Bitcoin refund timelock from 12 hours (72 blocks) to 24 hours (144 blocks) on mainnet. This change affects the default transaction configuration and requires both CLI and ASB to be updated to maintain compatibility. Earlier versions will not be able to initiate new swaps with peers running this version.
 - ASB + CLI: You can now use the `logs` command to retrieve logs stored in the past, redacting addresses and id's using `logs --redact`.
 - ASB: The `--disable-timestamp` flag has been removed
 - ASB: The `history` command can now be used while the asb is running.
