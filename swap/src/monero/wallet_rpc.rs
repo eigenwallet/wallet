@@ -28,7 +28,7 @@ use crate::cli::api::request::Request;
 
 // See: https://www.moneroworld.com/#nodes, https://monero.fail
 // We don't need any testnet nodes because we don't support testnet at all
-const MONERO_DAEMONS: [MoneroDaemon; 16] = [
+const MONERO_DAEMONS: Lazy<[MoneroDaemon; 16]> = Lazy::new(|| [
     MoneroDaemon::new("xmr-node.cakewallet.com", 18081, Network::Mainnet),
     MoneroDaemon::new("nodex.monerujo.io", 18081, Network::Mainnet),
     MoneroDaemon::new("nodes.hashvault.pro", 18081, Network::Mainnet),
@@ -45,7 +45,7 @@ const MONERO_DAEMONS: [MoneroDaemon; 16] = [
     MoneroDaemon::new("singapore.node.xmr.pm", 38081, Network::Stagenet),
     MoneroDaemon::new("xmr-lux.boldsuck.org", 38081, Network::Stagenet),
     MoneroDaemon::new("stagenet.community.rino.io", 38081, Network::Stagenet),
-];
+]);
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 compile_error!("unsupported operating system");
@@ -101,19 +101,19 @@ struct MoneroDaemon {
 }
 
 impl MoneroDaemon {
-    fn new(address: impl Into<String>, port: u16, network: Network) -> Self {
-        Self {
+    fn new(address: impl Into<String>, port: u16, network: Network) -> MoneroDaemon {
+        MoneroDaemon {
             address: address.into(),
             port,
             network,
         }
     }
 
-    pub fn from_str(address: String, network: Network) -> Result<Self, Error> {
-        let (address, port) = extract_host_and_port(address)?;
+    pub fn from_str(address: impl Into<String>, network: Network) -> Result<MoneroDaemon, Error> {
+        let (address, port) = extract_host_and_port(address.into())?;
 
-        Ok(Self {
-            address: address.into(),
+        Ok(MoneroDaemon {
+            address,
             port,
             network,
         })
@@ -196,9 +196,15 @@ impl Request for CheckMoneroNodeArgs {
                 .build().expect("whoops")
         });
     
-        let monero_daemon = MoneroDaemon::new(&self.url, self.port.try_into().context("Port number too large")?, network);
+        let monero_daemon = MoneroDaemon::new(
+            self.url, 
+            self.port.try_into().context("Port number too large")?, 
+            network
+        );
+        
+        let available = monero_daemon.is_available(&CLIENT).await?;
 
-        Ok(CheckMoneroNodeResponse { available: false })
+        Ok(CheckMoneroNodeResponse { available })
     }
 }
 
@@ -210,7 +216,8 @@ async fn choose_monero_daemon(network: Network) -> Result<MoneroDaemon, Error> {
         .build()?;
 
     // We only want to check for daemons that match the specified network
-    let network_matching_daemons = MONERO_DAEMONS
+    let daemons = &*MONERO_DAEMONS;
+    let network_matching_daemons = daemons
         .iter()
         .filter(|daemon| daemon.network == network);
 
@@ -218,7 +225,7 @@ async fn choose_monero_daemon(network: Network) -> Result<MoneroDaemon, Error> {
         match daemon.is_available(&client).await {
             Ok(true) => {
                 tracing::debug!(%daemon, "Found available Monero daemon");
-                return Ok(*daemon);
+                return Ok(daemon.clone());
             }
             Err(err) => {
                 tracing::debug!(%err, %daemon, "Failed to connect to Monero daemon");
@@ -381,7 +388,7 @@ impl WalletRpc {
 
         let daemon = match daemon_address {
             Some(daemon_address) => {
-                let daemon = MoneroDaemon::from_str(daemon_address, network)?;
+                let daemon = MoneroDaemon::new(daemon_address.leak(), port, network);
 
                 if !daemon.is_available(&reqwest::Client::new()).await? {
                     bail!("Specified daemon is not available or not on the correct network");
