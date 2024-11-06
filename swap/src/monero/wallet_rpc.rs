@@ -388,7 +388,7 @@ impl WalletRpc {
 
         let daemon = match daemon_address {
             Some(daemon_address) => {
-                let daemon = MoneroDaemon::new(daemon_address.leak(), port, network);
+                let daemon = MoneroDaemon::from_str(daemon_address, network)?;
 
                 if !daemon.is_available(&reqwest::Client::new()).await? {
                     bail!("Specified daemon is not available or not on the correct network");
@@ -396,7 +396,9 @@ impl WalletRpc {
 
                 daemon
             }
-            None => choose_monero_daemon(network).await?,
+            None => {
+                choose_monero_daemon(network).await?
+            },
         };
 
         let daemon_address = daemon.to_string();
@@ -457,7 +459,6 @@ impl WalletRpc {
             line?;
         }
 
-        // Send a json rpc request to make sure monero_wallet_rpc is ready
         Client::localhost(port)?.get_version().await?;
 
         Ok(WalletRpcProcess {

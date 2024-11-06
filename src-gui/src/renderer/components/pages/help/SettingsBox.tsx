@@ -107,7 +107,6 @@ function ElectrumRpcUrlSetting() {
         </TableCell>
         <TableCell>
           {tableVisible ? <NodeTable
-            network={network}
             blockchain={Blockchain.Bitcoin}
             isValid={isValid}
             placeholder={PLACEHOLDER_ELECTRUM_RPC_URL}
@@ -154,7 +153,6 @@ function MoneroNodeUrlSetting() {
       </TableCell>
       <TableCell>
         {tableVisible ? <NodeTable
-          network={network}
           blockchain={Blockchain.Monero}
           isValid={isValid}
           onValidatedChange={(value) => {
@@ -166,4 +164,105 @@ function MoneroNodeUrlSetting() {
       </TableCell>
     </TableRow>
   );
+}
+
+function ThemeSetting() {
+  const theme = useAppSelector((s) => s.settings.theme);
+  const dispatch = useAppDispatch();
+
+  return (
+    <TableRow>
+      <TableCell>
+        <SettingLabel label="Theme" tooltip="This is the theme of the GUI." />
+        <Select 
+          value={theme} 
+          onChange={(e) => dispatch(setTheme(e.target.value as Theme))}
+        >
+          {/** Create an option for each theme variant */}
+          {Object.values(Theme).map((themeValue) => (
+            <MenuItem key={themeValue} value={themeValue}>
+              {themeValue.charAt(0).toUpperCase() + themeValue.slice(1)}
+            </MenuItem>
+          ))}
+        </Select>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function NodeTable({
+  blockchain,
+  isValid,
+  placeholder,
+}: {
+  blockchain: Blockchain,
+  isValid: (url: string) => boolean,
+  placeholder: string,
+}) {
+  const [currentNode, setNode] = blockchain == Blockchain.Bitcoin ? 
+    [useSettings((s) => s.tauriSettings.electrum_rpc_url), setElectrumRpcUrl]
+    : [useSettings((s) => s.tauriSettings.monero_node_url), setMoneroNodeUrl];
+  const availableNodes = useSettings((s) => s.nodes[blockchain]);
+  const dispatch = useAppDispatch();
+
+  const [newNode, setNewNode] = useState("");
+
+  return (
+    <TableContainer component={Paper} style={{ marginTop: '1rem' }}>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>Active</TableCell>
+            <TableCell>Available Nodes</TableCell>
+            <TableCell>Status</TableCell>
+            <TableCell>Actions</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {availableNodes.map((node, index) => (
+            <TableRow key={index}>
+              <TableCell>{currentNode === node ? <Check color="secondary"/> : <></>}</TableCell>
+              <TableCell>{node}</TableCell>
+              <TableCell>Hallo</TableCell>
+              <TableCell>
+                <IconButton onClick={() => {
+                  dispatch(setNode(node));
+                }}>
+                  <Check />
+                </IconButton>
+                <IconButton onClick={() => {
+                  dispatch(removeNode({ type: blockchain, node }));
+                }}>
+                  <Delete />
+                </IconButton>
+              </TableCell>
+            </TableRow>
+          ))}
+          <TableRow key={-1}>
+            <TableCell></TableCell>
+            <TableCell>
+              <ValidatedTextField
+                label="new node"
+                value={newNode}
+                onValidatedChange={setNewNode}
+                placeholder={placeholder}
+                fullWidth
+                allowEmpty 
+                isValid={isValid}
+              />
+            </TableCell>
+            <TableCell></TableCell>
+            <TableCell>
+              <IconButton onClick={() => {
+                dispatch(addNode({ type: blockchain, node: newNode }));
+                setNewNode("");
+              }}>
+                <Add />
+              </IconButton>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </TableContainer>
+  )
 }
