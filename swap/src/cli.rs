@@ -169,7 +169,7 @@ mod tests {
             )
         }
 
-        fn on_swarm_event(&mut self, event: FromSwarm) {
+        fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
             self.inner.on_swarm_event(event);
         }
 

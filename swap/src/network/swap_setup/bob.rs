@@ -160,6 +160,7 @@ impl ConnectionHandler for Handler {
     fn on_connection_event(
         &mut self,
         event: libp2p::swarm::handler::ConnectionEvent<
+            '_,
             Self::InboundProtocol,
             Self::OutboundProtocol,
             Self::InboundOpenInfo,
@@ -226,11 +227,8 @@ impl ConnectionHandler for Handler {
                 let max_seconds = self.timeout.as_secs();
 
                 self.outbound_stream = OptionFuture::from(Some(Box::pin(async move {
-                    protocol.await.map_err(|e| match e {
-                        tokio::time::error::Elapsed { .. } => Error::Timeout {
-                            seconds: max_seconds,
-                        },
-                        _ => Error::Other,
+                    protocol.await.map_err(|_| Error::Timeout {
+                        seconds: max_seconds,
                     })?
                 })
                     as OutboundStream));

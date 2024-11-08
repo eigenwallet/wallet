@@ -281,12 +281,13 @@ pub mod rendezvous {
             }
         }
 
-        /// Registers the rendezvous node at the given index. 
+        /// Registers the rendezvous node at the given index.
         /// Also sets the registration status to [`RegistrationStatus::Pending`].
         pub fn register(&mut self, node_index: usize) -> Result<(), RegisterError> {
             let node = &mut self.rendezvous_nodes[node_index];
             node.set_registration(RegistrationStatus::Pending);
-            let (namespace, peer_id, ttl) = (node.namespace.into(), node.peer_id, node.registration_ttl);
+            let (namespace, peer_id, ttl) =
+                (node.namespace.into(), node.peer_id, node.registration_ttl);
             self.inner.register(namespace, peer_id, ttl)
         }
     }
@@ -327,13 +328,18 @@ pub mod rendezvous {
         }
 
         fn handle_pending_outbound_connection(
-                &mut self,
-                connection_id: ConnectionId,
-                maybe_peer: Option<PeerId>,
-                addresses: &[Multiaddr],
-                effective_role: libp2p::core::Endpoint,
-            ) -> std::result::Result<Vec<Multiaddr>, ConnectionDenied> {
-            self.inner.handle_pending_outbound_connection(connection_id, maybe_peer, addresses, effective_role)
+            &mut self,
+            connection_id: ConnectionId,
+            maybe_peer: Option<PeerId>,
+            addresses: &[Multiaddr],
+            effective_role: libp2p::core::Endpoint,
+        ) -> std::result::Result<Vec<Multiaddr>, ConnectionDenied> {
+            self.inner.handle_pending_outbound_connection(
+                connection_id,
+                maybe_peer,
+                addresses,
+                effective_role,
+            )
         }
 
         fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
@@ -342,9 +348,10 @@ pub mod rendezvous {
                     let peer_id = peer.peer_id;
 
                     // Find the rendezvous node that matches the peer id, else do nothing.
-                    if let Some(index) = self.rendezvous_nodes
+                    if let Some(index) = self
+                        .rendezvous_nodes
                         .iter_mut()
-                        .position(|node| node.peer_id == peer_id) 
+                        .position(|node| node.peer_id == peer_id)
                     {
                         let rendezvous_node = &mut self.rendezvous_nodes[index];
                         rendezvous_node.set_connection(ConnectionStatus::Connected);
@@ -352,21 +359,21 @@ pub mod rendezvous {
                         if let RegistrationStatus::RegisterOnNextConnection =
                             rendezvous_node.registration_status
                         {
-                            let _ = self.register(index)
-                                .inspect_err(|err| {
-                                    tracing::error!(
-                                        error=%err, 
-                                        rendezvous_node=%peer_id, 
+                            let _ = self.register(index).inspect_err(|err| {
+                                tracing::error!(
+                                        error=%err,
+                                        rendezvous_node=%peer_id,
                                         "Failed to register with rendezvous node");
-                                });
+                            });
                         }
                     }
                 }
                 FromSwarm::ConnectionClosed(peer) => {
                     // Update the connection status of the rendezvous node that disconnected.
-                    if let Some(node) = self.rendezvous_nodes
+                    if let Some(node) = self
+                        .rendezvous_nodes
                         .iter_mut()
-                        .find(|node| node.peer_id == peer.peer_id) 
+                        .find(|node| node.peer_id == peer.peer_id)
                     {
                         node.set_connection(ConnectionStatus::Disconnected);
                     }
@@ -374,9 +381,10 @@ pub mod rendezvous {
                 FromSwarm::DialFailure(peer) => {
                     // Update the connection status of the rendezvous node that failed to connect.
                     if let Some(peer_id) = peer.peer_id {
-                        if let Some(node) = self.rendezvous_nodes
+                        if let Some(node) = self
+                            .rendezvous_nodes
                             .iter_mut()
-                            .find(|node| node.peer_id == peer_id) 
+                            .find(|node| node.peer_id == peer_id)
                         {
                             node.set_connection(ConnectionStatus::Disconnected);
                         }
@@ -435,13 +443,12 @@ pub mod rendezvous {
                         if let Poll::Ready(()) = re_register_in.poll_unpin(cx) {
                             match connection_status {
                                 ConnectionStatus::Connected => {
-                                    let _ = self.register(i)
-                                        .inspect_err(|err| {
-                                            tracing::error!(
-                                                error=%err, 
-                                                rendezvous_node=%self.rendezvous_nodes[i].peer_id, 
+                                    let _ = self.register(i).inspect_err(|err| {
+                                        tracing::error!(
+                                                error=%err,
+                                                rendezvous_node=%self.rendezvous_nodes[i].peer_id,
                                                 "Failed to register with rendezvous node");
-                                        });
+                                    });
                                 }
                                 ConnectionStatus::Disconnected => {
                                     self.rendezvous_nodes[i].set_registration(

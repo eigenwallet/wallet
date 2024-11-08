@@ -30,7 +30,7 @@ impl Transport for TorDialOnlyTransport {
 
     fn listen_on(
         &mut self,
-        id: ListenerId,
+        _id: ListenerId,
         addr: Multiaddr,
     ) -> Result<(), TransportError<Self::Error>> {
         Err(TransportError::MultiaddrNotSupported(addr))
@@ -89,7 +89,7 @@ impl Transport for TorDialOnlyTransport {
         }))
     }
 
-    fn remove_listener(&mut self, id: ListenerId) -> bool {
+    fn remove_listener(&mut self, _id: ListenerId) -> bool {
         // TODO(Libp2p Migration): What do we need to do here?
         // I believe nothing because we are not using the transport to listen.
         false
@@ -97,7 +97,7 @@ impl Transport for TorDialOnlyTransport {
 
     fn poll(
         self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
+        _cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<libp2p::core::transport::TransportEvent<Self::ListenerUpgrade, Self::Error>>
     {
         // TODO(Libp2p Migration): What do we need to do here?

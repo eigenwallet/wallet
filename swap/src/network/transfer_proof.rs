@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::{asb, cli, monero};
-use libp2p::request_response::{self, OutboundFailure, OutboundRequestId, ProtocolSupport};
+use libp2p::request_response::{self, ProtocolSupport};
 use libp2p::{PeerId, StreamProtocol};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

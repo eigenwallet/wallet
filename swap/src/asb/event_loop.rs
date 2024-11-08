@@ -690,9 +690,9 @@ impl EventLoopHandle {
     ///
     /// This function will retry indefinitely until the transfer proof is sent successfully
     /// and acknowledged by Bob
-    /// 
+    ///
     /// This will fail if
-    /// 1. the transfer proof has already been sent once 
+    /// 1. the transfer proof has already been sent once
     /// 2. there is an error with the bmrng channel
     pub async fn send_transfer_proof(&mut self, msg: monero::TransferProof) -> Result<()> {
         let sender = self
