@@ -129,13 +129,6 @@ impl Behaviour {
             identify: identify::Behaviour::new(identifyConfig),
         }
     }
-
-    /// Add a known address for the given peer
-    pub fn add_address(&mut self, peer_id: PeerId, address: Multiaddr) {
-        self.quote.add_address(&peer_id, address.clone());
-        self.transfer_proof.add_address(&peer_id, address.clone());
-        self.encrypted_signature.add_address(&peer_id, address);
-    }
 }
 
 impl From<ping::Event> for OutEvent {

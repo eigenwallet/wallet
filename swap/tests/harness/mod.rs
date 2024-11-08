@@ -505,9 +505,7 @@ impl BobParams {
             (identity.clone(), XmrBtcNamespace::Testnet),
         );
         let mut swarm = swarm::cli(identity.clone(), tor_socks5_port, behaviour).await?;
-        swarm
-            .behaviour_mut()
-            .add_address(self.alice_peer_id, self.alice_address.clone());
+        swarm.add_peer_address(self.alice_peer_id, self.alice_address.clone());
 
         cli::EventLoop::new(swap_id, swarm, self.alice_peer_id, db.clone())
     }

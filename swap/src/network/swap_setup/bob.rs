@@ -224,7 +224,7 @@ impl ConnectionHandler for Handler {
                 });
 
                 let max_seconds = self.timeout.as_secs();
-                
+
                 self.outbound_stream = OptionFuture::from(Some(Box::pin(async move {
                     protocol.await.map_err(|e| match e {
                         tokio::time::error::Elapsed { .. } => Error::Timeout {
