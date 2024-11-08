@@ -1,0 +1,179 @@
+name: "Build swap and asb release binaries"
+
+on:
+  release:
+    types: [created]
+
+env:
+  DOCKER_IMAGE_NAME: ghcr.io/unstoppableswap/asb
+
+jobs:
+  build_binaries:
+    name: Build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - bin: swap
+            target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive_ext: tar
+          - bin: swap
+            target: armv7-unknown-linux-gnueabihf
+            os: ubuntu-latest
+            archive_ext: tar
+          - bin: swap
+            target: x86_64-apple-darwin
+            os: macos-12
+            archive_ext: tar
+          - bin: swap
+            target: aarch64-apple-darwin
+            os: macos-latest
+            archive_ext: tar
+          - bin: swap
+            target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive_ext: zip
+          - bin: asb
+            target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive_ext: tar
+          - bin: asb
+            target: armv7-unknown-linux-gnueabihf
+            os: ubuntu-latest
+            archive_ext: tar
+          - bin: asb
+            target: x86_64-apple-darwin
+            os: macos-12
+            archive_ext: tar
+          - bin: asb
+            target: aarch64-apple-darwin
+            os: macos-latest
+            archive_ext: tar
+          - bin: asb
+            target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive_ext: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@v4.1.7
+        with:
+          ref: ${{ github.event.release.target_commitish }}
+          token: ${{ secrets.BOTTY_GITHUB_TOKEN }}
+
+      - uses: Swatinem/rust-cache@v2.7.3
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.74"
+
+      - name: Cross Build ${{ matrix.target }} ${{ matrix.bin }} binary
+        if: matrix.target == 'armv7-unknown-linux-gnueabihf'
+        run: |
+          curl -L "https://github.com/cross-rs/cross/releases/download/v0.2.5/cross-x86_64-unknown-linux-gnu.tar.gz" | tar xzv
+          sudo mv cross /usr/bin
+          sudo mv cross-util /usr/bin
+          cross build --target=${{ matrix.target }} --release --package swap --bin ${{ matrix.bin }}
+
+      - name: Build ${{ matrix.target }} ${{ matrix.bin }} release binary
+        if: matrix.target != 'armv7-unknown-linux-gnueabihf'
+        run: cargo build --target=${{ matrix.target }} --release --package swap --bin ${{ matrix.bin }}
+
+      - name: Smoke test the binary
+        if: matrix.target != 'armv7-unknown-linux-gnueabihf'
+        run: target/${{ matrix.target }}/release/${{ matrix.bin }} --help
+
+      - id: create-archive-name
+        shell: python
+        run: |
+          import platform
+          os_info = platform.uname()
+
+          arch = os_info.machine
+
+          triple = "${{ matrix.target }}".split("-")
+          arch = triple[0]
+
+          archive_name=f'${{ matrix.bin }}_${{ github.event.release.tag_name }}_{os_info.system}_{arch}.${{ matrix.archive_ext }}'
+
+          print(f'::set-output name=archive::{archive_name}')
+
+      - name: Pack macos archive
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: gtar -C ./target/${{ matrix.target }}/release --create --file=${{ steps.create-archive-name.outputs.archive }} ${{ matrix.bin }}
+
+      - name: Pack linux archive
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: tar -C ./target/${{ matrix.target }}/release --create --file=${{ steps.create-archive-name.outputs.archive }} ${{ matrix.bin }}
+
+      - name: Pack windows archive
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          cp target/${{ matrix.target }}/release/${{ matrix.bin }}.exe ./${{ matrix.bin }}.exe
+          7z a -tzip ${{ steps.create-archive-name.outputs.archive }} ./${{ matrix.bin }}.exe
+
+      - name: Upload archive
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.BOTTY_GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./${{ steps.create-archive-name.outputs.archive }}
+          asset_name: ${{ steps.create-archive-name.outputs.archive }}
+          asset_content_type: application/gzip
+
+  build_and_push_docker:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: build_binaries
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.1.7
+        with:
+          ref: ${{ github.event.release.target_commitish }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Docker tags
+        id: docker_tags
+        run: |
+          if [[ ${{ github.event.release.tag_name }} == "preview" ]]; then
+            echo "preview=true" >> $GITHUB_OUTPUT
+          else
+            echo "preview=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE_NAME }}:${{ github.event.release.tag_name }}
+            ${{ env.DOCKER_IMAGE_NAME }}:latest
+        if: steps.docker_tags.outputs.preview == 'false'
+
+      - name: Build and push Docker image without latest tag (preview release)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ env.DOCKER_IMAGE_NAME }}:${{ github.event.release.tag_name }}
+        if: steps.docker_tags.outputs.preview == 'true'
