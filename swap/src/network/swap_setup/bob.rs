@@ -2,7 +2,7 @@ use crate::network::swap_setup::{protocol, BlockchainNetwork, SpotPriceError, Sp
 use crate::protocol::bob::{State0, State2};
 use crate::protocol::{Message1, Message3};
 use crate::{bitcoin, cli, env, monero};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use futures::future::{BoxFuture, OptionFuture};
 use futures::AsyncWriteExt;
 use futures::FutureExt;
@@ -14,7 +14,7 @@ use libp2p::swarm::{
 use libp2p::{Multiaddr, PeerId};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::task::{Context, Poll};
+use std::task::Poll;
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -88,7 +88,7 @@ impl NetworkBehaviour for Behaviour {
 
     fn poll(
         &mut self,
-        _cx: &mut Context<'_>,
+        _cx: &mut std::task::Context<'_>,
     ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         // Send completed swaps to the swarm
         if let Some((_peer, completed)) = self.completed_swaps.pop_front() {
@@ -179,49 +179,85 @@ impl ConnectionHandler for Handler {
                 let env_config = self.env_config;
 
                 let protocol = tokio::time::timeout(self.timeout, async move {
-                    write_cbor_message(
-                        &mut substream,
-                        SpotPriceRequest {
-                            btc: new_swap_request.btc,
-                            blockchain_network: BlockchainNetwork {
-                                bitcoin: env_config.bitcoin_network,
-                                monero: env_config.monero_network,
+                    let result = async {
+                        // Here we request the spot price from Alice
+                        write_cbor_message(
+                            &mut substream,
+                            SpotPriceRequest {
+                                btc: new_swap_request.btc,
+                                blockchain_network: BlockchainNetwork {
+                                    bitcoin: env_config.bitcoin_network,
+                                    monero: env_config.monero_network,
+                                },
                             },
-                        },
-                    )
-                    .await?;
+                        )
+                        .await
+                        .context("Failed to send spot price request to Alice")?;
 
-                    let xmr = Result::from(
-                        read_cbor_message::<SpotPriceResponse>(&mut substream).await?,
-                    )?;
+                        // Here we read the spot price response from Alice
+                        // The outer ? checks if Alice responded with an error (SpotPriceError)
+                        let xmr = Result::from(
+                            // The inner ? is for the read_cbor_message function
+                            // It will return an error if the deserialization fails
+                            read_cbor_message::<SpotPriceResponse>(&mut substream)
+                                .await
+                                .context("Failed to read spot price response from Alice")?,
+                        )?;
 
-                    let state0 = State0::new(
-                        new_swap_request.swap_id,
-                        &mut rand::thread_rng(),
-                        new_swap_request.btc,
-                        xmr,
-                        env_config.bitcoin_cancel_timelock,
-                        env_config.bitcoin_punish_timelock,
-                        new_swap_request.bitcoin_refund_address,
-                        env_config.monero_finality_confirmations,
-                        new_swap_request.tx_refund_fee,
-                        new_swap_request.tx_cancel_fee,
-                    );
+                        let state0 = State0::new(
+                            new_swap_request.swap_id,
+                            &mut rand::thread_rng(),
+                            new_swap_request.btc,
+                            xmr,
+                            env_config.bitcoin_cancel_timelock,
+                            env_config.bitcoin_punish_timelock,
+                            new_swap_request.bitcoin_refund_address,
+                            env_config.monero_finality_confirmations,
+                            new_swap_request.tx_refund_fee,
+                            new_swap_request.tx_cancel_fee,
+                        );
 
-                    write_cbor_message(&mut substream, state0.next_message()).await?;
-                    let message1 = read_cbor_message::<Message1>(&mut substream).await?;
-                    let state1 = state0.receive(bitcoin_wallet.as_ref(), message1).await?;
+                        write_cbor_message(&mut substream, state0.next_message())
+                            .await
+                            .context("Failed to send state0 message to Alice")?;
+                        let message1 = read_cbor_message::<Message1>(&mut substream)
+                            .await
+                            .context("Failed to read message1 from Alice")?;
+                        let state1 = state0
+                            .receive(bitcoin_wallet.as_ref(), message1)
+                            .await
+                            .context("Failed to receive state1")?;
+                        write_cbor_message(&mut substream, state1.next_message())
+                            .await
+                            .context("Failed to send state1 message")?;
+                        let message3 = read_cbor_message::<Message3>(&mut substream)
+                            .await
+                            .context("Failed to read message3 from Alice")?;
+                        let state2 = state1
+                            .receive(message3)
+                            .context("Failed to receive state2")?;
 
-                    write_cbor_message(&mut substream, state1.next_message()).await?;
-                    let message3 = read_cbor_message::<Message3>(&mut substream).await?;
-                    let state2 = state1.receive(message3)?;
+                        write_cbor_message(&mut substream, state2.next_message())
+                            .await
+                            .context("Failed to send state2 message")?;
 
-                    write_cbor_message(&mut substream, state2.next_message()).await?;
+                        substream
+                            .flush()
+                            .await
+                            .context("Failed to flush substream")?;
+                        substream
+                            .close()
+                            .await
+                            .context("Failed to close substream")?;
 
-                    substream.flush().await?;
-                    substream.close().await?;
+                        Ok(state2)
+                    }
+                    .await;
 
-                    Ok(state2)
+                    result.map_err(|e: anyhow::Error| {
+                        tracing::error!("Error occurred during swap setup protocol: {:#}", e);
+                        Error::Other
+                    })
                 });
 
                 let max_seconds = self.timeout.as_secs();
@@ -250,7 +286,7 @@ impl ConnectionHandler for Handler {
 
     fn poll(
         &mut self,
-        cx: &mut Context<'_>,
+        cx: &mut std::task::Context<'_>,
     ) -> Poll<
         ConnectionHandlerEvent<Self::OutboundProtocol, Self::OutboundOpenInfo, Self::ToBehaviour>,
     > {
@@ -338,22 +374,5 @@ impl From<SpotPriceError> for Error {
             }
             SpotPriceError::Other => Error::Other,
         }
-    }
-}
-
-impl From<anyhow::Error> for Error {
-    fn from(error: anyhow::Error) -> Self {
-        // This is not good we are just swallowing the error here
-        // TODO(Libp2p Migration): We should find a better way to convert these errors in the entire file here into each other
-        // This doesnt seem optimal at all
-        // Incredibly ugly code and we lose a lot of valueale information here
-        Error::Other
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(error: std::io::Error) -> Self {
-        // This is not good we are just swallowing the error here
-        Error::Other
     }
 }
