@@ -185,8 +185,9 @@ pub async fn main() -> Result<()> {
             )?;
 
             for listen in config.network.listen.clone() {
-                Swarm::listen_on(&mut swarm, listen.clone())
-                    .with_context(|| format!("Failed to listen on network interface {}", listen))?;
+                if let Err(e) = Swarm::listen_on(&mut swarm, listen.clone()) {
+                    tracing::warn!("Failed to listen on network interface {}: {}. Consider removing it from the config.", listen, e);
+                }
             }
 
             tracing::info!(peer_id = %swarm.local_peer_id(), "Network layer initialized");
