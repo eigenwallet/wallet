@@ -120,17 +120,6 @@ where
                     // block 0 for scenarios where we create a refund wallet.
                     let monero_wallet_restore_blockheight = monero_wallet.block_height().await?;
 
-                    // We watch the status of the bitcoin lock transaction
-                    // If the swap is cancelled, there is no need to lock the Monero funds anymore
-                    // because there is no way for the swap to succeed.
-                    let tx_lock_status = bitcoin_wallet.subscribe_to(state3.tx_lock.clone()).await;
-                    let cancel_timelock = state3.cancel_timelock;
-                    let tx_lock_cancel_future = tokio::spawn(async move {
-                        tx_lock_status
-                            .wait_until_confirmed_with(cancel_timelock)
-                            .await
-                    });
-
                     // We configure this to retry indefinitely
                     // We check if the swap is cancelled before every retry
                     let backoff = backoff::ExponentialBackoffBuilder::new()
@@ -139,8 +128,10 @@ where
                         .build();
 
                     let transfer_proof = backoff::future::retry(backoff, || async {
-                        // Check if swap is cancelled before starting the non-cancellable transfer
-                        if tx_lock_cancel_future.is_finished() {
+                        // We check the status of the Bitcoin lock transaction
+                        // If the swap is cancelled, there is no need to lock the Monero funds anymore
+                        // because there is no way for the swap to succeed.
+                        if !matches!(state3.expired_timelocks(bitcoin_wallet).await?, ExpiredTimelocks::None { .. }) {
                             return Ok(None);
                         }
 
