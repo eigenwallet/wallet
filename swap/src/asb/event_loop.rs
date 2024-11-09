@@ -69,11 +69,13 @@ where
     /// 1. EventLoopHandle sends (PeerId, Request, Responder) through sender
     /// 2. Event loop receives and attempts to send to peer
     /// 3. Result (Ok or network failure) is sent back to EventLoopHandle
+    #[allow(clippy::type_complexity)]
     outgoing_transfer_proofs_receiver: tokio::sync::mpsc::UnboundedReceiver<(
         PeerId,
         transfer_proof::Request,
         oneshot::Sender<Result<(), OutboundFailure>>,
     )>,
+    #[allow(clippy::type_complexity)]
     outgoing_transfer_proofs_sender: tokio::sync::mpsc::UnboundedSender<(
         PeerId,
         transfer_proof::Request,
@@ -86,6 +88,7 @@ where
     /// 1. It is moved from [`outgoing_transfer_proofs_receiver`] to this buffer
     /// 2. Once a connection is established with the peer, the proof is send back into the [`outgoing_transfer_proofs_sender`]
     /// 3. The buffered request is then removed from this collection
+    #[allow(clippy::type_complexity)]
     buffered_transfer_proofs: HashMap<
         PeerId,
         Vec<(
@@ -644,6 +647,7 @@ pub struct EventLoopHandle {
     swap_id: Uuid,
     peer: PeerId,
     recv_encrypted_signature: Option<bmrng::RequestReceiver<bitcoin::EncryptedSignature, ()>>,
+    #[allow(clippy::type_complexity)]
     transfer_proof_sender: Option<
         tokio::sync::mpsc::UnboundedSender<(
             PeerId,
@@ -708,7 +712,7 @@ impl EventLoopHandle {
 
         let transfer_proof = self.build_transfer_proof_request(msg);
 
-        let result = backoff::future::retry(backoff, || async {
+        backoff::future::retry(backoff, || async {
             // Create a oneshot channel to receive the acknowledgment of the transfer proof
             let (singular_sender, singular_receiver) = oneshot::channel();
 
@@ -725,7 +729,7 @@ impl EventLoopHandle {
                     Err(backoff::Error::transient(anyhow!(err)))
                 }
                 Err(_) => {
-                    unreachable!("The sender channel should never be closed without sending a response");
+                    Err(backoff::Error::permanent(anyhow!("The sender channel should never be closed without sending a response")))
                 }
             }
         })
@@ -733,7 +737,7 @@ impl EventLoopHandle {
 
         self.transfer_proof_sender.take();
 
-        Ok(result)
+        Ok(())
     }
 }
 

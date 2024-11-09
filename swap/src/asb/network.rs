@@ -417,7 +417,7 @@ pub mod rendezvous {
                             .iter()
                             .find(|node| node.peer_id == peer_id)
                             .map(|node| node.address.clone())
-                            .unwrap()])
+                            .expect("We should have a rendezvous node for the peer id")])
                         .condition(PeerCondition::Disconnected)
                         // TODO: this makes the behaviour call `NetworkBehaviour::handle_pending_outbound_connection`
                         // but we don't implement it

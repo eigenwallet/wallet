@@ -318,7 +318,7 @@ impl EventLoop {
                 },
 
                 Some(response_channel) = &mut self.pending_transfer_proof => {
-                    if let Err(_) = self.swarm.behaviour_mut().transfer_proof.send_response(response_channel, ()) {
+                    if self.swarm.behaviour_mut().transfer_proof.send_response(response_channel, ()).is_err() {
                         tracing::warn!("Failed to send acknowledgment to Alice that we have received the transfer proof");
                     } else {
                         self.pending_transfer_proof = OptionFuture::from(None);
