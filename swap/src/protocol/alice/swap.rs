@@ -178,11 +178,13 @@ where
                        state3,
                    }
                 },
-                // Why are we already receiving the encrypted signature here?
+                // TODO: We should already listen for the encrypted signature here.
                 //
                 // If we send Bob the transfer proof, but for whatever reason we do not receive an acknoledgement from him
                 // we would be stuck in this state forever (deadlock). By listening for the encrypted signature here we
                 // can still proceed to the next state even if Bob does not respond with an acknoledgement.
+                //
+                // This currently does not work due to borrow checker issues.
                 // enc_sig = recv_encrypted_signature => {
                 //     tracing::info!("Received encrypted signature");
 
