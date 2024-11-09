@@ -154,7 +154,7 @@ where
                         tracing::warn!(
                             swap_id = %swap_id,
                             error = ?e,
-                            "Failed to lock Monero funds. We will retry."
+                            "Failed to lock Monero. Make sure your monero-wallet-rpc is connected to a synced daemon and enough funds are available. We will retry."
                         )
                     })
                     .map_err(backoff::Error::transient)
