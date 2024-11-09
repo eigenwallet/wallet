@@ -22,11 +22,15 @@ import {
   TauriTimelockChangeEvent,
   GetSwapInfoArgs,
   ExportBitcoinWalletResponse,
+<<<<<<< HEAD
   CheckMoneroNodeArgs,
   CheckMoneroNodeResponse,
   TauriSettings,
   CheckElectrumNodeArgs,
   CheckElectrumNodeResponse,
+=======
+  GetMoneroAddressesResponse,
+>>>>>>> bd3fca7e (    feat(gui): Allow to select from recently used monero addresses (#139))
 } from "models/tauriModel";
 import {
   contextStatusEventReceived,
@@ -298,4 +302,7 @@ export async function updateAllNodeStatuses() {
 
   // When we are done, we update the statuses in the store
   store.dispatch(setStatuses(newStatuses));
+}
+export async function getMoneroAddresses(): Promise<GetMoneroAddressesResponse> {
+  return await invokeNoArgs<GetMoneroAddressesResponse>("get_monero_addresses");
 }
