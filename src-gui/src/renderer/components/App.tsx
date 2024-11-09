@@ -13,7 +13,7 @@ import { useEffect } from "react";
 import { fetchProvidersViaHttp, fetchAlertsViaHttp, fetchXmrPrice, fetchBtcPrice, fetchXmrBtcRate } from "renderer/api";
 import { initEventListeners } from "renderer/rpc";
 import { store } from "renderer/store/storeRenderer";
-import { checkForAppUpdates } from "renderer/updater";
+import UpdaterDialog from "./modal/updater/UpdaterDialog";
 import { setAlerts } from "store/features/alertsSlice";
 import { setRegistryProviders, registryConnectionFailed } from "store/features/providersSlice";
 import { setXmrPrice, setBtcPrice, setXmrBtcRate } from "store/features/ratesSlice";
@@ -63,7 +63,6 @@ export default function App() {
   useEffect(() => {
     fetchInitialData();
     initEventListeners();
-    checkForAppUpdates();
   }, []);
 
   return (
@@ -73,6 +72,7 @@ export default function App() {
         <Router>
           <Navigation />
           <InnerContent />
+          <UpdaterDialog/>
         </Router>
       </GlobalSnackbarProvider>
     </ThemeProvider>

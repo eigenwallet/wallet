@@ -5,8 +5,9 @@ use swap::cli::{
     api::{
         request::{
             BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, ExportBitcoinWalletArgs, GetHistoryArgs,
-            GetLogsArgs, GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs, MoneroRecoveryArgs,
-            ResumeSwapArgs, SuspendCurrentSwapArgs, WithdrawBtcArgs,
+            GetLogsArgs, GetMoneroAddressesArgs, GetSwapInfoArgs, GetSwapInfosAllArgs,
+            ListSellersArgs, MoneroRecoveryArgs, ResumeSwapArgs, SuspendCurrentSwapArgs,
+            WithdrawBtcArgs,
         },
         tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle, TauriSettings},
         Context, ContextBuilder,
@@ -126,15 +127,27 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            let _ = app
+                .get_webview_window("main")
+                .expect("no main window")
+                .set_focus();
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             get_balance,
+            get_monero_addresses,
             get_swap_info,
             get_swap_infos_all,
             withdraw_btc,
@@ -189,12 +202,14 @@ tauri_command!(monero_recovery, MoneroRecoveryArgs);
 tauri_command!(get_logs, GetLogsArgs);
 tauri_command!(list_sellers, ListSellersArgs);
 tauri_command!(cancel_and_refund, CancelAndRefundArgs);
+
 // These commands require no arguments
 tauri_command!(get_wallet_descriptor, ExportBitcoinWalletArgs, no_args);
 tauri_command!(suspend_current_swap, SuspendCurrentSwapArgs, no_args);
 tauri_command!(get_swap_info, GetSwapInfoArgs);
 tauri_command!(get_swap_infos_all, GetSwapInfosAllArgs, no_args);
 tauri_command!(get_history, GetHistoryArgs, no_args);
+tauri_command!(get_monero_addresses, GetMoneroAddressesArgs, no_args);
 
 /// Here we define Tauri commands whose implementation is not delegated to the Request trait
 #[tauri::command]
