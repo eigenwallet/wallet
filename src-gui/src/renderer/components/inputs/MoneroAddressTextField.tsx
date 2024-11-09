@@ -61,7 +61,7 @@ export default function MoneroAddressTextField({
         variant="outlined"
         InputProps={{
           endAdornment: addresses?.length > 0 && (
-            <IconButton onClick={() => setShowDialog(true)}>
+            <IconButton onClick={() => setShowDialog(true)} size="small">
               <ImportContactsIcon />
             </IconButton>
           )
@@ -69,44 +69,67 @@ export default function MoneroAddressTextField({
         {...props}
       />
 
-      <Dialog
+      <RecentlyUsedAddressesDialog
         open={showDialog}
         onClose={handleClose}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogContent>
-          <List>
-            {addresses.map((addr) => (
-              <ListItem 
-                button 
-                key={addr}
-                onClick={() => handleAddressSelect(addr)}
-              >
-                <ListItemText 
-                  primary={
-                    <Box fontFamily="monospace">
-                      <TruncatedText limit={40} truncateMiddle>
-                        {addr}
-                      </TruncatedText>
-                    </Box>
-                  }
-                  secondary="Recently used as a redeem address"
-                />
-              </ListItem>
-            ))}
-          </List>
-        </DialogContent>
-        <DialogActions>
-          <Button 
-            onClick={handleClose}
-            variant="contained"
-            color="primary"
-          >
-            Cancel
-          </Button>
-        </DialogActions>
-      </Dialog>
+        addresses={addresses}
+        onAddressSelect={handleAddressSelect}
+      />
     </Box>
+  );
+}
+
+interface RecentlyUsedAddressesDialogProps {
+  open: boolean;
+  onClose: () => void;
+  addresses: string[];
+  onAddressSelect: (address: string) => void;
+}
+
+function RecentlyUsedAddressesDialog({
+  open,
+  onClose,
+  addresses,
+  onAddressSelect
+}: RecentlyUsedAddressesDialogProps) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogContent>
+        <List>
+          {addresses.map((addr) => (
+            <ListItem 
+              button 
+              key={addr}
+              onClick={() => onAddressSelect(addr)}
+            >
+              <ListItemText 
+                primary={
+                  <Box fontFamily="monospace">
+                    <TruncatedText limit={40} truncateMiddle>
+                      {addr}
+                    </TruncatedText>
+                  </Box>
+                }
+                secondary="Recently used as a redeem address"
+              />
+            </ListItem>
+          ))}
+        </List>
+      </DialogContent>
+      <DialogActions>
+        <Button 
+          onClick={onClose}
+          variant="contained"
+          color="primary"
+        >
+          Close
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
