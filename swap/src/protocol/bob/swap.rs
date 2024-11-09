@@ -24,17 +24,14 @@ pub fn is_complete(state: &BobState) -> bool {
 /// This is necessary because sometimes our acknowledgement might not reach Alice.
 pub fn has_already_processed_transfer_proof(state: &BobState) -> bool {
     // This match statement MUST match all states which Bob can enter after receiving the transfer proof.
+    // We do not match any of the cancel / refund states because in those, the swap cannot be successfull anymore.
     matches!(
         state,
         BobState::XmrLockProofReceived { .. }
             | BobState::XmrLocked(..)
             | BobState::EncSigSent(..)
             | BobState::BtcRedeemed(..)
-            | BobState::CancelTimelockExpired(..)
-            | BobState::BtcCancelled(..)
-            | BobState::BtcRefunded(..)
             | BobState::XmrRedeemed { .. }
-            | BobState::BtcPunished { .. }
     )
 }
 
