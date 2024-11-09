@@ -117,7 +117,7 @@ mod tests {
         });
 
         Seller {
-            multiaddr: asb_address.with(Protocol::P2p(asb_peer_id.into())),
+            multiaddr: asb_address.with(Protocol::P2p(asb_peer_id)),
             status: Status::Online(static_quote),
         }
     }
