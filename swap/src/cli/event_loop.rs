@@ -20,6 +20,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
+static REQUEST_RESPONSE_PROTOCOL_TIMEOUT: Duration = Duration::from_secs(60);
+static EXECUTION_SETUP_PROTOCOL_TIMEOUT: Duration = Duration::from_secs(120);
+
 #[allow(missing_debug_implementations)]
 pub struct EventLoop {
     swap_id: Uuid,
@@ -76,7 +79,7 @@ impl EventLoop {
         // We still use a timeout here, because this protocol does not dial Alice itself
         // and we want to fail if we cannot reach Alice
         let (execution_setup_sender, execution_setup_receiver) =
-            bmrng::channel_with_timeout(1, Duration::from_secs(120));
+            bmrng::channel_with_timeout(1, EXECUTION_SETUP_PROTOCOL_TIMEOUT);
 
         // It is okay to not have a timeout here, as timeouts are enforced by the request-response protocol
         let (transfer_proof_sender, transfer_proof_receiver) = bmrng::channel(1);
@@ -320,7 +323,7 @@ impl EventLoop {
                 },
 
                 // We use `self.is_connected_to_alice` as a guard to "buffer" requests until we are connected.
-                // because I don't think the protocol forces a dial to Alice.
+                // because the protocol does not dial Alice itself
                 // (unlike request-response above)
                 Some((swap, responder)) = self.execution_setup_requests.next().fuse(), if self.is_connected_to_alice() => {
                     self.swarm.behaviour_mut().swap_setup.start(self.alice_peer_id, swap).await;
@@ -396,7 +399,7 @@ impl EventLoopHandle {
     pub async fn setup_swap(&mut self, swap: NewSwap) -> Result<State2> {
         tracing::debug!(swap = ?swap, "Sending swap setup request");
 
-        let backoff = Self::create_retry_config(Duration::from_secs(60));
+        let backoff = Self::create_retry_config(EXECUTION_SETUP_PROTOCOL_TIMEOUT);
 
         backoff::future::retry(backoff, || async {
             match self.execution_setup_sender.send_receive(swap.clone()).await {
@@ -438,7 +441,7 @@ impl EventLoopHandle {
     pub async fn request_quote(&mut self) -> Result<BidQuote> {
         tracing::debug!("Requesting quote");
 
-        let backoff = Self::create_retry_config(Duration::from_secs(60));
+        let backoff = Self::create_retry_config(REQUEST_RESPONSE_PROTOCOL_TIMEOUT);
 
         backoff::future::retry(backoff, || async {
             match self.quote_sender.send_receive(()).await {
@@ -459,7 +462,7 @@ impl EventLoopHandle {
     pub async fn request_cooperative_xmr_redeem(&mut self) -> Result<Response> {
         tracing::debug!("Requesting cooperative XMR redeem");
 
-        let backoff = Self::create_retry_config(Duration::from_secs(60));
+        let backoff = Self::create_retry_config(REQUEST_RESPONSE_PROTOCOL_TIMEOUT);
 
         backoff::future::retry(backoff, || async {
             match self.cooperative_xmr_redeem_sender.send_receive(()).await {
@@ -486,7 +489,7 @@ impl EventLoopHandle {
         // We will retry indefinitely until we succeed
         let backoff = backoff::ExponentialBackoffBuilder::new()
             .with_max_elapsed_time(None)
-            .with_max_interval(Duration::from_secs(60))
+            .with_max_interval(REQUEST_RESPONSE_PROTOCOL_TIMEOUT)
             .build();
 
         backoff::future::retry(backoff, || async {
