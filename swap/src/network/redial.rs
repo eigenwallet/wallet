@@ -109,7 +109,7 @@ impl NetworkBehaviour for Behaviour {
         };
 
         futures::ready!(sleep.poll_unpin(cx));
-        
+
         let next_dial_in = match self.backoff.next_backoff() {
             Some(next_dial_in) => next_dial_in,
             None => {
