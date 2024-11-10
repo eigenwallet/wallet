@@ -2,10 +2,8 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { TauriSettings } from "models/tauriModel";
 
 export interface SettingsState {
-  /// Settings needed to start the tauri context
-  tauriSettings: TauriSettings;
   /// This is an ordered list of node urls for each network and blockchain
-  nodes: Record<Blockchain, string[]>;
+  nodes: Record<Network, Record<Blockchain, string[]>>;
   /// Which theme to use
   theme: Theme;
 }
@@ -21,13 +19,15 @@ export enum Blockchain {
 }
 
 const initialState: SettingsState = {
-  tauriSettings: {
-    electrum_rpc_url: null,
-    monero_node_url: null,
-  },
   nodes: {
-    [Blockchain.Bitcoin]: [],
-    [Blockchain.Monero]: []
+    [Network.Testnet]: {
+      [Blockchain.Bitcoin]: [],
+      [Blockchain.Monero]: []
+    },
+    [Network.Mainnet]: {
+      [Blockchain.Bitcoin]: [],
+      [Blockchain.Monero]: []
+    }
   },
   theme: Theme.Dark
 };
@@ -36,33 +36,27 @@ const alertsSlice = createSlice({
   name: "settings",
   initialState,
   reducers: {
-    setElectrumRpcUrl(slice, action: PayloadAction<string | null>) {
-      if (action.payload === null || action.payload === "") {
-        slice.electrum_rpc_url = null;
-      } else {
-        slice.electrum_rpc_url = action.payload;
-      }
-    },
-    setMoneroNodeUrl(slice, action: PayloadAction<string | null>) {
-      if (action.payload === null || action.payload === "") {
-        slice.monero_node_url = null;
-      } else {
-        slice.monero_node_url = action.payload;
+    moveUpNode(slice, action: PayloadAction<{ network: Network, type: Blockchain, node: string }>) {
+      const index = slice.nodes[action.payload.network][action.payload.type].indexOf(action.payload.node);
+      if (index > 0) {
+        const temp = slice.nodes[action.payload.network][action.payload.type][index];
+        slice.nodes[action.payload.network][action.payload.type][index] = slice.nodes[action.payload.network][action.payload.type][index - 1];
+        slice.nodes[action.payload.network][action.payload.type][index - 1] = temp;
       }
     },
     setTheme(slice, action: PayloadAction<Theme>) {
       slice.theme = action.payload;
     },
-    addNode(slice, action: PayloadAction<{ type: Blockchain, node: string }>) {
+    addNode(slice, action: PayloadAction<{ network: Network, type: Blockchain, node: string }>) {
       // Check if the node is already in the list
-      if (slice.nodes[action.payload.type].includes(action.payload.node)) {
+      if (slice.nodes[action.payload.network][action.payload.type].includes(action.payload.node)) {
         return;
       }
       // Add the node to the list
-      slice.nodes[action.payload.type].push(action.payload.node);
+      slice.nodes[action.payload.network][action.payload.type].push(action.payload.node);
     },
-    removeNode(slice, action: PayloadAction<{ type: Blockchain, node: string }>) {
-      slice.nodes[action.payload.type] = slice.nodes[action.payload.type].filter(node => node !== action.payload.node);
+    removeNode(slice, action: PayloadAction<{ network: Network, type: Blockchain, node: string }>) {
+      slice.nodes[action.payload.network][action.payload.type] = slice.nodes[action.payload.network][action.payload.type].filter(node => node !== action.payload.node);
     },
     resetSettings(_) {
       return initialState;
@@ -71,8 +65,10 @@ const alertsSlice = createSlice({
 });
 
 export const {
-  setElectrumRpcUrl,
-  setMoneroNodeUrl,
-  resetSettings,
+  moveUpNode,
+  setTheme,
+  addNode,
+  removeNode,
+  resetSettings
 } = alertsSlice.actions;
 export default alertsSlice.reducer;

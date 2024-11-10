@@ -4,9 +4,7 @@ use std::sync::Arc;
 use swap::cli::{
     api::{
         request::{
-            BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, ExportBitcoinWalletArgs, GetHistoryArgs,
-            GetLogsArgs, GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs, MoneroRecoveryArgs,
-            ResumeSwapArgs, SuspendCurrentSwapArgs, WithdrawBtcArgs,
+            BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, CheckMoneroNodeArgs, ExportBitcoinWalletArgs, GetHistoryArgs, GetLogsArgs, GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs, MoneroRecoveryArgs, ResumeSwapArgs, SuspendCurrentSwapArgs, WithdrawBtcArgs
         },
         tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle, TauriSettings},
         Context, ContextBuilder,
@@ -159,6 +157,7 @@ pub fn run() {
             cancel_and_refund,
             is_context_available,
             initialize_context,
+            check_monero_node,
             get_wallet_descriptor,
         ])
         .setup(setup)
@@ -200,6 +199,7 @@ tauri_command!(monero_recovery, MoneroRecoveryArgs);
 tauri_command!(get_logs, GetLogsArgs);
 tauri_command!(list_sellers, ListSellersArgs);
 tauri_command!(cancel_and_refund, CancelAndRefundArgs);
+tauri_command!(check_monero_node, CheckMoneroNodeArgs);
 // These commands require no arguments
 tauri_command!(get_wallet_descriptor, ExportBitcoinWalletArgs, no_args);
 tauri_command!(suspend_current_swap, SuspendCurrentSwapArgs, no_args);

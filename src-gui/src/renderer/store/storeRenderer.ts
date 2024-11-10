@@ -18,7 +18,7 @@ const rootPersistConfig = {
 };
 
 // Use Tauri's store plugin for persistent settings
-const tauriStore = createStore(`${getNetworkName()}_settings.bin`, {
+const tauriStore = createStore(`settings.bin`, {
   autoSave: 1000 as unknown as boolean,
 });
 

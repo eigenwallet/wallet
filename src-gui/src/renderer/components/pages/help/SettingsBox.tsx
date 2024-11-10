@@ -18,13 +18,22 @@ import {
   setMoneroNodeUrl,
 } from "store/features/settingsSlice";
 import { useAppDispatch, useSettings } from "store/hooks";
+  addNode,
+  Blockchain,
+  moveUpNode,
+  Network,
+  removeNode,
+  resetSettings,
+  setTheme,
+} from "store/features/settingsSlice";
+import { useAppDispatch, useAppSelector, useNodes, useSettings } from "store/hooks";
 import ValidatedTextField from "renderer/components/other/ValidatedTextField";
 import RefreshIcon from "@material-ui/icons/Refresh";
 import HelpIcon from '@material-ui/icons/HelpOutline';
 import { ReactNode, useState } from "react";
 import { Theme } from "renderer/components/theme";
 import { getNetwork } from "store/config";
-import { Add, Check, Delete, Edit, PlusOne, VisibilityOffRounded, VisibilityRounded } from "@material-ui/icons";
+import { Add, Check, Clear, Delete, VisibilityOffRounded, VisibilityRounded } from "@material-ui/icons";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -107,6 +116,7 @@ function ElectrumRpcUrlSetting() {
         </TableCell>
         <TableCell>
           {tableVisible ? <NodeTable
+            network={network}
             blockchain={Blockchain.Bitcoin}
             isValid={isValid}
             placeholder={PLACEHOLDER_ELECTRUM_RPC_URL}
@@ -153,6 +163,7 @@ function MoneroNodeUrlSetting() {
       </TableCell>
       <TableCell>
         {tableVisible ? <NodeTable
+          network={network}
           blockchain={Blockchain.Monero}
           isValid={isValid}
           onValidatedChange={(value) => {
@@ -191,21 +202,40 @@ function ThemeSetting() {
 }
 
 function NodeTable({
+  network,
   blockchain,
   isValid,
   placeholder,
 }: {
+  network: Network,
   blockchain: Blockchain,
   isValid: (url: string) => boolean,
   placeholder: string,
 }) {
-  const [currentNode, setNode] = blockchain == Blockchain.Bitcoin ? 
-    [useSettings((s) => s.tauriSettings.electrum_rpc_url), setElectrumRpcUrl]
-    : [useSettings((s) => s.tauriSettings.monero_node_url), setMoneroNodeUrl];
-  const availableNodes = useSettings((s) => s.nodes[blockchain]);
+  const availableNodes = useSettings((s) => s.nodes[network][blockchain]);
+  const currentNode = useSettings((s) => s.nodes[network][blockchain][0]);
   const dispatch = useAppDispatch();
 
   const [newNode, setNewNode] = useState("");
+
+  const statuses = useNodes((s) => s.nodes);
+  const statusIcon = (node: string) => {
+    let icon;
+
+    switch (statuses[node]) {
+      case true:
+        icon = <Check color="secondary"/>;
+        break;
+      case false:
+        icon = <Clear color="secondary"/>;
+        break;
+      case undefined:
+        icon = <></>;
+        break;
+    }
+
+    return icon;
+  }
 
   return (
     <TableContainer component={Paper} style={{ marginTop: '1rem' }}>
@@ -223,15 +253,18 @@ function NodeTable({
             <TableRow key={index}>
               <TableCell>{currentNode === node ? <Check color="secondary"/> : <></>}</TableCell>
               <TableCell>{node}</TableCell>
-              <TableCell>Hallo</TableCell>
+              <TableCell>{statusIcon(node)}</TableCell>
               <TableCell>
-                <IconButton onClick={() => {
-                  dispatch(setNode(node));
+                <IconButton onClick={async () => {
+                  while (currentNode !== node) {
+                    dispatch(moveUpNode({ network, type: blockchain, node }));
+                    await new Promise((resolve) => setTimeout(resolve, 50));
+                  } 
                 }}>
                   <Check />
                 </IconButton>
                 <IconButton onClick={() => {
-                  dispatch(removeNode({ type: blockchain, node }));
+                  dispatch(removeNode({ network, type: blockchain, node }));
                 }}>
                   <Delete />
                 </IconButton>
@@ -254,7 +287,7 @@ function NodeTable({
             <TableCell></TableCell>
             <TableCell>
               <IconButton onClick={() => {
-                dispatch(addNode({ type: blockchain, node: newNode }));
+                dispatch(addNode({ network, type: blockchain, node: newNode }));
                 setNewNode("");
               }}>
                 <Add />

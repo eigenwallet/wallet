@@ -5,6 +5,7 @@ use crate::cli::api::Context;
 use crate::cli::{list_sellers as list_sellers_impl, EventLoop, Seller, SellerStatus};
 use crate::common::get_logs;
 use crate::libp2p_ext::MultiAddrExt;
+use crate::monero::wallet_rpc::MoneroDaemon;
 use crate::network::quote::{BidQuote, ZeroQuoteReceived};
 use crate::network::swarm;
 use crate::protocol::bob::{BobState, Swap};
@@ -14,10 +15,13 @@ use ::bitcoin::Txid;
 use anyhow::{bail, Context as AnyContext, Result};
 use libp2p::core::Multiaddr;
 use libp2p::PeerId;
+use ::monero::Network;
+use once_cell::sync::Lazy;
 use qrcode::render::unicode;
 use qrcode::QrCode;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
+use thiserror::Error;
 use std::cmp::min;
 use std::convert::TryInto;
 use std::future::Future;
@@ -1267,4 +1271,50 @@ where
     let btc_swap_amount = min(max_giveable, max_accepted);
 
     Ok((btc_swap_amount, fees))
+}
+
+#[typeshare]
+#[derive(Deserialize, Serialize)]
+pub struct CheckMoneroNodeArgs {
+    pub url: String,
+    pub network: String
+}
+
+#[typeshare]
+#[derive(Deserialize, Serialize)]
+pub struct CheckMoneroNodeResponse {
+    pub available: bool
+}
+
+#[derive(Error, Debug)]
+#[error("this is not one of the known monero networks")]
+struct UnknownMoneroNetwork(String);
+
+impl Request for CheckMoneroNodeArgs {
+    type Response = CheckMoneroNodeResponse;
+
+    async fn request(self, _ctx: Arc<crate::cli::api::Context>) -> Result<Self::Response> {
+        let network = match self.network.to_lowercase().as_str() {
+            "stagenet" => Network::Stagenet,
+            "mainnet" => Network::Mainnet,
+            "testnet" => Network::Testnet,
+            otherwise => anyhow::bail!(UnknownMoneroNetwork(otherwise.to_string()))
+        };
+
+        static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .https_only(false)
+                .build().expect("whoops")
+        });
+    
+        let monero_daemon = MoneroDaemon::from_str(
+            self.url, 
+            network
+        )?;
+        
+        let available = monero_daemon.is_available(&CLIENT).await?;
+
+        Ok(CheckMoneroNodeResponse { available })
+    }
 }

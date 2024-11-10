@@ -22,6 +22,8 @@ import {
   TauriTimelockChangeEvent,
   GetSwapInfoArgs,
   ExportBitcoinWalletResponse,
+  CheckMoneroNodeArgs,
+  CheckMoneroNodeResponse,
 } from "models/tauriModel";
 import {
   contextStatusEventReceived,
@@ -37,7 +39,8 @@ import { providerToConcatenatedMultiAddr } from "utils/multiAddrUtils";
 import { MoneroRecoveryResponse } from "models/rpcModel";
 import { ListSellersResponse } from "../models/tauriModel";
 import logger from "utils/logger";
-import { isTestnet } from "store/config";
+import { getNetwork, getNetworkName, isTestnet } from "store/config";
+import { Blockchain, Network } from "store/features/settingsSlice";
 
 export async function initEventListeners() {
   // This operation is in-expensive
@@ -49,8 +52,13 @@ export async function initEventListeners() {
     // Warning: If we reload the page while the Context is being initialized, this function will throw an error
     initializeContext().catch((e) => {
       logger.error(e, "Failed to initialize context on page load. This might be because we reloaded the page while the context was being initialized");
+      // Wait a short time before retrying
+      setTimeout(() => {
+        initializeContext().catch((e) => {
+          logger.error(e, "Failed to initialize context even after retry");
+        });
+      }, 2000); // 2 second delay
     });
-    initializeContext();
   }
 
   listen<TauriSwapProgressEventWrapper>("swap-progress-update", (event) => {
@@ -207,15 +215,43 @@ export async function listSellersAtRendezvousPoint(
 }
 
 export async function initializeContext() {
+  console.log("Prepare: Initializing context with settings");
+
+  const network = getNetwork();
   const settings = store.getState().settings;
+
+  // Initialize Tauri settings with null values
+  const tauriSettings: TauriSettings = {
+    electrum_rpc_url: null,
+    monero_node_url: null,
+  };
+
+  // Set the first available node, if set
+  if (settings.nodes[network][Blockchain.Bitcoin].length > 0) 
+    tauriSettings.electrum_rpc_url = settings.nodes[network][Blockchain.Bitcoin][0];
+
+  if (settings.nodes[network][Blockchain.Monero].length > 0) 
+    tauriSettings.monero_node_url = settings.nodes[network][Blockchain.Monero][0];
+
   const testnet = isTestnet();
 
+  console.log("Initializing context with settings", tauriSettings);
+
   await invokeUnsafe<void>("initialize_context", {
-    settings,
+    settings: tauriSettings,
     testnet,
   });
 }
 
 export async function getWalletDescriptor() {
   return await invokeNoArgs<ExportBitcoinWalletResponse>("get_wallet_descriptor");
+}
+
+export async function getMoneroNodeStatus(node: string): Promise<boolean> {
+  const response =await invoke<CheckMoneroNodeArgs, CheckMoneroNodeResponse>("check_monero_node", {
+    url: node,
+    network: getNetworkName(),
+  });
+
+  return response.available;
 }

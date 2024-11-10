@@ -7,15 +7,12 @@ use monero_rpc::wallet::{Client, MoneroWalletRpc as _};
 use once_cell::sync::Lazy;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::Url;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use thiserror::Error;
-use typeshare::typeshare;
 use std::fmt::{Debug, Display, Formatter};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, io};
 use tokio::fs::{remove_file, OpenOptions};
@@ -23,8 +20,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio_util::codec::{BytesCodec, FramedRead};
 use tokio_util::io::StreamReader;
-
-use crate::cli::api::request::Request;
 
 // See: https://www.moneroworld.com/#nodes, https://monero.fail
 // We don't need any testnet nodes because we don't support testnet at all
@@ -94,14 +89,14 @@ pub struct WalletRpcProcess {
 }
 
 #[derive(Debug, Clone)]
-struct MoneroDaemon {
+pub struct MoneroDaemon {
     address: String,
     port: u16,
     network: Network,
 }
 
 impl MoneroDaemon {
-    fn new(address: impl Into<String>, port: u16, network: Network) -> MoneroDaemon {
+    pub fn new(address: impl Into<String>, port: u16, network: Network) -> MoneroDaemon {
         MoneroDaemon {
             address: address.into(),
             port,
@@ -120,7 +115,7 @@ impl MoneroDaemon {
     }
 
     /// Checks if the Monero daemon is available by sending a request to its `get_info` endpoint.
-    async fn is_available(&self, client: &reqwest::Client) -> Result<bool, Error> {
+    pub async fn is_available(&self, client: &reqwest::Client) -> Result<bool, Error> {
         let url = format!("http://{}:{}/get_info", self.address, self.port);
         let res = client
             .get(url)
@@ -158,54 +153,6 @@ struct MoneroDaemonGetInfoResponse {
     mainnet: bool,
     stagenet: bool,
     testnet: bool,
-}
-
-#[typeshare]
-#[derive(Deserialize, Serialize)]
-pub struct CheckMoneroNodeArgs {
-    pub url: String,
-    pub port: u64,
-    pub network: String
-}
-
-#[typeshare]
-#[derive(Deserialize, Serialize)]
-pub struct CheckMoneroNodeResponse {
-    pub available: bool
-}
-
-#[derive(Error, Debug)]
-#[error("this is not one of the known monero networks")]
-struct UnknownMoneroNetwork(String);
-
-impl Request for CheckMoneroNodeArgs {
-    type Response = CheckMoneroNodeResponse;
-
-    async fn request(self, _ctx: Arc<crate::cli::api::Context>) -> Result<Self::Response> {
-        let network = match self.network.to_lowercase().as_str() {
-            "stagenet" => Network::Stagenet,
-            "mainnet" => Network::Mainnet,
-            "testnet" => Network::Testnet,
-            otherwise => anyhow::bail!(UnknownMoneroNetwork(otherwise.to_string()))
-        };
-
-        static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
-            reqwest::Client::builder()
-                .timeout(Duration::from_secs(30))
-                .https_only(false)
-                .build().expect("whoops")
-        });
-    
-        let monero_daemon = MoneroDaemon::new(
-            self.url, 
-            self.port.try_into().context("Port number too large")?, 
-            network
-        );
-        
-        let available = monero_daemon.is_available(&CLIENT).await?;
-
-        Ok(CheckMoneroNodeResponse { available })
-    }
 }
 
 /// Chooses an available Monero daemon based on the specified network.
