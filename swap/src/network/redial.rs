@@ -98,6 +98,7 @@ impl NetworkBehaviour for Behaviour {
 
         if redial && self.sleep.is_none() {
             self.sleep = Some(Box::pin(tokio::time::sleep(self.backoff.initial_interval)));
+            tracing::info!(seconds_until_next_redial = %self.until_next_redial().unwrap().as_secs(), "Waiting for next redial attempt");
         }
     }
 
@@ -108,6 +109,15 @@ impl NetworkBehaviour for Behaviour {
         };
 
         futures::ready!(sleep.poll_unpin(cx));
+        
+        let next_dial_in = match self.backoff.next_backoff() {
+            Some(next_dial_in) => next_dial_in,
+            None => {
+                unreachable!("The backoff should never run out of attempts");
+            }
+        };
+
+        self.sleep = Some(Box::pin(tokio::time::sleep(next_dial_in)));
 
         Poll::Ready(ToSwarm::Dial {
             opts: DialOpts::peer_id(self.peer)

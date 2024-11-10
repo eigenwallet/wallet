@@ -90,7 +90,7 @@ impl NetworkBehaviour for Behaviour {
         &mut self,
         _cx: &mut std::task::Context<'_>,
     ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
-        // Send completed swaps to the swarm
+        // Forward completed swaps from the connection handler to the swarm
         if let Some((_peer, completed)) = self.completed_swaps.pop_front() {
             return Poll::Ready(ToSwarm::GenerateEvent(completed));
         }

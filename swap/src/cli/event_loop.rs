@@ -247,6 +247,10 @@ impl EventLoop {
                         }
                         SwarmEvent::ConnectionClosed { peer_id, endpoint, num_established, cause: Some(error), connection_id } if peer_id == self.alice_peer_id && num_established == 0 => {
                             tracing::warn!(peer_id = %endpoint.get_remote_address(), cause = %error, %connection_id, "Lost connection to Alice");
+
+                            if let Some(duration) = self.swarm.behaviour_mut().redial.until_next_redial() {
+                                tracing::info!(seconds_until_next_redial = %duration.as_secs(), "Waiting for next redial attempt");
+                            }
                         }
                         SwarmEvent::ConnectionClosed { peer_id, num_established, cause: None, .. } if peer_id == self.alice_peer_id && num_established == 0 => {
                             // no error means the disconnection was requested
