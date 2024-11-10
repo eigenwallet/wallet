@@ -64,6 +64,7 @@ impl NetworkBehaviour for Behaviour {
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
         // We establish an inbound connection to the peer we are interested in.
         // We stop re-dialling.
+        // Reset the backoff state to start with the initial interval again once we disconnect again
         if peer == self.peer {
             self.backoff.reset();
             self.sleep = None;
@@ -80,6 +81,7 @@ impl NetworkBehaviour for Behaviour {
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
         // We establish an outbound connection to the peer we are interested in.
         // We stop re-dialling.
+        // Reset the backoff state to start with the initial interval again once we disconnect again
         if peer == self.peer {
             self.backoff.reset();
             self.sleep = None;
@@ -95,7 +97,6 @@ impl NetworkBehaviour for Behaviour {
         };
 
         if redial && self.sleep.is_none() {
-            self.backoff.reset();
             self.sleep = Some(Box::pin(tokio::time::sleep(self.backoff.initial_interval)));
         }
     }
@@ -107,15 +108,6 @@ impl NetworkBehaviour for Behaviour {
         };
 
         futures::ready!(sleep.poll_unpin(cx));
-
-        let next_dial_in = match self.backoff.next_backoff() {
-            Some(next_dial_in) => next_dial_in,
-            None => {
-                unreachable!("The backoff should never run out of attempts");
-            }
-        };
-
-        self.sleep = Some(Box::pin(tokio::time::sleep(next_dial_in)));
 
         Poll::Ready(ToSwarm::Dial {
             opts: DialOpts::peer_id(self.peer)
