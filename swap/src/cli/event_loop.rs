@@ -8,7 +8,7 @@ use crate::network::swap_setup::bob::NewSwap;
 use crate::protocol::bob::swap::has_already_processed_transfer_proof;
 use crate::protocol::bob::{BobState, State2};
 use crate::protocol::Database;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use futures::future::{BoxFuture, OptionFuture};
 use futures::{FutureExt, StreamExt};
 use libp2p::request_response::{OutboundFailure, OutboundRequestId, ResponseChannel};
@@ -34,9 +34,9 @@ pub struct EventLoop {
         (),
         Result<cooperative_xmr_redeem_after_punish::Response, OutboundFailure>,
     >,
-    encrypted_signatures:
+    encrypted_signatures_requests:
         bmrng::RequestReceiverStream<EncryptedSignature, Result<(), OutboundFailure>>,
-    swap_setup_requests: bmrng::RequestReceiverStream<NewSwap, Result<State2>>,
+    execution_setup_requests: bmrng::RequestReceiverStream<NewSwap, Result<State2>>,
 
     // These represents requests that are currently in-flight.
     // Meaning that we have sent them to Alice, but we have not yet received a response.
@@ -73,9 +73,10 @@ impl EventLoop {
         alice_peer_id: PeerId,
         db: Arc<dyn Database + Send + Sync>,
     ) -> Result<(Self, EventLoopHandle)> {
-        // We still use a timeout here, as it is unclear how the the swap_setup protocol enforces timeouts
+        // We still use a timeout here, because this protocol does not dial Alice itself
+        // and we want to fail if we cannot reach Alice
         let (execution_setup_sender, execution_setup_receiver) =
-            bmrng::channel_with_timeout(1, Duration::from_secs(60));
+            bmrng::channel_with_timeout(1, Duration::from_secs(120));
 
         // It is okay to not have a timeout here, as timeouts are enforced by the request-response protocol
         let (transfer_proof_sender, transfer_proof_receiver) = bmrng::channel(1);
@@ -87,9 +88,9 @@ impl EventLoop {
             swap_id,
             swarm,
             alice_peer_id,
-            swap_setup_requests: execution_setup_receiver.into(),
+            execution_setup_requests: execution_setup_receiver.into(),
             transfer_proof_sender,
-            encrypted_signatures: encrypted_signature_receiver.into(),
+            encrypted_signatures_requests: encrypted_signature_receiver.into(),
             cooperative_xmr_redeem_requests: cooperative_xmr_redeem_receiver.into(),
             quote_requests: quote_receiver.into(),
             inflight_quote_requests: HashMap::default(),
@@ -297,17 +298,12 @@ impl EventLoop {
                     }
                 },
 
-                // Handle to-be-sent requests for all our network protocols.
-                // Use `self.is_connected_to_alice` as a guard to "buffer" requests until we are connected.
-                Some(((), responder)) = self.quote_requests.next().fuse(), if self.is_connected_to_alice() => {
+                // Handle to-be-sent outgoing requests for all our network protocols.
+                Some(((), responder)) = self.quote_requests.next().fuse() => {
                     let id = self.swarm.behaviour_mut().quote.send_request(&self.alice_peer_id, ());
                     self.inflight_quote_requests.insert(id, responder);
                 },
-                Some((swap, responder)) = self.swap_setup_requests.next().fuse(), if self.is_connected_to_alice() => {
-                    self.swarm.behaviour_mut().swap_setup.start(self.alice_peer_id, swap).await;
-                    self.inflight_swap_setup = Some(responder);
-                },
-                Some((tx_redeem_encsig, responder)) = self.encrypted_signatures.next().fuse(), if self.is_connected_to_alice() => {
+                Some((tx_redeem_encsig, responder)) = self.encrypted_signatures_requests.next().fuse() => {
                     let request = encrypted_signature::Request {
                         swap_id: self.swap_id,
                         tx_redeem_encsig
@@ -316,20 +312,32 @@ impl EventLoop {
                     let id = self.swarm.behaviour_mut().encrypted_signature.send_request(&self.alice_peer_id, request);
                     self.inflight_encrypted_signature_requests.insert(id, responder);
                 },
+                Some((_, responder)) = self.cooperative_xmr_redeem_requests.next().fuse() => {
+                    let id = self.swarm.behaviour_mut().cooperative_xmr_redeem.send_request(&self.alice_peer_id, Request {
+                        swap_id: self.swap_id
+                    });
+                    self.inflight_cooperative_xmr_redeem_requests.insert(id, responder);
+                },
 
-                Some(response_channel) = &mut self.pending_transfer_proof => {
+                // We use `self.is_connected_to_alice` as a guard to "buffer" requests until we are connected.
+                // because I don't think the protocol forces a dial to Alice.
+                // (unlike request-response above)
+                Some((swap, responder)) = self.execution_setup_requests.next().fuse(), if self.is_connected_to_alice() => {
+                    self.swarm.behaviour_mut().swap_setup.start(self.alice_peer_id, swap).await;
+                    self.inflight_swap_setup = Some(responder);
+                },
+
+                // Send an acknowledgement to Alice once the EventLoopHandle has processed a received transfer proof
+                // We use `self.is_connected_to_alice` as a guard to "buffer" requests until we are connected.
+                //
+                // Why do we do this here but not for the other request-response channels?
+                // This is the only request, we don't have a retry mechanism for. We lazily send this.
+                Some(response_channel) = &mut self.pending_transfer_proof, if self.is_connected_to_alice() => {
                     if self.swarm.behaviour_mut().transfer_proof.send_response(response_channel, ()).is_err() {
                         tracing::warn!("Failed to send acknowledgment to Alice that we have received the transfer proof");
                     } else {
                         self.pending_transfer_proof = OptionFuture::from(None);
                     }
-                },
-
-                Some((_, responder)) = self.cooperative_xmr_redeem_requests.next().fuse(), if self.is_connected_to_alice() => {
-                    let id = self.swarm.behaviour_mut().cooperative_xmr_redeem.send_request(&self.alice_peer_id, Request {
-                        swap_id: self.swap_id
-                    });
-                    self.inflight_cooperative_xmr_redeem_requests.insert(id, responder);
                 },
             }
         }
@@ -378,8 +386,39 @@ pub struct EventLoopHandle {
 }
 
 impl EventLoopHandle {
+    fn create_retry_config(max_elapsed_time: Duration) -> backoff::ExponentialBackoff {
+        backoff::ExponentialBackoffBuilder::new()
+            .with_max_elapsed_time(max_elapsed_time.into())
+            .with_max_interval(Duration::from_secs(5))
+            .build()
+    }
+
     pub async fn setup_swap(&mut self, swap: NewSwap) -> Result<State2> {
-        self.execution_setup_sender.send_receive(swap).await?
+        tracing::debug!(swap = ?swap, "Sending swap setup request");
+
+        let backoff = Self::create_retry_config(Duration::from_secs(60));
+
+        backoff::future::retry(backoff, || async {
+            match self.execution_setup_sender.send_receive(swap.clone()).await {
+                Ok(Ok(state2)) => Ok(state2),
+                // These are errors thrown by the swap_setup/bob behaviour
+                Ok(Err(err)) => {
+                    tracing::warn!(%err, "Failed to setup swap. Will retry");
+                    Err(backoff::Error::transient(err))
+                }
+                // This will happen if we don't establish a connection to Alice within the timeout of the MPSC channel
+                // The protocol does not dial Alice it self
+                // This is handled by redial behaviour
+                Err(bmrng::error::RequestError::RecvTimeoutError) => {
+                    Err(backoff::Error::permanent(anyhow!("We failed to setup the swap in the allotted time by the event loop channel")))
+                }
+                Err(_) => {
+                    unreachable!("We never drop the receiver of the execution setup channel, so this should never happen")
+                }
+            }
+        })
+        .await
+        .context("Failed to setup swap after retries")
     }
 
     pub async fn recv_transfer_proof(&mut self) -> Result<monero::TransferProof> {
@@ -398,25 +437,52 @@ impl EventLoopHandle {
 
     pub async fn request_quote(&mut self) -> Result<BidQuote> {
         tracing::debug!("Requesting quote");
-        self.quote_sender
-            .send_receive(())
-            .await
-            .context("Failed to receive quote through event loop channel")?
-            .context("Failed to request quote due to a network error")
+
+        let backoff = Self::create_retry_config(Duration::from_secs(60));
+
+        backoff::future::retry(backoff, || async {
+            match self.quote_sender.send_receive(()).await {
+                Ok(Ok(quote)) => Ok(quote),
+                Ok(Err(err)) => {
+                    tracing::warn!(%err, "Failed to request quote due to network error. Will retry");
+                    Err(backoff::Error::transient(err))
+                }
+                Err(_) => {
+                    unreachable!("We initiate the quote channel without a timeout and store both the sender and receiver in the same struct, so this should never happen");
+                }
+            }
+        })
+        .await
+        .context("Failed to request quote after retries")
     }
 
     pub async fn request_cooperative_xmr_redeem(&mut self) -> Result<Response> {
-        self.cooperative_xmr_redeem_sender
-            .send_receive(())
-            .await
-            .context("Failed to request cooperative XMR redeem through event loop channel")?
-            .context("Failed to request cooperative XMR redeem due to a network error")
+        tracing::debug!("Requesting cooperative XMR redeem");
+
+        let backoff = Self::create_retry_config(Duration::from_secs(60));
+
+        backoff::future::retry(backoff, || async {
+            match self.cooperative_xmr_redeem_sender.send_receive(()).await {
+                Ok(Ok(response)) => Ok(response),
+                Ok(Err(err)) => {
+                    tracing::warn!(%err, "Failed to request cooperative XMR redeem due to network error. Will retry");
+                    Err(backoff::Error::transient(err))
+                }
+                Err(_) => {
+                    unreachable!("We initiate the cooperative xmr redeem channel without a timeout and store both the sender and receiver in the same struct, so this should never happen");
+                }
+            }
+        })
+        .await
+        .context("Failed to request cooperative XMR redeem after retries")
     }
 
     pub async fn send_encrypted_signature(
         &mut self,
         tx_redeem_encsig: EncryptedSignature,
     ) -> Result<()> {
+        tracing::debug!("Sending encrypted signature");
+
         // We will retry indefinitely until we succeed
         let backoff = backoff::ExponentialBackoffBuilder::new()
             .with_max_elapsed_time(None)
@@ -425,23 +491,17 @@ impl EventLoopHandle {
 
         backoff::future::retry(backoff, || async {
             match self.encrypted_signature_sender.send_receive(tx_redeem_encsig.clone()).await {
-                    Ok(Ok(_)) => Ok(()),
-                    Ok(Err(err)) => {
-                        tracing::warn!(%err, "Failed to send encrypted signature due to a network error. Will retry");
-                        Err(backoff::Error::transient(anyhow::anyhow!(err)))
-                    }
-                    Err(bmrng::error::RequestError::RecvTimeoutError) => {
-                        unreachable!("We construct the channel without a timeout, so this should never happen")
-                    }
-                    Err(err) => {
-                        // The MSCP channel has failed. We do not retry this because this error means that either the channel was closed or the receiver has been dropped.
-                        // Both of these cases are permanent and we should not retry.
-                        // TODO(Libp2p Migration): Is this correct?
-                        tracing::error!(%err, "Failed to communicate transfer proof through event loop channel. We will not retry.");
-                        Err(backoff::Error::permanent(anyhow::anyhow!(err).context("Failed to communicate transfer proof through event loop channel")))
-                    }
+                Ok(Ok(_)) => Ok(()),
+                Ok(Err(err)) => {
+                    tracing::warn!(%err, "Failed to send encrypted signature due to a network error. Will retry");
+                    Err(backoff::Error::transient(err))
                 }
-            })
-            .await
+                Err(_) => {
+                    unreachable!("We initiate the encrypted signature channel without a timeout and store both the sender and receiver in the same struct, so this should never happen");
+                }
+            }
+        })
+        .await
+        .context("Failed to send encrypted signature after retries")
     }
 }

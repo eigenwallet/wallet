@@ -70,7 +70,7 @@ where
     /// 2. Event loop receives and attempts to send to peer
     /// 3. Result (Ok or network failure) is sent back to EventLoopHandle
     #[allow(clippy::type_complexity)]
-    outgoing_transfer_proofs_receiver: tokio::sync::mpsc::UnboundedReceiver<(
+    outgoing_transfer_proofs_requests: tokio::sync::mpsc::UnboundedReceiver<(
         PeerId,
         transfer_proof::Request,
         oneshot::Sender<Result<(), OutboundFailure>>,
@@ -85,7 +85,7 @@ where
     /// Temporarily stores transfer proof requests for peers that are currently disconnected.
     ///
     /// When a transfer proof cannot be sent because there's no connection to the peer:
-    /// 1. It is moved from [`outgoing_transfer_proofs_receiver`] to this buffer
+    /// 1. It is moved from [`outgoing_transfer_proofs_requests`] to this buffer
     /// 2. Once a connection is established with the peer, the proof is send back into the [`outgoing_transfer_proofs_sender`]
     /// 3. The buffered request is then removed from this collection
     #[allow(clippy::type_complexity)]
@@ -125,7 +125,7 @@ where
         external_redeem_address: Option<bitcoin::Address>,
     ) -> Result<(Self, mpsc::Receiver<Swap>)> {
         let swap_channel = MpscChannels::default();
-        let (outgoing_transfer_proofs_sender, outgoing_transfer_proofs_receiver) =
+        let (outgoing_transfer_proofs_sender, outgoing_transfer_proofs_requests) =
             tokio::sync::mpsc::unbounded_channel();
 
         let event_loop = EventLoop {
@@ -141,7 +141,7 @@ where
             external_redeem_address,
             recv_encrypted_signature: Default::default(),
             inflight_encrypted_signatures: Default::default(),
-            outgoing_transfer_proofs_receiver,
+            outgoing_transfer_proofs_requests,
             outgoing_transfer_proofs_sender,
             buffered_transfer_proofs: Default::default(),
             inflight_transfer_proofs: Default::default(),
@@ -438,7 +438,7 @@ where
                         _ => {}
                     }
                 },
-                Some((peer, transfer_proof, responder)) = self.outgoing_transfer_proofs_receiver.recv() => {
+                Some((peer, transfer_proof, responder)) = self.outgoing_transfer_proofs_requests.recv() => {
                     // If we are not connected to the peer, we buffer the transfer proof
                     if !self.swarm.behaviour_mut().transfer_proof.is_connected(&peer) {
                         tracing::warn!(%peer, "No active connection to peer, buffering transfer proof");

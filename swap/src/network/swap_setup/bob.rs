@@ -132,7 +132,7 @@ impl Handler {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NewSwap {
     pub swap_id: Uuid,
     pub btc: bitcoin::Amount,
