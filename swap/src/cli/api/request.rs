@@ -1,5 +1,5 @@
 use super::tauri_bindings::TauriHandle;
-use crate::bitcoin::{CancelTimelock, ExpiredTimelocks, PunishTimelock, TxLock};
+use crate::bitcoin::{wallet, CancelTimelock, ExpiredTimelocks, PunishTimelock, TxLock};
 use crate::cli::api::tauri_bindings::{TauriEmitter, TauriSwapProgressEvent};
 use crate::cli::api::Context;
 use crate::cli::{list_sellers as list_sellers_impl, EventLoop, Seller, SellerStatus};
@@ -1316,5 +1316,32 @@ impl Request for CheckMoneroNodeArgs {
         let available = monero_daemon.is_available(&CLIENT).await?;
 
         Ok(CheckMoneroNodeResponse { available })
+    }
+}
+
+#[typeshare]
+#[derive(Deserialize, Clone)]
+pub struct CheckElectrumNodeArgs {
+    pub url: String,
+}
+
+#[typeshare]
+#[derive(Serialize, Clone)]
+pub struct CheckElectrumNodeResponse {
+    pub available: bool,
+}
+
+impl Request for CheckElectrumNodeArgs {
+    type Response = CheckElectrumNodeResponse;
+
+    async fn request(self, _ctx: Arc<crate::cli::api::Context>) -> Result<Self::Response> {
+
+        let Ok(url) = self.url.parse() else {
+            return Ok(CheckElectrumNodeResponse { available: false });
+        };
+        let res = wallet::Client::new(url, Duration::from_secs(10));
+
+        tracing::debug!(url=%&self.url, online=res.is_ok(), "Checking Electrum node availability");
+        Ok(CheckElectrumNodeResponse { available: res.is_ok() })
     }
 }

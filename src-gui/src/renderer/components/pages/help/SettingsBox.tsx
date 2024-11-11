@@ -10,6 +10,14 @@ import {
   makeStyles,
   Tooltip,
   Switch,
+  Select,
+  MenuItem,
+  TableHead,
+  Paper,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogActions,
 } from "@material-ui/core";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import {
@@ -30,10 +38,12 @@ import { useAppDispatch, useAppSelector, useNodes, useSettings } from "store/hoo
 import ValidatedTextField from "renderer/components/other/ValidatedTextField";
 import RefreshIcon from "@material-ui/icons/Refresh";
 import HelpIcon from '@material-ui/icons/HelpOutline';
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState, useMemo } from "react";
 import { Theme } from "renderer/components/theme";
 import { getNetwork } from "store/config";
-import { Add, Check, Clear, Delete, VisibilityOffRounded, VisibilityRounded } from "@material-ui/icons";
+import { Add, ArrowUpward, Check, Clear, Delete, HourglassEmpty, VisibilityOffRounded, VisibilityRounded } from "@material-ui/icons";
+import { updateAllNodeStatuses } from "renderer/rpc";
+import { current } from "@reduxjs/toolkit";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -109,19 +119,19 @@ function ElectrumRpcUrlSetting() {
       </TableCell>
       <TableCell>
         <IconButton 
-            onClick={() => setTableVisible(!tableVisible)}
+            onClick={() => setTableVisible(true)}
           >
-            {tableVisible ? <VisibilityOffRounded /> : <VisibilityRounded />}
+            {<VisibilityRounded />}
           </IconButton>
         </TableCell>
-        <TableCell>
-          {tableVisible ? <NodeTable
+          {tableVisible ? <NodeTableModal
+            open={tableVisible}
+            onClose={() => setTableVisible(false)}
             network={network}
             blockchain={Blockchain.Bitcoin}
             isValid={isValid}
             placeholder={PLACEHOLDER_ELECTRUM_RPC_URL}
           /> : <></>}
-        </TableCell>
     </TableRow>
   );
 }
@@ -201,6 +211,33 @@ function ThemeSetting() {
   );
 }
 
+function NodeTableModal({
+  open,
+  onClose,
+  network,
+  isValid,
+  placeholder,
+  blockchain
+}: {
+  network: Network;
+  blockchain: Blockchain;
+  isValid: (url: string) => boolean;
+  placeholder: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onClose={onClose}>
+      <DialogContent>
+        <NodeTable network={network} blockchain={blockchain} isValid={isValid} placeholder={placeholder} />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} size="large">Close</Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
+
 function NodeTable({
   network,
   blockchain,
@@ -214,31 +251,41 @@ function NodeTable({
 }) {
   const availableNodes = useSettings((s) => s.nodes[network][blockchain]);
   const currentNode = useSettings((s) => s.nodes[network][blockchain][0]);
+  const statuses = useNodes((s) => s.nodes);
   const dispatch = useAppDispatch();
+  
+  const statusIcon = useMemo(() => (node: string) => {
+    switch (statuses[node]) {
+      case true:
+        return <Tooltip title={"This node is available and responding to RPC requests"}>
+          <Check color="secondary"/>
+        </Tooltip>;
+      case false:
+        return <Tooltip title={"This node is not available or not responding to RPC requests"}>
+          <Clear color="secondary"/>
+        </Tooltip>;
+      default:
+        console.log(`Unknown status for node ${node}: ${statuses[node]}`);
+        return <Tooltip title={"The status of this node is currently unknown"}>
+          <HourglassEmpty />
+        </Tooltip>;
+    }
+  }, [statuses]);
 
   const [newNode, setNewNode] = useState("");
 
-  const statuses = useNodes((s) => s.nodes);
-  const statusIcon = (node: string) => {
-    let icon;
+  useEffect(() => {
+    updateAllNodeStatuses();
+    
+    const interval = setInterval(() => {
+      updateAllNodeStatuses();
+    }, 15_000);
 
-    switch (statuses[node]) {
-      case true:
-        icon = <Check color="secondary"/>;
-        break;
-      case false:
-        icon = <Clear color="secondary"/>;
-        break;
-      case undefined:
-        icon = <></>;
-        break;
-    }
-
-    return icon;
-  }
+    return () => clearInterval(interval);
+  }, []);
 
   return (
-    <TableContainer component={Paper} style={{ marginTop: '1rem' }}>
+    <TableContainer component={Paper} style={{ marginTop: '1rem' }} elevation={0}>
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -251,23 +298,34 @@ function NodeTable({
         <TableBody>
           {availableNodes.map((node, index) => (
             <TableRow key={index}>
-              <TableCell>{currentNode === node ? <Check color="secondary"/> : <></>}</TableCell>
-              <TableCell>{node}</TableCell>
+              <TableCell>{currentNode === node ? 
+                <Tooltip title={"This is the node that the GUI connect to when starting"}>
+                  <Check />
+                </Tooltip> : <></>}</TableCell>
+              <TableCell>
+                {currentNode === node ? <Typography variant="overline" color="secondary">{node}</Typography> : <Typography variant="overline">{node}</Typography>}
+              </TableCell>
               <TableCell>{statusIcon(node)}</TableCell>
               <TableCell>
-                <IconButton onClick={async () => {
-                  while (currentNode !== node) {
+                <Tooltip title={"Move this node to the top of the list"}>
+                  <IconButton onClick={async () => {
+                    while (currentNode !== node) {
                     dispatch(moveUpNode({ network, type: blockchain, node }));
                     await new Promise((resolve) => setTimeout(resolve, 50));
                   } 
                 }}>
-                  <Check />
+                  <ArrowUpward />
                 </IconButton>
-                <IconButton onClick={() => {
-                  dispatch(removeNode({ network, type: blockchain, node }));
-                }}>
-                  <Delete />
-                </IconButton>
+                </Tooltip>
+                <Tooltip title={"Remove this node from your list"}>
+                  <IconButton 
+                    onClick={() => {
+                      dispatch(removeNode({ network, type: blockchain, node }));
+                    }}
+                  >
+                    <Delete />
+                  </IconButton>
+                </Tooltip>
               </TableCell>
             </TableRow>
           ))}
@@ -275,13 +333,14 @@ function NodeTable({
             <TableCell></TableCell>
             <TableCell>
               <ValidatedTextField
-                label="new node"
+                label="Add a new node"
                 value={newNode}
                 onValidatedChange={setNewNode}
                 placeholder={placeholder}
                 fullWidth
                 allowEmpty 
                 isValid={isValid}
+                variant="outlined"
               />
             </TableCell>
             <TableCell></TableCell>

@@ -24,6 +24,8 @@ import {
   ExportBitcoinWalletResponse,
   CheckMoneroNodeArgs,
   CheckMoneroNodeResponse,
+  CheckElectrumNodeArgs,
+  CheckElectrumNodeResponse,
 } from "models/tauriModel";
 import {
   contextStatusEventReceived,
@@ -41,6 +43,7 @@ import { ListSellersResponse } from "../models/tauriModel";
 import logger from "utils/logger";
 import { getNetwork, getNetworkName, isTestnet } from "store/config";
 import { Blockchain, Network } from "store/features/settingsSlice";
+import { resetStatuses, setStatus } from "store/features/nodesSlice";
 
 export async function initEventListeners() {
   // This operation is in-expensive
@@ -254,4 +257,38 @@ export async function getMoneroNodeStatus(node: string): Promise<boolean> {
   });
 
   return response.available;
+}
+
+export async function getElectrumNodeStatus(url: string): Promise<boolean> {
+  const response = await invoke<CheckElectrumNodeArgs, CheckElectrumNodeResponse>("check_electrum_node", {
+    url,
+  });
+
+  return response.available;
+}
+
+export async function getNodeStatus(url: string, blockchain: Blockchain): Promise<boolean> {
+  switch (blockchain) {
+    case Blockchain.Monero: return await getMoneroNodeStatus(url);
+    case Blockchain.Bitcoin: return await getElectrumNodeStatus(url);
+    default: throw new Error(`Unknown blockchain: ${blockchain}`);
+  }
+}
+
+export async function updateAllNodeStatuses() {
+  const network = getNetwork();
+  const settings = store.getState().settings;
+
+  store.dispatch(resetStatuses())
+
+  // For all nodes, check if they are available and update the status (in parallel)
+  await Promise.all(
+    Object.values(Blockchain).flatMap(blockchain =>
+      settings.nodes[network][blockchain].map(async node => {
+        const status = await getNodeStatus(node, blockchain);
+        console.log(`Node ${node} is ${status ? "available" : "unavailable"}`);
+        store.dispatch(setStatus({ node, status, blockchain }));
+      })
+    )
+  );
 }

@@ -23,6 +23,8 @@ const nodesSlice = createSlice({
       status: boolean,
       blockchain: Blockchain,
     }>) {
+      console.log(`Setting status for ${action.payload.node} to ${action.payload.status}`);
+
       slice.nodes[action.payload.blockchain][action.payload.node] = action.payload.status;
     },
     resetStatuses(slice) {
