@@ -11,7 +11,7 @@ const darkTheme = createTheme({
   palette: {
     type: "dark",
     primary: {
-      main: "#f4511e",
+      main: "#f4511e", // Monero orange
     },
     secondary: indigo,
   },
@@ -27,6 +27,10 @@ const lightTheme = createTheme({
   ...darkTheme,
   palette: {
     type: "light",
+    primary: {
+      main: "#f4511e", // Monero orange
+    },
+    secondary: indigo,
   },
 });
 

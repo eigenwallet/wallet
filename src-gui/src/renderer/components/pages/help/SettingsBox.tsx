@@ -19,6 +19,7 @@ import {
   DialogContent,
   DialogActions,
   DialogTitle,
+  useTheme,
 } from "@material-ui/core";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import {
@@ -60,6 +61,7 @@ const useStyles = makeStyles((theme) => ({
 export default function SettingsBox() {
   const dispatch = useAppDispatch();
   const classes = useStyles();
+  const theme = useTheme();
   
   return (
     <InfoBox
@@ -77,14 +79,26 @@ export default function SettingsBox() {
         </Box>
       }
       additionalContent={
-        <TableContainer>
-          <Table>
-            <TableBody>
-              <ElectrumRpcUrlSetting />
-              <MoneroNodeUrlSetting />
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <>
+          <TableContainer>
+            <Table>
+              <TableBody>
+                <ElectrumRpcUrlSetting />
+                <MoneroNodeUrlSetting />
+                <ThemeSetting />
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Box mt={theme.spacing(0.1)} />
+          <Button 
+            onClick={() => {
+              dispatch(resetSettings());
+            }}
+            variant="outlined"
+          >
+            Reset Settings
+          </Button>
+        </>
       }
       mainContent={
         <Typography variant="subtitle2">
@@ -196,9 +210,12 @@ function ThemeSetting() {
     <TableRow>
       <TableCell>
         <SettingLabel label="Theme" tooltip="This is the theme of the GUI." />
+      </TableCell>
+      <TableCell>
         <Select 
           value={theme} 
           onChange={(e) => dispatch(setTheme(e.target.value as Theme))}
+          variant="outlined"
         >
           {/** Create an option for each theme variant */}
           {Object.values(Theme).map((themeValue) => (
@@ -260,7 +277,7 @@ function NodeTable({
   const statuses = useNodes((s) => s.nodes);
   console.log(`Statuses`, statuses);
   const dispatch = useAppDispatch();
-  
+  const theme = useTheme();
   const circle = (color: string) => <svg width="12" height="12" viewBox="0 0 12 12">
     <circle cx="6" cy="6" r="6" fill={color} />
   </svg>;
@@ -269,11 +286,11 @@ function NodeTable({
     switch (statuses[blockchain][node]) {
       case true:
         return <Tooltip title={"This node is available and responding to RPC requests"}>
-          {circle("#4caf50")}
+          {circle(theme.palette.success.dark)}
         </Tooltip>;
       case false:
         return <Tooltip title={"This node is not available or not responding to RPC requests"}>
-          {circle("#f44336")}
+          {circle(theme.palette.error.dark)}
         </Tooltip>;
       default:
         console.log(`Unknown status for node ${node}: ${statuses[node]}`);
