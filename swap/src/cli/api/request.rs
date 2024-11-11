@@ -1335,13 +1335,14 @@ impl Request for CheckElectrumNodeArgs {
     type Response = CheckElectrumNodeResponse;
 
     async fn request(self, _ctx: Arc<crate::cli::api::Context>) -> Result<Self::Response> {
-
+        // Check if the URL is valid
         let Ok(url) = self.url.parse() else {
             return Ok(CheckElectrumNodeResponse { available: false });
         };
+
+        // Check if the node is available
         let res = wallet::Client::new(url, Duration::from_secs(10));
 
-        tracing::debug!(url=%&self.url, online=res.is_ok(), "Checking Electrum node availability");
         Ok(CheckElectrumNodeResponse { available: res.is_ok() })
     }
 }

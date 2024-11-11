@@ -250,19 +250,20 @@ function NodeTable({
   placeholder: string,
 }) {
   const availableNodes = useSettings((s) => s.nodes[network][blockchain]);
-  const currentNode = useSettings((s) => s.nodes[network][blockchain][0]);
+  const currentNode = availableNodes[0];
   const statuses = useNodes((s) => s.nodes);
+  console.log(`Statuses`, statuses);
   const dispatch = useAppDispatch();
   
   const statusIcon = useMemo(() => (node: string) => {
-    switch (statuses[node]) {
+    switch (statuses[blockchain][node]) {
       case true:
         return <Tooltip title={"This node is available and responding to RPC requests"}>
-          <Check color="secondary"/>
+          <Check color="primary"/>
         </Tooltip>;
       case false:
         return <Tooltip title={"This node is not available or not responding to RPC requests"}>
-          <Clear color="secondary"/>
+          <Clear color="primary"/>
         </Tooltip>;
       default:
         console.log(`Unknown status for node ${node}: ${statuses[node]}`);

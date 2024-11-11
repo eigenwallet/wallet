@@ -279,14 +279,11 @@ export async function updateAllNodeStatuses() {
   const network = getNetwork();
   const settings = store.getState().settings;
 
-  store.dispatch(resetStatuses())
-
   // For all nodes, check if they are available and update the status (in parallel)
   await Promise.all(
     Object.values(Blockchain).flatMap(blockchain =>
       settings.nodes[network][blockchain].map(async node => {
         const status = await getNodeStatus(node, blockchain);
-        console.log(`Node ${node} is ${status ? "available" : "unavailable"}`);
         store.dispatch(setStatus({ node, status, blockchain }));
       })
     )
