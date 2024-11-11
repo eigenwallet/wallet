@@ -18,6 +18,7 @@ import {
   Dialog,
   DialogContent,
   DialogActions,
+  DialogTitle,
 } from "@material-ui/core";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import {
@@ -228,7 +229,12 @@ function NodeTableModal({
 }) {
   return (
     <Dialog open={open} onClose={onClose}>
+      <DialogTitle>Available Nodes</DialogTitle>
       <DialogContent>
+        <Typography variant="subtitle2">
+          When the daemon is started, it will attempt to connect to the first node in this list.
+          If you leave this field empty, it will choose from a list of known nodes at random.
+        </Typography>
         <NodeTable network={network} blockchain={blockchain} isValid={isValid} placeholder={placeholder} />
       </DialogContent>
       <DialogActions>
@@ -255,15 +261,19 @@ function NodeTable({
   console.log(`Statuses`, statuses);
   const dispatch = useAppDispatch();
   
+  const circle = (color: string) => <svg width="12" height="12" viewBox="0 0 12 12">
+    <circle cx="6" cy="6" r="6" fill={color} />
+  </svg>;
+
   const statusIcon = useMemo(() => (node: string) => {
     switch (statuses[blockchain][node]) {
       case true:
         return <Tooltip title={"This node is available and responding to RPC requests"}>
-          <Check color="primary"/>
+          {circle("#4caf50")}
         </Tooltip>;
       case false:
         return <Tooltip title={"This node is not available or not responding to RPC requests"}>
-          <Clear color="primary"/>
+          {circle("#f44336")}
         </Tooltip>;
       default:
         console.log(`Unknown status for node ${node}: ${statuses[node]}`);
@@ -274,6 +284,11 @@ function NodeTable({
   }, [statuses]);
 
   const [newNode, setNewNode] = useState("");
+
+  const addNewNode = () => {
+    dispatch(addNode({ network, type: blockchain, node: newNode }));
+    setNewNode("");
+  }
 
   useEffect(() => {
     updateAllNodeStatuses();
@@ -290,34 +305,19 @@ function NodeTable({
       <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell>Active</TableCell>
-            <TableCell>Available Nodes</TableCell>
-            <TableCell>Status</TableCell>
-            <TableCell>Actions</TableCell>
+            <TableCell align="center">Node URL</TableCell>
+            <TableCell align="center">Status</TableCell>
+            <TableCell align="center">Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {availableNodes.map((node, index) => (
             <TableRow key={index}>
-              <TableCell>{currentNode === node ? 
-                <Tooltip title={"This is the node that the GUI connect to when starting"}>
-                  <Check />
-                </Tooltip> : <></>}</TableCell>
               <TableCell>
-                {currentNode === node ? <Typography variant="overline" color="secondary">{node}</Typography> : <Typography variant="overline">{node}</Typography>}
+                <Typography variant="overline">{node}</Typography>
               </TableCell>
-              <TableCell>{statusIcon(node)}</TableCell>
+              <TableCell align="center">{statusIcon(node)}</TableCell>
               <TableCell>
-                <Tooltip title={"Move this node to the top of the list"}>
-                  <IconButton onClick={async () => {
-                    while (currentNode !== node) {
-                    dispatch(moveUpNode({ network, type: blockchain, node }));
-                    await new Promise((resolve) => setTimeout(resolve, 50));
-                  } 
-                }}>
-                  <ArrowUpward />
-                </IconButton>
-                </Tooltip>
                 <Tooltip title={"Remove this node from your list"}>
                   <IconButton 
                     onClick={() => {
@@ -327,11 +327,20 @@ function NodeTable({
                     <Delete />
                   </IconButton>
                 </Tooltip>
+                { currentNode !== node ? <Tooltip title={"Move this node to the top of the list"}>
+                  <IconButton onClick={async () => {
+                    while (currentNode !== node) {
+                      dispatch(moveUpNode({ network, type: blockchain, node }));
+                      await new Promise((resolve) => setTimeout(resolve, 50));
+                    } 
+                  }}>
+                    <ArrowUpward />
+                  </IconButton>
+                </Tooltip> : <></>}
               </TableCell>
             </TableRow>
           ))}
           <TableRow key={-1}>
-            <TableCell></TableCell>
             <TableCell>
               <ValidatedTextField
                 label="Add a new node"
@@ -342,16 +351,19 @@ function NodeTable({
                 allowEmpty 
                 isValid={isValid}
                 variant="outlined"
+                onKeyUp={(e) => {
+                  if (e.key === 'Enter' && newNode)
+                    addNewNode();
+                }}
               />
             </TableCell>
             <TableCell></TableCell>
             <TableCell>
-              <IconButton onClick={() => {
-                dispatch(addNode({ network, type: blockchain, node: newNode }));
-                setNewNode("");
-              }}>
-                <Add />
-              </IconButton>
+              <Tooltip title={"Add this node to your list"}>
+                <IconButton onClick={addNewNode}>
+                  <Add />
+                </IconButton>
+              </Tooltip>
             </TableCell>
           </TableRow>
         </TableBody>
