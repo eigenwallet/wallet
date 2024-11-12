@@ -1,6 +1,6 @@
 import { Box, makeStyles } from "@material-ui/core";
 import { useSwapInfosSortedByDate } from "store/hooks";
-import SwapStatusAlert from "./SwapStatusAlert";
+import SwapStatusAlert from "./SwapStatusAlert/SwapStatusAlert";
 
 const useStyles = makeStyles((theme) => ({
   outer: {
