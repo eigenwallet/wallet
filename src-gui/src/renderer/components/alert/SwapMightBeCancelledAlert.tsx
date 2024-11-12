@@ -1,7 +1,7 @@
 import { makeStyles } from "@material-ui/core";
 import { Alert, AlertTitle } from "@material-ui/lab";
 import { useActiveSwapInfo } from "store/hooks";
-import { TimelockStatusAlert, TimelockTimeline } from "./SwapStatusAlert/SwapStatusAlert";
+import { StateAlert, TimelockTimeline } from "./SwapStatusAlert/SwapStatusAlert";
 
 const useStyles = makeStyles((theme) => ({
   outer: {
@@ -36,7 +36,7 @@ export default function SwapMightBeCancelledAlert() {
       <AlertTitle>
         The swap has been running for a while
       </AlertTitle>
-      <TimelockStatusAlert swap={swapInfo} />
+      <StateAlert swap={swapInfo} />
       <TimelockTimeline timelock={swapInfo.timelock} swap={swapInfo} />
     </Alert>
   );

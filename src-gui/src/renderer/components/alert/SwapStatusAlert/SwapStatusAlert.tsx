@@ -32,9 +32,6 @@ const useStyles = makeStyles({
   alertMessage: {
     flexGrow: 1,
   },
-  overlayedProgressBar: {
-    borderRadius: 0,
-  },
 });
 
 /**
@@ -151,7 +148,7 @@ function ImmediateActionAlert() {
  * @param swap - The swap information.
  * @returns JSX.Element | null
  */
-export function TimelockStatusAlert({ swap }: { swap: GetSwapInfoResponseExtRunningSwap }) {
+export function StateAlert({ swap }: { swap: GetSwapInfoResponseExtRunningSwap }) {
   switch (swap.state_name) {
     // This is the state where the swap is safe because the other party has redeemed the Bitcoin
     // It cannot be punished anymore
@@ -210,13 +207,12 @@ export default function SwapStatusAlert({
 }): JSX.Element | null {
   const classes = useStyles();
 
-  // If the swap is completed, there is no need to display the alert
-  // TODO: Here we should also check if the swap is in a state where any funds can be lost
-  // TODO: If the no Bitcoin have been locked yet, we can safely ignore the swap
+  // If the swap is completed, we do not need to display anything
   if (!isGetSwapInfoResponseRunningSwap(swap)) {
     return null;
   }
 
+  // If we don't have a timelock for the swap, we cannot display the alert
   if (!isGetSwapInfoResponseWithTimelock(swap)) {
     return null;
   }
@@ -225,15 +221,15 @@ export default function SwapStatusAlert({
     <Alert
       key={swap.swap_id}
       severity="warning"
-      action={<SwapResumeButton swap={swap}>Resume Swap</SwapResumeButton>}
+      action={<SwapResumeButton swap={swap}>Resume</SwapResumeButton>}
       variant="filled"
       classes={{ message: classes.alertMessage }}
     >
       <AlertTitle>
         Swap <TruncatedText>{swap.swap_id}</TruncatedText> is unfinished
       </AlertTitle>
-      <Box>
-        <TimelockStatusAlert swap={swap} />
+      <Box className={classes.box}>
+        <StateAlert swap={swap} />
         <TimelockTimeline swap={swap} />
       </Box>
     </Alert>

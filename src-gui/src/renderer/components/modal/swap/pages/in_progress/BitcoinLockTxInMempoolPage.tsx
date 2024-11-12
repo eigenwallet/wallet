@@ -2,7 +2,6 @@ import { Box, DialogContentText } from "@material-ui/core";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import SwapMightBeCancelledAlert from "../../../../alert/SwapMightBeCancelledAlert";
 import BitcoinTransactionInfoBox from "../../BitcoinTransactionInfoBox";
-import { Alert } from "@material-ui/lab";
 
 export default function BitcoinLockTxInMempoolPage({
   btc_lock_confirmations,
@@ -14,11 +13,11 @@ export default function BitcoinLockTxInMempoolPage({
       flexDirection: "column",
       gap: "1rem",
     }}>
-      <Alert severity="info">
+      <DialogContentText>
         The Bitcoin lock transaction has been published. The swap will proceed
         once the transaction is confirmed and the swap provider locks their
         Monero.
-      </Alert>
+      </DialogContentText>
       <SwapMightBeCancelledAlert />
       <BitcoinTransactionInfoBox
         title="Bitcoin Lock Transaction"
