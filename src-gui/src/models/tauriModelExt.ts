@@ -67,7 +67,11 @@ export type BobStateNameRunningSwap = Exclude<
 >;
 
 export type GetSwapInfoResponseExtRunningSwap = GetSwapInfoResponseExt & {
-  stateName: BobStateNameRunningSwap;
+  state_name: BobStateNameRunningSwap;
+};
+
+export type GetSwapInfoResponseExtWithTimelock = GetSwapInfoResponseExt & {
+  timelock: ExpiredTimelocks;
 };
 
 export function isBobStateNameRunningSwap(
@@ -173,4 +177,15 @@ export function isGetSwapInfoResponseRunningSwap(
   response: GetSwapInfoResponseExt,
 ): response is GetSwapInfoResponseExtRunningSwap {
   return isBobStateNameRunningSwap(response.state_name);
+}
+
+/**
+ * Type guard for GetSwapInfoResponseExt to ensure timelock is not null
+ * @param response The swap info response to check
+ * @returns True if the timelock exists, false otherwise
+ */
+export function isGetSwapInfoResponseWithTimelock(
+  response: GetSwapInfoResponseExt
+): response is GetSwapInfoResponseExtWithTimelock {
+  return response.timelock !== null;
 }

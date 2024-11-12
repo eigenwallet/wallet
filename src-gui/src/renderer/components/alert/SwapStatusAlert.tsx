@@ -5,7 +5,9 @@ import {
   BobStateName,
   getAbsoluteBlock,
   GetSwapInfoResponseExt,
+  GetSwapInfoResponseExtRunningSwap,
   isGetSwapInfoResponseRunningSwap,
+  isGetSwapInfoResponseWithTimelock,
   TimelockCancel,
   TimelockNone,
 } from "models/tauriModelExt";
@@ -67,9 +69,9 @@ function BitcoinRedeemedStateAlert({ swap }: { swap: GetSwapInfoResponseExt; }) 
       <MessageList
         messages={[
           "The Bitcoin has been redeemed by the other party",
-          "There is no risk of losing funds. You can take your time",
-          "The Monero will be automatically redeemed to the address you provided as soon as you resume the swap",
-          "If this step fails, you can manually redeem the funds",
+          "There is no risk of losing funds. Take as much time as you need",
+          "The Monero will automatically be redeemed to your provided address once you resume the swap",
+          "If this step fails, you can manually redeem your funds",
         ]} />
       <SwapMoneroRecoveryButton swap={swap} size="small" variant="contained" />
     </Box>
@@ -126,8 +128,8 @@ function BitcoinPossiblyCancelledAlert({
     <Box className={classes.box}>
       <MessageList
         messages={[
-          "The swap was cancelled because it did not complete in time",
-          "You must resume the swap immediately to refund your Bitcoin",
+          "The swap has been cancelled because it was not completed in time",
+          "You must resume the swap immediately to get your Bitcoin refunded",
           <>
             You might lose your funds if you do not refund within{" "}
             <HumanizedBitcoinBlockDuration
@@ -144,7 +146,7 @@ function BitcoinPossiblyCancelledAlert({
  */
 function ImmediateActionAlert() {
   return (
-    <>Resume the swap immediately to avoid losing your funds</>
+    <>Resume the swap immediately</>
   );
 }
 
@@ -153,7 +155,7 @@ function ImmediateActionAlert() {
  * @param swap - The swap information.
  * @returns JSX.Element | null
  */
-export function SwapAlertStatusText({ swap }: { swap: GetSwapInfoResponseExt }) {
+export function TimelockStatusAlert({ swap }: { swap: GetSwapInfoResponseExtRunningSwap }) {
   switch (swap.state_name) {
     // This is the state where the swap is safe because the other party has redeemed the Bitcoin
     // It cannot be punished anymore
@@ -194,10 +196,9 @@ export function SwapAlertStatusText({ swap }: { swap: GetSwapInfoResponseExt }) 
         }
       }
       return <ImmediateActionAlert />;
+
     default:
-      // TODO: fix the exhaustive guard
-      // return exhaustiveGuard(swap.state_name);
-      return <></>;
+      exhaustiveGuard(swap.state_name);
   }
 }
 
@@ -281,9 +282,9 @@ function TimelineSegment({
   );
 }
 
-export function TimelockTimeline({ timelock, swap }: { 
-  timelock: ExpiredTimelocks, 
-  swap: GetSwapInfoResponseExt
+export function TimelockTimeline({ swap }: { 
+  // This forces the timelock to not be null
+  swap: GetSwapInfoResponseExt & { timelock: ExpiredTimelocks }
 }) {
   const theme = useTheme();
 
@@ -309,7 +310,7 @@ export function TimelockTimeline({ timelock, swap }: {
   ];
 
   const totalBlocks = swap.cancel_timelock + swap.punish_timelock;
-  const absoluteBlock = getAbsoluteBlock(timelock, swap.cancel_timelock, swap.punish_timelock);
+  const absoluteBlock = getAbsoluteBlock(swap.timelock, swap.cancel_timelock, swap.punish_timelock);
 
   // This calculates the duration of a segment
   // by getting the the difference to the next segment
@@ -383,6 +384,10 @@ export default function SwapStatusAlert({
     return null;
   }
 
+  if (!isGetSwapInfoResponseWithTimelock(swap)) {
+    return null;
+  }
+
   return (
     <Alert
       key={swap.swap_id}
@@ -394,8 +399,10 @@ export default function SwapStatusAlert({
       <AlertTitle>
         Swap <TruncatedText>{swap.swap_id}</TruncatedText> is unfinished
       </AlertTitle>
-      <SwapAlertStatusText swap={swap} />
-      <TimelockTimeline timelock={swap.timelock} swap={swap} />
+      <Box>
+        <TimelockStatusAlert swap={swap} />
+        <TimelockTimeline swap={swap} />
+      </Box>
     </Alert>
   );
 }
