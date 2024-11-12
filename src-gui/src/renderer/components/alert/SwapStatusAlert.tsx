@@ -1,6 +1,6 @@
-import { Box, makeStyles } from "@material-ui/core";
+import { Box, makeStyles, Paper, Tooltip } from "@material-ui/core";
 import { Alert, AlertTitle } from "@material-ui/lab/";
-import { GetSwapInfoResponse } from "models/tauriModel";
+import { ExpiredTimelocks, GetSwapInfoResponse } from "models/tauriModel";
 import {
   BobStateName,
   GetSwapInfoResponseExt,
@@ -17,6 +17,8 @@ import {
   SwapResumeButton,
 } from "../pages/history/table/HistoryRowActions";
 import { SwapMoneroRecoveryButton } from "../pages/history/table/SwapMoneroRecoveryButton";
+import { useTheme } from "@material-ui/core/styles";
+import { Typography } from "@material-ui/core";
 
 const useStyles = makeStyles({
   box: {
@@ -28,6 +30,12 @@ const useStyles = makeStyles({
     padding: "0px",
     margin: "0px",
   },
+  alertMessage: {
+    flexGrow: 1,
+  },
+  overlayedProgressBar: {
+    borderRadius: 0,
+  }
 });
 
 /**
@@ -83,13 +91,14 @@ const BitcoinLockedNoTimelockExpiredStateAlert = ({
 }) => (
   <MessageList
     messages={[
+      "Your Bitcoin have been locked",
       <>
-        Your Bitcoin is locked. If the swap is not completed in approximately{" "}
-        <HumanizedBitcoinBlockDuration blocks={timelock.content.blocks_left} />,
-        you need to refund
+        The swap will be refunded if it is not completed within{" "}
+        <HumanizedBitcoinBlockDuration blocks={punishTimelockOffset} />
       </>,
+      "You need to have the swap running for it to refund",
       <>
-        You might lose your funds if you do not refund or complete the swap
+        You risk loss of funds if you do not refund or complete the swap
         within{" "}
         <HumanizedBitcoinBlockDuration
           blocks={timelock.content.blocks_left + punishTimelockOffset}
@@ -165,8 +174,8 @@ function SwapAlertStatusText({ swap }: { swap: GetSwapInfoResponseExt }) {
           case "None":
             return (
               <BitcoinLockedNoTimelockExpiredStateAlert
-                punishTimelockOffset={swap.punish_timelock}
                 timelock={swap.timelock}
+                punishTimelockOffset={swap.punish_timelock}
               />
             );
 
@@ -194,6 +203,118 @@ function SwapAlertStatusText({ swap }: { swap: GetSwapInfoResponseExt }) {
   }
 }
 
+import { LinearProgress } from "@material-ui/core";
+
+function TimelockTimeline({ timelock, swap }: { 
+  timelock: ExpiredTimelocks, 
+  swap: GetSwapInfoResponseExt
+}) {
+  const theme = useTheme();
+
+  function getCurrentBlockPosition(): number {
+    if (timelock.type === "None") {
+      return swap.cancel_timelock - timelock.content.blocks_left;
+    }
+    if (timelock.type === "Cancel") {
+      return swap.cancel_timelock + swap.punish_timelock - timelock.content.blocks_left;
+    }
+    if (timelock.type === "Punish") {
+      return swap.cancel_timelock + swap.punish_timelock;
+    }
+    return 0;
+  }
+
+
+  const totalBlocks = swap.cancel_timelock + swap.punish_timelock;
+  const cancelPosition = (swap.cancel_timelock / totalBlocks) * 100;
+  const currentPosition = (getCurrentBlockPosition() / totalBlocks) * 100;
+  
+  const timelineSegments = [
+    {
+      title: "During this period, the swap can be completed normally",
+      label: "Normal",
+      width: `${cancelPosition}%`,
+      bgcolor: theme.palette.success.main,
+      isActive: currentPosition <= cancelPosition
+    },
+    {
+      title: "During this period, the swap has to be refunded. You need to have the swap running to refund.",
+      label: "Refund Period",
+      width: `${(100 - cancelPosition) / 2}%`,
+      bgcolor: theme.palette.warning.main,
+      isActive: currentPosition > cancelPosition && currentPosition <= 100 - (100 - cancelPosition) / 2
+    },
+    {
+      title: "If the swap is not refunded when this period begins, and the other party goes offline, you might lose your funds",
+      label: "Danger Zone",
+      width: undefined, // will use flex: 1
+      bgcolor: theme.palette.error.main,
+      isActive: currentPosition > 100 - (100 - cancelPosition) / 2
+    }
+  ];
+
+  return (
+    <Box sx={{ 
+      width: '100%', 
+      mt: 3, 
+      mb: 2,
+      minWidth: '100%',
+      flexGrow: 1
+    }}>
+      <Paper style={{ 
+        position: 'relative',
+        height: 40,
+        overflow: 'hidden',
+      }} elevation={3} variant="outlined">
+        <Box sx={{ 
+          position: 'relative',
+          height: '100%',
+          display: 'flex'
+        }}>
+          {timelineSegments.map((segment, index) => (
+            <Tooltip key={index} title={segment.title}>
+              <Box sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: segment.bgcolor,
+                ...(segment.width ? { width: segment.width } : { flex: 1 }),
+                position: 'relative',
+              }} style={{
+                opacity: segment.isActive ? 1 : 0.3
+              }}>
+                {segment.isActive && (
+                  <Box sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    height: '100%',
+                    width: `${currentPosition}%`,
+                    zIndex: 1,
+                  }}>
+                    <LinearProgress
+                      variant="indeterminate"
+                      color="primary"
+                      style={{
+                        height: '100%',
+                        backgroundColor: theme.palette.primary.dark,
+                        opacity: 0.8,
+                      }}
+                    />
+                  </Box>
+                )}
+                <Typography variant="subtitle2" color="inherit" align="center" style={{ zIndex: 2 }}>
+                  {segment.label}
+                </Typography>
+              </Box>
+            </Tooltip>
+          ))}
+        </Box>
+      </Paper>
+    </Box>
+  );
+}
+
 /**
  * Main component for displaying the swap status alert.
  * @param swap - The swap information.
@@ -204,6 +325,8 @@ export default function SwapStatusAlert({
 }: {
   swap: GetSwapInfoResponseExt;
 }): JSX.Element | null {
+  const classes = useStyles();
+
   // If the swap is completed, there is no need to display the alert
   // TODO: Here we should also check if the swap is in a state where any funds can be lost
   // TODO: If the no Bitcoin have been locked yet, we can safely ignore the swap
@@ -217,11 +340,14 @@ export default function SwapStatusAlert({
       severity="warning"
       action={<SwapResumeButton swap={swap}>Resume Swap</SwapResumeButton>}
       variant="filled"
+      classes={{ message: classes.alertMessage }}
+
     >
       <AlertTitle>
         Swap <TruncatedText>{swap.swap_id}</TruncatedText> is unfinished
       </AlertTitle>
       <SwapAlertStatusText swap={swap} />
+      <TimelockTimeline timelock={swap.timelock} swap={swap} />
     </Alert>
   );
 }
