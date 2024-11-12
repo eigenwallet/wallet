@@ -1,3 +1,4 @@
+import { exhaustiveGuard } from "utils/typescriptUtils";
 import {
   ExpiredTimelocks,
   GetSwapInfoResponse,
@@ -38,6 +39,22 @@ export type GetSwapInfoResponseExt = GetSwapInfoResponse & {
 export type TimelockNone = Extract<ExpiredTimelocks, { type: "None" }>;
 export type TimelockCancel = Extract<ExpiredTimelocks, { type: "Cancel" }>;
 export type TimelockPunish = Extract<ExpiredTimelocks, { type: "Punish" }>;
+
+// This function returns the absolute block number of the timelock relative to the block the tx_lock was included in
+export function getAbsoluteBlock(timelock: ExpiredTimelocks, cancelTimelock: number, punishTimelock: number): number {
+  if (timelock.type === "None") {
+    return cancelTimelock - timelock.content.blocks_left;
+  }
+  if (timelock.type === "Cancel") {
+    return cancelTimelock + punishTimelock - timelock.content.blocks_left;
+  }
+  if (timelock.type === "Punish") {
+    return cancelTimelock + punishTimelock;
+  }
+
+  // We match all cases
+  return exhaustiveGuard(timelock);
+}
 
 export type BobStateNameRunningSwap = Exclude<
   BobStateName,

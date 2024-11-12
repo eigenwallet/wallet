@@ -1,8 +1,9 @@
-import { Box, makeStyles, Paper, Tooltip } from "@material-ui/core";
+import { Box, LinearProgress, makeStyles, Paper, Tooltip } from "@material-ui/core";
 import { Alert, AlertTitle } from "@material-ui/lab/";
 import { ExpiredTimelocks, GetSwapInfoResponse } from "models/tauriModel";
 import {
   BobStateName,
+  getAbsoluteBlock,
   GetSwapInfoResponseExt,
   isGetSwapInfoResponseRunningSwap,
   TimelockCancel,
@@ -43,7 +44,7 @@ const useStyles = makeStyles({
  * @param messages - Array of messages to display.
  * @returns JSX.Element
  */
-const MessageList = ({ messages }: { messages: ReactNode[] }) => {
+function MessageList({ messages }: { messages: ReactNode[]; }) {
   const classes = useStyles();
   return (
     <ul className={classes.list}>
@@ -52,14 +53,14 @@ const MessageList = ({ messages }: { messages: ReactNode[] }) => {
       ))}
     </ul>
   );
-};
+}
 
 /**
  * Sub-component for displaying alerts when the swap is in a safe state.
  * @param swap - The swap information.
  * @returns JSX.Element
  */
-const BitcoinRedeemedStateAlert = ({ swap }: { swap: GetSwapInfoResponse }) => {
+function BitcoinRedeemedStateAlert({ swap }: { swap: GetSwapInfoResponseExt; }) {
   const classes = useStyles();
   return (
     <Box className={classes.box}>
@@ -69,12 +70,11 @@ const BitcoinRedeemedStateAlert = ({ swap }: { swap: GetSwapInfoResponse }) => {
           "There is no risk of losing funds. You can take your time",
           "The Monero will be automatically redeemed to the address you provided as soon as you resume the swap",
           "If this step fails, you can manually redeem the funds",
-        ]}
-      />
+        ]} />
       <SwapMoneroRecoveryButton swap={swap} size="small" variant="contained" />
     </Box>
   );
-};
+}
 
 /**
  * Sub-component for displaying alerts when the swap is in a state with no timelock info.
@@ -82,31 +82,31 @@ const BitcoinRedeemedStateAlert = ({ swap }: { swap: GetSwapInfoResponse }) => {
  * @param punishTimelockOffset - The punish timelock offset.
  * @returns JSX.Element
  */
-const BitcoinLockedNoTimelockExpiredStateAlert = ({
-  timelock,
-  punishTimelockOffset,
+function BitcoinLockedNoTimelockExpiredStateAlert({
+  timelock, cancelTimelockOffset, punishTimelockOffset,
 }: {
   timelock: TimelockNone;
+  cancelTimelockOffset: number;
   punishTimelockOffset: number;
-}) => (
-  <MessageList
-    messages={[
-      "Your Bitcoin have been locked",
-      <>
-        The swap will be refunded if it is not completed within{" "}
-        <HumanizedBitcoinBlockDuration blocks={punishTimelockOffset} />
-      </>,
-      "You need to have the swap running for it to refund",
-      <>
-        You risk loss of funds if you do not refund or complete the swap
-        within{" "}
-        <HumanizedBitcoinBlockDuration
-          blocks={timelock.content.blocks_left + punishTimelockOffset}
-        />
-      </>,
-    ]}
-  />
-);
+}) {
+  return (
+    <MessageList
+      messages={[
+        "Your Bitcoin have been locked",
+        <>
+          The swap will be refunded if it is not completed within{" "}
+          <HumanizedBitcoinBlockDuration blocks={cancelTimelockOffset} />
+        </>,
+        "You need to have the GUI running at some point within the refund window",
+        <>
+          You risk loss of funds if you do not refund or complete the swap
+          within{" "}
+          <HumanizedBitcoinBlockDuration
+            blocks={timelock.content.blocks_left + punishTimelockOffset} />
+        </>,
+      ]} />
+  );
+}
 
 /**
  * Sub-component for displaying alerts when the swap timelock is expired
@@ -115,13 +115,12 @@ const BitcoinLockedNoTimelockExpiredStateAlert = ({
  * @param swap - The swap information.
  * @returns JSX.Element
  */
-const BitcoinPossiblyCancelledAlert = ({
-  swap,
-  timelock,
+function BitcoinPossiblyCancelledAlert({
+  swap, timelock,
 }: {
   swap: GetSwapInfoResponseExt;
   timelock: TimelockCancel;
-}) => {
+}) {
   const classes = useStyles();
   return (
     <Box className={classes.box}>
@@ -132,29 +131,29 @@ const BitcoinPossiblyCancelledAlert = ({
           <>
             You might lose your funds if you do not refund within{" "}
             <HumanizedBitcoinBlockDuration
-              blocks={timelock.content.blocks_left}
-            />
+              blocks={timelock.content.blocks_left} />
           </>,
-        ]}
-      />
+        ]} />
     </Box>
   );
-};
+}
 
 /**
  * Sub-component for displaying alerts requiring immediate action.
  * @returns JSX.Element
  */
-const ImmediateActionAlert = () => (
-  <>Resume the swap immediately to avoid losing your funds</>
-);
+function ImmediateActionAlert() {
+  return (
+    <>Resume the swap immediately to avoid losing your funds</>
+  );
+}
 
 /**
  * Main component for displaying the appropriate swap alert status text.
  * @param swap - The swap information.
  * @returns JSX.Element | null
  */
-function SwapAlertStatusText({ swap }: { swap: GetSwapInfoResponseExt }) {
+export function SwapAlertStatusText({ swap }: { swap: GetSwapInfoResponseExt }) {
   switch (swap.state_name) {
     // This is the state where the swap is safe because the other party has redeemed the Bitcoin
     // It cannot be punished anymore
@@ -175,10 +174,10 @@ function SwapAlertStatusText({ swap }: { swap: GetSwapInfoResponseExt }) {
             return (
               <BitcoinLockedNoTimelockExpiredStateAlert
                 timelock={swap.timelock}
+                cancelTimelockOffset={swap.cancel_timelock}
                 punishTimelockOffset={swap.punish_timelock}
               />
             );
-
           case "Cancel":
             return (
               <BitcoinPossiblyCancelledAlert
@@ -188,7 +187,6 @@ function SwapAlertStatusText({ swap }: { swap: GetSwapInfoResponseExt }) {
             );
           case "Punish":
             return <ImmediateActionAlert />;
-
           default:
             // We have covered all possible timelock states above
             // If we reach this point, it means we have missed a case
@@ -203,67 +201,146 @@ function SwapAlertStatusText({ swap }: { swap: GetSwapInfoResponseExt }) {
   }
 }
 
-import { LinearProgress } from "@material-ui/core";
+interface TimelineSegment {
+  title: string;
+  label: string;
+  bgcolor: string;
+  startBlock: number;
+}
 
-function TimelockTimeline({ timelock, swap }: { 
+interface TimelineSegmentProps {
+  segment: TimelineSegment;
+  isActive: boolean;
+  absoluteBlock: number;
+  durationOfSegment: number | null;
+  totalBlocks: number;
+}
+
+function TimelineSegment({ 
+  segment, 
+  isActive, 
+  absoluteBlock, 
+  durationOfSegment,
+  totalBlocks 
+}: TimelineSegmentProps) {
+  const theme = useTheme();
+
+  return (
+    <Tooltip title={<Typography variant="caption">{segment.title}</Typography>}>
+      <Box sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        bgcolor: segment.bgcolor,
+        width: `${durationOfSegment ? ((durationOfSegment / totalBlocks) * 90) : 10}%`,
+        position: 'relative',
+      }} style={{
+        opacity: isActive ? 1 : 0.3
+      }}>
+        {isActive && (
+          <Box sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            height: '100%',
+            width: `${Math.max(2.5, ((absoluteBlock - segment.startBlock) / durationOfSegment) * 100)}%`,
+            zIndex: 1,
+          }}>
+            <LinearProgress
+              variant="indeterminate"
+              color="primary"
+              style={{
+                height: '100%',
+                backgroundColor: theme.palette.primary.dark,
+                opacity: 0.3,
+              }}
+            />
+          </Box>
+        )}
+        <Typography variant="subtitle2" color="inherit" align="center" style={{ zIndex: 2 }}>
+          {segment.label}
+        </Typography>
+        {durationOfSegment && (
+          <Typography 
+            variant="caption" 
+            color="inherit" 
+            align="center" 
+            style={{ 
+              zIndex: 2,
+              opacity: 0.8 
+            }}
+          >
+            <HumanizedBitcoinBlockDuration 
+              blocks={durationOfSegment} 
+            />
+          </Typography>
+        )}
+      </Box>
+    </Tooltip>
+  );
+}
+
+export function TimelockTimeline({ timelock, swap }: { 
   timelock: ExpiredTimelocks, 
   swap: GetSwapInfoResponseExt
 }) {
   const theme = useTheme();
 
-  function getCurrentBlockPosition(): number {
-    if (timelock.type === "None") {
-      return swap.cancel_timelock - timelock.content.blocks_left;
-    }
-    if (timelock.type === "Cancel") {
-      return swap.cancel_timelock + swap.punish_timelock - timelock.content.blocks_left;
-    }
-    if (timelock.type === "Punish") {
-      return swap.cancel_timelock + swap.punish_timelock;
-    }
-    return 0;
-  }
-
-
-  const totalBlocks = swap.cancel_timelock + swap.punish_timelock;
-  const cancelPosition = (swap.cancel_timelock / totalBlocks) * 100;
-  const currentPosition = (getCurrentBlockPosition() / totalBlocks) * 100;
-  
-  const timelineSegments = [
+  const timelineSegments: TimelineSegment[] = [
     {
-      title: "During this period, the swap can be completed normally",
+      title: "Normally a swap is completed during this period",
       label: "Normal",
-      width: `${cancelPosition}%`,
       bgcolor: theme.palette.success.main,
-      isActive: currentPosition <= cancelPosition
+      startBlock: 0,
     },
     {
-      title: "During this period, the swap has to be refunded. You need to have the swap running to refund.",
-      label: "Refund Period",
-      width: `${(100 - cancelPosition) / 2}%`,
+      title: "If the swap hasn't been completed before we reach this period, the swap will be refunded. You need to have the GUI running for it to be refunded",
+      label: "Refund",
       bgcolor: theme.palette.warning.main,
-      isActive: currentPosition > cancelPosition && currentPosition <= 100 - (100 - cancelPosition) / 2
+      startBlock: swap.cancel_timelock,
     },
     {
-      title: "If the swap is not refunded when this period begins, and the other party goes offline, you might lose your funds",
-      label: "Danger Zone",
-      width: undefined, // will use flex: 1
+      title: "If you were offline for the entirety of the refund window, this period is reached. Recovery of your funds is still possible but requires cooperation from the other party",
+      label: "Danger",
       bgcolor: theme.palette.error.main,
-      isActive: currentPosition > 100 - (100 - cancelPosition) / 2
+      startBlock: swap.cancel_timelock + swap.punish_timelock,
     }
   ];
+
+  const totalBlocks = swap.cancel_timelock + swap.punish_timelock;
+  const absoluteBlock = getAbsoluteBlock(timelock, swap.cancel_timelock, swap.punish_timelock);
+
+  // This calculates the duration of a segment
+  // by getting the the difference to the next segment
+  function durationOfSegment(index: number): number | null {
+    const nextSegment = timelineSegments[index + 1];
+    if (nextSegment == null) {
+      return null;
+    }
+    return nextSegment.startBlock - timelineSegments[index].startBlock;
+  }
+
+  // This function returns the index of the active segment based on the current block
+  // We iterate in reverse to find the first segment that has a start block less than the current block
+  function getActiveSegmentIndex() {
+    return Array.from(timelineSegments
+      .slice()
+      // We use .entries() to keep the indexes despite reversing
+      .entries())
+      .reverse()
+      .find(([_, segment]) => absoluteBlock >= segment.startBlock)?.[0] ?? 0;
+  }
 
   return (
     <Box sx={{ 
       width: '100%', 
-      mt: 3, 
-      mb: 2,
       minWidth: '100%',
       flexGrow: 1
     }}>
       <Paper style={{ 
         position: 'relative',
-        height: 40,
+        height: '4rem',
         overflow: 'hidden',
       }} elevation={3} variant="outlined">
         <Box sx={{ 
@@ -272,42 +349,14 @@ function TimelockTimeline({ timelock, swap }: {
           display: 'flex'
         }}>
           {timelineSegments.map((segment, index) => (
-            <Tooltip key={index} title={segment.title}>
-              <Box sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                bgcolor: segment.bgcolor,
-                ...(segment.width ? { width: segment.width } : { flex: 1 }),
-                position: 'relative',
-              }} style={{
-                opacity: segment.isActive ? 1 : 0.3
-              }}>
-                {segment.isActive && (
-                  <Box sx={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    height: '100%',
-                    width: `${currentPosition}%`,
-                    zIndex: 1,
-                  }}>
-                    <LinearProgress
-                      variant="indeterminate"
-                      color="primary"
-                      style={{
-                        height: '100%',
-                        backgroundColor: theme.palette.primary.dark,
-                        opacity: 0.8,
-                      }}
-                    />
-                  </Box>
-                )}
-                <Typography variant="subtitle2" color="inherit" align="center" style={{ zIndex: 2 }}>
-                  {segment.label}
-                </Typography>
-              </Box>
-            </Tooltip>
+            <TimelineSegment
+              key={index}
+              segment={segment}
+              isActive={getActiveSegmentIndex() === index}
+              absoluteBlock={absoluteBlock}
+              durationOfSegment={durationOfSegment(index)}
+              totalBlocks={totalBlocks}
+            />
           ))}
         </Box>
       </Paper>
@@ -341,7 +390,6 @@ export default function SwapStatusAlert({
       action={<SwapResumeButton swap={swap}>Resume Swap</SwapResumeButton>}
       variant="filled"
       classes={{ message: classes.alertMessage }}
-
     >
       <AlertTitle>
         Swap <TruncatedText>{swap.swap_id}</TruncatedText> is unfinished
