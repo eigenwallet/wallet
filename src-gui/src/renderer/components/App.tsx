@@ -20,7 +20,7 @@ import { setAlerts } from "store/features/alertsSlice";
 import { setRegistryProviders } from "store/features/providersSlice";
 import { registryConnectionFailed } from "store/features/providersSlice";
 import { useEffect } from "react";
-import { checkForAppUpdates } from "renderer/updater";
+import { setXmrBtcRate } from "store/features/ratesSlice";
 
 const useStyles = makeStyles((theme) => ({
   innerContent: {
@@ -35,7 +35,6 @@ export default function App() {
   useEffect(() => {
     fetchInitialData();
     initEventListeners();
-    checkForAppUpdates();
   }, []);
 
   const theme = useSettings((s) => s.theme);
@@ -99,9 +98,8 @@ async function fetchInitialData() {
   }
 
   try {
-    const xmrBtcRate = await fetchXmrBtcRate();
-    store.dispatch(setXmrBtcRate(xmrBtcRate));
-    logger.info({ xmrBtcRate }, "Fetched XMR/BTC rate");
+    await updateRates();
+    logger.info("Fetched XMR/BTC rate");
   } catch (e) {
     logger.error(e, "Error retrieving XMR/BTC rate");
   }

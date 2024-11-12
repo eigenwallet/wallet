@@ -24,6 +24,7 @@ import {
   ExportBitcoinWalletResponse,
   CheckMoneroNodeArgs,
   CheckMoneroNodeResponse,
+  TauriSettings,
   CheckElectrumNodeArgs,
   CheckElectrumNodeResponse,
 } from "models/tauriModel";

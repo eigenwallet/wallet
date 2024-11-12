@@ -9,7 +9,6 @@ import {
   Box,
   makeStyles,
   Tooltip,
-  Switch,
   Select,
   MenuItem,
   TableHead,
@@ -24,20 +23,17 @@ import {
 } from "@material-ui/core";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import {
+  removeNode,
   resetSettings,
-  setElectrumRpcUrl,
-  setMoneroNodeUrl,
+  setFetchFiatPrices,
+  setFiatCurrency,
 } from "store/features/settingsSlice";
-import { useAppDispatch, useSettings } from "store/hooks";
+import {
   addNode,
   Blockchain,
   FiatCurrency,
   moveUpNode,
   Network,
-  removeNode,
-  resetSettings,
-  setFetchFiatPrices,
-  setFiatCurrency,
   setTheme,
 } from "store/features/settingsSlice";
 import { useAppDispatch, useAppSelector, useNodes, useSettings } from "store/hooks";
@@ -46,10 +42,10 @@ import RefreshIcon from "@material-ui/icons/Refresh";
 import HelpIcon from '@material-ui/icons/HelpOutline';
 import { ReactNode, useEffect, useState, useMemo } from "react";
 import { Theme } from "renderer/components/theme";
-import { getNetwork } from "store/config";
 import { Add, ArrowUpward, Delete, Edit, HourglassEmpty } from "@material-ui/icons";
 import { updateAllNodeStatuses } from "renderer/rpc";
 import { updateRates } from "renderer/api";
+import { getNetwork, getNetworkName } from "store/config";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -89,6 +85,8 @@ function ResetButton() {
 export default function SettingsBox() {
   const classes = useStyles();
   const theme = useTheme();
+  const dispatch = useAppDispatch();
+
   return (
     <InfoBox
       title={
@@ -191,10 +189,8 @@ function isValidUrl(url: string, allowedProtocols: string[]): boolean {
 }
 
 function ElectrumRpcUrlSetting() {
-  const electrumRpcUrl = useSettings((s) => s.electrum_rpc_url);
-  const dispatch = useAppDispatch();
-
   const [tableVisible, setTableVisible] = useState(false);
+  const network = getNetwork();
 
   function isValid(url: string): boolean {
     return isValidUrl(url, ["ssl", "tcp"]);
@@ -238,7 +234,7 @@ function SettingLabel({ label, tooltip }: { label: ReactNode, tooltip: string | 
 }
 
 function MoneroNodeUrlSetting() {
-  const moneroNodeUrl = useSettings((s) => s.monero_node_url);
+  const network = getNetwork();
   const dispatch = useAppDispatch();
 
   function isValid(url: string): boolean {
@@ -266,10 +262,6 @@ function MoneroNodeUrlSetting() {
           network={network}
           blockchain={Blockchain.Monero}
           isValid={isValid}
-          onValidatedChange={(value) => {
-            dispatch(setMoneroNodeUrl(value));
-          }}
-          fullWidth
           placeholder={PLACEHOLDER_MONERO_NODE_URL}
         /> : <></>}
       </TableCell>
