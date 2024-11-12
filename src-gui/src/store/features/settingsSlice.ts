@@ -1,11 +1,24 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { TauriSettings } from "models/tauriModel";
+import { updateRates } from "renderer/api";
+import { Theme } from "renderer/components/theme";
 
 export interface SettingsState {
   /// This is an ordered list of node urls for each network and blockchain
   nodes: Record<Network, Record<Blockchain, string[]>>;
   /// Which theme to use
   theme: Theme;
+  /// Whether to fetch fiat prices from the internet
+  fetchFiatPrices: boolean;
+  fiatCurrency: FiatCurrency;
+}
+
+export enum FiatCurrency {
+  Usd = "USD",
+  Eur = "EUR",
+  Gbp = "GBP",
+  Chf = "CHF",
+  Jpy = "JPY",
 }
 
 export enum Network {
@@ -29,7 +42,9 @@ const initialState: SettingsState = {
       [Blockchain.Monero]: []
     }
   },
-  theme: Theme.Dark
+  theme: Theme.Dark,
+  fetchFiatPrices: false,
+  fiatCurrency: FiatCurrency.Usd,
 };
 
 const alertsSlice = createSlice({
@@ -46,6 +61,15 @@ const alertsSlice = createSlice({
     },
     setTheme(slice, action: PayloadAction<Theme>) {
       slice.theme = action.payload;
+    },
+    setFetchFiatPrices(slice, action: PayloadAction<boolean>) {
+      if (action.payload === true) 
+        try { updateRates() } catch (_) {}
+      slice.fetchFiatPrices = action.payload;
+    },
+    setFiatCurrency(slice, action: PayloadAction<FiatCurrency>) {
+      console.log("setFiatCurrency", action.payload);
+      slice.fiatCurrency = action.payload;
     },
     addNode(slice, action: PayloadAction<{ network: Network, type: Blockchain, node: string }>) {
       // Make sure the node is not already in the list
@@ -69,6 +93,8 @@ export const {
   setTheme,
   addNode,
   removeNode,
-  resetSettings
+  resetSettings,
+  setFetchFiatPrices,
+  setFiatCurrency,
 } = alertsSlice.actions;
 export default alertsSlice.reducer;

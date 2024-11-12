@@ -20,7 +20,7 @@ import {
   DialogActions,
   DialogTitle,
   useTheme,
-  DialogContentText,
+  Switch,
 } from "@material-ui/core";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import {
@@ -31,10 +31,13 @@ import {
 import { useAppDispatch, useSettings } from "store/hooks";
   addNode,
   Blockchain,
+  FiatCurrency,
   moveUpNode,
   Network,
   removeNode,
   resetSettings,
+  setFetchFiatPrices,
+  setFiatCurrency,
   setTheme,
 } from "store/features/settingsSlice";
 import { useAppDispatch, useAppSelector, useNodes, useSettings } from "store/hooks";
@@ -46,6 +49,7 @@ import { Theme } from "renderer/components/theme";
 import { getNetwork } from "store/config";
 import { Add, ArrowUpward, Delete, Edit, HourglassEmpty } from "@material-ui/icons";
 import { updateAllNodeStatuses } from "renderer/rpc";
+import { updateRates } from "renderer/api";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -58,12 +62,33 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export default function SettingsBox() {
+function ResetButton() {
   const dispatch = useAppDispatch();
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const onReset = () => {
+    dispatch(resetSettings());
+    setModalOpen(false);
+  };
+
+  return (
+    <>
+      <Button variant="outlined" onClick={() => setModalOpen(true)}>Reset Settings</Button>
+      <Dialog open={modalOpen} onClose={() => setModalOpen(false)}>
+        <DialogTitle>Reset Settings</DialogTitle>
+        <DialogContent>Are you sure you want to reset the settings?</DialogContent>
+        <DialogActions>
+          <Button onClick={() => setModalOpen(false)}>Cancel</Button>
+          <Button color="primary" onClick={onReset}>Reset</Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  )
+}
+
+export default function SettingsBox() {
   const classes = useStyles();
   const theme = useTheme();
-  const [resetModalOpen, setResetModalOpen] = useState(false);
-
   return (
     <InfoBox
       title={
@@ -86,45 +111,13 @@ export default function SettingsBox() {
               <TableBody>
                 <ElectrumRpcUrlSetting />
                 <MoneroNodeUrlSetting />
+                <FetchFiatPricesSetting />
                 <ThemeSetting />
               </TableBody>
             </Table>
           </TableContainer>
           <Box mt={theme.spacing(0.1)} />
-          <Button 
-            onClick={() => {
-              setResetModalOpen(true);
-            }}
-            variant="outlined"
-          >
-            Reset Settings
-          </Button>
-          <Dialog
-            open={resetModalOpen}
-            onClose={() => setResetModalOpen(false)}
-          >
-            <DialogTitle>Reset Settings</DialogTitle>
-            <DialogContent>
-              <DialogContentText>
-                Are you sure you want to reset all settings to their default values? This cannot be undone.
-              </DialogContentText>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setResetModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button 
-                onClick={() => {
-                  dispatch(resetSettings());
-                  setResetModalOpen(false);
-                }}
-                color="primary"
-                variant="contained"
-              >
-                Reset
-              </Button>
-            </DialogActions>
-          </Dialog>
+          <ResetButton />
         </>
       }
       mainContent={
@@ -136,6 +129,58 @@ export default function SettingsBox() {
       icon={null}
       loading={false}
     />
+  );
+}
+
+function FetchFiatPricesSetting() {
+  const fetchFiatPrices = useSettings((s) => s.fetchFiatPrices);
+  const dispatch = useAppDispatch();
+
+  return (
+    <>
+    <TableRow>
+      <TableCell>
+        <SettingLabel label="Query fiat prices" tooltip="Whether to fetch fiat prices via the clearnet. This is required for the price display to work. It might open you up to tracking by third parties." />
+      </TableCell>
+      <TableCell>
+        <Switch 
+          color="primary" 
+          checked={fetchFiatPrices} 
+          onChange={(event) => dispatch(setFetchFiatPrices(event.currentTarget.checked))} 
+        />
+      </TableCell>
+    </TableRow>
+    { fetchFiatPrices ? <FiatCurrencySetting /> : <></> }
+    </>
+  );
+}
+
+function FiatCurrencySetting() {
+  const fiatCurrency = useSettings((s) => s.fiatCurrency);
+  const dispatch = useAppDispatch();
+  const onChange = (e: React.ChangeEvent<{ value: unknown }>) => {
+    dispatch(setFiatCurrency(e.target.value as FiatCurrency));
+    updateRates();
+  }
+
+  return (
+    <TableRow>
+      <TableCell>
+        <SettingLabel label="Fiat currency" tooltip="This is the currency that the price display will show prices in." />
+      </TableCell>
+      <TableCell>
+        <Select
+          value={fiatCurrency}
+          onChange={onChange}
+          variant="outlined"
+          fullWidth
+        >
+          {Object.values(FiatCurrency).map((currency) => (
+            <MenuItem key={currency} value={currency}>{currency}</MenuItem>
+          ))}
+        </Select>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -246,6 +291,7 @@ function ThemeSetting() {
           value={theme} 
           onChange={(e) => dispatch(setTheme(e.target.value as Theme))}
           variant="outlined"
+          fullWidth
         >
           {/** Create an option for each theme variant */}
           {Object.values(Theme).map((themeValue) => (
@@ -375,12 +421,9 @@ function NodeTable({
                   </IconButton>
                 </Tooltip>
                 { currentNode !== node ? <Tooltip title={"Move this node to the top of the list"}>
-                  <IconButton onClick={async () => {
-                    while (currentNode !== node) {
-                      dispatch(moveUpNode({ network, type: blockchain, node }));
-                      await new Promise((resolve) => setTimeout(resolve, 50));
-                    } 
-                  }}>
+                  <IconButton onClick={() =>
+                    dispatch(moveUpNode({ network, type: blockchain, node }))
+                  }>
                     <ArrowUpward />
                   </IconButton>
                 </Tooltip> : <></>}
@@ -395,19 +438,15 @@ function NodeTable({
                 onValidatedChange={setNewNode}
                 placeholder={placeholder}
                 fullWidth
-                allowEmpty 
                 isValid={isValid}
                 variant="outlined"
-                onKeyUp={(e) => {
-                  if (e.key === 'Enter' && newNode)
-                    addNewNode();
-                }}
+                noErrorWhenEmpty
               />
             </TableCell>
             <TableCell></TableCell>
             <TableCell>
               <Tooltip title={"Add this node to your list"}>
-                <IconButton onClick={addNewNode} disabled={availableNodes.includes(newNode)}>
+                <IconButton onClick={addNewNode} disabled={availableNodes.includes(newNode) || newNode.length === 0}>
                   <Add />
                 </IconButton>
               </Tooltip>

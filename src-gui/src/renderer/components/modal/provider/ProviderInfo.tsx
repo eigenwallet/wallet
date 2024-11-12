@@ -37,8 +37,8 @@ function ProviderSpreadChip({ provider }: { provider: ExtendedProviderStatus }) 
   const spread = ((providerPrice - xmrBtcPrice) / xmrBtcPrice) * 100;
 
   return (
-    <Tooltip title="The spread is the difference between the provider's exchange rate and the market rate. A high spread indicates that the provider is charging more than the market rate.">
-      <Chip label={`Spread: ${spread.toFixed(2)} %`} />
+    <Tooltip title="The spread is how many percent the provider's exchange rate is above the market rate on centralized exchanges.">
+      <Chip label={`Spread: ${spread.toFixed(2)}%`} />
     </Tooltip>
   );
 
@@ -74,8 +74,8 @@ export default function ProviderInfo({
       <Box className={classes.chipsOuter}>
         <Chip label={provider.testnet ? "Testnet" : "Mainnet"} />
         {provider.uptime && (
-          <Tooltip title="A high uptime indicates reliability. Providers with low uptime may be unreliable and cause swaps to take longer to complete or fail entirely.">
-            <Chip label={`${Math.round(provider.uptime * 100)} % uptime`} />
+          <Tooltip title="A high uptime (>90%) indicates reliability. Providers with very low uptime may be unreliable and cause swaps to take longer to complete or fail entirely.">
+            <Chip label={`${Math.round(provider.uptime * 100)}% uptime`} />
           </Tooltip>
         )}
         {provider.age ? (
@@ -93,7 +93,7 @@ export default function ProviderInfo({
           </Tooltip>
         )}
         {isOutdated && (
-          <Tooltip title="This provider is running an outdated version of the software. Outdated providers may be unreliable and cause swaps to take longer to complete or fail entirely.">
+          <Tooltip title="This provider is running an older version of the software. Outdated providers may be unreliable and cause swaps to take longer to complete or fail entirely.">
             <Chip label="Outdated" icon={<WarningIcon />} color="primary" />
           </Tooltip>
         )}

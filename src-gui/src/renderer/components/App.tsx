@@ -13,14 +13,9 @@ import UpdaterDialog from "./modal/updater/UpdaterDialog";
 import { useSettings } from "store/hooks";
 import { themes } from "./theme";
 import { initEventListeners } from "renderer/rpc";
-import { fetchAlertsViaHttp, fetchBtcPrice, fetchProvidersViaHttp } from "renderer/api";
-import { setXmrPrice } from "store/features/ratesSlice";
+import { fetchAlertsViaHttp, fetchProvidersViaHttp, updateRates } from "renderer/api";
 import { store } from "renderer/store/storeRenderer";
-import { setBtcPrice } from "store/features/ratesSlice";
-import { fetchXmrPrice } from "renderer/api";
 import logger from "utils/logger";
-import { setXmrBtcRate } from "store/features/ratesSlice";
-import { fetchXmrBtcRate } from "renderer/api";
 import { setAlerts } from "store/features/alertsSlice";
 import { setRegistryProviders } from "store/features/providersSlice";
 import { registryConnectionFailed } from "store/features/providersSlice";
@@ -96,14 +91,9 @@ async function fetchInitialData() {
     logger.error(e, "Failed to fetch alerts via UnstoppableSwap HTTP API");
   }
 
+  // Update XMR/BTC rates immediately and then at regular intervals
   try {
-    const xmrPrice = await fetchXmrPrice();
-    store.dispatch(setXmrPrice(xmrPrice));
-    logger.info({ xmrPrice }, "Fetched XMR price");
-
-    const btcPrice = await fetchBtcPrice();
-    store.dispatch(setBtcPrice(btcPrice));
-    logger.info({ btcPrice }, "Fetched BTC price");
+    await updateRates();
   } catch (e) {
     logger.error(e, "Error retrieving fiat prices");
   }
@@ -115,4 +105,6 @@ async function fetchInitialData() {
   } catch (e) {
     logger.error(e, "Error retrieving XMR/BTC rate");
   }
+  const UPDATE_INTERVAL = 30_000;
+  setInterval(updateRates, UPDATE_INTERVAL);
 }
