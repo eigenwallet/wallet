@@ -48,7 +48,7 @@ const alertsSlice = createSlice({
       slice.theme = action.payload;
     },
     addNode(slice, action: PayloadAction<{ network: Network, type: Blockchain, node: string }>) {
-      // Check if the node is already in the list
+      // Make sure the node is not already in the list
       if (slice.nodes[action.payload.network][action.payload.type].includes(action.payload.node)) {
         return;
       }

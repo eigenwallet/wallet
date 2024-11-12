@@ -20,6 +20,7 @@ import {
   DialogActions,
   DialogTitle,
   useTheme,
+  DialogContentText,
 } from "@material-ui/core";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import {
@@ -43,9 +44,8 @@ import HelpIcon from '@material-ui/icons/HelpOutline';
 import { ReactNode, useEffect, useState, useMemo } from "react";
 import { Theme } from "renderer/components/theme";
 import { getNetwork } from "store/config";
-import { Add, ArrowUpward, Check, Clear, Delete, HourglassEmpty, VisibilityOffRounded, VisibilityRounded } from "@material-ui/icons";
+import { Add, ArrowUpward, Delete, Edit, HourglassEmpty } from "@material-ui/icons";
 import { updateAllNodeStatuses } from "renderer/rpc";
-import { current } from "@reduxjs/toolkit";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -62,7 +62,8 @@ export default function SettingsBox() {
   const dispatch = useAppDispatch();
   const classes = useStyles();
   const theme = useTheme();
-  
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+
   return (
     <InfoBox
       title={
@@ -92,17 +93,44 @@ export default function SettingsBox() {
           <Box mt={theme.spacing(0.1)} />
           <Button 
             onClick={() => {
-              dispatch(resetSettings());
+              setResetModalOpen(true);
             }}
             variant="outlined"
           >
             Reset Settings
           </Button>
+          <Dialog
+            open={resetModalOpen}
+            onClose={() => setResetModalOpen(false)}
+          >
+            <DialogTitle>Reset Settings</DialogTitle>
+            <DialogContent>
+              <DialogContentText>
+                Are you sure you want to reset all settings to their default values? This cannot be undone.
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setResetModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => {
+                  dispatch(resetSettings());
+                  setResetModalOpen(false);
+                }}
+                color="primary"
+                variant="contained"
+              >
+                Reset
+              </Button>
+            </DialogActions>
+          </Dialog>
         </>
       }
       mainContent={
         <Typography variant="subtitle2">
-          Some of these settings require a restart to take effect.
+          Customize the settings of the GUI. 
+          Some of these require a restart to take effect.
         </Typography>
       }
       icon={null}
@@ -136,7 +164,7 @@ function ElectrumRpcUrlSetting() {
         <IconButton 
             onClick={() => setTableVisible(true)}
           >
-            {<VisibilityRounded />}
+            {<Edit />}
           </IconButton>
         </TableCell>
           {tableVisible ? <NodeTableModal
@@ -183,11 +211,13 @@ function MoneroNodeUrlSetting() {
         <IconButton 
           onClick={() => setTableVisible(!tableVisible)}
         >
-          {tableVisible ? <VisibilityOffRounded /> : <VisibilityRounded /> } 
+          <Edit /> 
         </IconButton>
       </TableCell>
       <TableCell>
-        {tableVisible ? <NodeTable
+        {tableVisible ? <NodeTableModal
+          open={tableVisible}
+          onClose={() => setTableVisible(false)}
           network={network}
           blockchain={Blockchain.Monero}
           isValid={isValid}
@@ -249,7 +279,7 @@ function NodeTableModal({
       <DialogTitle>Available Nodes</DialogTitle>
       <DialogContent>
         <Typography variant="subtitle2">
-          When the daemon is started, it will attempt to connect to the first node in this list.
+          When the daemon is started, it will attempt to connect to the first {blockchain} node in this list.
           If you leave this field empty, it will choose from a list of known nodes at random.
         </Typography>
         <NodeTable network={network} blockchain={blockchain} isValid={isValid} placeholder={placeholder} />
@@ -377,7 +407,7 @@ function NodeTable({
             <TableCell></TableCell>
             <TableCell>
               <Tooltip title={"Add this node to your list"}>
-                <IconButton onClick={addNewNode}>
+                <IconButton onClick={addNewNode} disabled={availableNodes.includes(newNode)}>
                   <Add />
                 </IconButton>
               </Tooltip>

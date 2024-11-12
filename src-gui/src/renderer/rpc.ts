@@ -43,7 +43,7 @@ import { ListSellersResponse } from "../models/tauriModel";
 import logger from "utils/logger";
 import { getNetwork, getNetworkName, isTestnet } from "store/config";
 import { Blockchain, Network } from "store/features/settingsSlice";
-import { resetStatuses, setStatus } from "store/features/nodesSlice";
+import { resetStatuses, setStatus, setStatuses } from "store/features/nodesSlice";
 
 export async function initEventListeners() {
   // This operation is in-expensive
@@ -279,13 +279,22 @@ export async function updateAllNodeStatuses() {
   const network = getNetwork();
   const settings = store.getState().settings;
 
-  // For all nodes, check if they are available and update the status (in parallel)
+  // We will update the statuses in batches
+  const newStatuses: Record<Blockchain, Record<string, boolean>> = {
+    [Blockchain.Bitcoin]: {},
+    [Blockchain.Monero]: {},
+  };
+
+  // For all nodes, check if they are available and store the new status (in parallel)
   await Promise.all(
     Object.values(Blockchain).flatMap(blockchain =>
       settings.nodes[network][blockchain].map(async node => {
         const status = await getNodeStatus(node, blockchain);
-        store.dispatch(setStatus({ node, status, blockchain }));
+        newStatuses[blockchain][node] = status;
       })
     )
   );
+
+  // When we are done, we update the statuses in the store
+  store.dispatch(setStatuses(newStatuses));
 }
