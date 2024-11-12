@@ -1,7 +1,9 @@
-import { makeStyles } from "@material-ui/core";
+import { Box, makeStyles } from "@material-ui/core";
 import { Alert, AlertTitle } from "@material-ui/lab";
 import { useActiveSwapInfo } from "store/hooks";
-import { StateAlert, TimelockTimeline } from "./SwapStatusAlert/SwapStatusAlert";
+import { StateAlert } from "./SwapStatusAlert/SwapStatusAlert";
+import { TimelockTimeline } from "./SwapStatusAlert/TimelockTimeline";
+import { isGetSwapInfoResponseRunningSwap, isGetSwapInfoResponseWithTimelock } from "models/tauriModelExt";
 
 const useStyles = makeStyles((theme) => ({
   outer: {
@@ -13,19 +15,22 @@ const useStyles = makeStyles((theme) => ({
   message: {
     flexGrow: 1,
   },
+  box: {
+    display: "flex",
+    flexDirection: "column",
+    gap: theme.spacing(1),
+  },
 }));
 
 export default function SwapMightBeCancelledAlert() {
   const classes = useStyles();
   const swapInfo = useActiveSwapInfo();
 
-  // We don't have a running swap
-  if(swapInfo === null) {
+  if (!isGetSwapInfoResponseWithTimelock(swapInfo)) {
     return <></>;
   }
 
-  // We don't have a timelock
-  if(swapInfo.timelock === null) {
+  if(!isGetSwapInfoResponseRunningSwap(swapInfo)) {
     return <></>;
   }
 
@@ -36,8 +41,10 @@ export default function SwapMightBeCancelledAlert() {
       <AlertTitle>
         The swap has been running for a while
       </AlertTitle>
-      <StateAlert swap={swapInfo} />
-      <TimelockTimeline timelock={swapInfo.timelock} swap={swapInfo} />
+      <Box className={classes.box}>
+        <StateAlert swap={swapInfo} />
+        <TimelockTimeline swap={swapInfo} />
+      </Box>
     </Alert>
   );
 }

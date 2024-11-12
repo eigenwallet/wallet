@@ -13,17 +13,14 @@ import { ReactNode } from "react";
 import { exhaustiveGuard } from "utils/typescriptUtils";
 import HumanizedBitcoinBlockDuration from "../../other/HumanizedBitcoinBlockDuration";
 import TruncatedText from "../../other/TruncatedText";
-import {
-  SwapResumeButton,
-} from "../../pages/history/table/HistoryRowActions";
 import { SwapMoneroRecoveryButton } from "../../pages/history/table/SwapMoneroRecoveryButton";
 import { TimelockTimeline } from "./TimelockTimeline";
 
-const useStyles = makeStyles({
+const useStyles = makeStyles((theme) => ({
   box: {
     display: "flex",
     flexDirection: "column",
-    gap: "0.5rem",
+    gap: theme.spacing(1),
   },
   list: {
     padding: "0px",
@@ -32,7 +29,7 @@ const useStyles = makeStyles({
   alertMessage: {
     flexGrow: 1,
   },
-});
+}));
 
 /**
  * Component for displaying a list of messages.
@@ -89,16 +86,16 @@ function BitcoinLockedNoTimelockExpiredStateAlert({
       messages={[
         "Your Bitcoin have been locked",
         <>
-          The swap will be refunded if it is not completed within{" "}
-          <HumanizedBitcoinBlockDuration blocks={cancelTimelockOffset} />
+          If the swap is not completed within the next {" "}
+          <HumanizedBitcoinBlockDuration blocks={cancelTimelockOffset} />,
+          it will be refunded. You need to have the GUI running sometime within the refund period.
         </>,
-        "You need to have the GUI running at some point within the refund window",
         <>
-          You risk loss of funds if you do not refund or complete the swap
-          within{" "}
+          If the swap is not completed / refunded within the next {" "}
           <HumanizedBitcoinBlockDuration
-            blocks={timelock.content.blocks_left + punishTimelockOffset} />
-        </>,
+            blocks={timelock.content.blocks_left + punishTimelockOffset} />,
+          cooperation from the other party will be required to recover the funds
+        </>
       ]} />
   );
 }
@@ -221,7 +218,6 @@ export default function SwapStatusAlert({
     <Alert
       key={swap.swap_id}
       severity="warning"
-      action={<SwapResumeButton swap={swap}>Resume</SwapResumeButton>}
       variant="filled"
       classes={{ message: classes.alertMessage }}
     >
