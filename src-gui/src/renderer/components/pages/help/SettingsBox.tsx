@@ -72,7 +72,7 @@ export default function SettingsBox() {
       }
       mainContent={
         <Typography variant="subtitle2">
-          Customize the settings of the GUI. 
+          Customize the settings of the GUI.
           Some of these require a restart to take effect.
         </Typography>
       }
@@ -137,19 +137,19 @@ function FetchFiatPricesSetting() {
 
   return (
     <>
-    <TableRow>
-      <TableCell>
-        <SettingLabel label="Query fiat prices" tooltip="Whether to fetch fiat prices via the clearnet. This is required for the price display to work. If you require total anonymity and don't use a VPN, you should disable this." />
-      </TableCell>
-      <TableCell>
-        <Switch 
-          color="primary" 
-          checked={fetchFiatPrices} 
-          onChange={(event) => dispatch(setFetchFiatPrices(event.currentTarget.checked))} 
-        />
-      </TableCell>
-    </TableRow>
-    { fetchFiatPrices ? <FiatCurrencySetting /> : <></> }
+      <TableRow>
+        <TableCell>
+          <SettingLabel label="Query fiat prices" tooltip="Whether to fetch fiat prices via the clearnet. This is required for the price display to work. If you require total anonymity and don't use a VPN, you should disable this." />
+        </TableCell>
+        <TableCell>
+          <Switch
+            color="primary"
+            checked={fetchFiatPrices}
+            onChange={(event) => dispatch(setFetchFiatPrices(event.currentTarget.checked))}
+          />
+        </TableCell>
+      </TableRow>
+      {fetchFiatPrices ? <FiatCurrencySetting /> : <></>}
     </>
   );
 }
@@ -160,7 +160,7 @@ function FetchFiatPricesSetting() {
 function FiatCurrencySetting() {
   const fiatCurrency = useSettings((s) => s.fiatCurrency);
   const dispatch = useAppDispatch();
-  const onChange = (e: React.ChangeEvent<{ value: unknown }>) => 
+  const onChange = (e: React.ChangeEvent<{ value: unknown }>) =>
     dispatch(setFiatCurrency(e.target.value as FiatCurrency));
 
   return (
@@ -207,24 +207,24 @@ function ElectrumRpcUrlSetting() {
   const isValid = (url: string) => isValidUrl(url, ["ssl", "tcp"]);
 
   return (
-      <TableRow>
-        <TableCell>
-          <SettingLabel label="Custom Electrum RPC URL" tooltip="This is the URL of the Electrum server that the GUI will connect to. It is used to sync Bitcoin transactions. If you leave this field empty, the GUI will choose from a list of known servers at random." />
+    <TableRow>
+      <TableCell>
+        <SettingLabel label="Custom Electrum RPC URL" tooltip="This is the URL of the Electrum server that the GUI will connect to. It is used to sync Bitcoin transactions. If you leave this field empty, the GUI will choose from a list of known servers at random." />
       </TableCell>
       <TableCell>
-        <IconButton 
-            onClick={() => setTableVisible(true)}
-          >
+        <IconButton
+          onClick={() => setTableVisible(true)}
+        >
           {<Edit />}
         </IconButton>
         {tableVisible ? <NodeTableModal
           open={tableVisible}
-            onClose={() => setTableVisible(false)}
-            network={network}
-            blockchain={Blockchain.Bitcoin}
-            isValid={isValid}
-            placeholder={PLACEHOLDER_ELECTRUM_RPC_URL}
-          /> : <></>}
+          onClose={() => setTableVisible(false)}
+          network={network}
+          blockchain={Blockchain.Bitcoin}
+          isValid={isValid}
+          placeholder={PLACEHOLDER_ELECTRUM_RPC_URL}
+        /> : <></>}
       </TableCell>
     </TableRow>
   );
@@ -258,13 +258,13 @@ function MoneroNodeUrlSetting() {
   return (
     <TableRow>
       <TableCell>
-       <SettingLabel label="Custom Monero Node URL" tooltip="This is the URL of the Monero node that the GUI will connect to. Ensure the node is listening for RPC connections over HTTP. If you leave this field empty, the GUI will choose from a list of known nodes at random." />
+        <SettingLabel label="Custom Monero Node URL" tooltip="This is the URL of the Monero node that the GUI will connect to. Ensure the node is listening for RPC connections over HTTP. If you leave this field empty, the GUI will choose from a list of known nodes at random." />
       </TableCell>
-      <TableCell>  
-        <IconButton 
+      <TableCell>
+        <IconButton
           onClick={() => setTableVisible(!tableVisible)}
         >
-          <Edit /> 
+          <Edit />
         </IconButton>
         {tableVisible ? <NodeTableModal
           open={tableVisible}
@@ -292,8 +292,8 @@ function ThemeSetting() {
         <SettingLabel label="Theme" tooltip="This is the theme of the GUI." />
       </TableCell>
       <TableCell>
-        <Select 
-          value={theme} 
+        <Select
+          value={theme}
           onChange={(e) => dispatch(setTheme(e.target.value as Theme))}
           variant="outlined"
           fullWidth
@@ -399,14 +399,14 @@ function NodeTable({
     setNewNode("");
   }
 
-  const onRemoveNode = (node: string) => 
+  const onRemoveNode = (node: string) =>
     dispatch(removeNode({ network, type: blockchain, node }));
 
-  const onMoveUpNode = (node: string) => 
+  const onMoveUpNode = (node: string) =>
     dispatch(moveUpNode({ network, type: blockchain, node }));
 
   const moveUpButton = (node: string) => {
-    if (currentNode === node) 
+    if (currentNode === node)
       return <></>;
 
     return (
@@ -441,14 +441,16 @@ function NodeTable({
               <TableCell align="center" children={statusIcon(node)} />
               {/* Remove and move buttons */}
               <TableCell>
-                <Tooltip 
-                  title={"Remove this node from your list"}
-                  children={<IconButton 
-                    onClick={() => onRemoveNode(node)}
-                    children={<Delete />} 
-                  />}
-                />
-                {moveUpButton(node)}
+                <Box style={{ display: "flex" }}>
+                  <Tooltip
+                    title={"Remove this node from your list"}
+                    children={<IconButton
+                      onClick={() => onRemoveNode(node)}
+                      children={<Delete />}
+                    />}
+                  />
+                  {moveUpButton(node)}
+                </Box>
               </TableCell>
             </TableRow>
           ))}
