@@ -27,20 +27,20 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 /**
- * A chip that displays the efficency of the provider's exchange rate compared to the market rate.
+ * A chip that displays the markup of the provider's exchange rate compared to the market rate.
  */
-function ProviderEfficencyChip({ provider }: { provider: ExtendedProviderStatus }) {
+function ProviderMarkupChip({ provider }: { provider: ExtendedProviderStatus }) {
   const marketExchangeRate = useAppSelector(s => s.rates?.xmrBtcRate);
   if (marketExchangeRate === null) 
     return null;
 
   const providerExchangeRate = satsToBtc(provider.price);
-  /** The efficency of the exchange rate compared to the market rate in percent */
-  const efficency = (marketExchangeRate / providerExchangeRate) * 100;
+  /** The markup of the exchange rate compared to the market rate in percent */
+  const markup = (providerExchangeRate - marketExchangeRate) / marketExchangeRate * 100;
 
   return (
-    <Tooltip title="The efficency of this provider's exchange rate. A value lower than 100% means that you pay more than the market rate on centralized exchanges.">
-      <Chip label={`Efficency ${efficency.toFixed(2)}%`} />
+    <Tooltip title="The markup this provider charges compared to centralized markets. A lower markup means that you get more Monero for your Bitcoin.">
+      <Chip label={`Markup ${markup.toFixed(2)}%`} />
     </Tooltip>
   );
 
@@ -99,7 +99,7 @@ export default function ProviderInfo({
             <Chip label="Outdated" icon={<WarningIcon />} color="primary" />
           </Tooltip>
         )}
-        <ProviderEfficencyChip provider={provider} />
+        <ProviderMarkupChip provider={provider} />
       </Box>
     </Box>
   );

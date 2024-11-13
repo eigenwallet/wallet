@@ -8,10 +8,6 @@ import HistoryPage from "./pages/history/HistoryPage";
 import SwapPage from "./pages/swap/SwapPage";
 import WalletPage from "./pages/wallet/WalletPage";
 import GlobalSnackbarProvider from "./snackbar/GlobalSnackbarProvider";
-import { useEffect } from "react";
-import { fetchProvidersViaHttp, fetchAlertsViaHttp, fetchXmrPrice, fetchBtcPrice, fetchXmrBtcRate } from "renderer/api";
-import { initEventListeners } from "renderer/rpc";
-import { store } from "renderer/store/storeRenderer";
 import UpdaterDialog from "./modal/updater/UpdaterDialog";
 import { useSettings } from "store/hooks";
 import { themes } from "./theme";
@@ -111,47 +107,4 @@ async function fetchInitialData() {
   // Update the rates every 5 minutes (to respect the coingecko rate limit)
   const UPDATE_INTERVAL = 5 * 60 * 1_000;
   setInterval(updateRates, UPDATE_INTERVAL);
-}
-
-async function fetchInitialData() {
-  try {
-    const providerList = await fetchProvidersViaHttp();
-    store.dispatch(setRegistryProviders(providerList));
-
-    logger.info(
-      { providerList },
-      "Fetched providers via UnstoppableSwap HTTP API",
-    );
-  } catch (e) {
-    store.dispatch(registryConnectionFailed());
-    logger.error(e, "Failed to fetch providers via UnstoppableSwap HTTP API");
-  }
-
-  try {
-    const alerts = await fetchAlertsViaHttp();
-    store.dispatch(setAlerts(alerts));
-    logger.info({ alerts }, "Fetched alerts via UnstoppableSwap HTTP API");
-  } catch (e) {
-    logger.error(e, "Failed to fetch alerts via UnstoppableSwap HTTP API");
-  }
-
-  try {
-    const xmrPrice = await fetchXmrPrice();
-    store.dispatch(setXmrPrice(xmrPrice));
-    logger.info({ xmrPrice }, "Fetched XMR price");
-
-    const btcPrice = await fetchBtcPrice();
-    store.dispatch(setBtcPrice(btcPrice));
-    logger.info({ btcPrice }, "Fetched BTC price");
-  } catch (e) {
-    logger.error(e, "Error retrieving fiat prices");
-  }
-
-  try {
-    const xmrBtcRate = await fetchXmrBtcRate();
-    store.dispatch(setXmrBtcRate(xmrBtcRate));
-    logger.info({ xmrBtcRate }, "Fetched XMR/BTC rate");
-  } catch (e) {
-    logger.error(e, "Error retrieving XMR/BTC rate");
-  }
 }
