@@ -87,7 +87,7 @@ function BitcoinLockedNoTimelockExpiredStateAlert({
         "Your Bitcoin have been locked",
         <>
           If the swap is not completed within the next {" "}
-          <HumanizedBitcoinBlockDuration blocks={cancelTimelockOffset} />,
+          <HumanizedBitcoinBlockDuration blocks={timelock.content.blocks_left} />,
           it will be refunded. You need to have the GUI running sometime within the refund period.
         </>,
         <>
