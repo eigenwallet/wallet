@@ -45,7 +45,7 @@ import { ListSellersResponse } from "../models/tauriModel";
 import logger from "utils/logger";
 import { getNetwork, getNetworkName, isTestnet } from "store/config";
 import { Blockchain, Network } from "store/features/settingsSlice";
-import { resetStatuses, setStatus, setStatuses } from "store/features/nodesSlice";
+import { resetStatuses, setPromise, setStatus, setStatuses } from "store/features/nodesSlice";
 
 export async function initEventListeners() {
   // This operation is in-expensive
@@ -224,6 +224,7 @@ export async function initializeContext() {
 
   const network = getNetwork();
   const settings = store.getState().settings;
+  let statuses = store.getState().nodes.nodes;
 
   // Initialize Tauri settings with null values
   const tauriSettings: TauriSettings = {
@@ -232,11 +233,26 @@ export async function initializeContext() {
   };
 
   // Set the first available node, if set
-  if (settings.nodes[network][Blockchain.Bitcoin].length > 0) 
-    tauriSettings.electrum_rpc_url = settings.nodes[network][Blockchain.Bitcoin][0];
+  if (Object.keys(statuses.bitcoin).length === 0) {
+    await updateAllNodeStatuses();
+    statuses = store.getState().nodes.nodes;
+  }
 
-  if (settings.nodes[network][Blockchain.Monero].length > 0) 
-    tauriSettings.monero_node_url = settings.nodes[network][Blockchain.Monero][0];
+  let firstAvailableElectrumNode = settings.nodes[network][Blockchain.Bitcoin]
+    .find(node => statuses.bitcoin[node] === true);
+
+  if (firstAvailableElectrumNode !== undefined) 
+    tauriSettings.electrum_rpc_url = firstAvailableElectrumNode;
+  else
+    logger.info("No custom Electrum node available, falling back to default.");
+
+  let firstAvailableMoneroNode = settings.nodes[network][Blockchain.Monero]
+    .find(node => statuses.monero[node] === true);
+
+  if (firstAvailableMoneroNode !== undefined)
+    tauriSettings.monero_node_url = firstAvailableMoneroNode;
+  else
+    logger.info("No custom Monero node available, falling back to default.");
 
   const testnet = isTestnet();
 

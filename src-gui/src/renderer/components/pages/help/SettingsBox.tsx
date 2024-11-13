@@ -39,10 +39,9 @@ import {
 import { useAppDispatch, useAppSelector, useNodes, useSettings } from "store/hooks";
 import ValidatedTextField from "renderer/components/other/ValidatedTextField";
 import HelpIcon from '@material-ui/icons/HelpOutline';
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useState } from "react";
 import { Theme } from "renderer/components/theme";
 import { Add, ArrowUpward, Delete, Edit, HourglassEmpty } from "@material-ui/icons";
-import { updateAllNodeStatuses } from "renderer/rpc";
 import { getNetwork } from "store/config";
 import { currencySymbol } from "utils/formatUtils";
 
@@ -335,8 +334,9 @@ function NodeTableModal({
       <DialogTitle>Available Nodes</DialogTitle>
       <DialogContent>
         <Typography variant="subtitle2">
-          When the daemon is started, it will attempt to connect to the first {blockchain} node in this list.
-          If you leave this field empty, it will choose from a list of known nodes at random.
+          When the daemon is started, it will attempt to connect to the first available {blockchain} node in this list.
+          If you leave this field empty or all nodes are unavailable, it will choose from a list of known nodes at random.
+          Requires a restart to take effect.
         </Typography>
         <NodeTable network={network} blockchain={blockchain} isValid={isValid} placeholder={placeholder} />
       </DialogContent>

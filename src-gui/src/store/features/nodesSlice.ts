@@ -3,6 +3,7 @@ import { Blockchain } from "./settingsSlice";
 
 export interface NodesSlice {
   nodes: Record<Blockchain, Record<string, boolean>>;
+  promise: Promise<void> | null;
 }
 
 function initialState(): NodesSlice {
@@ -11,8 +12,9 @@ function initialState(): NodesSlice {
             [Blockchain.Bitcoin]: {},
             [Blockchain.Monero]: {},
         },
+        promise: null,
     }
-}
+}   
 
 const nodesSlice = createSlice({
   name: "nodes",
@@ -33,9 +35,13 @@ const nodesSlice = createSlice({
             [Blockchain.Bitcoin]: {},
             [Blockchain.Monero]: {},
         }
+        slice.promise = null;
+    },
+    setPromise(slice, action: PayloadAction<Promise<void>>) {
+      slice.promise = action.payload;
     },
   },
 });
 
-export const { setStatus, setStatuses, resetStatuses } = nodesSlice.actions;
+export const { setStatus, setStatuses, resetStatuses, setPromise } = nodesSlice.actions;
 export default nodesSlice.reducer;

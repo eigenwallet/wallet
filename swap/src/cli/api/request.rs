@@ -1316,14 +1316,12 @@ pub struct CheckMoneroNodeResponse {
 #[error("this is not one of the known monero networks")]
 struct UnknownMoneroNetwork(String);
 
-impl Request for CheckMoneroNodeArgs {
-    type Response = CheckMoneroNodeResponse;
-
-    async fn request(self, _ctx: Arc<crate::cli::api::Context>) -> Result<Self::Response> {
+impl CheckMoneroNodeArgs {
+    pub async fn request(self) -> Result<CheckMoneroNodeResponse> {
         let network = match self.network.to_lowercase().as_str() {
-            "stagenet" => Network::Stagenet,
+            // When the GUI says testnet, it means monero stagenet
             "mainnet" => Network::Mainnet,
-            "testnet" => Network::Testnet,
+            "testnet" => Network::Stagenet,
             otherwise => anyhow::bail!(UnknownMoneroNetwork(otherwise.to_string()))
         };
 
@@ -1331,15 +1329,19 @@ impl Request for CheckMoneroNodeArgs {
             reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .https_only(false)
-                .build().expect("whoops")
+                .build().expect("reqwest client to work")
         });
-    
-        let monero_daemon = MoneroDaemon::from_str(
+
+        let Ok(monero_daemon) = MoneroDaemon::from_str(
             self.url, 
             network
-        )?;
+        ) else {
+            return Ok(CheckMoneroNodeResponse { available: false });
+        };
         
-        let available = monero_daemon.is_available(&CLIENT).await?;
+        let Ok(available) = monero_daemon.is_available(&CLIENT).await else {
+            return Ok(CheckMoneroNodeResponse { available: false });
+        };
 
         Ok(CheckMoneroNodeResponse { available })
     }
@@ -1357,10 +1359,8 @@ pub struct CheckElectrumNodeResponse {
     pub available: bool,
 }
 
-impl Request for CheckElectrumNodeArgs {
-    type Response = CheckElectrumNodeResponse;
-
-    async fn request(self, _ctx: Arc<crate::cli::api::Context>) -> Result<Self::Response> {
+impl CheckElectrumNodeArgs {
+    pub async fn request(self) -> Result<CheckElectrumNodeResponse> {
         // Check if the URL is valid
         let Ok(url) = self.url.parse() else {
             return Ok(CheckElectrumNodeResponse { available: false });

@@ -87,7 +87,9 @@ async function fetchInitialData() {
     logger.error(e, "Failed to update node statuses")
   }
 
-  setInterval(updateAllNodeStatuses, 2 * 60 * 1_000);
+  // Update node statuses every 2 minutes
+  const STATUS_UPDATE_INTERVAL = 2 * 60 * 1_000;
+  setInterval(updateAllNodeStatuses, STATUS_UPDATE_INTERVAL);
 
   try {
     const alerts = await fetchAlertsViaHttp();
@@ -105,6 +107,6 @@ async function fetchInitialData() {
   }
   
   // Update the rates every 5 minutes (to respect the coingecko rate limit)
-  const UPDATE_INTERVAL = 5 * 60 * 1_000;
-  setInterval(updateRates, UPDATE_INTERVAL);
+  const RATE_UPDATE_INTERVAL = 5 * 60 * 1_000;
+  setInterval(updateRates, RATE_UPDATE_INTERVAL);
 }
