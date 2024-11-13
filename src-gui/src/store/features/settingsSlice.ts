@@ -63,8 +63,6 @@ const alertsSlice = createSlice({
       slice.theme = action.payload;
     },
     setFetchFiatPrices(slice, action: PayloadAction<boolean>) {
-      if (action.payload === true) 
-        try { updateRates() } catch (_) {}
       slice.fetchFiatPrices = action.payload;
     },
     setFiatCurrency(slice, action: PayloadAction<FiatCurrency>) {

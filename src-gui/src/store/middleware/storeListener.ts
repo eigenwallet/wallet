@@ -2,6 +2,9 @@ import { createListenerMiddleware } from "@reduxjs/toolkit";
 import { getAllSwapInfos, checkBitcoinBalance } from "renderer/rpc";
 import logger from "utils/logger";
 import { contextStatusEventReceived } from "store/features/rpcSlice";
+import { setFetchFiatPrices, setFiatCurrency } from "store/features/settingsSlice";
+import { updateRates } from "renderer/api";
+import { store } from "renderer/store/storeRenderer";
 
 export function createMainListeners() {
   const listener = createListenerMiddleware();
@@ -20,6 +23,28 @@ export function createMainListeners() {
         );
         await checkBitcoinBalance();
         await getAllSwapInfos();
+      }
+    },
+  });
+
+  // Update the rates when the fiat currency is changed
+  listener.startListening({
+    actionCreator: setFiatCurrency,
+    effect: async () => {
+      if (store.getState().settings.fetchFiatPrices) {
+        console.log("Fiat currency changed, updating rates...");
+        await updateRates();
+      }
+    },
+  });
+
+  // Update the rates when fetching fiat prices is enabled
+  listener.startListening({
+    actionCreator: setFetchFiatPrices,
+    effect: async (action) => {
+      if (action.payload === true) {
+        console.log("Activated fetching fiat prices, updating rates...");
+        await updateRates();
       }
     },
   });

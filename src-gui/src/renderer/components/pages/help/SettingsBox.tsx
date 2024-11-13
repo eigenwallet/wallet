@@ -205,17 +205,17 @@ function ElectrumRpcUrlSetting() {
         <IconButton 
             onClick={() => setTableVisible(true)}
           >
-            {<Edit />}
-          </IconButton>
-        </TableCell>
-          {tableVisible ? <NodeTableModal
-            open={tableVisible}
+          {<Edit />}
+        </IconButton>
+        {tableVisible ? <NodeTableModal
+          open={tableVisible}
             onClose={() => setTableVisible(false)}
             network={network}
             blockchain={Blockchain.Bitcoin}
             isValid={isValid}
             placeholder={PLACEHOLDER_ELECTRUM_RPC_URL}
           /> : <></>}
+      </TableCell>
     </TableRow>
   );
 }
@@ -254,8 +254,6 @@ function MoneroNodeUrlSetting() {
         >
           <Edit /> 
         </IconButton>
-      </TableCell>
-      <TableCell>
         {tableVisible ? <NodeTableModal
           open={tableVisible}
           onClose={() => setTableVisible(false)}
@@ -342,39 +340,12 @@ function NodeTable({
 }) {
   const availableNodes = useSettings((s) => s.nodes[network][blockchain]);
   const currentNode = availableNodes[0];
-  const statuses = useNodes((s) => s.nodes);
-  console.log(`Statuses`, statuses);
+  const nodeStatuses = useNodes((s) => s.nodes);
+  const [newNode, setNewNode] = useState("");
   const dispatch = useAppDispatch();
   const theme = useTheme();
-  const circle = (color: string) => <svg width="12" height="12" viewBox="0 0 12 12">
-    <circle cx="6" cy="6" r="6" fill={color} />
-  </svg>;
 
-  const statusIcon = useMemo(() => (node: string) => {
-    switch (statuses[blockchain][node]) {
-      case true:
-        return <Tooltip title={"This node is available and responding to RPC requests"}>
-          {circle(theme.palette.success.dark)}
-        </Tooltip>;
-      case false:
-        return <Tooltip title={"This node is not available or not responding to RPC requests"}>
-          {circle(theme.palette.error.dark)}
-        </Tooltip>;
-      default:
-        console.log(`Unknown status for node ${node}: ${statuses[node]}`);
-        return <Tooltip title={"The status of this node is currently unknown"}>
-          <HourglassEmpty />
-        </Tooltip>;
-    }
-  }, [statuses]);
-
-  const [newNode, setNewNode] = useState("");
-
-  const addNewNode = () => {
-    dispatch(addNode({ network, type: blockchain, node: newNode }));
-    setNewNode("");
-  }
-
+  // Update the statuses of all nodes every 15 seconds, as long as the modal is open
   useEffect(() => {
     updateAllNodeStatuses();
     
@@ -384,6 +355,38 @@ function NodeTable({
 
     return () => clearInterval(interval);
   }, []);
+  
+  // Create a circle SVG with a given color and radius
+  const circle = (color: string, radius: number = 6) => <svg width={radius * 2} height={radius * 2} viewBox={`0 0 ${radius * 2} ${radius * 2}`}>
+    <circle cx={radius} cy={radius} r={radius} fill={color} />
+  </svg>;
+
+  // Show a green/red circle or a hourglass icon depending on the status of the node
+  const statusIcon = (node: string) => {
+    switch (nodeStatuses[blockchain][node]) {
+      case true:
+        return <Tooltip title={"This node is available and responding to RPC requests"}>
+          {circle(theme.palette.success.dark)}
+        </Tooltip>;
+      case false:
+        return <Tooltip title={"This node is not available or not responding to RPC requests"}>
+          {circle(theme.palette.error.dark)}
+        </Tooltip>;
+      default:
+        console.log(`Unknown status for node ${node}: ${nodeStatuses[node]}`);
+        return <Tooltip title={"The status of this node is currently unknown"}>
+          <HourglassEmpty />
+        </Tooltip>;
+    }
+  }
+
+
+  const addNewNode = () => {
+    dispatch(addNode({ network, type: blockchain, node: newNode }));
+    setNewNode("");
+  }
+
+  
 
   return (
     <TableContainer component={Paper} style={{ marginTop: '1rem' }} elevation={0}>

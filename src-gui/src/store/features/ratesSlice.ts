@@ -20,20 +20,22 @@ const ratesSlice = createSlice({
   initialState,
   reducers: {
     setBtcPrice: (state, action: PayloadAction<number>) => {
-      console.log("setBtcPrice", action.payload);
       state.btcPrice = action.payload;
     },
     setXmrPrice: (state, action: PayloadAction<number>) => {
-      console.log("setXmrPrice", action.payload);
       state.xmrPrice = action.payload;
     },
     setXmrBtcRate: (state, action: PayloadAction<number>) => {
-      console.log("setXmrBtcRate", action.payload);
       state.xmrBtcRate = action.payload;
+    },
+    resetRates: (state) => {
+      state.btcPrice = null;
+      state.xmrPrice = null;
+      state.xmrBtcRate = null;
     },
   },
 });
 
-export const { setBtcPrice, setXmrPrice, setXmrBtcRate } = ratesSlice.actions;
+export const { setBtcPrice, setXmrPrice, setXmrBtcRate, resetRates } = ratesSlice.actions;
 
 export default ratesSlice.reducer;

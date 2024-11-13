@@ -98,17 +98,17 @@ export async function updateRates(): Promise<void> {
   if (!settings.fetchFiatPrices) 
     return;
 
-  console.log(`currency: ${settings.fiatCurrency}`);
-
   try { 
+    const xmrBtcRate = await fetchXmrBtcRate();
+    store.dispatch(setXmrBtcRate(xmrBtcRate));
+
     const btcPrice = await fetchBtcPrice(settings.fiatCurrency);
     store.dispatch(setBtcPrice(btcPrice));
     
     const xmrPrice = await fetchXmrPrice(settings.fiatCurrency);
     store.dispatch(setXmrPrice(xmrPrice));
 
-    const xmrBtcRate = await fetchXmrBtcRate();
-    store.dispatch(setXmrBtcRate(xmrBtcRate));
+    console.log(`Fetched rates for ${settings.fiatCurrency}`);
   } catch (error) {
     console.error("Error fetching rates:", error);
   }

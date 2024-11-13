@@ -91,19 +91,14 @@ async function fetchInitialData() {
     logger.error(e, "Failed to fetch alerts via UnstoppableSwap HTTP API");
   }
 
-  // Update XMR/BTC rates immediately and then at regular intervals
-  try {
-    await updateRates();
-  } catch (e) {
-    logger.error(e, "Error retrieving fiat prices");
-  }
-
   try {
     await updateRates();
     logger.info("Fetched XMR/BTC rate");
   } catch (e) {
     logger.error(e, "Error retrieving XMR/BTC rate");
   }
-  const UPDATE_INTERVAL = 30_000;
+  
+  // Update the rates every 5 minutes (to respect the coingecko rate limit)
+  const UPDATE_INTERVAL = 5 * 60 * 1_000;
   setInterval(updateRates, UPDATE_INTERVAL);
 }
