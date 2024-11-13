@@ -3,11 +3,11 @@ use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::Result;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::filter::{Directive, LevelFilter};
 use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter, Layer};
 
 use crate::cli::api::tauri_bindings::{TauriEmitter, TauriHandle, TauriLogEvent};
@@ -31,9 +31,17 @@ pub fn init(
     tauri_handle: Option<TauriHandle>,
 ) -> Result<()> {
     // file logger will always write in JSON format and with timestamps
-    let file_appender = tracing_appender::rolling::never(&dir, "swap-all.log");
+    let file_appender: RollingFileAppender = tracing_appender::rolling::never(&dir, "swap-all.log");
 
-    let file_layer = fmt::layer()
+    let tracing_file_appender: RollingFileAppender = RollingFileAppender::builder()
+        .rotation(Rotation::HOURLY)
+        .filename_prefix("tracing")
+        .filename_suffix("log")
+        .max_log_files(24)
+        .build(&dir)
+        .expect("initializing rolling file appender failed");
+
+    let file_layer: tracing_subscriber::filter::Filtered<fmt::Layer<tracing_subscriber::Registry, fmt::format::JsonFields, fmt::format::Format<fmt::format::Json, UtcTime<time::format_description::well_known::Rfc3339>>, RollingFileAppender>, EnvFilter, tracing_subscriber::Registry> = fmt::layer()
         .with_writer(file_appender)
         .with_ansi(false)
         .with_timer(UtcTime::rfc_3339())
@@ -41,6 +49,14 @@ pub fn init(
         .json()
         .with_filter(env_filter(level_filter)?);
 
+    let tracing_file_layer: tracing_subscriber::filter::Filtered<fmt::Layer<tracing_subscriber::Registry, fmt::format::JsonFields, fmt::format::Format<fmt::format::Json, UtcTime<time::format_description::well_known::Rfc3339>>, RollingFileAppender>, EnvFilter, tracing_subscriber::Registry> = fmt::layer()
+        .with_writer(tracing_file_appender)
+        .with_ansi(false)
+        .with_timer(UtcTime::rfc_3339())
+        .with_target(false)
+        .json()
+        .with_filter(env_filter(LevelFilter::TRACE)?);
+    
     // terminal loger
     let is_terminal = atty::is(atty::Stream::Stderr);
     let terminal_layer = fmt::layer()
@@ -58,19 +74,33 @@ pub fn init(
         .json()
         .with_filter(env_filter(level_filter)?);
 
-    // combine the layers and start logging, format with json if specified
-    if let Format::Json = format {
-        tracing_subscriber::registry()
-            .with(file_layer)
-            .with(tauri_layer)
-            .with(terminal_layer.json().with_filter(env_filter(level_filter)?))
-            .try_init()?;
-    } else {
-        tracing_subscriber::registry()
-            .with(file_layer)
-            .with(tauri_layer)
-            .with(terminal_layer.with_filter(env_filter(level_filter)?))
-            .try_init()?;
+    let env_filtered = env_filter(level_filter)?;
+    
+    match format {
+        Format::Json => {
+            tracing_subscriber::registry()
+                .with(
+                    (
+                        file_layer,
+                        tracing_file_layer,
+                        tauri_layer,
+                        terminal_layer.json().with_filter(env_filtered),
+                    )
+                )
+                .try_init()?;
+        }
+        Format::Raw => {
+            tracing_subscriber::registry()
+                .with(
+                    (
+                        file_layer,
+                        tracing_file_layer,
+                        tauri_layer,
+                        terminal_layer.with_filter(env_filtered),
+                    )
+                )
+                .try_init()?;
+        }
     }
 
     // Now we can use the tracing macros to log messages
