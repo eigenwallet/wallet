@@ -11,7 +11,7 @@ import BitcoinRedeemedPage from "./in_progress/BitcoinRedeemedPage";
 import CancelTimelockExpiredPage from "./in_progress/CancelTimelockExpiredPage";
 import EncryptedSignatureSentPage from "./in_progress/EncryptedSignatureSentPage";
 import ReceivedQuotePage from "./in_progress/ReceivedQuotePage";
-import SwapSetupInflightPage from "./in_progress/StartedPage";
+import SwapSetupInflightPage from "./in_progress/SwapSetupInflightPage";
 import XmrLockedPage from "./in_progress/XmrLockedPage";
 import XmrLockTxInMempoolPage from "./in_progress/XmrLockInMempoolPage";
 import InitPage from "./init/InitPage";
