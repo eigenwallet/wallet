@@ -74,15 +74,28 @@ export enum Blockchain {
 const initialState: SettingsState = {
   nodes: {
     [Network.Testnet]: {
-      [Blockchain.Bitcoin]: [],
+      [Blockchain.Bitcoin]: [
+        "ssl://blockstream.info:993",
+        "tcp://blockstream.info:143",
+        "ssl://testnet.aranguren.org:51002",
+        "tcp://testnet.aranguren.org:51001",
+        "ssl://bitcoin.stagemole.eu:5010",
+        "tcp://bitcoin.stagemole.eu:5000",
+      ],
       [Blockchain.Monero]: []
     },
     [Network.Mainnet]: {
-      [Blockchain.Bitcoin]: [],
+      [Blockchain.Bitcoin]: [
+        "ssl://electrum.blockstream.info:50002",
+        "tcp://electrum.blockstream.info:50001",
+        "ssl://bitcoin.stackwallet.com:50002",
+        "ssl://b.1209k.com:50002",
+        "tcp://electrum.coinucopia.io:50001",
+      ],
       [Blockchain.Monero]: []
     }
   },
-  theme: Theme.Dark,
+  theme: Theme.Darker,
   fetchFiatPrices: false,
   fiatCurrency: FiatCurrency.Usd,
 };
