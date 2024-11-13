@@ -20,7 +20,7 @@ use once_cell::sync::Lazy;
 use qrcode::render::unicode;
 use qrcode::QrCode;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 use thiserror::Error;
 use std::cmp::min;
 use std::convert::TryInto;

@@ -721,15 +721,6 @@ pub struct Client {
     subscriptions: HashMap<(Txid, Script), Subscription>,
 }
 
-static DEFAULT_NODES_MAINNET: &[&str] = &[
-    "ssl://fulcrum.not.fyi:51002",
-    "tcp://electrum.coinucopia.io:50001", 
-];
-static DEFAULT_NODES_TESTNET: &[&str] = &[
-    "ssl://testnet.aranguren.org:51002",
-    "tcp::/blockstream.info:143",
-];
-
 impl Client {
     pub fn new(electrum_rpc_url: Url, interval: Duration) -> Result<Self> {
         let config = bdk::electrum_client::ConfigBuilder::default()

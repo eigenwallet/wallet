@@ -20,9 +20,9 @@ export default function HelpPage() {
   return (
     <Box className={classes.outer}>
       <FeedbackInfoBox />
-      <DaemonControlBox />
       <SettingsBox />
       <ExportDataBox />
+      <DaemonControlBox />
       <ContactInfoBox />
       <DonateInfoBox />
     </Box>

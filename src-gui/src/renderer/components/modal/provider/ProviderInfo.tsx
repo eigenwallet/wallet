@@ -26,19 +26,21 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-function ProviderSpreadChip({ provider }: { provider: ExtendedProviderStatus }) {
-  const xmrBtcPrice = useAppSelector(s => s.rates?.xmrBtcRate);
-
-  if (xmrBtcPrice === null) {
+/**
+ * A chip that displays the efficency of the provider's exchange rate compared to the market rate.
+ */
+function ProviderEfficencyChip({ provider }: { provider: ExtendedProviderStatus }) {
+  const marketExchangeRate = useAppSelector(s => s.rates?.xmrBtcRate);
+  if (marketExchangeRate === null) 
     return null;
-  }
 
-  const providerPrice = satsToBtc(provider.price);
-  const spread = ((providerPrice - xmrBtcPrice) / xmrBtcPrice) * 100;
+  const providerExchangeRate = satsToBtc(provider.price);
+  /** The efficency of the exchange rate compared to the market rate in percent */
+  const efficency = (marketExchangeRate / providerExchangeRate) * 100;
 
   return (
-    <Tooltip title="The spread is how many percent the provider's exchange rate is above the market rate on centralized exchanges.">
-      <Chip label={`Spread: ${spread.toFixed(2)}%`} />
+    <Tooltip title="The efficency of this provider's exchange rate. A value lower than 100% means that you pay more than the market rate on centralized exchanges.">
+      <Chip label={`Efficency ${efficency.toFixed(2)}%`} />
     </Tooltip>
   );
 
@@ -97,7 +99,7 @@ export default function ProviderInfo({
             <Chip label="Outdated" icon={<WarningIcon />} color="primary" />
           </Tooltip>
         )}
-        <ProviderSpreadChip provider={provider} />
+        <ProviderEfficencyChip provider={provider} />
       </Box>
     </Box>
   );
