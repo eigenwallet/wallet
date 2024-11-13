@@ -23,7 +23,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 // This is the number of blocks after which we consider the swap to be at risk of being unsuccessful
-const BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD = 5;
+const BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD = 0;
 
 export default function SwapMightBeCancelledAlert() {
   const classes = useStyles();
@@ -37,11 +37,11 @@ export default function SwapMightBeCancelledAlert() {
   // If the swap has not been running for long enough, we do not need to display the alert
   // The swap is probably gonna be successful
   // No need to spook the user for no reason
-  if(getAbsoluteBlock(swapInfo.timelock, swapInfo.cancel_timelock, swapInfo.punish_timelock) < BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD) {
+  if (getAbsoluteBlock(swapInfo.timelock, swapInfo.cancel_timelock, swapInfo.punish_timelock) < BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD) {
     return null;
   }
 
   return (
-    <SwapStatusAlert swap={swapInfo} />
+    <SwapStatusAlert swap={swapInfo} isRunning={true} />
   );
 }

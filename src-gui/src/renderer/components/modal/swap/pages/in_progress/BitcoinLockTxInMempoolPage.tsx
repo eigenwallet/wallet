@@ -3,23 +3,31 @@ import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import SwapMightBeCancelledAlert from "../../../../alert/SwapMightBeCancelledAlert";
 import BitcoinTransactionInfoBox from "../../BitcoinTransactionInfoBox";
 
+// This is the number of blocks after which we consider the swap to be at risk of being unsuccessful
+const BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD = 2;
+
 export default function BitcoinLockTxInMempoolPage({
   btc_lock_confirmations,
   btc_lock_txid,
 }: TauriSwapProgressEventContent<"BtcLockTxInMempool">) {
   return (
     <Box>
-      <DialogContentText>
-        The Bitcoin lock transaction has been published. The swap will proceed
-        once the transaction is confirmed and the swap provider locks their
-        Monero.
-      </DialogContentText>
+      {btc_lock_confirmations < BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD && (
+        <DialogContentText>
+          Your Bitcoin has been locked. {btc_lock_confirmations > 0 ?
+            "We are waiting for the other party to lock their Monero." :
+            "We are waiting for the blockchain to confirm the transaction. Once confirmed, the other party will lock their Monero."
+          }
+        </DialogContentText>
+      )}
       <Box style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "1rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
       }}>
-        <SwapMightBeCancelledAlert />
+        {btc_lock_confirmations >= BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD && (
+          <SwapMightBeCancelledAlert />
+        )}
         <BitcoinTransactionInfoBox
           title="Bitcoin Lock Transaction"
           txId={btc_lock_txid}

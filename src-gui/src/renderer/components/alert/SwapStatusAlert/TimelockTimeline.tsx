@@ -106,13 +106,13 @@ export function TimelockTimeline({ swap }: {
             startBlock: 0,
         },
         {
-            title: "If the swap hasn't been completed before we reach this period, the Bitcoin will be refunded. You need to have the GUI running for it to be refunded",
+            title: "If the swap hasn't been completed before we reach this period, the Bitcoin needs to be refunded. For that, you need to have the app open sometime within the refund period",
             label: "Refund",
             bgcolor: theme.palette.warning.main,
             startBlock: swap.cancel_timelock,
         },
         {
-            title: "If you were offline during the entire refund window, you will enter this period. At this point, the Bitcoin can no longer be refunded. While it may be possible to redeem the Monero with cooperation from the other party, this cannot be guaranteed.",
+            title: "If you didn't refund within the refund window, you will enter this period. At this point, the Bitcoin can no longer be refunded. It may still be possible to redeem the Monero with cooperation from the other party but this cannot be guaranteed.",
             label: "Danger",
             bgcolor: theme.palette.error.main,
             startBlock: swap.cancel_timelock + swap.punish_timelock,

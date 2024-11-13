@@ -25,10 +25,18 @@ const useStyles = makeStyles((theme) => ({
   list: {
     padding: "0px",
     margin: "0px",
+    "& li": {
+      marginBottom: theme.spacing(0.75),
+      "&:last-child": {
+        marginBottom: 0
+      }
+    },
   },
   alertMessage: {
     flexGrow: 1,
   },
+  alertBody: {
+  }
 }));
 
 /**
@@ -41,7 +49,7 @@ function MessageList({ messages }: { messages: ReactNode[]; }) {
 
   return (
     <ul className={classes.list}>
-      {messages.map((msg, i) => (
+      {messages.filter(msg => msg != null).map((msg, i) => (
         <li key={i}>{msg}</li>
       ))}
     </ul>
@@ -76,27 +84,29 @@ function BitcoinRedeemedStateAlert({ swap }: { swap: GetSwapInfoResponseExt; }) 
  * @returns JSX.Element
  */
 function BitcoinLockedNoTimelockExpiredStateAlert({
-  timelock, cancelTimelockOffset, punishTimelockOffset,
+  timelock, cancelTimelockOffset, punishTimelockOffset, isRunning,
 }: {
   timelock: TimelockNone;
   cancelTimelockOffset: number;
   punishTimelockOffset: number;
+  isRunning: boolean;
 }) {
   return (
     <MessageList
       messages={[
-        "Your Bitcoin have been locked",
+        isRunning ? "We are waiting for the other party to lock their Monero" : null,
         <>
-          If the swap is not completed within the next {" "}
-          <HumanizedBitcoinBlockDuration blocks={timelock.content.blocks_left} />,
-          it will be refunded. You need to have the GUI running sometime within the refund period.
-        </>,
-        <>
-          If the swap is not completed / refunded within the next {" "}
+          If the swap isn't completed in {" "}
           <HumanizedBitcoinBlockDuration
-            blocks={timelock.content.blocks_left + punishTimelockOffset} />,
-          cooperation from the other party will be required to recover the funds
-        </>
+            blocks={timelock.content.blocks_left}
+            displayBlocks={false}
+          />, it needs to be refunded
+        </>,
+        "For that, you need to have the app open sometime within the refund period",
+        <>
+          After that, cooperation from the other party would be required to recover the funds
+        </>,
+        isRunning ? null : "Please resume the swap to continue"
       ]} />
   );
 }
@@ -117,13 +127,14 @@ function BitcoinPossiblyCancelledAlert({
   return (
     <MessageList
       messages={[
-        "The swap has been cancelled because it was not completed in time",
-        "You must resume the swap immediately refund the Bitcoin",
+        "The swap is being cancelled because it was not completed in time",
+        "To refund your Bitcoin, resume the swap",
         <>
-          You risk losing your funds if you do not refund within{" "}
+          If we haven't refunded in{" "}
           <HumanizedBitcoinBlockDuration
             blocks={timelock.content.blocks_left} />
-        </>,
+          , cooperation from the other party will be required to recover the funds
+        </>
       ]} />
   );
 }
@@ -136,7 +147,7 @@ function PunishTimelockExpiredAlert() {
   return (
     <MessageList
       messages={[
-        "We did not refund within the refund period",
+        "We couldn't refund within the refund period",
         "We might still be able to redeem the Monero. However, this will require cooperation from the other party",
         "Resume the swap as soon as possible",
       ]} />
@@ -148,7 +159,8 @@ function PunishTimelockExpiredAlert() {
  * @param swap - The swap information.
  * @returns JSX.Element | null
  */
-export function StateAlert({ swap }: { swap: GetSwapInfoResponseExtRunningSwap }) {
+export function StateAlert({ swap, isRunning }: { swap: GetSwapInfoResponseExtRunningSwap; isRunning: boolean; }) {
+
   switch (swap.state_name) {
     // This is the state where the swap is safe because the other party has redeemed the Bitcoin
     // It cannot be punished anymore
@@ -171,6 +183,7 @@ export function StateAlert({ swap }: { swap: GetSwapInfoResponseExtRunningSwap }
                 timelock={swap.timelock}
                 cancelTimelockOffset={swap.cancel_timelock}
                 punishTimelockOffset={swap.punish_timelock}
+                isRunning={isRunning}
               />
             );
           case "Cancel":
@@ -202,8 +215,10 @@ export function StateAlert({ swap }: { swap: GetSwapInfoResponseExtRunningSwap }
  */
 export default function SwapStatusAlert({
   swap,
+  isRunning,
 }: {
   swap: GetSwapInfoResponseExt;
+  isRunning: boolean;
 }): JSX.Element | null {
   const classes = useStyles();
 
@@ -222,13 +237,13 @@ export default function SwapStatusAlert({
       key={swap.swap_id}
       severity="warning"
       variant="filled"
-      classes={{ message: classes.alertMessage }}
+      classes={{ message: classes.alertMessage, root: classes.alertBody }}
     >
       <AlertTitle>
-        Swap <TruncatedText>{swap.swap_id}</TruncatedText> is unfinished
+        {isRunning ? "Swap has been running for a while" : <>Swap <TruncatedText>{swap.swap_id}</TruncatedText> is not running</>}
       </AlertTitle>
       <Box className={classes.box}>
-        <StateAlert swap={swap} />
+        <StateAlert swap={swap} isRunning={isRunning} />
         <TimelockTimeline swap={swap} />
       </Box>
     </Alert>

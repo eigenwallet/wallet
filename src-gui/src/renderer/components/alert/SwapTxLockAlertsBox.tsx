@@ -21,7 +21,7 @@ export default function SwapTxLockAlertsBox() {
   return (
     <Box className={classes.outer}>
       {swaps.map((swap) => (
-        <SwapStatusAlert key={swap.swap_id} swap={swap} />
+        <SwapStatusAlert key={swap.swap_id} swap={swap} isRunning={false} />
       ))}
     </Box>
   );
