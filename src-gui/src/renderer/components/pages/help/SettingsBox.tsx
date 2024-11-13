@@ -140,7 +140,7 @@ function FetchFiatPricesSetting() {
     <>
     <TableRow>
       <TableCell>
-        <SettingLabel label="Query fiat prices" tooltip="Whether to fetch fiat prices via the clearnet. This is required for the price display to work. It might open you up to tracking by third parties." />
+        <SettingLabel label="Query fiat prices" tooltip="Whether to fetch fiat prices via the clearnet. This is required for the price display to work. If you require total anonymity and don't use a VPN, you should disable this." />
       </TableCell>
       <TableCell>
         <Switch 
