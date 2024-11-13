@@ -12,16 +12,15 @@ use crate::protocol::bob::{BobState, Swap};
 use crate::protocol::{bob, State};
 use crate::{bitcoin, cli, monero, rpc};
 use ::bitcoin::Txid;
+use ::monero::Network;
 use anyhow::{bail, Context as AnyContext, Result};
 use libp2p::core::Multiaddr;
 use libp2p::PeerId;
-use ::monero::Network;
 use once_cell::sync::Lazy;
 use qrcode::render::unicode;
 use qrcode::QrCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use thiserror::Error;
 use std::cmp::min;
 use std::convert::TryInto;
 use std::future::Future;
@@ -29,6 +28,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use thiserror::Error;
 use tracing::debug_span;
 use tracing::Instrument;
 use tracing::Span;
@@ -1303,13 +1303,13 @@ where
 #[derive(Deserialize, Serialize)]
 pub struct CheckMoneroNodeArgs {
     pub url: String,
-    pub network: String
+    pub network: String,
 }
 
 #[typeshare]
 #[derive(Deserialize, Serialize)]
 pub struct CheckMoneroNodeResponse {
-    pub available: bool
+    pub available: bool,
 }
 
 #[derive(Error, Debug)]
@@ -1322,23 +1322,21 @@ impl CheckMoneroNodeArgs {
             // When the GUI says testnet, it means monero stagenet
             "mainnet" => Network::Mainnet,
             "testnet" => Network::Stagenet,
-            otherwise => anyhow::bail!(UnknownMoneroNetwork(otherwise.to_string()))
+            otherwise => anyhow::bail!(UnknownMoneroNetwork(otherwise.to_string())),
         };
 
         static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
             reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .https_only(false)
-                .build().expect("reqwest client to work")
+                .build()
+                .expect("reqwest client to work")
         });
 
-        let Ok(monero_daemon) = MoneroDaemon::from_str(
-            self.url, 
-            network
-        ) else {
+        let Ok(monero_daemon) = MoneroDaemon::from_str(self.url, network) else {
             return Ok(CheckMoneroNodeResponse { available: false });
         };
-        
+
         let Ok(available) = monero_daemon.is_available(&CLIENT).await else {
             return Ok(CheckMoneroNodeResponse { available: false });
         };
@@ -1367,8 +1365,10 @@ impl CheckElectrumNodeArgs {
         };
 
         // Check if the node is available
-        let res = wallet::Client::new(url, Duration::from_secs(10));
+        let res = wallet::Client::new(url, Duration::from_secs(10), 0);
 
-        Ok(CheckElectrumNodeResponse { available: res.is_ok() })
+        Ok(CheckElectrumNodeResponse {
+            available: res.is_ok(),
+        })
     }
 }
