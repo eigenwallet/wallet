@@ -38,14 +38,12 @@ import {
 } from "store/features/settingsSlice";
 import { useAppDispatch, useAppSelector, useNodes, useSettings } from "store/hooks";
 import ValidatedTextField from "renderer/components/other/ValidatedTextField";
-import RefreshIcon from "@material-ui/icons/Refresh";
 import HelpIcon from '@material-ui/icons/HelpOutline';
-import { ReactNode, useEffect, useState, useMemo } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Theme } from "renderer/components/theme";
 import { Add, ArrowUpward, Delete, Edit, HourglassEmpty } from "@material-ui/icons";
 import { updateAllNodeStatuses } from "renderer/rpc";
-import { updateRates } from "renderer/api";
-import { getNetwork, getNetworkName } from "store/config";
+import { getNetwork } from "store/config";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -58,6 +56,55 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+/**
+ * The settings box, containing the settings for the GUI.
+ */
+export default function SettingsBox() {
+  const classes = useStyles();
+  const theme = useTheme();
+  const dispatch = useAppDispatch();
+
+  return (
+    <InfoBox
+      title={
+        <Box className={classes.title}>
+          Settings
+        </Box>
+      }
+      mainContent={
+        <Typography variant="subtitle2">
+          Customize the settings of the GUI. 
+          Some of these require a restart to take effect.
+        </Typography>
+      }
+      additionalContent={
+        <>
+          {/* Table containing the settings */}
+          <TableContainer>
+            <Table>
+              <TableBody>
+                <ElectrumRpcUrlSetting />
+                <MoneroNodeUrlSetting />
+                <FetchFiatPricesSetting />
+                <ThemeSetting />
+              </TableBody>
+            </Table>
+          </TableContainer>
+          {/* Reset button with a bit of spacing */}
+          <Box mt={theme.spacing(0.1)} />
+          <ResetButton />
+        </>
+      }
+      icon={null}
+      loading={false}
+    />
+  );
+}
+
+/**
+ * A button that allows you to reset the settings. 
+ * Opens a modal that asks for confirmation first.
+ */
 function ResetButton() {
   const dispatch = useAppDispatch();
   const [modalOpen, setModalOpen] = useState(false);
@@ -82,54 +129,9 @@ function ResetButton() {
   )
 }
 
-export default function SettingsBox() {
-  const classes = useStyles();
-  const theme = useTheme();
-  const dispatch = useAppDispatch();
-
-  return (
-    <InfoBox
-      title={
-        <Box className={classes.title}>
-          Settings
-          <IconButton
-          size="small"
-          onClick={() => {
-            dispatch(resetSettings());
-          }}
-        >
-          <RefreshIcon />
-        </IconButton>
-        </Box>
-      }
-      additionalContent={
-        <>
-          <TableContainer>
-            <Table>
-              <TableBody>
-                <ElectrumRpcUrlSetting />
-                <MoneroNodeUrlSetting />
-                <FetchFiatPricesSetting />
-                <ThemeSetting />
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <Box mt={theme.spacing(0.1)} />
-          <ResetButton />
-        </>
-      }
-      mainContent={
-        <Typography variant="subtitle2">
-          Customize the settings of the GUI. 
-          Some of these require a restart to take effect.
-        </Typography>
-      }
-      icon={null}
-      loading={false}
-    />
-  );
-}
-
+/**
+ * A setting that allows you to enable or disable the fetching of fiat prices.
+ */
 function FetchFiatPricesSetting() {
   const fetchFiatPrices = useSettings((s) => s.fetchFiatPrices);
   const dispatch = useAppDispatch();
@@ -153,13 +155,14 @@ function FetchFiatPricesSetting() {
   );
 }
 
+/**
+ * A setting that allows you to select the fiat currency to display prices in.
+ */
 function FiatCurrencySetting() {
   const fiatCurrency = useSettings((s) => s.fiatCurrency);
   const dispatch = useAppDispatch();
-  const onChange = (e: React.ChangeEvent<{ value: unknown }>) => {
+  const onChange = (e: React.ChangeEvent<{ value: unknown }>) => 
     dispatch(setFiatCurrency(e.target.value as FiatCurrency));
-    updateRates();
-  }
 
   return (
     <TableRow>
@@ -182,19 +185,22 @@ function FiatCurrencySetting() {
   );
 }
 
-// URL validation function, forces the URL to be in the format of "protocol://host:port/"
+/**
+ * URL validation function, forces the URL to be in the format of "protocol://host:port/"
+ */
 function isValidUrl(url: string, allowedProtocols: string[]): boolean {
   const urlPattern = new RegExp(`^(${allowedProtocols.join("|")})://[^\\s]+:\\d+/?$`);
   return urlPattern.test(url);
 }
 
+/**
+ * A setting that allows you to select the Electrum RPC URL to use.
+ */
 function ElectrumRpcUrlSetting() {
   const [tableVisible, setTableVisible] = useState(false);
   const network = getNetwork();
 
-  function isValid(url: string): boolean {
-    return isValidUrl(url, ["ssl", "tcp"]);
-  }
+  const isValid = (url: string) => isValidUrl(url, ["ssl", "tcp"]);
 
   return (
       <TableRow>
@@ -220,6 +226,9 @@ function ElectrumRpcUrlSetting() {
   );
 }
 
+/**
+ * A label for a setting, with a tooltip icon.
+ */
 function SettingLabel({ label, tooltip }: { label: ReactNode, tooltip: string | null }) {
   return <Box style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
     <Box>
@@ -233,15 +242,14 @@ function SettingLabel({ label, tooltip }: { label: ReactNode, tooltip: string | 
   </Box>
 }
 
+/**
+ * A setting that allows you to select the Monero Node URL to use.
+ */
 function MoneroNodeUrlSetting() {
   const network = getNetwork();
-  const dispatch = useAppDispatch();
-
-  function isValid(url: string): boolean {
-    return isValidUrl(url, ["http"]);
-  }
-
   const [tableVisible, setTableVisible] = useState(false);
+
+  const isValid = (url: string) => isValidUrl(url, ["http"]);
 
   return (
     <TableRow>
@@ -267,6 +275,9 @@ function MoneroNodeUrlSetting() {
   );
 }
 
+/**
+ * A setting that allows you to select the theme of the GUI.
+ */
 function ThemeSetting() {
   const theme = useAppSelector((s) => s.settings.theme);
   const dispatch = useAppDispatch();
@@ -295,6 +306,10 @@ function ThemeSetting() {
   );
 }
 
+/**
+ * A modal containing a NodeTable for a given network and blockchain.
+ * It allows you to add, remove, and move nodes up the list.
+ */
 function NodeTableModal({
   open,
   onClose,
