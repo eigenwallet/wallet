@@ -63,7 +63,6 @@ const useStyles = makeStyles((theme) => ({
 export default function SettingsBox() {
   const classes = useStyles();
   const theme = useTheme();
-  const dispatch = useAppDispatch();
 
   return (
     <InfoBox

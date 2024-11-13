@@ -1,6 +1,5 @@
 import { Box, CssBaseline, makeStyles } from "@material-ui/core";
-import { indigo } from "@material-ui/core/colors";
-import { createTheme, ThemeProvider } from "@material-ui/core/styles";
+import { ThemeProvider } from "@material-ui/core/styles";
 import "@tauri-apps/plugin-shell";
 import { Route, MemoryRouter as Router, Routes } from "react-router-dom";
 import Navigation, { drawerWidth } from "./navigation/Navigation";
@@ -20,7 +19,6 @@ import { setAlerts } from "store/features/alertsSlice";
 import { setRegistryProviders } from "store/features/providersSlice";
 import { registryConnectionFailed } from "store/features/providersSlice";
 import { useEffect } from "react";
-import { setXmrBtcRate } from "store/features/ratesSlice";
 
 const useStyles = makeStyles((theme) => ({
   innerContent: {
