@@ -9,7 +9,7 @@ export default function HumanizedBitcoinBlockDuration({
 }) {
   return (
     <>
-      {`${humanizeDuration(blocks * AVG_BLOCK_TIME_MS, {
+      {`≈ ${humanizeDuration(blocks * AVG_BLOCK_TIME_MS, {
         conjunction: " and ",
       })} (${blocks} blocks)`}
     </>
