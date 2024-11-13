@@ -38,6 +38,7 @@ const useStyles = makeStyles((theme) => ({
  */
 function MessageList({ messages }: { messages: ReactNode[]; }) {
   const classes = useStyles();
+
   return (
     <ul className={classes.list}>
       {messages.map((msg, i) => (
@@ -113,20 +114,17 @@ function BitcoinPossiblyCancelledAlert({
   swap: GetSwapInfoResponseExt;
   timelock: TimelockCancel;
 }) {
-  const classes = useStyles();
   return (
-    <Box className={classes.box}>
-      <MessageList
-        messages={[
-          "The swap has been cancelled because it was not completed in time",
-          "You must resume the swap immediately to get your Bitcoin refunded",
-          <>
-            You might lose your funds if you do not refund within{" "}
-            <HumanizedBitcoinBlockDuration
-              blocks={timelock.content.blocks_left} />
-          </>,
-        ]} />
-    </Box>
+    <MessageList
+      messages={[
+        "The swap has been cancelled because it was not completed in time",
+        "You must resume the swap immediately refund the Bitcoin",
+        <>
+          You risk losing your funds if you do not refund within{" "}
+          <HumanizedBitcoinBlockDuration
+            blocks={timelock.content.blocks_left} />
+        </>,
+      ]} />
   );
 }
 
@@ -134,9 +132,14 @@ function BitcoinPossiblyCancelledAlert({
  * Sub-component for displaying alerts requiring immediate action.
  * @returns JSX.Element
  */
-function ImmediateActionAlert() {
+function PunishTimelockExpiredAlert() {
   return (
-    <>Resume the swap immediately</>
+    <MessageList
+      messages={[
+        "We did not refund within the refund period",
+        "We might still be able to redeem the Monero. However, this will require cooperation from the other party",
+        "Resume the swap as soon as possible",
+      ]} />
   );
 }
 
@@ -178,14 +181,14 @@ export function StateAlert({ swap }: { swap: GetSwapInfoResponseExtRunningSwap }
               />
             );
           case "Punish":
-            return <ImmediateActionAlert />;
+            return <PunishTimelockExpiredAlert />;
           default:
             // We have covered all possible timelock states above
             // If we reach this point, it means we have missed a case
             exhaustiveGuard(swap.timelock);
         }
       }
-      return <ImmediateActionAlert />;
+      return <PunishTimelockExpiredAlert />;
 
     default:
       exhaustiveGuard(swap.state_name);
