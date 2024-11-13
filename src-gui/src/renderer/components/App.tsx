@@ -11,7 +11,7 @@ import GlobalSnackbarProvider from "./snackbar/GlobalSnackbarProvider";
 import UpdaterDialog from "./modal/updater/UpdaterDialog";
 import { useSettings } from "store/hooks";
 import { themes } from "./theme";
-import { initEventListeners } from "renderer/rpc";
+import { initEventListeners, updateAllNodeStatuses } from "renderer/rpc";
 import { fetchAlertsViaHttp, fetchProvidersViaHttp, updateRates } from "renderer/api";
 import { store } from "renderer/store/storeRenderer";
 import logger from "utils/logger";
@@ -80,6 +80,14 @@ async function fetchInitialData() {
     store.dispatch(registryConnectionFailed());
     logger.error(e, "Failed to fetch providers via UnstoppableSwap HTTP API");
   }
+
+  try {
+    await updateAllNodeStatuses()
+  } catch (e) {
+    logger.error(e, "Failed to update node statuses")
+  }
+
+  setInterval(updateAllNodeStatuses, 2 * 60 * 1_000);
 
   try {
     const alerts = await fetchAlertsViaHttp();

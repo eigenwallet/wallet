@@ -370,17 +370,6 @@ function NodeTable({
   const dispatch = useAppDispatch();
   const theme = useTheme();
 
-  // Update the statuses of all nodes every 15 seconds, as long as the modal is open
-  useEffect(() => {
-    updateAllNodeStatuses();
-    
-    const interval = setInterval(() => {
-      updateAllNodeStatuses();
-    }, 15_000);
-
-    return () => clearInterval(interval);
-  }, []);
-  
   // Create a circle SVG with a given color and radius
   const circle = (color: string, radius: number = 6) => <svg width={radius * 2} height={radius * 2} viewBox={`0 0 ${radius * 2} ${radius * 2}`}>
     <circle cx={radius} cy={radius} r={radius} fill={color} />

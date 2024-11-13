@@ -324,14 +324,6 @@ impl ContextBuilder {
         )
         .await?;
 
-        // If we are connected to the Bitcoin blockchain and if there is a handle to Tauri present,
-        // we start a background task to watch for timelock changes.
-        if let Some(wallet) = bitcoin_wallet.clone() {
-            if self.tauri_handle.is_some() {
-                let watcher = Watcher::new(wallet, db.clone(), self.tauri_handle.clone());
-                tokio::spawn(watcher.run());
-            }
-        }
 
         // We initialize the Monero wallet below
         // To display the progress to the user, we emit events to the Tauri frontend
@@ -359,6 +351,15 @@ impl ContextBuilder {
             ));
 
         let tor_socks5_port = self.tor.map_or(9050, |tor| tor.tor_socks5_port);
+
+        // If we are connected to the Bitcoin blockchain and if there is a handle to Tauri present,
+        // we start a background task to watch for timelock changes.
+        if let Some(wallet) = bitcoin_wallet.clone() {
+            if self.tauri_handle.is_some() {
+                let watcher = Watcher::new(wallet, db.clone(), self.tauri_handle.clone());
+                tokio::spawn(watcher.run());
+            }
+        }
 
         let context = Context {
             db,

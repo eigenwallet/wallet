@@ -56,7 +56,7 @@ export enum FiatCurrency {
   Try = "TRY",
   Twd = "TWD",
   Uah = "UAH",
-  Vef = "VEF",
+  Ves = "VES",
   Vnd = "VND",
   Zar = "ZAR",
 }
