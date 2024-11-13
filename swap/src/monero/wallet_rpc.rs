@@ -23,24 +23,26 @@ use tokio_util::io::StreamReader;
 
 // See: https://www.moneroworld.com/#nodes, https://monero.fail
 // We don't need any testnet nodes because we don't support testnet at all
-const MONERO_DAEMONS: Lazy<[MoneroDaemon; 16]> = Lazy::new(|| [
-    MoneroDaemon::new("xmr-node.cakewallet.com", 18081, Network::Mainnet),
-    MoneroDaemon::new("nodex.monerujo.io", 18081, Network::Mainnet),
-    MoneroDaemon::new("nodes.hashvault.pro", 18081, Network::Mainnet),
-    MoneroDaemon::new("p2pmd.xmrvsbeast.com", 18081, Network::Mainnet),
-    MoneroDaemon::new("node.monerodevs.org", 18089, Network::Mainnet),
-    MoneroDaemon::new("xmr-node-usa-east.cakewallet.com", 18081, Network::Mainnet),
-    MoneroDaemon::new("xmr-node-uk.cakewallet.com", 18081, Network::Mainnet),
-    MoneroDaemon::new("node.community.rino.io", 18081, Network::Mainnet),
-    MoneroDaemon::new("testingjohnross.com", 20031, Network::Mainnet),
-    MoneroDaemon::new("xmr.litepay.ch", 18081, Network::Mainnet),
-    MoneroDaemon::new("node.trocador.app", 18089, Network::Mainnet),
-    MoneroDaemon::new("stagenet.xmr-tw.org", 38081, Network::Stagenet),
-    MoneroDaemon::new("node.monerodevs.org", 38089, Network::Stagenet),
-    MoneroDaemon::new("singapore.node.xmr.pm", 38081, Network::Stagenet),
-    MoneroDaemon::new("xmr-lux.boldsuck.org", 38081, Network::Stagenet),
-    MoneroDaemon::new("stagenet.community.rino.io", 38081, Network::Stagenet),
-]);
+const MONERO_DAEMONS: Lazy<[MoneroDaemon; 16]> = Lazy::new(|| {
+    [
+        MoneroDaemon::new("xmr-node.cakewallet.com", 18081, Network::Mainnet),
+        MoneroDaemon::new("nodex.monerujo.io", 18081, Network::Mainnet),
+        MoneroDaemon::new("nodes.hashvault.pro", 18081, Network::Mainnet),
+        MoneroDaemon::new("p2pmd.xmrvsbeast.com", 18081, Network::Mainnet),
+        MoneroDaemon::new("node.monerodevs.org", 18089, Network::Mainnet),
+        MoneroDaemon::new("xmr-node-usa-east.cakewallet.com", 18081, Network::Mainnet),
+        MoneroDaemon::new("xmr-node-uk.cakewallet.com", 18081, Network::Mainnet),
+        MoneroDaemon::new("node.community.rino.io", 18081, Network::Mainnet),
+        MoneroDaemon::new("testingjohnross.com", 20031, Network::Mainnet),
+        MoneroDaemon::new("xmr.litepay.ch", 18081, Network::Mainnet),
+        MoneroDaemon::new("node.trocador.app", 18089, Network::Mainnet),
+        MoneroDaemon::new("stagenet.xmr-tw.org", 38081, Network::Stagenet),
+        MoneroDaemon::new("node.monerodevs.org", 38089, Network::Stagenet),
+        MoneroDaemon::new("singapore.node.xmr.pm", 38081, Network::Stagenet),
+        MoneroDaemon::new("xmr-lux.boldsuck.org", 38081, Network::Stagenet),
+        MoneroDaemon::new("stagenet.community.rino.io", 38081, Network::Stagenet),
+    ]
+});
 
 #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 compile_error!("unsupported operating system");
@@ -164,9 +166,7 @@ async fn choose_monero_daemon(network: Network) -> Result<MoneroDaemon, Error> {
 
     // We only want to check for daemons that match the specified network
     let daemons = &*MONERO_DAEMONS;
-    let network_matching_daemons = daemons
-        .iter()
-        .filter(|daemon| daemon.network == network);
+    let network_matching_daemons = daemons.iter().filter(|daemon| daemon.network == network);
 
     for daemon in network_matching_daemons {
         match daemon.is_available(&client).await {
@@ -343,9 +343,7 @@ impl WalletRpc {
 
                 daemon
             }
-            None => {
-                choose_monero_daemon(network).await?
-            },
+            None => choose_monero_daemon(network).await?,
         };
 
         let daemon_address = daemon.to_string();

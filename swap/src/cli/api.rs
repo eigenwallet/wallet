@@ -324,7 +324,6 @@ impl ContextBuilder {
         )
         .await?;
 
-
         // We initialize the Monero wallet below
         // To display the progress to the user, we emit events to the Tauri frontend
         self.tauri_handle
@@ -474,7 +473,10 @@ async fn init_monero_wallet(
 
     let monero_wallet_rpc = monero::WalletRpc::new(data_dir.join("monero")).await?;
 
-    tracing::debug!(address=monero_daemon_address, "Attempting to start monero-wallet-rpc process");
+    tracing::debug!(
+        address = monero_daemon_address,
+        "Attempting to start monero-wallet-rpc process"
+    );
 
     let monero_wallet_rpc_process = monero_wallet_rpc
         .run(network, Some(monero_daemon_address))

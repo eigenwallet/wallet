@@ -4,7 +4,11 @@ use std::sync::Arc;
 use swap::cli::{
     api::{
         request::{
-            BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, CheckElectrumNodeArgs, CheckElectrumNodeResponse, CheckMoneroNodeArgs, CheckMoneroNodeResponse, ExportBitcoinWalletArgs, GetHistoryArgs, GetLogsArgs, GetMoneroAddressesArgs, GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs, MoneroRecoveryArgs, ResumeSwapArgs, SuspendCurrentSwapArgs, WithdrawBtcArgs
+            BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, CheckElectrumNodeArgs,
+            CheckElectrumNodeResponse, CheckMoneroNodeArgs, CheckMoneroNodeResponse,
+            ExportBitcoinWalletArgs, GetHistoryArgs, GetLogsArgs, GetMoneroAddressesArgs,
+            GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs, MoneroRecoveryArgs,
+            ResumeSwapArgs, SuspendCurrentSwapArgs, WithdrawBtcArgs,
         },
         tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle, TauriSettings},
         Context, ContextBuilder,
@@ -219,7 +223,7 @@ async fn is_context_available(context: tauri::State<'_, RwLock<State>>) -> Resul
 #[tauri::command]
 async fn check_monero_node(
     args: CheckMoneroNodeArgs,
-    _: tauri::State<'_, RwLock<State>>
+    _: tauri::State<'_, RwLock<State>>,
 ) -> Result<CheckMoneroNodeResponse, String> {
     args.request().await.to_string_result()
 }
@@ -227,11 +231,10 @@ async fn check_monero_node(
 #[tauri::command]
 async fn check_electrum_node(
     args: CheckElectrumNodeArgs,
-    _: tauri::State<'_, RwLock<State>>
+    _: tauri::State<'_, RwLock<State>>,
 ) -> Result<CheckElectrumNodeResponse, String> {
     args.request().await.to_string_result()
 }
-
 
 /// Tauri command to initialize the Context
 #[tauri::command]
