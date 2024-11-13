@@ -35,7 +35,7 @@ interface TimelineSegment {
           alignItems: 'center',
           justifyContent: 'center',
           bgcolor: segment.bgcolor,
-          width: `${durationOfSegment ? ((durationOfSegment / totalBlocks) * 90) : 10}%`,
+          width: `${durationOfSegment ? ((durationOfSegment / totalBlocks) * 85) : 15}%`,
           position: 'relative',
         }} style={{
           opacity: isActive ? 1 : 0.3
@@ -46,7 +46,7 @@ interface TimelineSegment {
               top: 0,
               left: 0,
               height: '100%',
-              width: `${Math.max(2.5, ((absoluteBlock - segment.startBlock) / durationOfSegment) * 100)}%`,
+              width: `${Math.max(5, ((absoluteBlock - segment.startBlock) / durationOfSegment) * 100)}%`,
               zIndex: 1,
             }}>
               <LinearProgress

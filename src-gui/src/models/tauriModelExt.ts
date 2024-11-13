@@ -31,6 +31,26 @@ export enum BobStateName {
   SafelyAborted = "safely aborted",
 }
 
+export function bobStateNameToHumanReadable(stateName: BobStateName): string {
+  switch (stateName) {
+    case BobStateName.Started: return "Started";
+    case BobStateName.SwapSetupCompleted: return "Setup completed";
+    case BobStateName.BtcLocked: return "Bitcoin locked";
+    case BobStateName.XmrLockProofReceived: return "Monero locked";
+    case BobStateName.XmrLocked: return "Monero locked and fully confirmed";
+    case BobStateName.EncSigSent: return "Encrypted signature sent";
+    case BobStateName.BtcRedeemed: return "Bitcoin redeemed";
+    case BobStateName.CancelTimelockExpired: return "Cancel timelock expired";
+    case BobStateName.BtcCancelled: return "Bitcoin cancelled";
+    case BobStateName.BtcRefunded: return "Bitcoin refunded";
+    case BobStateName.XmrRedeemed: return "Monero redeemed";
+    case BobStateName.BtcPunished: return "Bitcoin punished";
+    case BobStateName.SafelyAborted: return "Safely aborted";
+    default:
+      return exhaustiveGuard(stateName);
+  }
+}
+
 // TODO: This is a temporary solution until we have a typeshare definition for BobStateName
 export type GetSwapInfoResponseExt = GetSwapInfoResponse & {
   state_name: BobStateName;
