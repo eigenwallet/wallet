@@ -1,6 +1,4 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { TauriSettings } from "models/tauriModel";
-import { updateRates } from "renderer/api";
 import { Theme } from "renderer/components/theme";
 
 export interface SettingsState {
@@ -19,6 +17,48 @@ export enum FiatCurrency {
   Gbp = "GBP",
   Chf = "CHF",
   Jpy = "JPY",
+  // the following are copied from the coin gecko API and claude, not sure if they all work
+  Aed = "AED",
+  Ars = "ARS",
+  Aud = "AUD",
+  Bdt = "BDT",
+  Bhd = "BHD",
+  Bmd = "BMD",
+  Brl = "BRL",
+  Cad = "CAD",
+  Clp = "CLP",
+  Cny = "CNY",
+  Czk = "CZK",
+  Dkk = "DKK",
+  Gel = "GEL",
+  Hkd = "HKD",
+  Huf = "HUF",
+  Idr = "IDR",
+  Ils = "ILS",
+  Inr = "INR",
+  Krw = "KRW",
+  Kwd = "KWD",
+  Lkr = "LKR",
+  Mmk = "MMK",
+  Mxn = "MXN",
+  Myr = "MYR",
+  Ngn = "NGN",
+  Nok = "NOK",
+  Nzd = "NZD",
+  Php = "PHP",
+  Pkr = "PKR",
+  Pln = "PLN",
+  Rub = "RUB",
+  Sar = "SAR",
+  Sek = "SEK",
+  Sgd = "SGD",
+  Thb = "THB",
+  Try = "TRY",
+  Twd = "TWD",
+  Uah = "UAH",
+  Vef = "VEF",
+  Vnd = "VND",
+  Zar = "ZAR",
 }
 
 export enum Network {

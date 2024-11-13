@@ -44,6 +44,7 @@ import { Theme } from "renderer/components/theme";
 import { Add, ArrowUpward, Delete, Edit, HourglassEmpty } from "@material-ui/icons";
 import { updateAllNodeStatuses } from "renderer/rpc";
 import { getNetwork } from "store/config";
+import { currencySymbol } from "utils/formatUtils";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -177,7 +178,12 @@ function FiatCurrencySetting() {
           fullWidth
         >
           {Object.values(FiatCurrency).map((currency) => (
-            <MenuItem key={currency} value={currency}>{currency}</MenuItem>
+            <MenuItem key={currency} value={currency}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                <Box>{currency}</Box>
+                <Box>{currencySymbol(currency)}</Box>
+              </Box>
+            </MenuItem>
           ))}
         </Select>
       </TableCell>
