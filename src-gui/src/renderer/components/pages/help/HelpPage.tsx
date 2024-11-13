@@ -23,9 +23,9 @@ export default function HelpPage() {
   useEffect(() => {
     if (location.hash) {
       const element = document.getElementById(location.hash.slice(1));
-      element?.scrollIntoView();
+      element?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [location.hash]);
+  }, [location]);
 
   return (
     <Box className={classes.outer}>
