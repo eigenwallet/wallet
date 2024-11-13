@@ -22,15 +22,12 @@ import {
   TauriTimelockChangeEvent,
   GetSwapInfoArgs,
   ExportBitcoinWalletResponse,
-<<<<<<< HEAD
   CheckMoneroNodeArgs,
   CheckMoneroNodeResponse,
   TauriSettings,
   CheckElectrumNodeArgs,
   CheckElectrumNodeResponse,
-=======
   GetMoneroAddressesResponse,
->>>>>>> bd3fca7e (    feat(gui): Allow to select from recently used monero addresses (#139))
 } from "models/tauriModel";
 import {
   contextStatusEventReceived,
