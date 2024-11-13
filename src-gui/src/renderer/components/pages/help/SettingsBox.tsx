@@ -327,6 +327,11 @@ function NodeTableModal({
   )
 }
 
+/**
+ * A table that displays the available nodes for a given network and blockchain.
+ * It allows you to add, remove, and move nodes up the list.
+ * It fetches the nodes from the store (nodesSlice) and the statuses of all nodes every 15 seconds.
+ */
 function NodeTable({
   network,
   blockchain,
@@ -380,17 +385,34 @@ function NodeTable({
     }
   }
 
-
-  const addNewNode = () => {
+  const onAddNewNode = () => {
     dispatch(addNode({ network, type: blockchain, node: newNode }));
     setNewNode("");
   }
 
-  
+  const onRemoveNode = (node: string) => 
+    dispatch(removeNode({ network, type: blockchain, node }));
+
+  const onMoveUpNode = (node: string) => 
+    dispatch(moveUpNode({ network, type: blockchain, node }));
+
+  const moveUpButton = (node: string) => {
+    if (currentNode === node) 
+      return <></>;
+
+    return (
+      <Tooltip title={"Move this node to the top of the list"}>
+        <IconButton onClick={() => onMoveUpNode(node)}>
+          <ArrowUpward />
+        </IconButton>
+      </Tooltip>
+    )
+  }
 
   return (
     <TableContainer component={Paper} style={{ marginTop: '1rem' }} elevation={0}>
       <Table size="small">
+        {/* Table header row */}
         <TableHead>
           <TableRow>
             <TableCell align="center">Node URL</TableCell>
@@ -399,32 +421,29 @@ function NodeTable({
           </TableRow>
         </TableHead>
         <TableBody>
+          {/* Table body rows: one for each node */}
           {availableNodes.map((node, index) => (
             <TableRow key={index}>
+              {/* Node URL */}
               <TableCell>
                 <Typography variant="overline">{node}</Typography>
               </TableCell>
-              <TableCell align="center">{statusIcon(node)}</TableCell>
+              {/* Node status icon */}
+              <TableCell align="center" children={statusIcon(node)} />
+              {/* Remove and move buttons */}
               <TableCell>
-                <Tooltip title={"Remove this node from your list"}>
-                  <IconButton 
-                    onClick={() => {
-                      dispatch(removeNode({ network, type: blockchain, node }));
-                    }}
-                  >
-                    <Delete />
-                  </IconButton>
-                </Tooltip>
-                { currentNode !== node ? <Tooltip title={"Move this node to the top of the list"}>
-                  <IconButton onClick={() =>
-                    dispatch(moveUpNode({ network, type: blockchain, node }))
-                  }>
-                    <ArrowUpward />
-                  </IconButton>
-                </Tooltip> : <></>}
+                <Tooltip 
+                  title={"Remove this node from your list"}
+                  children={<IconButton 
+                    onClick={() => onRemoveNode(node)}
+                    children={<Delete />} 
+                  />}
+                />
+                {moveUpButton(node)}
               </TableCell>
             </TableRow>
           ))}
+          {/* Last row: add a new node */}
           <TableRow key={-1}>
             <TableCell>
               <ValidatedTextField
@@ -441,7 +460,7 @@ function NodeTable({
             <TableCell></TableCell>
             <TableCell>
               <Tooltip title={"Add this node to your list"}>
-                <IconButton onClick={addNewNode} disabled={availableNodes.includes(newNode) || newNode.length === 0}>
+                <IconButton onClick={onAddNewNode} disabled={availableNodes.includes(newNode) || newNode.length === 0}>
                   <Add />
                 </IconButton>
               </Tooltip>

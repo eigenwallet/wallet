@@ -1,8 +1,8 @@
 import { createListenerMiddleware } from "@reduxjs/toolkit";
-import { getAllSwapInfos, checkBitcoinBalance } from "renderer/rpc";
+import { getAllSwapInfos, checkBitcoinBalance, updateAllNodeStatuses } from "renderer/rpc";
 import logger from "utils/logger";
 import { contextStatusEventReceived } from "store/features/rpcSlice";
-import { setFetchFiatPrices, setFiatCurrency } from "store/features/settingsSlice";
+import { addNode, setFetchFiatPrices, setFiatCurrency } from "store/features/settingsSlice";
 import { updateRates } from "renderer/api";
 import { store } from "renderer/store/storeRenderer";
 
@@ -46,6 +46,14 @@ export function createMainListeners() {
         console.log("Activated fetching fiat prices, updating rates...");
         await updateRates();
       }
+    },
+  });
+
+  // Update the node status when a new one is added
+  listener.startListening({
+    actionCreator: addNode,
+    effect: async (_) => {
+      await updateAllNodeStatuses();
     },
   });
 
