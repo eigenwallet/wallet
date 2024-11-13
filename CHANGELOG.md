@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Breaking change: Increased Bitcoin refund timelock from 12 hours (72 blocks) to 24 hours (144 blocks) on mainnet. This change affects the default transaction configuration and requires both CLI and ASB to be updated to maintain compatibility. Earlier versions will not be able to initiate new swaps with peers running this version.
+- Breaking network protocol change: The libp2p version has been upgraded to 0.53 which includes breaking network protocol changes. ASBs and CLIs will not be able to swap if one of them is on the old version.
+- ASB: Transfer proofs will be repeatedly sent until they are acknowledged by the other party. This fixes a bug where it'd seem to Bob as if the Alice never locked the Monero. Forcing the swap to be refunded.
+- CLI: Encrypted signatures will be repeatedly sent until they are acknowledged by the other party
+- ASB: We now retry indefinitely to lock Monero funds until the swap is cancelled. This fixes an issue where we would fail to lock Monero on the first try (e.g., due to the daemon not being fully synced) and would never try again, forcing the swap to be refunded.
 - ASB + CLI: You can now use the `logs` command to retrieve logs stored in the past, redacting addresses and id's using `logs --redact`.
 - ASB: The `--disable-timestamp` flag has been removed
 - ASB: The `history` command can now be used while the asb is running.
