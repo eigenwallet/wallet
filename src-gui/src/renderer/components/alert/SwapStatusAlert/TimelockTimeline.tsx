@@ -151,7 +151,7 @@ export function TimelockTimeline({ swap }: {
         }}>
             <Paper style={{
                 position: 'relative',
-                height: '4rem',
+                height: '5rem',
                 overflow: 'hidden',
             }} elevation={3} variant="outlined">
                 <Box sx={{
