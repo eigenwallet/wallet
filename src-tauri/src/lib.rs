@@ -113,11 +113,25 @@ impl State {
 
 /// Sets up the Tauri application
 /// Initializes the Tauri state
+/// Sets the window title
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let app_handle = app.app_handle().to_owned();
+    // Set the window title to include the product name and version
+    let config = app.config();
+    let title = format!(
+        "{} (v{})",
+        config
+            .product_name
+            .as_ref()
+            .expect("Product name to be set"),
+        config.version.as_ref().expect("Version to be set")
+    );
 
-    #[cfg(desktop)]
-    app_handle.plugin(tauri_plugin_cli::init())?;
+    let _ = app
+        .get_webview_window("main")
+        .expect("main window to exist")
+        .set_title(&title);
+
+    let app_handle = app.app_handle().to_owned();
 
     // We need to set a value for the Tauri state right at the start
     // If we don't do this, Tauri commands will panic at runtime if no value is present
@@ -138,6 +152,8 @@ pub fn run() {
                 .expect("no main window")
                 .set_focus();
         }));
+
+        builder = builder.plugin(tauri_plugin_cli::init());
     }
 
     builder
