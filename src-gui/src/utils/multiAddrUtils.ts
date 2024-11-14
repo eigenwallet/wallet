@@ -3,7 +3,7 @@ import { Multiaddr } from "multiaddr";
 import semver from "semver";
 import { isTestnet } from "store/config";
 
-const MIN_ASB_VERSION = "1.0.0";
+const MIN_ASB_VERSION = "1.0.0-rc.1"
 
 export function providerToConcatenatedMultiAddr(provider: Provider) {
   return new Multiaddr(provider.multiAddr)
