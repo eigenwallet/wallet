@@ -64,17 +64,17 @@ jobs:
         run: yarn install
 
       - name: install tauri-cli globally
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/cache-cargo-install-action@v2
         with:
           tool: tauri-cli@2.1.0
           
       - name: install typeshare-cli globally
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/cache-cargo-install-action@v2
         with:
           tool: typeshare-cli
 
       - name: install dprint globally
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/cache-cargo-install-action@v2
         with:
           tool: dprint@0.39.1
 
