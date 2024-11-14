@@ -35,8 +35,6 @@ const useStyles = makeStyles((theme) => ({
   alertMessage: {
     flexGrow: 1,
   },
-  alertBody: {
-  }
 }));
 
 /**
@@ -237,7 +235,7 @@ export default function SwapStatusAlert({
       key={swap.swap_id}
       severity="warning"
       variant="filled"
-      classes={{ message: classes.alertMessage, root: classes.alertBody }}
+      classes={{ message: classes.alertMessage }}
     >
       <AlertTitle>
         {isRunning ? "Swap has been running for a while" : <>Swap <TruncatedText>{swap.swap_id}</TruncatedText> is not running</>}
