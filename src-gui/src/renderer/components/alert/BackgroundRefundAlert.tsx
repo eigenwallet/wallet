@@ -22,6 +22,7 @@ export default function BackgroundRefundAlert() {
                 { variant: "error", autoHideDuration: 60 * 1000 }
             );
         }
+
         // If we successfully refunded, show a notification as well
         if (backgroundRefund?.state.type === "Completed") {
             notistack.enqueueSnackbar(`The swap ${backgroundRefund.swapId} has been refunded in the background.`, { variant: "success", persist: true });
