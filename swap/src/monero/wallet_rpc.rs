@@ -370,7 +370,7 @@ impl WalletRpc {
 
         #[cfg(target_os = "windows")]
         {
-            // See: https://learn.microsoft.com/de-de/windows/win32/procthread/process-creation-flags?redirectedfrom=MSDN
+            // See: https://learn.microsoft.com/de-de/windows/win32/procthread/process-creation-flags
             // This prevents a console window from appearing when the wallet is started
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
