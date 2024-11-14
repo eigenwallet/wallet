@@ -38,7 +38,8 @@ export default function BitcoinLockTxInMempoolPage({
           additionalContent={
             <>
               Most swap providers require one confirmation before locking their
-              Monero
+              Monero. After they lock their funds and the Monero transaction
+              receives one confirmation, the swap will proceed to the next step.
               <br />
               Confirmations: {btc_lock_confirmations}
             </>

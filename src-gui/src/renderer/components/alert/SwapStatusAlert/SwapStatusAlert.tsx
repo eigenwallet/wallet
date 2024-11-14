@@ -26,7 +26,7 @@ const useStyles = makeStyles((theme) => ({
     padding: "0px",
     margin: "0px",
     "& li": {
-      marginBottom: theme.spacing(0.75),
+      marginBottom: theme.spacing(0.5),
       "&:last-child": {
         marginBottom: 0
       }
