@@ -268,8 +268,14 @@ async fn initialize_context(
     let sys = sysinfo::System::new_with_specifics(
         sysinfo::RefreshKind::new().with_processes(sysinfo::ProcessRefreshKind::new()),
     );
-    for (_, process) in sys.processes() {
-        if process.name() == "monero-wallet-rpc" {
+
+    for (pid, process) in sys.processes() {
+        if process
+            .name()
+            .to_string_lossy()
+            .starts_with("monero-wallet-rpc")
+        {
+            println!("Killing monero-wallet-rpc process with pid: {}", pid);
             process.kill();
         }
     }
