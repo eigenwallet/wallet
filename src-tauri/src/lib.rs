@@ -264,7 +264,7 @@ async fn initialize_context(
     // This can lead to issues when the app is restarted
     // because the monero-wallet-rpc has a lock on the wallet
     // this will prevent the newly spawned instance from opening the wallet
-    // To fix this, we will kill the monero-wallet-rpc process if it is running
+    // To fix this, we kill any running monero-wallet-rpc processes
     let sys = sysinfo::System::new_with_specifics(
         sysinfo::RefreshKind::new().with_processes(sysinfo::ProcessRefreshKind::new()),
     );
