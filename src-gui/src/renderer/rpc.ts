@@ -234,6 +234,7 @@ export async function initializeContext() {
     Object.values(store.getState().nodes.nodes[blockchain]).length < store.getState().settings.nodes[network][blockchain].length
   )) {
     try {
+      console.log("Updating node statuses");
       await updateAllNodeStatuses();
     } catch (e) {
       logger.error(e, "Failed to update node statuses");
@@ -296,9 +297,7 @@ export async function updateAllNodeStatuses() {
   // For all nodes, check if they are available and store the new status (in parallel)
   await Promise.all(
     Object.values(Blockchain).flatMap(blockchain =>
-      settings.nodes[network][blockchain].map(async node => {
-        updateNodeStatus(node, blockchain);
-      })
+      settings.nodes[network][blockchain].map(node => updateNodeStatus(node, blockchain))
     )
   );
 }
