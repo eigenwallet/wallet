@@ -6,13 +6,13 @@ export interface NodesSlice {
 }
 
 function initialState(): NodesSlice {
-    return {
-        nodes: {
-            [Blockchain.Bitcoin]: {},
-            [Blockchain.Monero]: {},
-        },
-    }
-}   
+  return {
+    nodes: {
+      [Blockchain.Bitcoin]: {},
+      [Blockchain.Monero]: {},
+    },
+  }
+}
 
 const nodesSlice = createSlice({
   name: "nodes",
@@ -29,10 +29,10 @@ const nodesSlice = createSlice({
       slice.nodes[action.payload.blockchain][action.payload.node] = action.payload.status;
     },
     resetStatuses(slice) {
-        slice.nodes = {
-            [Blockchain.Bitcoin]: {},
-            [Blockchain.Monero]: {},
-        }
+      slice.nodes = {
+        [Blockchain.Bitcoin]: {},
+        [Blockchain.Monero]: {},
+      }
     },
   },
 });
