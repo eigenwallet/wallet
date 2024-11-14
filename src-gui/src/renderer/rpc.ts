@@ -44,8 +44,8 @@ import { MoneroRecoveryResponse } from "models/rpcModel";
 import { ListSellersResponse } from "../models/tauriModel";
 import logger from "utils/logger";
 import { getNetwork, getNetworkName, isTestnet } from "store/config";
-import { Blockchain, Network } from "store/features/settingsSlice";
-import { resetStatuses, setPromise, setStatus, setStatuses } from "store/features/nodesSlice";
+import { Blockchain } from "store/features/settingsSlice";
+import { setStatus } from "store/features/nodesSlice";
 
 export async function initEventListeners() {
   // This operation is in-expensive
@@ -220,8 +220,6 @@ export async function listSellersAtRendezvousPoint(
 }
 
 export async function initializeContext() {
-  console.log("Prepare: Initializing context with settings");
-
   const network = getNetwork();
   const testnet = isTestnet();
 
@@ -241,14 +239,12 @@ export async function initializeContext() {
       logger.error(e, "Failed to update node statuses");
     }
   }
+  const { bitcoin: bitcoinNodes, monero: moneroNodes } = store.getState().nodes.nodes;
 
-  const bitcoinNodes = store.getState().nodes.nodes.bitcoin;
-  const moneroNodes = store.getState().nodes.nodes.monero;
+  const firstAvailableElectrumNode = Object.keys(bitcoinNodes).find(node => bitcoinNodes[node] === true);
+  const firstAvailableMoneroNode = Object.keys(moneroNodes).find(node => moneroNodes[node] === true);
 
-  let firstAvailableElectrumNode = Object.keys(bitcoinNodes).find(node => bitcoinNodes[node] === true);
   tauriSettings.electrum_rpc_url = firstAvailableElectrumNode ?? null;
-
-  let firstAvailableMoneroNode = Object.keys(moneroNodes).find(node => moneroNodes[node] === true);
   tauriSettings.monero_node_url = firstAvailableMoneroNode ?? null;
 
   console.log("Initializing context with settings", tauriSettings);

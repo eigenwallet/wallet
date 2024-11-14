@@ -18,9 +18,6 @@ const nodesSlice = createSlice({
   name: "nodes",
   initialState: initialState(),
   reducers: {
-    setStatuses(slice, action: PayloadAction<Record<Blockchain, Record<string, boolean>>>) {
-      slice.nodes = action.payload;
-    },
     setStatus(slice, action: PayloadAction<{
       node: string,
       status: boolean,
@@ -37,5 +34,5 @@ const nodesSlice = createSlice({
   },
 });
 
-export const { setStatus, setStatuses, resetStatuses } = nodesSlice.actions;
+export const { setStatus, resetStatuses } = nodesSlice.actions;
 export default nodesSlice.reducer;
