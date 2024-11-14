@@ -1,7 +1,9 @@
-import { Box, DialogContentText } from "@material-ui/core";
+timport { Box, DialogContentText } from "@material-ui/core";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import SwapMightBeCancelledAlert from "../../../../alert/SwapMightBeCancelledAlert";
 import BitcoinTransactionInfoBox from "../../BitcoinTransactionInfoBox";
+import SwapStatusAlert from "renderer/components/alert/SwapStatusAlert/SwapStatusAlert";
+import { useActiveSwapInfo } from "store/hooks";
 
 // This is the number of blocks after which we consider the swap to be at risk of being unsuccessful
 const BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD = 2;
@@ -10,6 +12,8 @@ export default function BitcoinLockTxInMempoolPage({
   btc_lock_confirmations,
   btc_lock_txid,
 }: TauriSwapProgressEventContent<"BtcLockTxInMempool">) {
+  const swapInfo = useActiveSwapInfo();
+
   return (
     <Box>
       {btc_lock_confirmations < BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD && (
@@ -26,7 +30,7 @@ export default function BitcoinLockTxInMempoolPage({
         gap: "1rem",
       }}>
         {btc_lock_confirmations >= BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD && (
-          <SwapMightBeCancelledAlert />
+          <SwapStatusAlert swap={swapInfo} isRunning={true} />
         )}
         <BitcoinTransactionInfoBox
           title="Bitcoin Lock Transaction"
