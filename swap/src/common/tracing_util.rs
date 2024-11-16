@@ -42,6 +42,7 @@ pub fn init(
         .build(&dir)
         .expect("initializing rolling file appender failed");
 
+    // Log to file
     let file_layer = fmt::layer()
         .with_writer(file_appender)
         .with_ansi(false)
@@ -90,7 +91,7 @@ pub fn init(
         .try_init()?;
 
     // Now we can use the tracing macros to log messages
-    tracing::info!(%level_filter, logs_dir=%dir.as_ref().display(), "Initialized tracing");
+    tracing::info!(%level_filter, logs_dir=%dir.as_ref().display(), "Initialized tracing. General logs will be written to swap-all.log, and verbose logs to tracing*.log");
 
     Ok(())
 }
