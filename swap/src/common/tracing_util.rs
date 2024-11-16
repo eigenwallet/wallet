@@ -8,6 +8,7 @@ use tracing_subscriber::filter::{Directive, LevelFilter};
 use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter, Layer};
 
 use crate::cli::api::tauri_bindings::{TauriEmitter, TauriHandle, TauriLogEvent};
@@ -41,7 +42,7 @@ pub fn init(
         .build(&dir)
         .expect("initializing rolling file appender failed");
 
-    let file_layer: tracing_subscriber::filter::Filtered<fmt::Layer<tracing_subscriber::Registry, fmt::format::JsonFields, fmt::format::Format<fmt::format::Json, UtcTime<time::format_description::well_known::Rfc3339>>, RollingFileAppender>, EnvFilter, tracing_subscriber::Registry> = fmt::layer()
+    let file_layer = fmt::layer()
         .with_writer(file_appender)
         .with_ansi(false)
         .with_timer(UtcTime::rfc_3339())
@@ -49,15 +50,15 @@ pub fn init(
         .json()
         .with_filter(env_filter(level_filter)?);
 
-    let tracing_file_layer: tracing_subscriber::filter::Filtered<fmt::Layer<tracing_subscriber::Registry, fmt::format::JsonFields, fmt::format::Format<fmt::format::Json, UtcTime<time::format_description::well_known::Rfc3339>>, RollingFileAppender>, EnvFilter, tracing_subscriber::Registry> = fmt::layer()
+    let tracing_file_layer = fmt::layer()
         .with_writer(tracing_file_appender)
         .with_ansi(false)
         .with_timer(UtcTime::rfc_3339())
         .with_target(false)
         .json()
         .with_filter(env_filter(LevelFilter::TRACE)?);
-    
-    // terminal loger
+
+    // Log to stdout
     let is_terminal = atty::is(atty::Stream::Stderr);
     let terminal_layer = fmt::layer()
         .with_writer(std::io::stdout)
@@ -65,7 +66,7 @@ pub fn init(
         .with_timer(UtcTime::rfc_3339())
         .with_target(false);
 
-    // tauri layer (forwards logs to the tauri guest when connected)
+    // Forwards logs to the tauri guest
     let tauri_layer = fmt::layer()
         .with_writer(TauriWriter::new(tauri_handle))
         .with_ansi(false)
@@ -75,33 +76,18 @@ pub fn init(
         .with_filter(env_filter(level_filter)?);
 
     let env_filtered = env_filter(level_filter)?;
-    
-    match format {
-        Format::Json => {
-            tracing_subscriber::registry()
-                .with(
-                    (
-                        file_layer,
-                        tracing_file_layer,
-                        tauri_layer,
-                        terminal_layer.json().with_filter(env_filtered),
-                    )
-                )
-                .try_init()?;
-        }
-        Format::Raw => {
-            tracing_subscriber::registry()
-                .with(
-                    (
-                        file_layer,
-                        tracing_file_layer,
-                        tauri_layer,
-                        terminal_layer.with_filter(env_filtered),
-                    )
-                )
-                .try_init()?;
-        }
-    }
+
+    let final_terminal_layer = match format {
+        Format::Json => terminal_layer.json().with_filter(env_filtered).boxed(),
+        Format::Raw => terminal_layer.with_filter(env_filtered).boxed(),
+    };
+
+    tracing_subscriber::registry()
+        .with(file_layer)
+        .with(tracing_file_layer)
+        .with(final_terminal_layer)
+        .with(tauri_layer)
+        .try_init()?;
 
     // Now we can use the tracing macros to log messages
     tracing::info!(%level_filter, logs_dir=%dir.as_ref().display(), "Initialized tracing");
