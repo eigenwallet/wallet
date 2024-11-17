@@ -3,7 +3,7 @@ import { ExtendedProviderStatus, ProviderStatus } from "models/apiModel";
 import { Seller } from "models/tauriModel";
 import { getStubTestnetProvider } from "store/config";
 import { rendezvousSellerToProviderStatus } from "utils/conversionUtils";
-import { isProviderOnCorrectNetwork, isProviderOutdated } from "utils/multiAddrUtils";
+import { isProviderOutdated } from "utils/multiAddrUtils";
 import { sortProviderList } from "utils/sortUtils";
 
 const stubTestnetProvider = getStubTestnetProvider();
