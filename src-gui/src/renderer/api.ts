@@ -13,7 +13,7 @@ import { setAlerts } from "store/features/alertsSlice";
 import { registryConnectionFailed, setRegistryProviders } from "store/features/providersSlice";
 import logger from "utils/logger";
 
-const PUBLIC_REGISTRY_API_BASE_URL = "https://api2.unstoppableswap.net";
+const PUBLIC_REGISTRY_API_BASE_URL = "https://api.unstoppableswap.net";
 
 async function fetchProvidersViaHttp(): Promise<
   ExtendedProviderStatus[]
