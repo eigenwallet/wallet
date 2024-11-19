@@ -53,35 +53,25 @@ export async function submitFeedbackViaHttp(
 }
 
 async function fetchCurrencyPrice(currency: string, fiatCurrency: FiatCurrency): Promise<number> {
-  try {
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${currency}&vs_currencies=${fiatCurrency.toLowerCase()}`,
-    );
-    const data = await response.json();
-    return data[currency][fiatCurrency.toLowerCase()];
-  } catch (error) {
-    logger.error(`Error fetching ${currency} price:`, error);
-    throw error;
-  }
+  const response = await fetch(
+    `https://api.coingecko.com/api/v3/simple/price?ids=${currency}&vs_currencies=${fiatCurrency.toLowerCase()}`,
+  );
+  const data = await response.json();
+  return data[currency][fiatCurrency.toLowerCase()];
 }
 
 async function fetchXmrBtcRate(): Promise<number> {
-  try {
-    const response = await fetch('https://api.kraken.com/0/public/Ticker?pair=XMRXBT');
-    const data = await response.json();
+  const response = await fetch('https://api.kraken.com/0/public/Ticker?pair=XMRXBT');
+  const data = await response.json();
 
-    if (data.error && data.error.length > 0) {
-      throw new Error(`Kraken API error: ${data.error[0]}`);
-    }
-
-    const result = data.result.XXMRXXBT;
-    const lastTradePrice = parseFloat(result.c[0]);
-
-    return lastTradePrice;
-  } catch (error) {
-    logger.error('Error fetching XMR/BTC rate from Kraken:', error);
-    throw error;
+  if (data.error && data.error.length > 0) {
+    throw new Error(`Kraken API error: ${data.error[0]}`);
   }
+
+  const result = data.result.XXMRXXBT;
+  const lastTradePrice = parseFloat(result.c[0]);
+
+  return lastTradePrice;
 }
 
 
@@ -137,13 +127,4 @@ export async function updatePublicRegistry(): Promise<void> {
   } catch (error) {
     logger.error(error, "Error fetching alerts");
   }
-}
-
-
-/**
- * Setup intervals
- */
-export function setupIntervals(): void {
-  // Update rates every 5 minutes
-  setInterval(updateRates, 5 * 60 * 1_000);
 }
