@@ -33,8 +33,6 @@ pub const DEFAULT_ELECTRUM_RPC_URL_TESTNET: &str = "tcp://electrum.blockstream.i
 const DEFAULT_BITCOIN_CONFIRMATION_TARGET: u16 = 1;
 pub const DEFAULT_BITCOIN_CONFIRMATION_TARGET_TESTNET: u16 = 1;
 
-const DEFAULT_TOR_SOCKS5_PORT: &str = "9050";
-
 /// Represents the result of parsing the command-line parameters.
 
 #[derive(Debug)]
@@ -74,7 +72,6 @@ where
             bitcoin_change_address,
             monero,
             monero_receive_address,
-            tor,
         } => {
             let monero_receive_address =
                 monero_address::validate_is_testnet(monero_receive_address, is_testnet)?;
@@ -87,7 +84,6 @@ where
                 ContextBuilder::new(is_testnet)
                     .with_bitcoin(bitcoin)
                     .with_monero(monero)
-                    .with_tor(tor)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
@@ -180,13 +176,11 @@ where
             server_address,
             bitcoin,
             monero,
-            tor,
         } => {
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
                     .with_bitcoin(bitcoin)
                     .with_monero(monero)
-                    .with_tor(tor)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
@@ -227,13 +221,11 @@ where
             swap_id: SwapId { swap_id },
             bitcoin,
             monero,
-            tor,
         } => {
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
                     .with_bitcoin(bitcoin)
                     .with_monero(monero)
-                    .with_tor(tor)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
@@ -248,12 +240,10 @@ where
         CliCommand::CancelAndRefund {
             swap_id: SwapId { swap_id },
             bitcoin,
-            tor,
         } => {
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
                     .with_bitcoin(bitcoin)
-                    .with_tor(tor)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
@@ -267,13 +257,9 @@ where
 
             Ok(context)
         }
-        CliCommand::ListSellers {
-            rendezvous_point,
-            tor,
-        } => {
+        CliCommand::ListSellers { rendezvous_point } => {
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
-                    .with_tor(tor)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
@@ -387,9 +373,6 @@ enum CliCommand {
             parse(try_from_str = monero_address::parse)
         )]
         monero_receive_address: monero::Address,
-
-        #[structopt(flatten)]
-        tor: Tor,
     },
     /// Show a list of past, ongoing and completed swaps
     History,
@@ -449,9 +432,6 @@ enum CliCommand {
             help = "The socket address the server should use"
         )]
         server_address: Option<SocketAddr>,
-
-        #[structopt(flatten)]
-        tor: Tor,
     },
     /// Resume a swap
     Resume {
@@ -463,9 +443,6 @@ enum CliCommand {
 
         #[structopt(flatten)]
         monero: Monero,
-
-        #[structopt(flatten)]
-        tor: Tor,
     },
     /// Force the submission of the cancel and refund transactions of a swap
     #[structopt(aliases = &["cancel", "refund"])]
@@ -475,9 +452,6 @@ enum CliCommand {
 
         #[structopt(flatten)]
         bitcoin: Bitcoin,
-
-        #[structopt(flatten)]
-        tor: Tor,
     },
     /// Discover and list sellers (i.e. ASB providers)
     ListSellers {
@@ -486,9 +460,6 @@ enum CliCommand {
             help = "Address of the rendezvous point you want to use to discover ASBs"
         )]
         rendezvous_point: Multiaddr,
-
-        #[structopt(flatten)]
-        tor: Tor,
     },
     /// Print the internal bitcoin wallet descriptor
     ExportBitcoinWallet {
@@ -557,16 +528,6 @@ impl Bitcoin {
 
         Ok((bitcoin_electrum_rpc_url, bitcoin_target_block))
     }
-}
-
-#[derive(structopt::StructOpt, Debug)]
-pub struct Tor {
-    #[structopt(
-        long = "tor-socks5-port",
-        help = "Your local Tor socks5 proxy port",
-        default_value = DEFAULT_TOR_SOCKS5_PORT
-    )]
-    pub tor_socks5_port: u16,
 }
 
 #[derive(structopt::StructOpt, Debug)]
