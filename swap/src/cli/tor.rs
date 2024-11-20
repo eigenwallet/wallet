@@ -1,12 +1,10 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 use arti_client::{config::TorClientConfigBuilder, Error, TorClient};
 use tor_rtcompat::tokio::TokioRustlsRuntime;
 
-pub async fn init_tor_client(
-    data_dir: &PathBuf,
-) -> Result<Arc<TorClient<TokioRustlsRuntime>>, Error> {
+pub async fn init_tor_client(data_dir: &Path) -> Result<Arc<TorClient<TokioRustlsRuntime>>, Error> {
     // We store the Tor state in the data directory
     let data_dir = data_dir.join("tor");
     let state_dir = data_dir.join("state");
@@ -16,7 +14,7 @@ pub async fn init_tor_client(
     // and what directories to use for storing persistent state.
     let config = TorClientConfigBuilder::from_directories(state_dir, cache_dir)
         .build()
-        .unwrap();
+        .expect("We initialized the Tor client all required attributes");
 
     // Start the Arti client, and let it bootstrap a connection to the Tor network.
     // (This takes a while to gather the necessary directory information.
