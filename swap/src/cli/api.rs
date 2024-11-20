@@ -203,6 +203,7 @@ pub struct ContextBuilder {
     is_testnet: bool,
     debug: bool,
     json: bool,
+    tor: bool,
     tauri_handle: Option<TauriHandle>,
 }
 
@@ -225,6 +226,7 @@ impl ContextBuilder {
             is_testnet: false,
             debug: false,
             json: false,
+            tor: false,
             tauri_handle: None,
         }
     }
@@ -269,6 +271,12 @@ impl ContextBuilder {
     /// Set logging format to json (default false)
     pub fn with_json(mut self, json: bool) -> Self {
         self.json = json;
+        self
+    }
+
+    /// Whether to initialize a Tor client (default false)
+    pub fn with_tor(mut self, tor: bool) -> Self {
+        self.tor = tor;
         self
     }
 
@@ -371,12 +379,16 @@ impl ContextBuilder {
                 TauriContextInitializationProgress::EstablishingTorCircuits,
             ));
 
-        let tor = init_tor_client(&data_dir)
-            .await
-            .inspect_err(|err| {
-                tracing::error!(%err, "Failed to establish Tor client");
-            })
-            .ok();
+        let tor = if self.tor {
+            init_tor_client(&data_dir)
+                .await
+                .inspect_err(|err| {
+                    tracing::error!(%err, "Failed to establish Tor client");
+                })
+                .ok()
+        } else {
+            None
+        };
 
         let context = Context {
             db,

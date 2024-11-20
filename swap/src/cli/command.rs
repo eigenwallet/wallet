@@ -87,6 +87,7 @@ where
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
+                    .with_tor(true)
                     .build()
                     .await?,
             );
@@ -184,6 +185,7 @@ where
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
+                    .with_tor(true)
                     .build()
                     .await?,
             );
@@ -229,6 +231,7 @@ where
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
+                    .with_tor(true)
                     .build()
                     .await?,
             );
@@ -263,6 +266,7 @@ where
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
+                    .with_tor(true)
                     .build()
                     .await?,
             );
