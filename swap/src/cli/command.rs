@@ -72,6 +72,7 @@ where
             bitcoin_change_address,
             monero,
             monero_receive_address,
+            tor,
         } => {
             let monero_receive_address =
                 monero_address::validate_is_testnet(monero_receive_address, is_testnet)?;
@@ -82,12 +83,12 @@ where
 
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
+                    .with_tor(tor.enable_tor)
                     .with_bitcoin(bitcoin)
                     .with_monero(monero)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
-                    .with_tor(true)
                     .build()
                     .await?,
             );
@@ -177,15 +178,16 @@ where
             server_address,
             bitcoin,
             monero,
+            tor,
         } => {
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
+                    .with_tor(tor.enable_tor)
                     .with_bitcoin(bitcoin)
                     .with_monero(monero)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
-                    .with_tor(true)
                     .build()
                     .await?,
             );
@@ -223,15 +225,16 @@ where
             swap_id: SwapId { swap_id },
             bitcoin,
             monero,
+            tor,
         } => {
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
+                    .with_tor(tor.enable_tor)
                     .with_bitcoin(bitcoin)
                     .with_monero(monero)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
-                    .with_tor(true)
                     .build()
                     .await?,
             );
@@ -260,13 +263,16 @@ where
 
             Ok(context)
         }
-        CliCommand::ListSellers { rendezvous_point } => {
+        CliCommand::ListSellers {
+            rendezvous_point,
+            tor,
+        } => {
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
+                    .with_tor(tor.enable_tor)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
-                    .with_tor(true)
                     .build()
                     .await?,
             );
@@ -377,6 +383,9 @@ enum CliCommand {
             parse(try_from_str = monero_address::parse)
         )]
         monero_receive_address: monero::Address,
+
+        #[structopt(flatten)]
+        tor: Tor,
     },
     /// Show a list of past, ongoing and completed swaps
     History,
@@ -436,6 +445,9 @@ enum CliCommand {
             help = "The socket address the server should use"
         )]
         server_address: Option<SocketAddr>,
+
+        #[structopt(flatten)]
+        tor: Tor,
     },
     /// Resume a swap
     Resume {
@@ -447,6 +459,9 @@ enum CliCommand {
 
         #[structopt(flatten)]
         monero: Monero,
+
+        #[structopt(flatten)]
+        tor: Tor,
     },
     /// Force the submission of the cancel and refund transactions of a swap
     #[structopt(aliases = &["cancel", "refund"])]
@@ -464,6 +479,9 @@ enum CliCommand {
             help = "Address of the rendezvous point you want to use to discover ASBs"
         )]
         rendezvous_point: Multiaddr,
+
+        #[structopt(flatten)]
+        tor: Tor,
     },
     /// Print the internal bitcoin wallet descriptor
     ExportBitcoinWallet {
@@ -532,6 +550,15 @@ impl Bitcoin {
 
         Ok((bitcoin_electrum_rpc_url, bitcoin_target_block))
     }
+}
+
+#[derive(structopt::StructOpt, Debug)]
+pub struct Tor {
+    #[structopt(
+        long = "enable-tor",
+        help = "Bootstrap a tor client and use it for all libp2p connections"
+    )]
+    pub enable_tor: bool,
 }
 
 #[derive(structopt::StructOpt, Debug)]
