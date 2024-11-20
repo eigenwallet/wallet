@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- CLI + GUI: Tor is now bundled with the application and enabled by default. All libp2p connections between peers are routed through Tor by default. This is powered by [arti](https://tpo.pages.torproject.net/core/arti/), an implementation of the Tor protocol in Rust by the Tor Project.
+- CLI + GUI: Tor is now bundled with the application. All libp2p connections between peers are routed through Tor, if the `--enable-tor` flag is set. The `--tor-socks5-port` argument has been removed. This feature is powered by [arti](https://tpo.pages.torproject.net/core/arti/), an implementation of the Tor protocol in Rust by the Tor Project.
 
 ## [1.0.0-rc.5] - 2024-11-19
 
