@@ -305,7 +305,16 @@ impl ContextBuilder {
             );
         });
 
+        // Create the data structure we use to manage the swap lock
+        let swap_lock = Arc::new(SwapLock::new());
+        let tasks = PendingTaskList::default().into();
+
         // Initialize the database
+        self.tauri_handle
+            .emit_context_init_progress_event(TauriContextStatusEvent::Initializing(vec![
+                TauriPartialInitProgress::OpeningDatabase(PendingCompleted::Pending(())),
+            ]));
+
         let db = open_db(
             data_dir.join("sqlite"),
             AccessMode::ReadWrite,
@@ -313,9 +322,10 @@ impl ContextBuilder {
         )
         .await?;
 
-        // Create the data structure we use to manage the swap lock
-        let swap_lock = Arc::new(SwapLock::new());
-        let tasks = PendingTaskList::default().into();
+        self.tauri_handle
+            .emit_context_init_progress_event(TauriContextStatusEvent::Initializing(vec![
+                TauriPartialInitProgress::OpeningDatabase(PendingCompleted::Completed),
+            ]));
 
         // Initialize these components concurrently
         let initialize_bitcoin_wallet = async {
@@ -452,8 +462,6 @@ impl ContextBuilder {
             tauri_handle: self.tauri_handle,
             tor_client: tor,
         };
-        let context = context;
-        let context = context;
 
         Ok(context)
     }
