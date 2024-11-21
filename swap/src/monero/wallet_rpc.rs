@@ -351,6 +351,12 @@ impl WalletRpc {
             tracing::debug!("Extracting archive");
             Self::extract_archive(&monero_wallet_rpc).await?;
         }
+
+        // Emit a tauri event to update the progress
+        tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Initializing(vec![
+            TauriPartialInitProgress::DownloadingMoneroWalletRpc(PendingCompleted::Completed),
+        ]));
+
         Ok(monero_wallet_rpc)
     }
 
