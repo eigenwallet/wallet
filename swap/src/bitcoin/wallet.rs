@@ -3,9 +3,10 @@ use anyhow::{bail, Context, Result};
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::descriptor::IntoWalletDescriptor;
 use bdk_wallet::bitcoin::Network;
-use bdk_wallet::rusqlite;
+use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::PersistedWallet;
 use bdk_wallet::SignOptions;
+use bdk_wallet::WalletPersister;
 use bitcoin::ScriptBuf;
 use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid, Script};
 use rust_decimal::prelude::*;
@@ -13,7 +14,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::collections::HashMap;
 use std::fmt;
-use std::path::Path;
+use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{watch, Mutex};
@@ -31,16 +32,19 @@ const WALLET_NEW: &str = "wallet-new";
 
 /// This is our wrapper around a bdk wallet and a corresponding
 /// bdk electrum client.
-/// 
 /// It unifies all the functionality we need when interacting 
 /// with the bitcoin network.
+/// 
+/// This wallet is generic over the persister, which may be a 
+/// rusqlite connection, or an in-memory database, or something else.
 #[derive(Clone)]
-pub struct Wallet {
+pub struct Wallet<Persister> {
     // The wallet is persisted to a sqlite database for now.
     // TODO: revisit and maybe implement a custom persister
-    wallet: Arc<Mutex<PersistedWallet<rusqlite::Connection>>>,
+    wallet: Arc<Mutex<PersistedWallet<Persister>>>,
     client: Arc<Mutex<Client>>,
     subscriptions: HashMap<(Txid, ScriptBuf), Subscription>,
+    network: Network,
 }
 
 /// This is our wrapper around a bdk electrum client.
@@ -48,7 +52,8 @@ pub struct Client {
     inner: bdk_electrum::BdkElectrumClient<bdk_electrum::electrum_client::Client>,
 }
 
-/// Represents a subscription to the status of a given transaction.
+/// A subscription to the status of a given transaction 
+/// that can be used to wait for the transaction to be confirmed.
 #[derive(Debug, Clone)]
 pub struct Subscription {
     receiver: watch::Receiver<ScriptStatus>,
@@ -56,21 +61,52 @@ pub struct Subscription {
     txid: Txid,
 }
 
-impl Wallet {
+/// The possible statuses of a script.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ScriptStatus {
+    Unseen,
+    InMempool,
+    Confirmed(Confirmed),
+    Retrying,
+}
+
+/// The status of a confirmed transaction.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Confirmed {
+    /// The depth of this transaction within the blockchain.
+    ///
+    /// Will be zero if the transaction is included in the latest block.
+    depth: u32,
+}
+
+
+/// Defines a watchable transaction.
+///
+/// For a transaction to be watchable, we need to know two things: Its
+/// transaction ID and the specific output script that is going to change.
+/// A transaction can obviously have multiple outputs but our protocol purposes,
+/// we are usually interested in a specific one.
+pub trait Watchable {
+    fn id(&self) -> Txid;
+    fn script(&self) -> ScriptBuf;
+}
+
+impl<Persister> Wallet<Persister>
+where 
+    Persister: WalletPersister,
+    <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
+{
     /// Create a new wallet. The descriptor is the wallet descriptor for the external and internal keys.
     pub async fn new(
         descriptor: impl IntoWalletDescriptor + Send + Clone + 'static,
         network: Network,
-        data_dir: impl AsRef<Path>,
         electrum_rpc_url: &str,
-    ) -> Result<Wallet> {
-        let data_dir = data_dir.as_ref();
-        let wallet_dir = data_dir.join(WALLET_NEW);
-        let mut database = bdk_wallet::rusqlite::Connection::open(wallet_dir)?;
-
+        persister: &mut Persister,
+    ) -> Result<Wallet<Persister>> {
         let wallet = bdk_wallet::Wallet::create(descriptor.clone(), descriptor.clone())
         .network(network)
-        .create_wallet(&mut database)?;
+        .create_wallet(persister)
+        .context("Failed to create wallet")?;
 
         let client = Client::new(electrum_rpc_url)?;
 
@@ -78,12 +114,11 @@ impl Wallet {
             wallet: Arc::new(Mutex::new(wallet)),
             client: Arc::new(Mutex::new(client)),
             subscriptions: Default::default(),
+            network
         })
     }
 
-    
-
-    /// Broadcast the given transaction to the network and emit a log statement
+    /// Broadcast the given transaction to the network and emit a tracing statement
     /// if done so successfully.
     ///
     /// Returns the transaction ID and a future for when the transaction meets
@@ -179,8 +214,8 @@ impl Wallet {
 
     pub async fn wallet_export(&self, role: &str) -> Result<FullyNodedExport> {
         let wallet = self.wallet.lock().await;
-        match bdk::wallet::export::FullyNodedExport::export_wallet(
-            &wallet,
+        match bdk_wallet::export::FullyNodedExport::export_wallet(
+            &*wallet,
             &format!("{}-{}", role, self.network),
             true,
         ) {
@@ -188,87 +223,7 @@ impl Wallet {
             Err(err_msg) => Err(anyhow::Error::msg(err_msg)),
         }
     }
-}
 
-impl Client {
-    fn new(electrum_rpc_url: &str) -> Result<Self> {
-        let client = bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?;
-        Ok(Self { inner: bdk_electrum::BdkElectrumClient::new(client) })
-    }
-}
-
-fn trace_status_change(txid: Txid, old: Option<ScriptStatus>, new: ScriptStatus) -> ScriptStatus {
-    match (old, new) {
-        (None, new_status) => {
-            tracing::debug!(%txid, status = %new_status, "Found relevant Bitcoin transaction");
-        }
-        (Some(old_status), new_status) if old_status != new_status => {
-            tracing::debug!(%txid, %new_status, %old_status, "Bitcoin transaction status changed");
-        }
-        _ => {}
-    }
-
-    new
-}
-
-
-
-impl Subscription {
-    pub async fn wait_until_final(&self) -> Result<()> {
-        let conf_target = self.finality_confirmations;
-        let txid = self.txid;
-
-        tracing::info!(%txid, required_confirmation=%conf_target, "Waiting for Bitcoin transaction finality");
-
-        let mut seen_confirmations = 0;
-
-        self.wait_until(|status| match status {
-            ScriptStatus::Confirmed(inner) => {
-                let confirmations = inner.confirmations();
-
-                if confirmations > seen_confirmations {
-                    tracing::info!(%txid,
-                        seen_confirmations = %confirmations,
-                        needed_confirmations = %conf_target,
-                        "Waiting for Bitcoin transaction finality");
-                    seen_confirmations = confirmations;
-                }
-
-                inner.meets_target(conf_target)
-            }
-            _ => false,
-        })
-        .await
-    }
-
-    pub async fn wait_until_seen(&self) -> Result<()> {
-        self.wait_until(ScriptStatus::has_been_seen).await
-    }
-
-    pub async fn wait_until_confirmed_with<T>(&self, target: T) -> Result<()>
-    where
-        T: Into<u32>,
-        T: Copy,
-    {
-        self.wait_until(|status| status.is_confirmed_with(target))
-            .await
-    }
-
-    pub async fn wait_until(&self, mut predicate: impl FnMut(&ScriptStatus) -> bool) -> Result<()> {
-        let mut receiver = self.receiver.clone();
-
-        while !predicate(&receiver.borrow()) {
-            receiver
-                .changed()
-                .await
-                .context("Failed while waiting for next status update")?;
-        }
-
-        Ok(())
-    }
-}
-
-impl Wallet {
     pub async fn sign_and_finalize(
         &self,
         mut psbt: bitcoin::psbt::Psbt,
@@ -459,6 +414,88 @@ impl Wallet {
             .await
             .sync(blockchain, sync_opts)
             .context("Failed to sync balance of Bitcoin wallet")?;
+
+        Ok(())
+    }
+}
+
+impl Client {
+    /// Create a new client to this electrum server.
+    fn new(electrum_rpc_url: &str) -> Result<Self> {
+        let client = bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?;
+        Ok(Self { inner: bdk_electrum::BdkElectrumClient::new(client) })
+    }
+
+    /// Broadcast a transaction to the network.
+    pub fn transaction_broadcast(&self, transaction: &Transaction) -> Result<()> {
+        self.inner.transaction_broadcast(transaction)
+    }
+}
+
+fn trace_status_change(txid: Txid, old: Option<ScriptStatus>, new: ScriptStatus) -> ScriptStatus {
+    match (old, new) {
+        (None, new_status) => {
+            tracing::debug!(%txid, status = %new_status, "Found relevant Bitcoin transaction");
+        }
+        (Some(old_status), new_status) if old_status != new_status => {
+            tracing::debug!(%txid, %new_status, %old_status, "Bitcoin transaction status changed");
+        }
+        _ => {}
+    }
+
+    new
+}
+
+impl Subscription {
+    pub async fn wait_until_final(&self) -> Result<()> {
+        let conf_target = self.finality_confirmations;
+        let txid = self.txid;
+
+        tracing::info!(%txid, required_confirmation=%conf_target, "Waiting for Bitcoin transaction finality");
+
+        let mut seen_confirmations = 0;
+
+        self.wait_until(|status| match status {
+            ScriptStatus::Confirmed(inner) => {
+                let confirmations = inner.confirmations();
+
+                if confirmations > seen_confirmations {
+                    tracing::info!(%txid,
+                        seen_confirmations = %confirmations,
+                        needed_confirmations = %conf_target,
+                        "Waiting for Bitcoin transaction finality");
+                    seen_confirmations = confirmations;
+                }
+
+                inner.meets_target(conf_target)
+            }
+            _ => false,
+        })
+        .await
+    }
+
+    pub async fn wait_until_seen(&self) -> Result<()> {
+        self.wait_until(ScriptStatus::has_been_seen).await
+    }
+
+    pub async fn wait_until_confirmed_with<T>(&self, target: T) -> Result<()>
+    where
+        T: Into<u32>,
+        T: Copy,
+    {
+        self.wait_until(|status| status.is_confirmed_with(target))
+            .await
+    }
+
+    pub async fn wait_until(&self, mut predicate: impl FnMut(&ScriptStatus) -> bool) -> Result<()> {
+        let mut receiver = self.receiver.clone();
+
+        while !predicate(&receiver.borrow()) {
+            receiver
+                .changed()
+                .await
+                .context("Failed while waiting for next status update")?;
+        }
 
         Ok(())
     }
@@ -655,6 +692,114 @@ fn estimate_fee(
     Ok(amount)
 }
 
+
+
+impl Watchable for (Txid, ScriptBuf) {
+    fn id(&self) -> Txid {
+        self.0
+    }
+
+    fn script(&self) -> ScriptBuf {
+        self.1.clone()
+    }
+}
+
+impl ScriptStatus {
+    pub fn from_confirmations(confirmations: u32) -> Self {
+        match confirmations {
+            0 => Self::InMempool,
+            confirmations => Self::Confirmed(Confirmed::new(confirmations - 1)),
+        }
+    }
+}
+
+impl Confirmed {
+    pub fn new(depth: u32) -> Self {
+        Self { depth }
+    }
+
+    /// Compute the depth of a transaction based on its inclusion height and the
+    /// latest known block.
+    ///
+    /// Our information about the latest block might be outdated. To avoid an
+    /// overflow, we make sure the depth is 0 in case the inclusion height
+    /// exceeds our latest known block,
+    pub fn from_inclusion_and_latest_block(inclusion_height: u32, latest_block: u32) -> Self {
+        let depth = latest_block.saturating_sub(inclusion_height);
+
+        Self { depth }
+    }
+
+    pub fn confirmations(&self) -> u32 {
+        self.depth + 1
+    }
+
+    pub fn meets_target<T>(&self, target: T) -> bool
+    where
+        T: Into<u32>,
+    {
+        self.confirmations() >= target.into()
+    }
+
+    pub fn blocks_left_until<T>(&self, target: T) -> u32
+    where
+        T: Into<u32> + Copy,
+    {
+        if self.meets_target(target) {
+            0
+        } else {
+            target.into() - self.confirmations()
+        }
+    }
+}
+
+impl ScriptStatus {
+    /// Check if the script has any confirmations.
+    pub fn is_confirmed(&self) -> bool {
+        matches!(self, ScriptStatus::Confirmed(_))
+    }
+
+    /// Check if the script has met the given confirmation target.
+    pub fn is_confirmed_with<T>(&self, target: T) -> bool
+    where
+        T: Into<u32>,
+    {
+        match self {
+            ScriptStatus::Confirmed(inner) => inner.meets_target(target),
+            _ => false,
+        }
+    }
+
+    // Calculate the number of blocks left until the target is met.
+    pub fn blocks_left_until<T>(&self, target: T) -> u32
+    where
+        T: Into<u32> + Copy,
+    {
+        match self {
+            ScriptStatus::Confirmed(inner) => inner.blocks_left_until(target),
+            _ => target.into(),
+        }
+    }
+
+    pub fn has_been_seen(&self) -> bool {
+        matches!(self, ScriptStatus::InMempool | ScriptStatus::Confirmed(_))
+    }
+}
+
+impl fmt::Display for ScriptStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ScriptStatus::Unseen => write!(f, "unseen"),
+            ScriptStatus::InMempool => write!(f, "in mempool"),
+            ScriptStatus::Retrying => write!(f, "retrying"),
+            ScriptStatus::Confirmed(inner) => {
+                write!(f, "confirmed with {} blocks", inner.confirmations())
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 pub trait EstimateFeeRate {
     fn estimate_feerate(&self, target_block: u16) -> Result<FeeRate>;
     fn min_relay_fee(&self) -> Result<bitcoin::Amount>;
@@ -769,138 +914,7 @@ impl WalletBuilder {
     }
 }
 
-/// Defines a watchable transaction.
-///
-/// For a transaction to be watchable, we need to know two things: Its
-/// transaction ID and the specific output script that is going to change.
-/// A transaction can obviously have multiple outputs but our protocol purposes,
-/// we are usually interested in a specific one.
-pub trait Watchable {
-    fn id(&self) -> Txid;
-    fn script(&self) -> Script;
-}
 
-impl Watchable for (Txid, Script) {
-    fn id(&self) -> Txid {
-        self.0
-    }
-
-    fn script(&self) -> Script {
-        self.1.clone()
-    }
-}
-
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ScriptStatus {
-    Unseen,
-    InMempool,
-    Confirmed(Confirmed),
-    Retrying,
-}
-
-impl ScriptStatus {
-    pub fn from_confirmations(confirmations: u32) -> Self {
-        match confirmations {
-            0 => Self::InMempool,
-            confirmations => Self::Confirmed(Confirmed::new(confirmations - 1)),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Confirmed {
-    /// The depth of this transaction within the blockchain.
-    ///
-    /// Will be zero if the transaction is included in the latest block.
-    depth: u32,
-}
-
-impl Confirmed {
-    pub fn new(depth: u32) -> Self {
-        Self { depth }
-    }
-
-    /// Compute the depth of a transaction based on its inclusion height and the
-    /// latest known block.
-    ///
-    /// Our information about the latest block might be outdated. To avoid an
-    /// overflow, we make sure the depth is 0 in case the inclusion height
-    /// exceeds our latest known block,
-    pub fn from_inclusion_and_latest_block(inclusion_height: u32, latest_block: u32) -> Self {
-        let depth = latest_block.saturating_sub(inclusion_height);
-
-        Self { depth }
-    }
-
-    pub fn confirmations(&self) -> u32 {
-        self.depth + 1
-    }
-
-    pub fn meets_target<T>(&self, target: T) -> bool
-    where
-        T: Into<u32>,
-    {
-        self.confirmations() >= target.into()
-    }
-
-    pub fn blocks_left_until<T>(&self, target: T) -> u32
-    where
-        T: Into<u32> + Copy,
-    {
-        if self.meets_target(target) {
-            0
-        } else {
-            target.into() - self.confirmations()
-        }
-    }
-}
-
-impl ScriptStatus {
-    /// Check if the script has any confirmations.
-    pub fn is_confirmed(&self) -> bool {
-        matches!(self, ScriptStatus::Confirmed(_))
-    }
-
-    /// Check if the script has met the given confirmation target.
-    pub fn is_confirmed_with<T>(&self, target: T) -> bool
-    where
-        T: Into<u32>,
-    {
-        match self {
-            ScriptStatus::Confirmed(inner) => inner.meets_target(target),
-            _ => false,
-        }
-    }
-
-    // Calculate the number of blocks left until the target is met.
-    pub fn blocks_left_until<T>(&self, target: T) -> u32
-    where
-        T: Into<u32> + Copy,
-    {
-        match self {
-            ScriptStatus::Confirmed(inner) => inner.blocks_left_until(target),
-            _ => target.into(),
-        }
-    }
-
-    pub fn has_been_seen(&self) -> bool {
-        matches!(self, ScriptStatus::InMempool | ScriptStatus::Confirmed(_))
-    }
-}
-
-impl fmt::Display for ScriptStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ScriptStatus::Unseen => write!(f, "unseen"),
-            ScriptStatus::InMempool => write!(f, "in mempool"),
-            ScriptStatus::Retrying => write!(f, "retrying"),
-            ScriptStatus::Confirmed(inner) => {
-                write!(f, "confirmed with {} blocks", inner.confirmations())
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
