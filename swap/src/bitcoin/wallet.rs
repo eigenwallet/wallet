@@ -6,6 +6,7 @@ use bdk_wallet::bitcoin::Network;
 use bdk_wallet::rusqlite;
 use bdk_wallet::PersistedWallet;
 use bdk_wallet::SignOptions;
+use bitcoin::ScriptBuf;
 use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid, Script};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
@@ -26,304 +27,33 @@ const DUST_AMOUNT: u64 = 546;
 
 const WALLET_NEW: &str = "wallet-new";
 
-pub mod old {
-    use std::collections::{BTreeMap, HashMap};
-    use std::path::Path;
-    use std::sync::Arc;
-    use std::time::{Duration, Instant};
 
-    use bdk::blockchain::{ElectrumBlockchain, GetTx};
-    use bdk::database::BatchDatabase;
-    use bdk::electrum_client::{ElectrumApi, GetHistoryRes};
-    use bdk::sled::Tree;
-    use bdk::wallet::export::FullyNodedExport;
-    use bdk::wallet::AddressIndex;
-    use bdk::{KeychainKind, SignOptions, SyncOptions};
-    use bdk::bitcoin::{
-        util::bip32::ExtendedPrivKey,
-        Txid,
-        psbt::PartiallySignedTransaction,
-        Network,
-        Script
-    };
-    use bdk_wallet::bitcoin::FeeRate;
-    use tokio::sync::Mutex;
-    use url::Url;
-    use anyhow::{bail, Context, Result};
 
-    use crate::bitcoin::BlockHeight;
-    use crate::env;
-
-    use super::{Confirmed, EstimateFeeRate, ScriptStatus, Subscription, Watchable};
-
-    const WALLET: &str = "wallet";
-    const WALLET_OLD: &str = "wallet-old";
-
-    const SLED_TREE_NAME: &str = "default_tree";
-
-    /// The is the old bdk wallet before the migration. 
-    /// We need to contruct it before migration to get the keys and revelation indeces.
-    pub struct OldWallet<D = Tree, C = Client> {
-        client: Arc<Mutex<C>>,
-        wallet: Arc<Mutex<bdk::Wallet<D>>>,
-        finality_confirmations: u32,
-        network: Network,
-        target_block: u16,
-    }
-
-    impl OldWallet {
-        pub async fn new(
-            electrum_rpc_url: Url,
-            data_dir: impl AsRef<Path>,
-            xprivkey: ExtendedPrivKey,
-            env_config: env::Config,
-            target_block: u16,
-        ) -> Result<Self> {
-            let data_dir = data_dir.as_ref();
-            let wallet_dir = data_dir.join(WALLET);
-            let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
-            let network = env_config.bitcoin_network;
-    
-            let wallet = match bdk::Wallet::new(
-                bdk::template::Bip84(xprivkey, KeychainKind::External),
-                Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
-                network,
-                database,
-            ) {
-                Ok(w) => w,
-                Err(bdk::Error::ChecksumMismatch) => Self::migrate(data_dir, xprivkey, network)?,
-                err => err?,
-            };
-    
-            let client = Client::new(electrum_rpc_url, env_config.bitcoin_sync_interval(), 5)?;
-    
-            let network = wallet.network();
-    
-            Ok(Self {
-                client: Arc::new(Mutex::new(client)),
-                wallet: Arc::new(Mutex::new(wallet)),
-                finality_confirmations: env_config.bitcoin_finality_confirmations,
-                network,
-                target_block,
-            })
-        }
-    
-        /// Create a new database for the wallet and rename the old one.
-        /// This is necessary when getting a ChecksumMismatch from a wallet
-        /// created with an older version of BDK. Only affected Testnet wallets.
-        // https://github.com/comit-network/xmr-btc-swap/issues/1182
-        fn migrate(
-            data_dir: &Path,
-            xprivkey: ExtendedPrivKey,
-            network: bitcoin::Network,
-        ) -> Result<bdk::Wallet<Tree>> {
-            let from = data_dir.join(WALLET);
-            let to = data_dir.join(WALLET_OLD);
-            std::fs::rename(from, to)?;
-    
-            let wallet_dir = data_dir.join(WALLET);
-            let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
-    
-            let wallet = bdk::Wallet::new(
-                bdk::template::Bip84(xprivkey, KeychainKind::External),
-                Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
-                network,
-                database,
-            )?;
-    
-            Ok(wallet)
-        }
-    
-    }
-
-    pub struct Client {
-        electrum: bdk::electrum_client::Client,
-        blockchain: ElectrumBlockchain,
-        latest_block_height: BlockHeight,
-        last_sync: Instant,
-        sync_interval: Duration,
-        script_history: BTreeMap<Script, Vec<GetHistoryRes>>,
-        subscriptions: HashMap<(Txid, Script), Subscription>,
-    }
-
-    impl Client {
-        pub fn new(electrum_rpc_url: Url, interval: Duration, retry_count: u8) -> Result<Self> {
-            let config = bdk::electrum_client::ConfigBuilder::default()
-                .retry(retry_count)
-                .build();
-
-            let electrum = bdk::electrum_client::Client::from_config(electrum_rpc_url.as_str(), config)
-                .context("Failed to initialize Electrum RPC client")?;
-
-            // Initially fetch the latest block for storing the height.
-            // We do not act on this subscription after this call.
-            let latest_block = electrum
-                .block_headers_subscribe()
-                .context("Failed to subscribe to header notifications")?;
-
-            let client = bdk::electrum_client::Client::new(electrum_rpc_url.as_str())
-                .context("Failed to initialize Electrum RPC client")?;
-
-            let blockchain = ElectrumBlockchain::from(client);
-            let last_sync = Instant::now()
-                .checked_sub(interval)
-                .expect("no underflow since block time is only 600 secs");
-
-            Ok(Self {
-                electrum,
-                blockchain,
-                latest_block_height: BlockHeight::try_from(latest_block)?,
-                last_sync,
-                sync_interval: interval,
-                script_history: Default::default(),
-                subscriptions: Default::default(),
-            })
-        }
-
-        fn blockchain(&self) -> &ElectrumBlockchain {
-            &self.blockchain
-        }
-
-        fn get_tx(&self, txid: &Txid) -> Result<Option<super::Transaction>, bdk::Error> {
-            self.blockchain.get_tx(txid)
-        }
-
-        fn update_state(&mut self, force_sync: bool) -> Result<()> {
-            let now = Instant::now();
-
-            if !force_sync && now < self.last_sync + self.sync_interval {
-                return Ok(());
-            }
-
-            self.last_sync = now;
-            self.update_latest_block()?;
-            self.update_script_histories()?;
-
-            Ok(())
-        }
-
-        fn status_of_script<T>(&mut self, tx: &T) -> Result<ScriptStatus>
-        where
-            T: Watchable,
-        {
-            let txid = tx.id();
-            let script = tx.script();
-
-            if !self.script_history.contains_key(&script) {
-                self.script_history.insert(script.clone(), vec![]);
-
-                // When we first subscribe to a script we want to immediately fetch its status
-                // Otherwise we would have to wait for the next sync interval, which can take a minute
-                // This would result in potentially inaccurate status updates until that next sync interval is hit
-                self.update_state(true)?;
-            } else {
-                self.update_state(false)?;
-            }
-
-            let history = self.script_history.entry(script).or_default();
-
-            let history_of_tx = history
-                .iter()
-                .filter(|entry| entry.tx_hash == txid)
-                .collect::<Vec<_>>();
-
-            match history_of_tx.as_slice() {
-                [] => Ok(ScriptStatus::Unseen),
-                [remaining @ .., last] => {
-                    if !remaining.is_empty() {
-                        tracing::warn!("Found more than a single history entry for script. This is highly unexpected and those history entries will be ignored")
-                    }
-
-                    if last.height <= 0 {
-                        Ok(ScriptStatus::InMempool)
-                    } else {
-                        Ok(ScriptStatus::Confirmed(
-                            Confirmed::from_inclusion_and_latest_block(
-                                u32::try_from(last.height)?,
-                                u32::from(self.latest_block_height),
-                            ),
-                        ))
-                    }
-                }
-            }
-        }
-
-        fn update_latest_block(&mut self) -> Result<()> {
-            // Fetch the latest block for storing the height.
-            // We do not act on this subscription after this call, as we cannot rely on
-            // subscription push notifications because eventually the Electrum server will
-            // close the connection and subscriptions are not automatically renewed
-            // upon renewing the connection.
-            let latest_block = self
-                .electrum
-                .block_headers_subscribe()
-                .context("Failed to subscribe to header notifications")?;
-            let latest_block_height = BlockHeight::try_from(latest_block)?;
-
-            if latest_block_height > self.latest_block_height {
-                tracing::debug!(
-                    block_height = u32::from(latest_block_height),
-                    "Got notification for new block"
-                );
-                self.latest_block_height = latest_block_height;
-            }
-
-            Ok(())
-        }
-
-        fn update_script_histories(&mut self) -> Result<()> {
-            let histories = self
-                .electrum
-                .batch_script_get_history(self.script_history.keys())
-                .context("Failed to get script histories")?;
-
-            if histories.len() != self.script_history.len() {
-                bail!(
-                    "Expected {} history entries, received {}",
-                    self.script_history.len(),
-                    histories.len()
-                );
-            }
-
-            let scripts = self.script_history.keys().cloned();
-            let histories = histories.into_iter();
-
-            self.script_history = scripts.zip(histories).collect::<BTreeMap<_, _>>();
-
-            Ok(())
-        }
-    }
-
-    impl EstimateFeeRate for Client {
-        fn estimate_feerate(&self, target_block: u16) -> Result<FeeRate> {
-            // https://github.com/romanz/electrs/blob/f9cf5386d1b5de6769ee271df5eef324aa9491bc/src/rpc.rs#L213
-            // Returned estimated fees are per BTC/kb.
-            let fee_per_kbyte = self.electrum.estimate_fee(target_block.into())?;
-            // convert to sat/byte and check whether it is valid
-            let btc_per_kbyte = bitcoin::Amount::from_btc(fee_per_kbyte)
-                .context("BTC/KByte fee returned by electrum server is invalid, this means that fee estimation is not supported by this server")?;
-            let btc_per_byte = btc_per_kbyte / 1000;
-            let sat_per_byte = btc_per_byte * 100_000_000;
-
-            Ok(FeeRate::from_sat_per_vb(sat_per_byte.to_sat()).context("fee overflow")?)
-        }
-
-        fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
-            // https://github.com/romanz/electrs/blob/f9cf5386d1b5de6769ee271df5eef324aa9491bc/src/rpc.rs#L219
-            // Returned fee is in BTC/kb
-            let relay_fee = bitcoin::Amount::from_btc(self.electrum.relay_fee()?)?;
-            Ok(relay_fee)
-            }
-    }
-}
-
-/// This is the new bdk wallet after the bdk upgrade
+/// This is our wrapper around a bdk wallet and a corresponding
+/// bdk electrum client.
+/// 
+/// It unifies all the functionality we need when interacting 
+/// with the bitcoin network.
+#[derive(Clone)]
 pub struct Wallet {
     // The wallet is persisted to a sqlite database for now.
     // TODO: revisit and maybe implement a custom persister
     wallet: Arc<Mutex<PersistedWallet<rusqlite::Connection>>>,
-    client: Arc<Mutex<bdk_electrum::BdkElectrumClient<bdk_electrum::electrum_client::Client>>>,
-    subscriptions: HashMap<(Txid, Script), Subscription>,
+    client: Arc<Mutex<Client>>,
+    subscriptions: HashMap<(Txid, ScriptBuf), Subscription>,
+}
+
+/// This is our wrapper around a bdk electrum client.
+pub struct Client {
+    inner: bdk_electrum::BdkElectrumClient<bdk_electrum::electrum_client::Client>,
+}
+
+/// Represents a subscription to the status of a given transaction.
+#[derive(Debug, Clone)]
+pub struct Subscription {
+    receiver: watch::Receiver<ScriptStatus>,
+    finality_confirmations: u32,
+    txid: Txid,
 }
 
 impl Wallet {
@@ -342,9 +72,7 @@ impl Wallet {
         .network(network)
         .create_wallet(&mut database)?;
 
-        let client = bdk_electrum::BdkElectrumClient::new(
-            bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?
-        );
+        let client = Client::new(electrum_rpc_url)?;
 
         Ok(Self {
             wallet: Arc::new(Mutex::new(wallet)),
@@ -352,6 +80,8 @@ impl Wallet {
             subscriptions: Default::default(),
         })
     }
+
+    
 
     /// Broadcast the given transaction to the network and emit a log statement
     /// if done so successfully.
@@ -421,7 +151,7 @@ impl Wallet {
 
                         if new_status != ScriptStatus::Retrying
                         {
-                            last_status = Some(print_status_change(txid, last_status, new_status));
+                            last_status = Some(trace_status_change(txid, last_status, new_status));
 
                             let all_receivers_gone = sender.send(new_status).is_err();
 
@@ -460,7 +190,14 @@ impl Wallet {
     }
 }
 
-fn print_status_change(txid: Txid, old: Option<ScriptStatus>, new: ScriptStatus) -> ScriptStatus {
+impl Client {
+    fn new(electrum_rpc_url: &str) -> Result<Self> {
+        let client = bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?;
+        Ok(Self { inner: bdk_electrum::BdkElectrumClient::new(client) })
+    }
+}
+
+fn trace_status_change(txid: Txid, old: Option<ScriptStatus>, new: ScriptStatus) -> ScriptStatus {
     match (old, new) {
         (None, new_status) => {
             tracing::debug!(%txid, status = %new_status, "Found relevant Bitcoin transaction");
@@ -474,13 +211,7 @@ fn print_status_change(txid: Txid, old: Option<ScriptStatus>, new: ScriptStatus)
     new
 }
 
-/// Represents a subscription to the status of a given transaction.
-#[derive(Debug, Clone)]
-pub struct Subscription {
-    receiver: watch::Receiver<ScriptStatus>,
-    finality_confirmations: u32,
-    txid: Txid,
-}
+
 
 impl Subscription {
     pub async fn wait_until_final(&self) -> Result<()> {
@@ -538,8 +269,6 @@ impl Subscription {
 }
 
 impl Wallet {
-    pub async fn new()
-
     pub async fn sign_and_finalize(
         &self,
         mut psbt: bitcoin::psbt::Psbt,
@@ -713,6 +442,147 @@ impl Wallet {
 
         estimate_fee(weight, transfer_amount, fee_rate, min_relay_fee)
     }
+
+    pub async fn get_tx(&self, txid: Txid) -> Result<Option<Transaction>> {
+        let client = self.client.lock().await;
+        let tx = client.get_tx(&txid)?;
+
+        Ok(tx)
+    }
+
+    pub async fn sync(&self) -> Result<()> {
+        let client = self.client.lock().await;
+        let blockchain = client.blockchain();
+        let sync_opts = SyncOptions::default();
+        self.wallet
+            .lock()
+            .await
+            .sync(blockchain, sync_opts)
+            .context("Failed to sync balance of Bitcoin wallet")?;
+
+        Ok(())
+    }
+}
+
+pub mod old {
+    //! This module contains some code for creating a bdk wallet from before the update.
+    //! We need to keep this around to be able to migrate the wallet.
+
+    use std::path::Path;
+    use std::sync::Arc;
+
+    use bdk::sled::Tree;
+    use bdk::KeychainKind;
+    use bdk::bitcoin::{
+        util::bip32::ExtendedPrivKey,
+        Network,
+    };
+    use tokio::sync::Mutex;
+    use anyhow::{anyhow, bail, Result};
+
+    use crate::env;
+
+    const WALLET: &str = "wallet";
+    const WALLET_OLD: &str = "wallet-old";
+
+    const SLED_TREE_NAME: &str = "default_tree";
+
+    /// The is the old bdk wallet before the migration. 
+    /// We need to contruct it before migration to get the keys and revelation indeces.
+    pub struct OldWallet<D = Tree> {
+        wallet: Arc<Mutex<bdk::Wallet<D>>>,
+        finality_confirmations: u32,
+        network: Network,
+        target_block: u16,
+    }
+
+    impl OldWallet {
+        pub async fn new(
+            data_dir: impl AsRef<Path>,
+            xprivkey: ExtendedPrivKey,
+            env_config: env::Config,
+            target_block: u16,
+        ) -> Result<Self> {
+            let data_dir = data_dir.as_ref();
+            let wallet_dir = data_dir.join(WALLET);
+            let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
+            let network = env_config.bitcoin_network;
+    
+            // Convert bitcoin network to the bdk network type... 
+            let network = match network {
+                bitcoin::Network::Bitcoin => bdk::bitcoin::Network::Bitcoin,
+                bitcoin::Network::Testnet => bdk::bitcoin::Network::Testnet,
+                bitcoin::Network::Regtest => bdk::bitcoin::Network::Regtest,
+                bitcoin::Network::Signet => bdk::bitcoin::Network::Signet,
+                _ => bail!("Unsupported network"),
+            };
+
+            let wallet = match bdk::Wallet::new(
+                bdk::template::Bip84(xprivkey, KeychainKind::External),
+                Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
+                network,
+                database,
+            ) {
+                Ok(w) => w,
+                Err(bdk::Error::ChecksumMismatch) => Self::migrate(data_dir, xprivkey, network)?,
+                err => err?,
+            };
+    
+            let network = wallet.network();
+    
+            Ok(Self {
+                wallet: Arc::new(Mutex::new(wallet)),
+                finality_confirmations: env_config.bitcoin_finality_confirmations,
+                network,
+                target_block,
+            })
+        }
+    
+        /// Get a full export of the wallet including descriptors and blockheight.
+        pub async fn export(&self, role: &str) -> Result<bdk_wallet::export::FullyNodedExport> {
+            let wallet = self.wallet.lock().await;
+            let export = bdk::wallet::export::FullyNodedExport::export_wallet(
+                &wallet,
+                &format!("{}-{}", role, self.network),
+                true,
+            ).map_err(|_| anyhow!("Failed to export old wallet descriptor"))?;
+
+            // Because we upgraded bdk, the type id changed.
+            // Thus, we serialize to json and then deserialize to the new type.
+            let json = serde_json::to_string(&export)?;
+            let export = serde_json::from_str::<bdk_wallet::export::FullyNodedExport>(&json)?;
+
+            Ok(export)
+        }
+
+        /// Create a new database for the wallet and rename the old one.
+        /// This is necessary when getting a ChecksumMismatch from a wallet
+        /// created with an older version of BDK. Only affected Testnet wallets.
+        // https://github.com/comit-network/xmr-btc-swap/issues/1182
+        fn migrate(
+            data_dir: &Path,
+            xprivkey: ExtendedPrivKey,
+            network: bdk::bitcoin::Network,
+        ) -> Result<bdk::Wallet<Tree>> {
+            let from = data_dir.join(WALLET);
+            let to = data_dir.join(WALLET_OLD);
+            std::fs::rename(from, to)?;
+    
+            let wallet_dir = data_dir.join(WALLET);
+            let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
+    
+            let wallet = bdk::Wallet::new(
+                bdk::template::Bip84(xprivkey, KeychainKind::External),
+                Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
+                network,
+                database,
+            )?;
+
+            wallet.get_descriptor_for_keychain(keychain)
+    
+            Ok(wallet)
+        }
+    }
 }
 
 fn estimate_fee(
@@ -785,35 +655,6 @@ fn estimate_fee(
     Ok(amount)
 }
 
-impl Wallet {
-    pub async fn get_tx(&self, txid: Txid) -> Result<Option<Transaction>> {
-        let client = self.client.lock().await;
-        let tx = client.get_tx(&txid)?;
-
-        Ok(tx)
-    }
-
-    pub async fn sync(&self) -> Result<()> {
-        let client = self.client.lock().await;
-        let blockchain = client.blockchain();
-        let sync_opts = SyncOptions::default();
-        self.wallet
-            .lock()
-            .await
-            .sync(blockchain, sync_opts)
-            .context("Failed to sync balance of Bitcoin wallet")?;
-
-        Ok(())
-    }
-}
-
-impl Wallet {
-    // TODO: Get rid of this by changing bounds on bdk::Wallet
-    pub fn get_network(&self) -> bitcoin::Network {
-        self.network
-    }
-}
-
 pub trait EstimateFeeRate {
     fn estimate_feerate(&self, target_block: u16) -> Result<FeeRate>;
     fn min_relay_fee(&self) -> Result<bitcoin::Amount>;
@@ -842,7 +683,7 @@ pub struct WalletBuilder {
     utxo_amount: u64,
     sats_per_vb: f32,
     min_relay_fee_sats: u64,
-    key: bitcoin::util::bip32::ExtendedPrivKey,
+    key: bdk::bitcoin::util::bip32::ExtendedPrivKey,
     num_utxos: u8,
 }
 
@@ -1377,18 +1218,18 @@ mod tests {
         let inner = bitcoin::hashes::sha256d::Hash::all_zeros();
         let tx = Txid::from_hash(inner);
         let mut old = None;
-        old = Some(print_status_change(tx, old, ScriptStatus::Unseen));
-        old = Some(print_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(print_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(print_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(print_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(print_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(print_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(print_status_change(tx, old, confs(1)));
-        old = Some(print_status_change(tx, old, confs(2)));
-        old = Some(print_status_change(tx, old, confs(3)));
-        old = Some(print_status_change(tx, old, confs(3)));
-        print_status_change(tx, old, confs(3));
+        old = Some(trace_status_change(tx, old, ScriptStatus::Unseen));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(tx, old, confs(1)));
+        old = Some(trace_status_change(tx, old, confs(2)));
+        old = Some(trace_status_change(tx, old, confs(3)));
+        old = Some(trace_status_change(tx, old, confs(3)));
+        trace_status_change(tx, old, confs(3));
 
         assert_eq!(
             writer.captured(),
