@@ -1,32 +1,17 @@
-use crate::bitcoin::timelocks::BlockHeight;
 use crate::bitcoin::{Address, Amount, Transaction};
-use crate::env;
-use ::bitcoin::util::psbt::PartiallySignedTransaction;
-use ::bitcoin::Txid;
 use anyhow::{bail, Context, Result};
-use bdk::blockchain::{Blockchain, ElectrumBlockchain, GetTx};
-use bdk::database::BatchDatabase;
-use bdk::electrum_client::{ElectrumApi, GetHistoryRes};
-use bdk::sled::Tree;
-use bdk::wallet::export::FullyNodedExport;
-use bdk::wallet::AddressIndex;
-use bdk::{FeeRate, KeychainKind, SignOptions, SyncOptions};
-use bitcoin::util::bip32::ExtendedPrivKey;
-use bitcoin::{Network, Script};
-use reqwest::Url;
+use bdk_wallet::SignOptions;
+use bitcoin::psbt::PartiallySignedTransaction;
+use bitcoin::Txid;
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::TryFrom;
 use std::fmt;
-use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::{watch, Mutex};
 use tracing::{debug_span, Instrument};
 
-const SLED_TREE_NAME: &str = "default_tree";
 
 /// Assuming we add a spread of 3% we don't want to pay more than 3% of the
 /// amount for tx fees.
@@ -34,86 +19,307 @@ const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.03);
 const MAX_ABSOLUTE_TX_FEE: Decimal = dec!(100_000);
 const DUST_AMOUNT: u64 = 546;
 
-const WALLET: &str = "wallet";
-const WALLET_OLD: &str = "wallet-old";
+
 const WALLET_NEW: &str = "wallet-new";
 
-pub struct Wallet<D = Tree, C = Client> {
-    client: Arc<Mutex<C>>,
-    wallet: Arc<Mutex<bdk::Wallet<D>>>,
-    finality_confirmations: u32,
-    network: Network,
-    target_block: u16,
+pub mod old {
+    use std::collections::{BTreeMap, HashMap};
+    use std::path::Path;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    use bdk::blockchain::{ElectrumBlockchain, GetTx};
+    use bdk::database::BatchDatabase;
+    use bdk::electrum_client::{ElectrumApi, GetHistoryRes};
+    use bdk::sled::Tree;
+    use bdk::wallet::export::FullyNodedExport;
+    use bdk::wallet::AddressIndex;
+    use bdk::{FeeRate, KeychainKind, SignOptions, SyncOptions};
+    use bdk::bitcoin::{
+        util::bip32::ExtendedPrivKey,
+        Txid,
+        psbt::PartiallySignedTransaction,
+        Network,
+        Script
+    };
+    use tokio::sync::Mutex;
+    use url::Url;
+    use anyhow::{bail, Context, Result};
+
+    use crate::bitcoin::BlockHeight;
+    use crate::env;
+
+    use super::{Confirmed, EstimateFeeRate, ScriptStatus, Subscription, Watchable};
+
+    const WALLET: &str = "wallet";
+    const WALLET_OLD: &str = "wallet-old";
+
+    const SLED_TREE_NAME: &str = "default_tree";
+
+    /// The is the old bdk wallet before the migration. 
+    /// We need to contruct it before migration to get the keys and revelation indeces.
+    pub struct OldWallet<D = Tree, C = Client> {
+        client: Arc<Mutex<C>>,
+        wallet: Arc<Mutex<bdk::Wallet<D>>>,
+        finality_confirmations: u32,
+        network: Network,
+        target_block: u16,
+    }
+
+    impl OldWallet {
+        pub async fn new(
+            electrum_rpc_url: Url,
+            data_dir: impl AsRef<Path>,
+            xprivkey: ExtendedPrivKey,
+            env_config: env::Config,
+            target_block: u16,
+        ) -> Result<Self> {
+            let data_dir = data_dir.as_ref();
+            let wallet_dir = data_dir.join(WALLET);
+            let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
+            let network = env_config.bitcoin_network;
+    
+            let wallet = match bdk::Wallet::new(
+                bdk::template::Bip84(xprivkey, KeychainKind::External),
+                Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
+                network,
+                database,
+            ) {
+                Ok(w) => w,
+                Err(bdk::Error::ChecksumMismatch) => Self::migrate(data_dir, xprivkey, network)?,
+                err => err?,
+            };
+    
+            let client = Client::new(electrum_rpc_url, env_config.bitcoin_sync_interval(), 5)?;
+    
+            let network = wallet.network();
+    
+            Ok(Self {
+                client: Arc::new(Mutex::new(client)),
+                wallet: Arc::new(Mutex::new(wallet)),
+                finality_confirmations: env_config.bitcoin_finality_confirmations,
+                network,
+                target_block,
+            })
+        }
+    
+        /// Create a new database for the wallet and rename the old one.
+        /// This is necessary when getting a ChecksumMismatch from a wallet
+        /// created with an older version of BDK. Only affected Testnet wallets.
+        // https://github.com/comit-network/xmr-btc-swap/issues/1182
+        fn migrate(
+            data_dir: &Path,
+            xprivkey: ExtendedPrivKey,
+            network: bitcoin::Network,
+        ) -> Result<bdk::Wallet<Tree>> {
+            let from = data_dir.join(WALLET);
+            let to = data_dir.join(WALLET_OLD);
+            std::fs::rename(from, to)?;
+    
+            let wallet_dir = data_dir.join(WALLET);
+            let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
+    
+            let wallet = bdk::Wallet::new(
+                bdk::template::Bip84(xprivkey, KeychainKind::External),
+                Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
+                network,
+                database,
+            )?;
+    
+            Ok(wallet)
+        }
+    
+    }
+
+    pub struct Client {
+        electrum: bdk::electrum_client::Client,
+        blockchain: ElectrumBlockchain,
+        latest_block_height: BlockHeight,
+        last_sync: Instant,
+        sync_interval: Duration,
+        script_history: BTreeMap<Script, Vec<GetHistoryRes>>,
+        subscriptions: HashMap<(Txid, Script), Subscription>,
+    }
+
+    impl Client {
+        pub fn new(electrum_rpc_url: Url, interval: Duration, retry_count: u8) -> Result<Self> {
+            let config = bdk::electrum_client::ConfigBuilder::default()
+                .retry(retry_count)
+                .build();
+
+            let electrum = bdk::electrum_client::Client::from_config(electrum_rpc_url.as_str(), config)
+                .context("Failed to initialize Electrum RPC client")?;
+
+            // Initially fetch the latest block for storing the height.
+            // We do not act on this subscription after this call.
+            let latest_block = electrum
+                .block_headers_subscribe()
+                .context("Failed to subscribe to header notifications")?;
+
+            let client = bdk::electrum_client::Client::new(electrum_rpc_url.as_str())
+                .context("Failed to initialize Electrum RPC client")?;
+
+            let blockchain = ElectrumBlockchain::from(client);
+            let last_sync = Instant::now()
+                .checked_sub(interval)
+                .expect("no underflow since block time is only 600 secs");
+
+            Ok(Self {
+                electrum,
+                blockchain,
+                latest_block_height: BlockHeight::try_from(latest_block)?,
+                last_sync,
+                sync_interval: interval,
+                script_history: Default::default(),
+                subscriptions: Default::default(),
+            })
+        }
+
+        fn blockchain(&self) -> &ElectrumBlockchain {
+            &self.blockchain
+        }
+
+        fn get_tx(&self, txid: &Txid) -> Result<Option<super::Transaction>, bdk::Error> {
+            self.blockchain.get_tx(txid)
+        }
+
+        fn update_state(&mut self, force_sync: bool) -> Result<()> {
+            let now = Instant::now();
+
+            if !force_sync && now < self.last_sync + self.sync_interval {
+                return Ok(());
+            }
+
+            self.last_sync = now;
+            self.update_latest_block()?;
+            self.update_script_histories()?;
+
+            Ok(())
+        }
+
+        fn status_of_script<T>(&mut self, tx: &T) -> Result<ScriptStatus>
+        where
+            T: Watchable,
+        {
+            let txid = tx.id();
+            let script = tx.script();
+
+            if !self.script_history.contains_key(&script) {
+                self.script_history.insert(script.clone(), vec![]);
+
+                // When we first subscribe to a script we want to immediately fetch its status
+                // Otherwise we would have to wait for the next sync interval, which can take a minute
+                // This would result in potentially inaccurate status updates until that next sync interval is hit
+                self.update_state(true)?;
+            } else {
+                self.update_state(false)?;
+            }
+
+            let history = self.script_history.entry(script).or_default();
+
+            let history_of_tx = history
+                .iter()
+                .filter(|entry| entry.tx_hash == txid)
+                .collect::<Vec<_>>();
+
+            match history_of_tx.as_slice() {
+                [] => Ok(ScriptStatus::Unseen),
+                [remaining @ .., last] => {
+                    if !remaining.is_empty() {
+                        tracing::warn!("Found more than a single history entry for script. This is highly unexpected and those history entries will be ignored")
+                    }
+
+                    if last.height <= 0 {
+                        Ok(ScriptStatus::InMempool)
+                    } else {
+                        Ok(ScriptStatus::Confirmed(
+                            Confirmed::from_inclusion_and_latest_block(
+                                u32::try_from(last.height)?,
+                                u32::from(self.latest_block_height),
+                            ),
+                        ))
+                    }
+                }
+            }
+        }
+
+        fn update_latest_block(&mut self) -> Result<()> {
+            // Fetch the latest block for storing the height.
+            // We do not act on this subscription after this call, as we cannot rely on
+            // subscription push notifications because eventually the Electrum server will
+            // close the connection and subscriptions are not automatically renewed
+            // upon renewing the connection.
+            let latest_block = self
+                .electrum
+                .block_headers_subscribe()
+                .context("Failed to subscribe to header notifications")?;
+            let latest_block_height = BlockHeight::try_from(latest_block)?;
+
+            if latest_block_height > self.latest_block_height {
+                tracing::debug!(
+                    block_height = u32::from(latest_block_height),
+                    "Got notification for new block"
+                );
+                self.latest_block_height = latest_block_height;
+            }
+
+            Ok(())
+        }
+
+        fn update_script_histories(&mut self) -> Result<()> {
+            let histories = self
+                .electrum
+                .batch_script_get_history(self.script_history.keys())
+                .context("Failed to get script histories")?;
+
+            if histories.len() != self.script_history.len() {
+                bail!(
+                    "Expected {} history entries, received {}",
+                    self.script_history.len(),
+                    histories.len()
+                );
+            }
+
+            let scripts = self.script_history.keys().cloned();
+            let histories = histories.into_iter();
+
+            self.script_history = scripts.zip(histories).collect::<BTreeMap<_, _>>();
+
+            Ok(())
+        }
+    }
+
+    impl EstimateFeeRate for Client {
+        fn estimate_feerate(&self, target_block: u16) -> Result<FeeRate> {
+            // https://github.com/romanz/electrs/blob/f9cf5386d1b5de6769ee271df5eef324aa9491bc/src/rpc.rs#L213
+            // Returned estimated fees are per BTC/kb.
+            let fee_per_byte = self.electrum.estimate_fee(target_block.into())?;
+
+            if fee_per_byte < 0.0 {
+                bail!("Fee per byte returned by electrum server is negative: {}. This may indicate that fee estimation is not supported by this server", fee_per_byte);
+            }
+
+            // we do not expect fees being that high.
+            #[allow(clippy::cast_possible_truncation)]
+            Ok(FeeRate::from_btc_per_kvb(fee_per_byte as f32))
+        }
+
+        fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
+            // https://github.com/romanz/electrs/blob/f9cf5386d1b5de6769ee271df5eef324aa9491bc/src/rpc.rs#L219
+            // Returned fee is in BTC/kb
+            let relay_fee = bitcoin::Amount::from_btc(self.electrum.relay_fee()?)?;
+            Ok(relay_fee)
+            }
+    }
 }
 
-pub struct NewWallet {
-    wallet: bdk_wallet::Wallet,
-    client: bdk_electrum::BdkElectrumClient<bdk_electrum::electrum_client::Client>
+/// This is the new bdk wallet after the bdk upgrade
+pub struct Wallet {
+    wallet: Arc<Mutex<bdk_wallet::Wallet>>,
+    client: Arc<Mutex<bdk_electrum::BdkElectrumClient<bdk_electrum::electrum_client::Client>>>
 }
 
 impl Wallet {
-    pub async fn new(
-        electrum_rpc_url: Url,
-        data_dir: impl AsRef<Path>,
-        xprivkey: ExtendedPrivKey,
-        env_config: env::Config,
-        target_block: u16,
-    ) -> Result<Self> {
-        let data_dir = data_dir.as_ref();
-        let wallet_dir = data_dir.join(WALLET);
-        let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
-        let network = env_config.bitcoin_network;
-
-        let wallet = match bdk::Wallet::new(
-            bdk::template::Bip84(xprivkey, KeychainKind::External),
-            Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
-            network,
-            database,
-        ) {
-            Ok(w) => w,
-            Err(bdk::Error::ChecksumMismatch) => Self::migrate(data_dir, xprivkey, network)?,
-            err => err?,
-        };
-
-        let client = Client::new(electrum_rpc_url, env_config.bitcoin_sync_interval(), 5)?;
-
-        let network = wallet.network();
-
-        Ok(Self {
-            client: Arc::new(Mutex::new(client)),
-            wallet: Arc::new(Mutex::new(wallet)),
-            finality_confirmations: env_config.bitcoin_finality_confirmations,
-            network,
-            target_block,
-        })
-    }
-
-    /// Create a new database for the wallet and rename the old one.
-    /// This is necessary when getting a ChecksumMismatch from a wallet
-    /// created with an older version of BDK. Only affected Testnet wallets.
-    // https://github.com/comit-network/xmr-btc-swap/issues/1182
-    fn migrate(
-        data_dir: &Path,
-        xprivkey: ExtendedPrivKey,
-        network: bitcoin::Network,
-    ) -> Result<bdk::Wallet<Tree>> {
-        let from = data_dir.join(WALLET);
-        let to = data_dir.join(WALLET_OLD);
-        std::fs::rename(from, to)?;
-
-        let wallet_dir = data_dir.join(WALLET);
-        let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
-
-        let wallet = bdk::Wallet::new(
-            bdk::template::Bip84(xprivkey, KeychainKind::External),
-            Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
-            network,
-            database,
-        )?;
-
-        Ok(wallet)
-    }
-
     /// Broadcast the given transaction to the network and emit a log statement
     /// if done so successfully.
     ///
@@ -300,14 +506,10 @@ impl Subscription {
     }
 }
 
-impl<D, C> Wallet<D, C>
-where
-    C: EstimateFeeRate,
-    D: BatchDatabase,
-{
+impl Wallet {
     pub async fn sign_and_finalize(
         &self,
-        mut psbt: PartiallySignedTransaction,
+        mut psbt: bitcoin::psbt::Psbt,
     ) -> Result<Transaction> {
         let finalized = self
             .wallet
@@ -550,10 +752,7 @@ fn estimate_fee(
     Ok(amount)
 }
 
-impl<D> Wallet<D>
-where
-    D: BatchDatabase,
-{
+impl Wallet {
     pub async fn get_tx(&self, txid: Txid) -> Result<Option<Transaction>> {
         let client = self.client.lock().await;
         let tx = client.get_tx(&txid)?;
@@ -575,7 +774,7 @@ where
     }
 }
 
-impl<D, C> Wallet<D, C> {
+impl Wallet {
     // TODO: Get rid of this by changing bounds on bdk::Wallet
     pub fn get_network(&self) -> bitcoin::Network {
         self.network
@@ -717,186 +916,6 @@ impl Watchable for (Txid, Script) {
     }
 }
 
-pub struct Client {
-    electrum: bdk::electrum_client::Client,
-    blockchain: ElectrumBlockchain,
-    latest_block_height: BlockHeight,
-    last_sync: Instant,
-    sync_interval: Duration,
-    script_history: BTreeMap<Script, Vec<GetHistoryRes>>,
-    subscriptions: HashMap<(Txid, Script), Subscription>,
-}
-
-impl Client {
-    pub fn new(electrum_rpc_url: Url, interval: Duration, retry_count: u8) -> Result<Self> {
-        let config = bdk::electrum_client::ConfigBuilder::default()
-            .retry(retry_count)
-            .build();
-
-        let electrum = bdk::electrum_client::Client::from_config(electrum_rpc_url.as_str(), config)
-            .context("Failed to initialize Electrum RPC client")?;
-
-        // Initially fetch the latest block for storing the height.
-        // We do not act on this subscription after this call.
-        let latest_block = electrum
-            .block_headers_subscribe()
-            .context("Failed to subscribe to header notifications")?;
-
-        let client = bdk::electrum_client::Client::new(electrum_rpc_url.as_str())
-            .context("Failed to initialize Electrum RPC client")?;
-
-        let blockchain = ElectrumBlockchain::from(client);
-        let last_sync = Instant::now()
-            .checked_sub(interval)
-            .expect("no underflow since block time is only 600 secs");
-
-        Ok(Self {
-            electrum,
-            blockchain,
-            latest_block_height: BlockHeight::try_from(latest_block)?,
-            last_sync,
-            sync_interval: interval,
-            script_history: Default::default(),
-            subscriptions: Default::default(),
-        })
-    }
-
-    fn blockchain(&self) -> &ElectrumBlockchain {
-        &self.blockchain
-    }
-
-    fn get_tx(&self, txid: &Txid) -> Result<Option<Transaction>, bdk::Error> {
-        self.blockchain.get_tx(txid)
-    }
-
-    fn update_state(&mut self, force_sync: bool) -> Result<()> {
-        let now = Instant::now();
-
-        if !force_sync && now < self.last_sync + self.sync_interval {
-            return Ok(());
-        }
-
-        self.last_sync = now;
-        self.update_latest_block()?;
-        self.update_script_histories()?;
-
-        Ok(())
-    }
-
-    fn status_of_script<T>(&mut self, tx: &T) -> Result<ScriptStatus>
-    where
-        T: Watchable,
-    {
-        let txid = tx.id();
-        let script = tx.script();
-
-        if !self.script_history.contains_key(&script) {
-            self.script_history.insert(script.clone(), vec![]);
-
-            // When we first subscribe to a script we want to immediately fetch its status
-            // Otherwise we would have to wait for the next sync interval, which can take a minute
-            // This would result in potentially inaccurate status updates until that next sync interval is hit
-            self.update_state(true)?;
-        } else {
-            self.update_state(false)?;
-        }
-
-        let history = self.script_history.entry(script).or_default();
-
-        let history_of_tx = history
-            .iter()
-            .filter(|entry| entry.tx_hash == txid)
-            .collect::<Vec<_>>();
-
-        match history_of_tx.as_slice() {
-            [] => Ok(ScriptStatus::Unseen),
-            [remaining @ .., last] => {
-                if !remaining.is_empty() {
-                    tracing::warn!("Found more than a single history entry for script. This is highly unexpected and those history entries will be ignored")
-                }
-
-                if last.height <= 0 {
-                    Ok(ScriptStatus::InMempool)
-                } else {
-                    Ok(ScriptStatus::Confirmed(
-                        Confirmed::from_inclusion_and_latest_block(
-                            u32::try_from(last.height)?,
-                            u32::from(self.latest_block_height),
-                        ),
-                    ))
-                }
-            }
-        }
-    }
-
-    fn update_latest_block(&mut self) -> Result<()> {
-        // Fetch the latest block for storing the height.
-        // We do not act on this subscription after this call, as we cannot rely on
-        // subscription push notifications because eventually the Electrum server will
-        // close the connection and subscriptions are not automatically renewed
-        // upon renewing the connection.
-        let latest_block = self
-            .electrum
-            .block_headers_subscribe()
-            .context("Failed to subscribe to header notifications")?;
-        let latest_block_height = BlockHeight::try_from(latest_block)?;
-
-        if latest_block_height > self.latest_block_height {
-            tracing::debug!(
-                block_height = u32::from(latest_block_height),
-                "Got notification for new block"
-            );
-            self.latest_block_height = latest_block_height;
-        }
-
-        Ok(())
-    }
-
-    fn update_script_histories(&mut self) -> Result<()> {
-        let histories = self
-            .electrum
-            .batch_script_get_history(self.script_history.keys())
-            .context("Failed to get script histories")?;
-
-        if histories.len() != self.script_history.len() {
-            bail!(
-                "Expected {} history entries, received {}",
-                self.script_history.len(),
-                histories.len()
-            );
-        }
-
-        let scripts = self.script_history.keys().cloned();
-        let histories = histories.into_iter();
-
-        self.script_history = scripts.zip(histories).collect::<BTreeMap<_, _>>();
-
-        Ok(())
-    }
-}
-
-impl EstimateFeeRate for Client {
-    fn estimate_feerate(&self, target_block: u16) -> Result<FeeRate> {
-        // https://github.com/romanz/electrs/blob/f9cf5386d1b5de6769ee271df5eef324aa9491bc/src/rpc.rs#L213
-        // Returned estimated fees are per BTC/kb.
-        let fee_per_byte = self.electrum.estimate_fee(target_block.into())?;
-
-        if fee_per_byte < 0.0 {
-            bail!("Fee per byte returned by electrum server is negative: {}. This may indicate that fee estimation is not supported by this server", fee_per_byte);
-        }
-
-        // we do not expect fees being that high.
-        #[allow(clippy::cast_possible_truncation)]
-        Ok(FeeRate::from_btc_per_kvb(fee_per_byte as f32))
-    }
-
-    fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
-        // https://github.com/romanz/electrs/blob/f9cf5386d1b5de6769ee271df5eef324aa9491bc/src/rpc.rs#L219
-        // Returned fee is in BTC/kb
-        let relay_fee = bitcoin::Amount::from_btc(self.electrum.relay_fee()?)?;
-        Ok(relay_fee)
-    }
-}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ScriptStatus {
