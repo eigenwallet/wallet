@@ -23,7 +23,8 @@ pub fn asb<LR>(
     env_config: env::Config,
     namespace: XmrBtcNamespace,
     rendezvous_addrs: &[Multiaddr],
-) -> Result<Swarm<asb::Behaviour<LR>>>
+    maybe_tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
+) -> Result<(Swarm<asb::Behaviour<LR>>, Vec<Multiaddr>)>
 where
     LR: LatestRate + Send + 'static + Debug + Clone,
 {
@@ -50,7 +51,7 @@ where
         rendezvous_nodes,
     );
 
-    let transport = asb::transport::new(&identity)?;
+    let (transport, onion_addresses) = asb::transport::new(&identity, maybe_tor_client)?;
 
     let swarm = SwarmBuilder::with_existing_identity(identity)
         .with_tokio()
@@ -59,7 +60,7 @@ where
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::MAX))
         .build();
 
-    Ok(swarm)
+    Ok((swarm, onion_addresses))
 }
 
 pub async fn cli<T>(

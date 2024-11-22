@@ -22,16 +22,51 @@ use std::time::Duration;
 use uuid::Uuid;
 
 pub mod transport {
-    use libp2p::{dns, identity, tcp, Transport};
+    use std::sync::Arc;
+
+    use arti_client::TorClient;
+    use libp2p::{core::transport::OptionalTransport, dns, identity, tcp, Transport};
+    use libp2p_community_tor::AddressConversion;
+    use tor_rtcompat::tokio::TokioRustlsRuntime;
 
     use super::*;
 
     /// Creates the libp2p transport for the ASB.
-    pub fn new(identity: &identity::Keypair) -> Result<Boxed<(PeerId, StreamMuxerBox)>> {
-        let tcp = tcp::tokio::Transport::new(tcp::Config::new().nodelay(true));
+    pub fn new(
+        identity: &identity::Keypair,
+        maybe_tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
+    ) -> Result<(Boxed<(PeerId, StreamMuxerBox)>, Vec<Multiaddr>)> {
+        let maybe_tor_transport = maybe_tor_client
+            .map(|tor| {
+                let mut tor_transport = libp2p_community_tor::TorTransport::from_client(
+                    tor,
+                    AddressConversion::DnsOnly,
+                );
+
+                // If we cannot listen on the onion address, we don't want to use Tor at all
+                match tor_transport.add_onion_service("asb".parse().unwrap(), 999) {
+                    Ok(onion_address) => Some((tor_transport, onion_address)),
+                    Err(_) => None,
+                }
+            })
+            .flatten();
+
+        let (maybe_tor_transport, onion_addresses) = match maybe_tor_transport {
+            Some((tor_transport, onion_address)) => {
+                (OptionalTransport::some(tor_transport), vec![onion_address])
+            }
+
+            None => (OptionalTransport::none(), vec![]),
+        };
+
+        let tcp = maybe_tor_transport
+            .or_transport(tcp::tokio::Transport::new(tcp::Config::new().nodelay(true)));
         let tcp_with_dns = dns::tokio::Transport::system(tcp)?;
 
-        authenticate_and_multiplex(tcp_with_dns.boxed(), identity)
+        Ok((
+            authenticate_and_multiplex(tcp_with_dns.boxed(), identity)?,
+            onion_addresses,
+        ))
     }
 }
 

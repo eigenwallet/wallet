@@ -14,12 +14,9 @@
 
 use anyhow::{bail, Context, Result};
 use comfy_table::Table;
-use libp2p::core::multiaddr::Protocol;
-use libp2p::core::Multiaddr;
 use libp2p::Swarm;
 use std::convert::TryInto;
 use std::env;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use structopt::clap;
 use structopt::clap::ErrorKind;
@@ -28,6 +25,7 @@ use swap::asb::config::{
     initial_setup, query_user_for_initial_config, read_config, Config, ConfigNotInitialized,
 };
 use swap::asb::{cancel, punish, redeem, refund, safely_abort, EventLoop, Finality, KrakenRate};
+use swap::common::tor::init_tor_client;
 use swap::common::tracing_util::Format;
 use swap::common::{self, get_logs, warn_if_outdated};
 use swap::database::{open_db, AccessMode};
@@ -35,8 +33,7 @@ use swap::network::rendezvous::XmrBtcNamespace;
 use swap::network::swarm;
 use swap::protocol::alice::{run, AliceState};
 use swap::seed::Seed;
-use swap::tor::AuthenticatedClient;
-use swap::{bitcoin, kraken, monero, tor};
+use swap::{bitcoin, kraken, monero};
 use tracing_subscriber::filter::LevelFilter;
 
 const DEFAULT_WALLET_NAME: &str = "asb-wallet";
@@ -171,7 +168,10 @@ pub async fn main() -> Result<()> {
             let kraken_rate = KrakenRate::new(config.maker.ask_spread, kraken_price_updates);
             let namespace = XmrBtcNamespace::from_is_testnet(testnet);
 
-            let mut swarm = swarm::asb(
+            // Init Tor client
+            let tor_client = init_tor_client(&config.data.dir).await?.into();
+
+            let (mut swarm, onion_addresses) = swarm::asb(
                 &seed,
                 config.maker.min_buy_btc,
                 config.maker.max_buy_btc,
@@ -180,11 +180,18 @@ pub async fn main() -> Result<()> {
                 env_config,
                 namespace,
                 &rendezvous_addrs,
+                tor_client,
             )?;
 
             for listen in config.network.listen.clone() {
                 if let Err(e) = Swarm::listen_on(&mut swarm, listen.clone()) {
                     tracing::warn!("Failed to listen on network interface {}: {}. Consider removing it from the config.", listen, e);
+                }
+            }
+
+            for onion_address in onion_addresses {
+                if let Err(e) = swarm.listen_on(onion_address.clone()) {
+                    tracing::warn!("Failed to listen on onion address {}: {}", onion_address, e);
                 }
             }
 
@@ -390,47 +397,4 @@ async fn init_monero_wallet(
     .await?;
 
     Ok(wallet)
-}
-
-/// Registers a hidden service for each network.
-/// Note: Once ac goes out of scope, the services will be de-registered.
-async fn register_tor_services(
-    networks: Vec<Multiaddr>,
-    tor_client: tor::Client,
-    seed: &Seed,
-) -> Result<AuthenticatedClient> {
-    let mut ac = tor_client.into_authenticated_client().await?;
-
-    let hidden_services_details = networks
-        .iter()
-        .flat_map(|network| {
-            network.iter().map(|protocol| match protocol {
-                Protocol::Tcp(port) => Some((
-                    port,
-                    SocketAddr::new(IpAddr::from(Ipv4Addr::new(127, 0, 0, 1)), port),
-                )),
-                _ => {
-                    // We only care for Tcp for now.
-                    None
-                }
-            })
-        })
-        .flatten()
-        .collect::<Vec<_>>();
-
-    let key = seed.derive_torv3_key();
-
-    ac.add_services(&hidden_services_details, &key).await?;
-
-    let onion_address = key
-        .public()
-        .get_onion_address()
-        .get_address_without_dot_onion();
-
-    hidden_services_details.iter().for_each(|(port, _)| {
-        let onion_address = format!("/onion3/{}:{}", onion_address, port);
-        tracing::info!(%onion_address, "Successfully created hidden service");
-    });
-
-    Ok(ac)
 }
