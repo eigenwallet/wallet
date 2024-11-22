@@ -6,7 +6,9 @@ use std::ops::Add;
 use typeshare::typeshare;
 
 /// Represent a block height, or block number, expressed in absolute block
-/// count. E.g. The transaction was included in block #655123, 655123 block
+/// count. 
+/// 
+/// E.g. The transaction was included in block #655123, 655123 blocks
 /// after the genesis block.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -15,6 +17,12 @@ pub struct BlockHeight(u32);
 impl From<BlockHeight> for u32 {
     fn from(height: BlockHeight) -> Self {
         height.0
+    }
+}
+
+impl From<u32> for BlockHeight {
+    fn from(height: u32) -> Self {
+        Self(height)
     }
 }
 

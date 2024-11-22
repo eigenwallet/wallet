@@ -1,9 +1,11 @@
 use crate::bitcoin::{Address, Amount, Transaction};
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context, Result, anyhow};
+use bdk_electrum::electrum_client::GetHistoryRes;
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::descriptor::IntoWalletDescriptor;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::export::FullyNodedExport;
+use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::PersistedWallet;
 use bdk_wallet::SignOptions;
 use bdk_wallet::WalletPersister;
@@ -12,13 +14,17 @@ use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid, Script};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 use tokio::sync::{watch, Mutex};
 use tracing::{debug_span, Instrument};
+
+use super::BlockHeight;
 
 /// Assuming we add a spread of 3% we don't want to pay more than 3% of the
 /// amount for tx fees.
@@ -43,13 +49,18 @@ pub struct Wallet<Persister> {
     // TODO: revisit and maybe implement a custom persister
     wallet: Arc<Mutex<PersistedWallet<Persister>>>,
     client: Arc<Mutex<Client>>,
-    subscriptions: HashMap<(Txid, ScriptBuf), Subscription>,
     network: Network,
+    finality_confirmations: u32,
 }
 
 /// This is our wrapper around a bdk electrum client.
 pub struct Client {
-    inner: bdk_electrum::BdkElectrumClient<bdk_electrum::electrum_client::Client>,
+    electrum: bdk_electrum::BdkElectrumClient<bdk_electrum::electrum_client::Client>,
+    script_history: BTreeMap<ScriptBuf, Vec<GetHistoryRes>>,
+    subscriptions: HashMap<(Txid, ScriptBuf), Subscription>,
+    last_sync: Instant,
+    sync_interval: Duration,
+    latest_block_height: BlockHeight
 }
 
 /// A subscription to the status of a given transaction 
@@ -79,7 +90,6 @@ pub struct Confirmed {
     depth: u32,
 }
 
-
 /// Defines a watchable transaction.
 ///
 /// For a transaction to be watchable, we need to know two things: Its
@@ -102,19 +112,21 @@ where
         network: Network,
         electrum_rpc_url: &str,
         persister: &mut Persister,
+        finality_confirmations: u32,
+        sync_interval: Duration,
     ) -> Result<Wallet<Persister>> {
         let wallet = bdk_wallet::Wallet::create(descriptor.clone(), descriptor.clone())
         .network(network)
         .create_wallet(persister)
         .context("Failed to create wallet")?;
 
-        let client = Client::new(electrum_rpc_url)?;
+        let client = Client::new(electrum_rpc_url, sync_interval)?;
 
         Ok(Self {
             wallet: Arc::new(Mutex::new(wallet)),
             client: Arc::new(Mutex::new(client)),
-            subscriptions: Default::default(),
-            network
+            network,
+            finality_confirmations,
         })
     }
 
@@ -364,21 +376,20 @@ where
 
         let mut tx_builder = wallet.build_tx();
 
-        let dummy_script = Script::from(vec![0u8; locking_script_size]);
+        let dummy_script = ScriptBuf::from(vec![0u8; locking_script_size]);
         tx_builder.drain_to(dummy_script);
         tx_builder.fee_rate(fee_rate);
         tx_builder.drain_wallet();
 
         let response = tx_builder.finish();
         match response {
-            Ok((_, details)) => {
-                let max_giveable = details.sent
-                    - details
-                        .fee
+            Ok(psbt) => {
+                let max_giveable = psbt.unsigned_tx.output.iter().map(|o| o.value).sum()
+                    - psbt
+                        .fee_amount()
                         .expect("fees are always present with Electrum backend");
                 Ok(Amount::from_sat(max_giveable))
             }
-            Err(bdk::Error::InsufficientFunds { .. }) => Ok(Amount::ZERO),
             Err(e) => bail!("Failed to build transaction. {:#}", e),
         }
     }
@@ -421,14 +432,30 @@ where
 
 impl Client {
     /// Create a new client to this electrum server.
-    fn new(electrum_rpc_url: &str) -> Result<Self> {
+    fn new(electrum_rpc_url: &str, sync_interval: Duration) -> Result<Self> {
         let client = bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?;
-        Ok(Self { inner: bdk_electrum::BdkElectrumClient::new(client) })
+        Ok(Self { 
+            electrum: bdk_electrum::BdkElectrumClient::new(client), 
+            script_history: Default::default(), 
+            last_sync: Instant::now().checked_sub(sync_interval).ok_or(anyhow!("failed to set last sync time"))?, 
+            sync_interval, 
+            latest_block_height: BlockHeight::from(0),
+            subscriptions: Default::default(),
+        })
     }
 
     /// Broadcast a transaction to the network.
-    pub fn transaction_broadcast(&self, transaction: &Transaction) -> Result<()> {
-        self.inner.transaction_broadcast(transaction)
+    pub fn transaction_broadcast(&self, transaction: &Transaction) -> Result<Txid> {
+        self.electrum.transaction_broadcast(transaction).context("Failed to broadcast transaction")
+    }
+
+    /// Get the status of a script.
+    pub fn status_of_script(&self, script: &impl Watchable) -> Result<ScriptStatus> {
+        let script = script.script();
+        let txid = script.txid();
+
+        let client = self.electrum.inner;
+        bail!("unimplemented")
     }
 }
 
