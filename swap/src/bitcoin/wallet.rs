@@ -1,25 +1,28 @@
 use crate::bitcoin::{Address, Amount, Transaction};
 use anyhow::{bail, Context, Result};
 use bdk_wallet::bitcoin::FeeRate;
+use bdk_wallet::descriptor::IntoWalletDescriptor;
+use bdk_wallet::bitcoin::Network;
+use bdk_wallet::rusqlite;
+use bdk_wallet::PersistedWallet;
 use bdk_wallet::SignOptions;
-use bitcoin::psbt::PartiallySignedTransaction;
-use bitcoin::Txid;
+use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid, Script};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use std::collections::HashMap;
 use std::fmt;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{watch, Mutex};
 use tracing::{debug_span, Instrument};
-
 
 /// Assuming we add a spread of 3% we don't want to pay more than 3% of the
 /// amount for tx fees.
 const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.03);
 const MAX_ABSOLUTE_TX_FEE: Decimal = dec!(100_000);
 const DUST_AMOUNT: u64 = 546;
-
 
 const WALLET_NEW: &str = "wallet-new";
 
@@ -316,11 +319,40 @@ pub mod old {
 
 /// This is the new bdk wallet after the bdk upgrade
 pub struct Wallet {
-    wallet: Arc<Mutex<bdk_wallet::Wallet>>,
-    client: Arc<Mutex<bdk_electrum::BdkElectrumClient<bdk_electrum::electrum_client::Client>>>
+    // The wallet is persisted to a sqlite database for now.
+    // TODO: revisit and maybe implement a custom persister
+    wallet: Arc<Mutex<PersistedWallet<rusqlite::Connection>>>,
+    client: Arc<Mutex<bdk_electrum::BdkElectrumClient<bdk_electrum::electrum_client::Client>>>,
+    subscriptions: HashMap<(Txid, Script), Subscription>,
 }
 
 impl Wallet {
+    /// Create a new wallet. The descriptor is the wallet descriptor for the external and internal keys.
+    pub async fn new(
+        descriptor: impl IntoWalletDescriptor + Send + Clone + 'static,
+        network: Network,
+        data_dir: impl AsRef<Path>,
+        electrum_rpc_url: &str,
+    ) -> Result<Wallet> {
+        let data_dir = data_dir.as_ref();
+        let wallet_dir = data_dir.join(WALLET_NEW);
+        let mut database = bdk_wallet::rusqlite::Connection::open(wallet_dir)?;
+
+        let wallet = bdk_wallet::Wallet::create(descriptor.clone(), descriptor.clone())
+        .network(network)
+        .create_wallet(&mut database)?;
+
+        let client = bdk_electrum::BdkElectrumClient::new(
+            bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?
+        );
+
+        Ok(Self {
+            wallet: Arc::new(Mutex::new(wallet)),
+            client: Arc::new(Mutex::new(client)),
+            subscriptions: Default::default(),
+        })
+    }
+
     /// Broadcast the given transaction to the network and emit a log statement
     /// if done so successfully.
     ///
@@ -331,7 +363,7 @@ impl Wallet {
         transaction: Transaction,
         kind: &str,
     ) -> Result<(Txid, Subscription)> {
-        let txid = transaction.txid();
+        let txid = transaction.compute_txid();
 
         // to watch for confirmations, watching a single output is enough
         let subscription = self
@@ -339,9 +371,7 @@ impl Wallet {
             .await;
 
         let client = self.client.lock().await;
-        let blockchain = client.blockchain();
-
-        blockchain.broadcast(&transaction).with_context(|| {
+        client.transaction_broadcast(&transaction).with_context(|| {
             format!("Failed to broadcast Bitcoin {} transaction {}", kind, txid)
         })?;
 

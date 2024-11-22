@@ -8506,7 +8506,7 @@ dependencies = [
  "bdk_electrum",
  "bdk_wallet",
  "big-bytes",
- "bitcoin 0.29.2",
+ "bitcoin 0.32.4",
  "bitcoin-harness",
  "bmrng",
  "comfy-table",
