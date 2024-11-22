@@ -1,5 +1,6 @@
 use crate::bitcoin::{Address, Amount, Transaction};
 use anyhow::{bail, Context, Result};
+use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::SignOptions;
 use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::Txid;
@@ -34,7 +35,7 @@ pub mod old {
     use bdk::sled::Tree;
     use bdk::wallet::export::FullyNodedExport;
     use bdk::wallet::AddressIndex;
-    use bdk::{FeeRate, KeychainKind, SignOptions, SyncOptions};
+    use bdk::{KeychainKind, SignOptions, SyncOptions};
     use bdk::bitcoin::{
         util::bip32::ExtendedPrivKey,
         Txid,
@@ -42,6 +43,7 @@ pub mod old {
         Network,
         Script
     };
+    use bdk_wallet::bitcoin::FeeRate;
     use tokio::sync::Mutex;
     use url::Url;
     use anyhow::{bail, Context, Result};
@@ -293,15 +295,14 @@ pub mod old {
         fn estimate_feerate(&self, target_block: u16) -> Result<FeeRate> {
             // https://github.com/romanz/electrs/blob/f9cf5386d1b5de6769ee271df5eef324aa9491bc/src/rpc.rs#L213
             // Returned estimated fees are per BTC/kb.
-            let fee_per_byte = self.electrum.estimate_fee(target_block.into())?;
+            let fee_per_kbyte = self.electrum.estimate_fee(target_block.into())?;
+            // convert to sat/byte and check whether it is valid
+            let btc_per_kbyte = bitcoin::Amount::from_btc(fee_per_kbyte)
+                .context("BTC/KByte fee returned by electrum server is invalid, this means that fee estimation is not supported by this server")?;
+            let btc_per_byte = btc_per_kbyte / 1000;
+            let sat_per_byte = btc_per_byte * 100_000_000;
 
-            if fee_per_byte < 0.0 {
-                bail!("Fee per byte returned by electrum server is negative: {}. This may indicate that fee estimation is not supported by this server", fee_per_byte);
-            }
-
-            // we do not expect fees being that high.
-            #[allow(clippy::cast_possible_truncation)]
-            Ok(FeeRate::from_btc_per_kvb(fee_per_byte as f32))
+            Ok(FeeRate::from_sat_per_vb(sat_per_byte.to_sat()).context("fee overflow")?)
         }
 
         fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
@@ -507,6 +508,8 @@ impl Subscription {
 }
 
 impl Wallet {
+    pub async fn new()
+
     pub async fn sign_and_finalize(
         &self,
         mut psbt: bitcoin::psbt::Psbt,
