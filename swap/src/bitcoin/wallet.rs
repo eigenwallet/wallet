@@ -6,6 +6,7 @@ use bdk_wallet::descriptor::IntoWalletDescriptor;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
+use bdk_wallet::rusqlite;
 use bdk_wallet::PersistedWallet;
 use bdk_wallet::SignOptions;
 use bdk_wallet::WalletPersister;
@@ -44,7 +45,7 @@ const WALLET_NEW: &str = "wallet-new";
 /// This wallet is generic over the persister, which may be a 
 /// rusqlite connection, or an in-memory database, or something else.
 #[derive(Clone)]
-pub struct Wallet<Persister> {
+pub struct Wallet<Persister = rusqlite::Connection> {
     // The wallet is persisted to a sqlite database for now.
     // TODO: revisit and maybe implement a custom persister
     wallet: Arc<Mutex<PersistedWallet<Persister>>>,
@@ -99,6 +100,9 @@ pub struct Confirmed {
 pub trait Watchable {
     fn id(&self) -> Txid;
     fn script(&self) -> ScriptBuf;
+    fn script_and_txid(&self) -> (ScriptBuf, Txid) {
+        (self.script(), self.id())
+    }
 }
 
 impl<Persister> Wallet<Persister>
@@ -451,10 +455,10 @@ impl Client {
 
     /// Get the status of a script.
     pub fn status_of_script(&self, script: &impl Watchable) -> Result<ScriptStatus> {
-        let script = script.script();
-        let txid = script.txid();
+        let (script, txid) = script.script_and_txid();
 
-        let client = self.electrum.inner;
+        self.electrum.inner.
+
         bail!("unimplemented")
     }
 }

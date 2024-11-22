@@ -1,9 +1,9 @@
 use crate::bitcoin::wallet::Watchable;
 use crate::bitcoin::{self, Address, Amount, PunishTimelock, Transaction, TxCancel, Txid};
-use ::bitcoin::util::sighash::SighashCache;
-use ::bitcoin::{secp256k1, EcdsaSighashType, Sighash};
+use ::bitcoin::sighash::SighashCache;
+use ::bitcoin::{secp256k1, EcdsaSighashType, hashes::sha256d::Hash as Sighash};
 use anyhow::{Context, Result};
-use bdk::bitcoin::Script;
+use ::bitcoin::ScriptBuf;
 use bdk::miniscript::Descriptor;
 use std::collections::HashMap;
 
@@ -12,7 +12,7 @@ pub struct TxPunish {
     inner: Transaction,
     digest: Sighash,
     cancel_output_descriptor: Descriptor<::bitcoin::PublicKey>,
-    watch_script: Script,
+    watch_script: ScriptBuf,
 }
 
 impl TxPunish {
@@ -100,10 +100,10 @@ impl TxPunish {
 
 impl Watchable for TxPunish {
     fn id(&self) -> Txid {
-        self.inner.txid()
+        self.inner.compute_txid()
     }
 
-    fn script(&self) -> Script {
+    fn script(&self) -> ScriptBuf {
         self.watch_script.clone()
     }
 }
