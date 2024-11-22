@@ -146,6 +146,7 @@ pub async fn main() -> Result<()> {
             let bitcoin_balance = bitcoin_wallet.balance().await?;
             tracing::info!(%bitcoin_balance, "Bitcoin wallet balance");
 
+            // Connect to Kraken
             let kraken_price_updates = kraken::connect(config.maker.price_ticker_ws_url.clone())?;
 
             // Setup Tor hidden services

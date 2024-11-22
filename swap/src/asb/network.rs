@@ -24,12 +24,14 @@ use uuid::Uuid;
 pub mod transport {
     use std::sync::Arc;
 
-    use arti_client::TorClient;
+    use arti_client::{config::onion_service::OnionServiceConfigBuilder, TorClient};
     use libp2p::{core::transport::OptionalTransport, dns, identity, tcp, Transport};
     use libp2p_community_tor::AddressConversion;
     use tor_rtcompat::tokio::TokioRustlsRuntime;
 
     use super::*;
+
+    static ASB_ONION_SERVICE_NICKNAME: &str = "asb";
 
     /// Creates the libp2p transport for the ASB.
     pub fn new(
@@ -43,8 +45,14 @@ pub mod transport {
                     AddressConversion::DnsOnly,
                 );
 
-                // If we cannot listen on the onion address, we don't want to use Tor at all
-                match tor_transport.add_onion_service("asb".parse().unwrap(), 999) {
+                let onion_service_config = OnionServiceConfigBuilder::default()
+                    .nickname(ASB_ONION_SERVICE_NICKNAME.parse().unwrap())
+                    .build()
+                    .expect("We specified a valid nickname");
+
+                // If we cannot listen on the onion address, we don't want to use Tor at all because Alice does not dial
+                // TODO: Except for rendezvous nodes
+                match tor_transport.add_onion_service(onion_service_config, 999) {
                     Ok(onion_address) => Some((tor_transport, onion_address)),
                     Err(_) => None,
                 }

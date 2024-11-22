@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - GUI: Changed terminology from "swap providers" to "makers"
 - GUI: For each maker, we now display a unique deterministically generated avatar derived from the maker's public key
+- ASB: We now listen on an onion address by default using an internal Tor client. You do not need to run a Tor daemon on your own anymore. The `tor` section in the config file has been removed. This feature is powered by [arti](https://tpo.pages.torproject.net/core/arti/), an implementation of the Tor protocol in Rust by the Tor Project.
+- CLI + GUI: We can now dial asbs over `/onion3/****` addresses using the integrated Tor client.
 
 ## [1.0.0-rc.6] - 2024-11-21
 
