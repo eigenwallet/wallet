@@ -267,14 +267,16 @@ impl Database for SqliteDatabase {
     }
 
     async fn all(&self) -> Result<Vec<(Uuid, State)>> {
-        let rows = sqlx::query!(r#"
+        let rows = sqlx::query!(
+            r#"
             SELECT swap_id, state
             FROM (
                 SELECT max(id), swap_id, state
                 FROM swap_states
                 GROUP BY swap_id
             )
-        "#)
+        "#
+        )
         .fetch_all(&self.pool)
         .await?;
 

@@ -1,9 +1,9 @@
 use crate::bitcoin::{Address, Amount, Transaction};
-use anyhow::{bail, Context, Result, anyhow};
+use anyhow::{anyhow, bail, Context, Result};
 use bdk_electrum::electrum_client::GetHistoryRes;
 use bdk_wallet::bitcoin::FeeRate;
-use bdk_wallet::descriptor::IntoWalletDescriptor;
 use bdk_wallet::bitcoin::Network;
+use bdk_wallet::descriptor::IntoWalletDescriptor;
 use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite;
@@ -11,7 +11,7 @@ use bdk_wallet::PersistedWallet;
 use bdk_wallet::SignOptions;
 use bdk_wallet::WalletPersister;
 use bitcoin::ScriptBuf;
-use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid, Script};
+use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -35,14 +35,12 @@ const DUST_AMOUNT: u64 = 546;
 
 const WALLET_NEW: &str = "wallet-new";
 
-
-
 /// This is our wrapper around a bdk wallet and a corresponding
 /// bdk electrum client.
-/// It unifies all the functionality we need when interacting 
+/// It unifies all the functionality we need when interacting
 /// with the bitcoin network.
-/// 
-/// This wallet is generic over the persister, which may be a 
+///
+/// This wallet is generic over the persister, which may be a
 /// rusqlite connection, or an in-memory database, or something else.
 #[derive(Clone)]
 pub struct Wallet<Persister = rusqlite::Connection> {
@@ -61,10 +59,10 @@ pub struct Client {
     subscriptions: HashMap<(Txid, ScriptBuf), Subscription>,
     last_sync: Instant,
     sync_interval: Duration,
-    latest_block_height: BlockHeight
+    latest_block_height: BlockHeight,
 }
 
-/// A subscription to the status of a given transaction 
+/// A subscription to the status of a given transaction
 /// that can be used to wait for the transaction to be confirmed.
 #[derive(Debug, Clone)]
 pub struct Subscription {
@@ -106,7 +104,7 @@ pub trait Watchable {
 }
 
 impl<Persister> Wallet<Persister>
-where 
+where
     Persister: WalletPersister,
     <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
 {
@@ -120,9 +118,9 @@ where
         sync_interval: Duration,
     ) -> Result<Wallet<Persister>> {
         let wallet = bdk_wallet::Wallet::create(descriptor.clone(), descriptor.clone())
-        .network(network)
-        .create_wallet(persister)
-        .context("Failed to create wallet")?;
+            .network(network)
+            .create_wallet(persister)
+            .context("Failed to create wallet")?;
 
         let client = Client::new(electrum_rpc_url, sync_interval)?;
 
@@ -152,9 +150,11 @@ where
             .await;
 
         let client = self.client.lock().await;
-        client.transaction_broadcast(&transaction).with_context(|| {
-            format!("Failed to broadcast Bitcoin {} transaction {}", kind, txid)
-        })?;
+        client
+            .transaction_broadcast(&transaction)
+            .with_context(|| {
+                format!("Failed to broadcast Bitcoin {} transaction {}", kind, txid)
+            })?;
 
         tracing::info!(%txid, %kind, "Published Bitcoin transaction");
 
@@ -240,10 +240,7 @@ where
         }
     }
 
-    pub async fn sign_and_finalize(
-        &self,
-        mut psbt: bitcoin::psbt::Psbt,
-    ) -> Result<Transaction> {
+    pub async fn sign_and_finalize(&self, mut psbt: bitcoin::psbt::Psbt) -> Result<Transaction> {
         let finalized = self
             .wallet
             .lock()
@@ -438,11 +435,13 @@ impl Client {
     /// Create a new client to this electrum server.
     fn new(electrum_rpc_url: &str, sync_interval: Duration) -> Result<Self> {
         let client = bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?;
-        Ok(Self { 
-            electrum: bdk_electrum::BdkElectrumClient::new(client), 
-            script_history: Default::default(), 
-            last_sync: Instant::now().checked_sub(sync_interval).ok_or(anyhow!("failed to set last sync time"))?, 
-            sync_interval, 
+        Ok(Self {
+            electrum: bdk_electrum::BdkElectrumClient::new(client),
+            script_history: Default::default(),
+            last_sync: Instant::now()
+                .checked_sub(sync_interval)
+                .ok_or(anyhow!("failed to set last sync time"))?,
+            sync_interval,
             latest_block_height: BlockHeight::from(0),
             subscriptions: Default::default(),
         })
@@ -450,14 +449,16 @@ impl Client {
 
     /// Broadcast a transaction to the network.
     pub fn transaction_broadcast(&self, transaction: &Transaction) -> Result<Txid> {
-        self.electrum.transaction_broadcast(transaction).context("Failed to broadcast transaction")
+        self.electrum
+            .transaction_broadcast(transaction)
+            .context("Failed to broadcast transaction")
     }
 
     /// Get the status of a script.
     pub fn status_of_script(&self, script: &impl Watchable) -> Result<ScriptStatus> {
         let (script, txid) = script.script_and_txid();
 
-        self.electrum.inner.
+        self.electrum.inner;
 
         bail!("unimplemented")
     }
@@ -539,14 +540,11 @@ pub mod old {
     use std::path::Path;
     use std::sync::Arc;
 
+    use anyhow::{anyhow, bail, Result};
+    use bdk::bitcoin::{util::bip32::ExtendedPrivKey, Network};
     use bdk::sled::Tree;
     use bdk::KeychainKind;
-    use bdk::bitcoin::{
-        util::bip32::ExtendedPrivKey,
-        Network,
-    };
     use tokio::sync::Mutex;
-    use anyhow::{anyhow, bail, Result};
 
     use crate::env;
 
@@ -555,7 +553,7 @@ pub mod old {
 
     const SLED_TREE_NAME: &str = "default_tree";
 
-    /// The is the old bdk wallet before the migration. 
+    /// The is the old bdk wallet before the migration.
     /// We need to contruct it before migration to get the keys and revelation indeces.
     pub struct OldWallet<D = Tree> {
         wallet: Arc<Mutex<bdk::Wallet<D>>>,
@@ -575,8 +573,8 @@ pub mod old {
             let wallet_dir = data_dir.join(WALLET);
             let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
             let network = env_config.bitcoin_network;
-    
-            // Convert bitcoin network to the bdk network type... 
+
+            // Convert bitcoin network to the bdk network type...
             let network = match network {
                 bitcoin::Network::Bitcoin => bdk::bitcoin::Network::Bitcoin,
                 bitcoin::Network::Testnet => bdk::bitcoin::Network::Testnet,
@@ -595,9 +593,9 @@ pub mod old {
                 Err(bdk::Error::ChecksumMismatch) => Self::migrate(data_dir, xprivkey, network)?,
                 err => err?,
             };
-    
+
             let network = wallet.network();
-    
+
             Ok(Self {
                 wallet: Arc::new(Mutex::new(wallet)),
                 finality_confirmations: env_config.bitcoin_finality_confirmations,
@@ -605,7 +603,7 @@ pub mod old {
                 target_block,
             })
         }
-    
+
         /// Get a full export of the wallet including descriptors and blockheight.
         pub async fn export(&self, role: &str) -> Result<bdk_wallet::export::FullyNodedExport> {
             let wallet = self.wallet.lock().await;
@@ -613,7 +611,8 @@ pub mod old {
                 &wallet,
                 &format!("{}-{}", role, self.network),
                 true,
-            ).map_err(|_| anyhow!("Failed to export old wallet descriptor"))?;
+            )
+            .map_err(|_| anyhow!("Failed to export old wallet descriptor"))?;
 
             // Because we upgraded bdk, the type id changed.
             // Thus, we serialize to json and then deserialize to the new type.
@@ -635,10 +634,10 @@ pub mod old {
             let from = data_dir.join(WALLET);
             let to = data_dir.join(WALLET_OLD);
             std::fs::rename(from, to)?;
-    
+
             let wallet_dir = data_dir.join(WALLET);
             let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
-    
+
             let wallet = bdk::Wallet::new(
                 bdk::template::Bip84(xprivkey, KeychainKind::External),
                 Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
@@ -646,8 +645,8 @@ pub mod old {
                 database,
             )?;
 
-            wallet.get_descriptor_for_keychain(keychain)
-    
+            wallet.get_descriptor_for_keychain(keychain);
+
             Ok(wallet)
         }
     }
@@ -722,8 +721,6 @@ fn estimate_fee(
 
     Ok(amount)
 }
-
-
 
 impl Watchable for (Txid, ScriptBuf) {
     fn id(&self) -> Txid {
@@ -944,8 +941,6 @@ impl WalletBuilder {
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

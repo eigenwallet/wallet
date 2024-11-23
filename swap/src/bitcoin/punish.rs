@@ -1,9 +1,9 @@
 use crate::bitcoin::wallet::Watchable;
 use crate::bitcoin::{self, Address, Amount, PunishTimelock, Transaction, TxCancel, Txid};
 use ::bitcoin::sighash::SighashCache;
-use ::bitcoin::{secp256k1, EcdsaSighashType, hashes::sha256d::Hash as Sighash};
-use anyhow::{Context, Result};
 use ::bitcoin::ScriptBuf;
+use ::bitcoin::{hashes::sha256d::Hash as Sighash, secp256k1, EcdsaSighashType};
+use anyhow::{Context, Result};
 use bdk::miniscript::Descriptor;
 use std::collections::HashMap;
 
