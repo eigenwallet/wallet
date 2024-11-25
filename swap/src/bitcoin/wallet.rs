@@ -2,6 +2,7 @@ use crate::bitcoin::{Address, Amount, Transaction};
 use anyhow::Ok;
 use anyhow::{anyhow, bail, Context, Result};
 use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
+use bdk_electrum::BdkElectrumClient;
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::descriptor::IntoWalletDescriptor;
@@ -66,7 +67,7 @@ pub struct Wallet<Persister = rusqlite::Connection> {
 /// This is our wrapper around a bdk electrum client.
 pub struct Client {
     /// The underlying bdk electrum client.
-    electrum: bdk_electrum::electrum_client::Client,
+    electrum: BdkElectrumClient<bdk_electrum::electrum_client::Client>,
     /// The history of transactions for each script.
     script_history: BTreeMap<ScriptBuf, Vec<GetHistoryRes>>,
     /// The subscriptions to the status of transactions.
@@ -200,7 +201,7 @@ where
 
     pub async fn get_raw_transaction(&self, txid: Txid) -> Result<Transaction> {
         self.get_tx(txid)
-            .await?
+            .await
             .with_context(|| format!("Could not get raw tx with id: {}", txid))
     }
 
@@ -323,7 +324,7 @@ where
     /// 
     /// Will fail if the transaction inputs are not owned by this wallet.
     pub async fn transaction_fee(&self, txid: Txid) -> Result<Amount> {
-        let transaction = self.get_tx(txid).await?
+        let transaction = self.get_tx(txid).await
             .context("Could not find tx in bdk wallet when trying to determine fees")?;
         let fee = self.wallet.lock().await.calculate_fee(&transaction)?;
 
@@ -340,17 +341,18 @@ where
         amount: Amount,
         change_override: Option<Address>,
     ) -> Result<PartiallySignedTransaction> {
-        if self.network != address.network {
-            bail!("Cannot build PSBT because network of given address is {} but wallet is on network {}", address.network, self.network);
-        }
+        // TODO: check if this is still needed
+        // if self.network != address.network {
+        //     bail!("Cannot build PSBT because network of given address is {} but wallet is on network {}", address.network, self.network);
+        // }
 
-        if let Some(change) = change_override.as_ref() {
-            if self.network != change.network {
-                bail!("Cannot build PSBT because network of given address is {} but wallet is on network {}", change.network, self.network);
-            }
-        }
+        // if let Some(change) = change_override.as_ref() {
+        //     if self.network != change.network {
+        //         bail!("Cannot build PSBT because network of given address is {} but wallet is on network {}", change.network, self.network);
+        //     }
+        // }
 
-        let wallet = self.wallet.lock().await;
+        let mut wallet = self.wallet.lock().await;
         let client = self.client.lock().await;
         let fee_rate = client.estimate_feerate(self.target_block)?;
         let script = address.script_pubkey();
@@ -445,23 +447,33 @@ where
         estimate_fee(weight, transfer_amount, fee_rate, min_relay_fee)
     }
 
-    pub async fn get_tx(&self, txid: Txid) -> Result<Option<Transaction>> {
+    /// Get a transaction from the Electrum server or the cache.
+    pub async fn get_tx(&self, txid: Txid) -> Result<Transaction> {
         let client = self.client.lock().await;
-        let tx = client.get_tx(&txid)
+        let tx = client.get_tx(txid)
             .context("Failed to get transaction from cache or Electrum server")?;
 
         Ok(tx)
     }
 
+    /// Sync the wallet with the blockchain.
     pub async fn sync(&self) -> Result<()> {
-        let client = self.client.lock().await;
-        let blockchain = client.blockchain();
-        let sync_opts = SyncOptions::default();
-        self.wallet
+        const BATCH_SIZE: usize = 64;
+
+        let sync_request = self.wallet
             .lock()
             .await
-            .sync(blockchain, sync_opts)
-            .context("Failed to sync balance of Bitcoin wallet")?;
+            .start_sync_with_revealed_spks()
+            .build();
+
+        let client = self.client.lock().await;
+        let res = client.electrum.sync(sync_request, BATCH_SIZE, true)?;
+
+        let mut wallet = self.wallet.lock().await;
+        wallet.apply_update(res)?;
+
+        let mut persister = self.persister.lock().await;
+        wallet.persist(&mut persister)?;
 
         Ok(())
     }
@@ -472,7 +484,7 @@ impl Client {
     fn new(electrum_rpc_url: &str, sync_interval: Duration) -> Result<Self> {
         let client = bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?;
         Ok(Self {
-            electrum: client,
+            electrum: BdkElectrumClient::new(client),
             script_history: Default::default(),
             last_sync: Instant::now()
                 .checked_sub(sync_interval)
@@ -483,11 +495,65 @@ impl Client {
         })
     }
 
+    /// Update the client state, if the refresh duration has passed.
+    /// 
+    /// Optionally force an update even if the sync interval has not passed.
+    pub fn update_state(&mut self, force: bool) -> Result<()> {
+        let now = Instant::now();
+
+        if !force && now.duration_since(self.last_sync) < self.sync_interval {
+            return Ok(());
+        }
+
+        self.last_sync = now;
+        self.update_script_histories()?;
+        self.update_block_height()?;
+
+        Ok(())
+    }
+
+    /// Update the block height.
+    fn update_block_height(&mut self) -> Result<()> {
+        let latest_block = self.electrum
+            .inner
+            .block_headers_subscribe()
+            .context("Failed to subscribe to header notifications")?;
+        let latest_block_height = BlockHeight::try_from(latest_block)?;
+
+        if latest_block_height > self.latest_block_height {
+            tracing::trace!(block_height=u32::from(latest_block_height), "Got notification for new block");
+            self.latest_block_height = latest_block_height;
+        }
+
+        Ok(())
+    }
+
+    /// Update the script histories.
+    fn update_script_histories(&mut self) -> Result<()> {
+        let scripts = self.script_history.keys().map(|s| s.as_script());
+
+        let histories = self.electrum
+            .inner
+            .batch_script_get_history(scripts)
+            .context("Failed to fetch script histories")?;
+
+        if histories.len() != self.script_history.len() {
+            bail!("Expected {} script histories, got {}", self.script_history.len(), histories.len());
+        }
+
+        let scripts = self.script_history.keys().cloned();
+        self.script_history = scripts.zip(histories).collect();
+
+        Ok(())
+    }
+
     /// Broadcast a transaction to the network.
-    pub fn transaction_broadcast(&self, transaction: &Transaction) -> Result<Txid> {
-        self.electrum
+    pub fn transaction_broadcast(&self, transaction: &Transaction) -> Result<Arc<Txid>> {
+        Ok(Arc::new(self.electrum
+            .inner
             .transaction_broadcast(transaction)
-            .context("Failed to broadcast transaction")
+            .context("Failed to broadcast transaction")?
+        ))
     }
 
     /// Get the status of a script.
@@ -499,10 +565,10 @@ impl Client {
 
             // Immediately refetch the status of the script
             // when we first subscribe to it.
-            self.update_status(true)?;
+            self.update_state(true)?;
         } else {
             // Otherwise, don't force a refetch.
-            self.update_status(false)?;
+            self.update_state(false)?;
         }
 
         let history = self.script_history.entry(script).or_default();
@@ -535,22 +601,32 @@ impl Client {
             ))
         }
     }
+
+    /// Get a transaction from the Electrum server.
+    /// Fails if the transaction is not found.
+    pub fn get_tx(&self, txid: Txid) -> Result<Transaction> {
+        self.electrum.inner.transaction_get(&txid)
+            .context("Failed to get transaction from the Electrum server")
+    }
 }
 
 impl EstimateFeeRate for Client {
     fn estimate_feerate(&self, target_block: usize) -> Result<FeeRate> {
         // Get the fee rate in BTC/kvB
-        let fee_rate_btc_kvb = self.electrum.estimate_fee(target_block)?;
+        let fee_rate_btc_kvb = self.electrum.inner.estimate_fee(target_block)?;
         // Convert to sat/vb
         let fee_rate_sat_vb = Amount::from_btc(fee_rate_btc_kvb / 1_000.)?;
 
-        Ok(FeeRate::from_sat_per_vb(fee_rate_sat_vb.to_sat())?)
+        FeeRate::from_sat_per_vb(
+            fee_rate_sat_vb.to_sat()
+        ).ok_or(anyhow!("Fee rate overflow"))
     }
 
     fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
-        let relay_fee_btc = self.electrum.relay_fee()?;
+        let relay_fee_btc = self.electrum.inner.relay_fee()?;
 
-        Ok(Amount::from_btc(relay_fee_btc))
+        Amount::from_btc(relay_fee_btc)
+            .context("fee out of range")
     }
 }
 
@@ -928,7 +1004,7 @@ pub struct StaticFeeRate {
 
 #[cfg(test)]
 impl EstimateFeeRate for StaticFeeRate {
-    fn estimate_feerate(&self, _target_block: u16) -> Result<FeeRate> {
+    fn estimate_feerate(&self, _target_block: usize) -> Result<FeeRate> {
         Ok(self.fee_rate)
     }
 

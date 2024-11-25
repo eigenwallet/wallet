@@ -1,5 +1,5 @@
 use anyhow::Context;
-use bdk::electrum_client::HeaderNotification;
+use bdk_electrum::electrum_client::HeaderNotification;
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::ops::Add;
