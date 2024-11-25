@@ -54,7 +54,7 @@ function selectNewSelectedMaker(
   return providers.at(0) || null;
 }
 
-export const providersSlice = createSlice({
+export const makersSlice = createSlice({
   name: "providers",
   initialState,
   reducers: {
@@ -122,6 +122,6 @@ export const {
   setRegistryMakers,
   registryConnectionFailed,
   setSelectedMaker,
-} = providersSlice.actions;
+} = makersSlice.actions;
 
-export default providersSlice.reducer;
+export default makersSlice.reducer;

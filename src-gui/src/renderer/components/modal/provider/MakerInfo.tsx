@@ -36,9 +36,6 @@ const useStyles = makeStyles((theme) => ({
     alignItems: "center",
     gap: theme.spacing(1),
   },
-  identIcon: {
-    height: "100%",
-  },
 }));
 
 /**
@@ -71,10 +68,10 @@ export default function MakerInfo({
   return (
     <Box className={classes.content}>
       <Box className={classes.peerIdContainer}>
-        <Tooltip title={"This avatar is deterministically derived from the peer ID of the seller"} arrow>
-          <span>
+        <Tooltip title={"This avatar is deterministically derived from the public key of the maker"} arrow>
+          <Box className={classes.peerIdContainer}>
             <IdentIcon value={maker.peerId} size={"3rem"} />
-          </span>
+          </Box>
         </Tooltip>
         <Box>
           <Typography variant="subtitle1">

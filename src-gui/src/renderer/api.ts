@@ -10,7 +10,7 @@ import { store } from "./store/storeRenderer";
 import { setBtcPrice, setXmrBtcRate, setXmrPrice } from "store/features/ratesSlice";
 import { FiatCurrency } from "store/features/settingsSlice";
 import { setAlerts } from "store/features/alertsSlice";
-import { registryConnectionFailed, setRegistryMakers } from "store/features/providersSlice";
+import { registryConnectionFailed, setRegistryMakers } from "store/features/makersSlice";
 import logger from "utils/logger";
 
 const PUBLIC_REGISTRY_API_BASE_URL = "https://api.unstoppableswap.net";

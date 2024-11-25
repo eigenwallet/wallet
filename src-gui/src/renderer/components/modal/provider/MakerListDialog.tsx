@@ -15,7 +15,7 @@ import AddIcon from "@material-ui/icons/Add";
 import SearchIcon from "@material-ui/icons/Search";
 import { ExtendedMakerStatus } from "models/apiModel";
 import { useState } from "react";
-import { setSelectedMaker } from "store/features/providersSlice";
+import { setSelectedMaker } from "store/features/makersSlice";
 import { useAllMakers, useAppDispatch } from "store/hooks";
 import ListSellersDialog from "../listSellers/ListSellersDialog";
 import MakerInfo from "./MakerInfo";

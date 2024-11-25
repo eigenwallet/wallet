@@ -17,7 +17,7 @@ import { ChangeEvent, useState } from "react";
 import TruncatedText from "renderer/components/other/TruncatedText";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { listSellersAtRendezvousPoint, PRESET_RENDEZVOUS_POINTS } from "renderer/rpc";
-import { discoveredMakersByRendezvous } from "store/features/providersSlice";
+import { discoveredMakersByRendezvous } from "store/features/makersSlice";
 import { useAppDispatch } from "store/hooks";
 import { isValidMultiAddressWithPeerId } from "utils/parseUtils";
 
@@ -80,7 +80,7 @@ export default function ListSellersDialog({
 
   return (
     <Dialog onClose={onClose} open={open}>
-      <DialogTitle>Dialog makers</DialogTitle>
+      <DialogTitle>Discover makers</DialogTitle>
       <DialogContent dividers>
         <DialogContentText>
           The rendezvous protocol provides a way to discover makers (trading

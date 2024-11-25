@@ -48,7 +48,7 @@ import logger from "utils/logger";
 import { getNetwork, getNetworkName, isTestnet } from "store/config";
 import { Blockchain, Network } from "store/features/settingsSlice";
 import { setStatus } from "store/features/nodesSlice";
-import { discoveredMakersByRendezvous } from "store/features/providersSlice";
+import { discoveredMakersByRendezvous } from "store/features/makersSlice";
 
 export const PRESET_RENDEZVOUS_POINTS = [
   "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
