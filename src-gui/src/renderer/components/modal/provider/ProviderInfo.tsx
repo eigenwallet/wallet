@@ -1,4 +1,4 @@
-import { Box, Chip, makeStyles, Tooltip, Typography } from "@material-ui/core";
+import { Box, Chip, makeStyles, Paper, Tooltip, Typography } from "@material-ui/core";
 import { VerifiedUser } from "@material-ui/icons";
 import { ExtendedProviderStatus } from "models/apiModel";
 import TruncatedText from "renderer/components/other/TruncatedText";
@@ -10,6 +10,7 @@ import { satsToBtc, secondsToDays } from "utils/conversionUtils";
 import { isProviderOutdated } from 'utils/multiAddrUtils';
 import WarningIcon from '@material-ui/icons/Warning';
 import { useAppSelector } from "store/hooks";
+import IdentIcon from "renderer/components/icons/IdentIcon";
 
 const useStyles = makeStyles((theme) => ({
   content: {
@@ -17,12 +18,26 @@ const useStyles = makeStyles((theme) => ({
     "& *": {
       lineBreak: "anywhere",
     },
+    display: "flex",
+    flexDirection: "column",
+    gap: theme.spacing(1),
   },
   chipsOuter: {
     display: "flex",
-    marginTop: theme.spacing(1),
-    gap: theme.spacing(0.5),
     flexWrap: "wrap",
+    gap: theme.spacing(0.5),
+  },
+  quoteOuter: {
+    display: "flex",
+    flexDirection: "column",
+  },
+  peerIdContainer: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1),
+  },
+  identIcon: {
+    height: "100%",
   },
 }));
 
@@ -43,7 +58,6 @@ function ProviderMarkupChip({ provider }: { provider: ExtendedProviderStatus }) 
       <Chip label={`Markup ${markup.toFixed(2)}%`} />
     </Tooltip>
   );
-
 }
 
 export default function ProviderInfo({
@@ -56,23 +70,33 @@ export default function ProviderInfo({
 
   return (
     <Box className={classes.content}>
-      <Typography color="textSecondary" gutterBottom>
-        Swap Provider
-      </Typography>
-      <Typography variant="h5" component="h2">
-        {provider.multiAddr}
-      </Typography>
-      <Typography color="textSecondary" gutterBottom>
-        <TruncatedText limit={16} truncateMiddle>{provider.peerId}</TruncatedText>
-      </Typography>
-      <Typography variant="caption">
-        Exchange rate:{" "}
-        <MoneroBitcoinExchangeRate rate={satsToBtc(provider.price)} />
-        <br />
-        Minimum swap amount: <SatsAmount amount={provider.minSwapAmount} />
-        <br />
-        Maximum swap amount: <SatsAmount amount={provider.maxSwapAmount} />
-      </Typography>
+      <Box className={classes.peerIdContainer}>
+        <Tooltip title={"This avatar is deterministically derived from the peer ID of the seller"} arrow>
+          <span>
+            <IdentIcon value={provider.peerId} size={"3rem"} />
+          </span>
+        </Tooltip>
+        <Box>
+          <Typography variant="subtitle1">
+            <TruncatedText limit={16} truncateMiddle>{provider.peerId}</TruncatedText>
+          </Typography>
+          <Typography color="textSecondary" variant="body2">
+            {provider.multiAddr}
+          </Typography>
+        </Box>
+      </Box>
+      <Box className={classes.quoteOuter}>
+        <Typography variant="caption">
+          Exchange rate:{" "}
+          <MoneroBitcoinExchangeRate rate={satsToBtc(provider.price)} />
+        </Typography>
+        <Typography variant="caption">
+          Minimum amount: <SatsAmount amount={provider.minSwapAmount} />
+        </Typography>
+        <Typography variant="caption">
+          Maximum amount: <SatsAmount amount={provider.maxSwapAmount} />
+        </Typography>
+      </Box>
       <Box className={classes.chipsOuter}>
         {provider.testnet && <Chip label="Testnet" />}
         {provider.uptime && (
@@ -100,6 +124,7 @@ export default function ProviderInfo({
         )}
         <ProviderMarkupChip provider={provider} />
       </Box>
-    </Box>
+    </Box >
   );
 }
+

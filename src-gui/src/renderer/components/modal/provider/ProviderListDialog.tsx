@@ -97,7 +97,7 @@ export default function ProviderListDialog({
 
   return (
     <Dialog onClose={onClose} open={open}>
-      <DialogTitle>Select a swap provider</DialogTitle>
+      <DialogTitle>Select a maker</DialogTitle>
 
       <DialogContent className={classes.dialogContent} dividers>
         <List>

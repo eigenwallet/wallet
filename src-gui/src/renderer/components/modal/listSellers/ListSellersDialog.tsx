@@ -80,7 +80,7 @@ export default function ListSellersDialog({
 
   return (
     <Dialog onClose={onClose} open={open}>
-      <DialogTitle>Discover swap providers</DialogTitle>
+      <DialogTitle>Dialog makers</DialogTitle>
       <DialogContent dividers>
         <DialogContentText>
           The rendezvous protocol provides a way to discover providers (trading
