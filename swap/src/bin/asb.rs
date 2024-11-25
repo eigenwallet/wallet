@@ -192,14 +192,21 @@ pub async fn main() -> Result<()> {
 
             if config.tor.register_hidden_service {
                 for onion_address in onion_addresses {
-                    // For testing
+                    // We need to sleep here to allow the Tor daemon to register the hidden service
+                    // This is a temporary workaround
                     tokio::time::sleep(std::time::Duration::from_secs(20)).await;
-                    if let Err(e) = swarm.listen_on(onion_address.clone()) {
-                        tracing::warn!(
-                            "Failed to listen on onion address {}: {}",
-                            onion_address,
-                            e
-                        );
+
+                    match swarm.listen_on(onion_address.clone()) {
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to listen on onion address {}: {}",
+                                onion_address,
+                                e
+                            );
+                        }
+                        _ => {
+                            swarm.add_external_address(onion_address);
+                        }
                     }
                 }
             }
@@ -207,7 +214,7 @@ pub async fn main() -> Result<()> {
             tracing::info!(peer_id = %swarm.local_peer_id(), "Network layer initialized");
 
             for external_address in config.network.external_addresses {
-                Swarm::add_external_address(&mut swarm, external_address);
+                swarm.add_external_address(external_address);
             }
 
             let (event_loop, mut swap_receiver) = EventLoop::new(
