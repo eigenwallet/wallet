@@ -1,12 +1,13 @@
 use crate::bitcoin::{Address, Amount, Transaction};
+use anyhow::Ok;
 use anyhow::{anyhow, bail, Context, Result};
-use bdk_electrum::electrum_client::GetHistoryRes;
+use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::descriptor::IntoWalletDescriptor;
 use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
-use bdk_wallet::rusqlite;
+use bdk_wallet::{rusqlite, KeychainKind};
 use bdk_wallet::PersistedWallet;
 use bdk_wallet::SignOptions;
 use bdk_wallet::WalletPersister;
@@ -31,7 +32,7 @@ use super::BlockHeight;
 /// amount for tx fees.
 const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.03);
 const MAX_ABSOLUTE_TX_FEE: Decimal = dec!(100_000);
-const DUST_AMOUNT: u64 = 546;
+const DUST_AMOUNT: Amount = Amount::from_sat(546);
 
 const WALLET_NEW: &str = "wallet-new";
 
@@ -44,21 +45,37 @@ const WALLET_NEW: &str = "wallet-new";
 /// rusqlite connection, or an in-memory database, or something else.
 #[derive(Clone)]
 pub struct Wallet<Persister = rusqlite::Connection> {
-    // The wallet is persisted to a sqlite database for now.
-    // TODO: revisit and maybe implement a custom persister
+    /// The wallet, which is persisted to the disk.
     wallet: Arc<Mutex<PersistedWallet<Persister>>>,
+    /// The database connection used to persist the wallet.
+    persister: Arc<Mutex<Persister>>,
+    /// The electrum client.
     client: Arc<Mutex<Client>>,
+    /// The network this wallet is on.
     network: Network,
+    /// The number of confirmations (blocks) we require for a transaction
+    /// to be considered final.
+    ///
+    /// Usually set to 1.
     finality_confirmations: u32,
+    /// We want our transactions to be confirmed after this many blocks
+    /// (used for fee estimation).
+    target_block: usize,
 }
 
 /// This is our wrapper around a bdk electrum client.
 pub struct Client {
-    electrum: bdk_electrum::BdkElectrumClient<bdk_electrum::electrum_client::Client>,
+    /// The underlying bdk electrum client.
+    electrum: bdk_electrum::electrum_client::Client,
+    /// The history of transactions for each script.
     script_history: BTreeMap<ScriptBuf, Vec<GetHistoryRes>>,
+    /// The subscriptions to the status of transactions.
     subscriptions: HashMap<(Txid, ScriptBuf), Subscription>,
+    /// The time of the last sync.
     last_sync: Instant,
+    /// How often we sync with the server.
     sync_interval: Duration,
+    /// The height of the latest block we know about.
     latest_block_height: BlockHeight,
 }
 
@@ -66,8 +83,11 @@ pub struct Client {
 /// that can be used to wait for the transaction to be confirmed.
 #[derive(Debug, Clone)]
 pub struct Subscription {
+    /// A receiver used to await updates to the status of the transaction.
     receiver: watch::Receiver<ScriptStatus>,
+    /// The number of confirmations we require for a transaction to be considered final.
     finality_confirmations: u32,
+    /// The transaction ID we are subscribing to.
     txid: Txid,
 }
 
@@ -85,7 +105,7 @@ pub enum ScriptStatus {
 pub struct Confirmed {
     /// The depth of this transaction within the blockchain.
     ///
-    /// Will be zero if the transaction is included in the latest block.
+    /// Zero if the transaction is included in the latest block.
     depth: u32,
 }
 
@@ -96,39 +116,56 @@ pub struct Confirmed {
 /// A transaction can obviously have multiple outputs but our protocol purposes,
 /// we are usually interested in a specific one.
 pub trait Watchable {
+    /// The transaction ID.
     fn id(&self) -> Txid;
+    /// The script of the output we are interested in.
     fn script(&self) -> ScriptBuf;
+    /// Convenience method to get both the script and the txid.
     fn script_and_txid(&self) -> (ScriptBuf, Txid) {
         (self.script(), self.id())
     }
 }
 
+/// An object that can estimate fee rates and minimum relay fees.
+pub trait EstimateFeeRate {
+    /// Estimate the fee rate for a given target block.
+    fn estimate_feerate(&self, target_block: usize) -> Result<FeeRate>;
+    /// Get the minimum relay fee.
+    fn min_relay_fee(&self) -> Result<bitcoin::Amount>;
+}
+
 impl<Persister> Wallet<Persister>
 where
-    Persister: WalletPersister,
+    Persister: WalletPersister + Sized,
     <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
 {
     /// Create a new wallet. The descriptor is the wallet descriptor for the external and internal keys.
+    /// 
+    /// A persistor is the database connection used to persist the wallet,
+    /// mostly a sqlite connection.
     pub async fn new(
         descriptor: impl IntoWalletDescriptor + Send + Clone + 'static,
         network: Network,
         electrum_rpc_url: &str,
-        persister: &mut Persister,
+        mut persister: Persister,
         finality_confirmations: u32,
+        target_block: usize,
         sync_interval: Duration,
     ) -> Result<Wallet<Persister>> {
         let wallet = bdk_wallet::Wallet::create(descriptor.clone(), descriptor.clone())
             .network(network)
-            .create_wallet(persister)
+            .create_wallet(&mut persister)
             .context("Failed to create wallet")?;
 
         let client = Client::new(electrum_rpc_url, sync_interval)?;
-
+        
         Ok(Self {
             wallet: Arc::new(Mutex::new(wallet)),
             client: Arc::new(Mutex::new(client)),
             network,
             finality_confirmations,
+            target_block,
+            persister: Arc::new(Mutex::new(persister)),
         })
     }
 
@@ -192,13 +229,13 @@ where
                     let mut last_status = None;
 
                     loop {
-                        let new_status = match client.lock().await.status_of_script(&tx) {
-                            Ok(new_status) => new_status,
-                            Err(error) => {
+                        let new_status = client.lock()
+                            .await
+                            .status_of_script(&tx)
+                            .unwrap_or_else(|error| {
                                 tracing::warn!(%txid, "Failed to get status of script: {:#}", error);
                                 ScriptStatus::Retrying
-                            }
-                        };
+                            });
 
                         if new_status != ScriptStatus::Retrying
                         {
@@ -235,7 +272,7 @@ where
             &format!("{}-{}", role, self.network),
             true,
         ) {
-            Ok(wallet_export) => Ok(wallet_export),
+            Result::Ok(wallet_export) => Ok(wallet_export),
             Err(err_msg) => Err(anyhow::Error::msg(err_msg)),
         }
     }
@@ -253,46 +290,44 @@ where
 
         let tx = psbt.extract_tx();
 
-        Ok(tx)
+        Ok(tx?)
     }
 
     /// Returns the total Bitcoin balance, which includes pending funds
     pub async fn balance(&self) -> Result<Amount> {
-        let balance = self
+        Ok(self
             .wallet
             .lock()
             .await
-            .get_balance()
-            .context("Failed to calculate Bitcoin balance")?;
-
-        Ok(Amount::from_sat(balance.get_total()))
+            .balance()
+            .total())
     }
 
+    /// Reveals the next address from the wallet.
     pub async fn new_address(&self) -> Result<Address> {
-        let address = self
-            .wallet
-            .lock()
-            .await
-            .get_address(AddressIndex::New)
-            .context("Failed to get new Bitcoin address")?
+        let mut wallet = self.wallet.lock().await;
+
+        let address = wallet
+            .reveal_next_address(KeychainKind::External)
             .address;
+
+        // Important: persist that we revealed a new address. 
+        // Otherwise the wallet might reuse it (bad).
+        let mut persister = self.persister.lock().await;
+        wallet.persist(&mut persister)?;
 
         Ok(address)
     }
 
+    /// Calculate the fee for a given transaction.
+    /// 
+    /// Will fail if the transaction inputs are not owned by this wallet.
     pub async fn transaction_fee(&self, txid: Txid) -> Result<Amount> {
-        let fees = self
-            .wallet
-            .lock()
-            .await
-            .list_transactions(true)?
-            .iter()
-            .find(|tx| tx.txid == txid)
-            .context("Could not find tx in bdk wallet when trying to determine fees")?
-            .fee
-            .expect("fees are always present with Electrum backend");
+        let transaction = self.get_tx(txid).await?
+            .context("Could not find tx in bdk wallet when trying to determine fees")?;
+        let fee = self.wallet.lock().await.calculate_fee(&transaction)?;
 
-        Ok(Amount::from_sat(fees))
+        Ok(fee)
     }
 
     /// Builds a partially signed transaction
@@ -321,9 +356,9 @@ where
         let script = address.script_pubkey();
 
         let mut tx_builder = wallet.build_tx();
-        tx_builder.add_recipient(script.clone(), amount.to_sat());
+        tx_builder.add_recipient(script.clone(), amount);
         tx_builder.fee_rate(fee_rate);
-        let (psbt, _details) = tx_builder.finish()?;
+        let psbt = tx_builder.finish()?;
         let mut psbt: PartiallySignedTransaction = psbt;
 
         match psbt.unsigned_tx.output.as_mut_slice() {
@@ -362,14 +397,14 @@ where
     /// transaction confirmed.
     pub async fn max_giveable(&self, locking_script_size: usize) -> Result<Amount> {
         let wallet = self.wallet.lock().await;
-        let balance = wallet.get_balance()?;
-        if balance.get_total() < DUST_AMOUNT {
+        let balance = wallet.balance();
+        if balance.total() < DUST_AMOUNT {
             return Ok(Amount::ZERO);
         }
         let client = self.client.lock().await;
-        let min_relay_fee = client.min_relay_fee()?.to_sat();
+        let min_relay_fee = client.min_relay_fee()?;
 
-        if balance.get_total() < min_relay_fee {
+        if balance.total() < min_relay_fee {
             return Ok(Amount::ZERO);
         }
 
@@ -384,7 +419,7 @@ where
 
         let response = tx_builder.finish();
         match response {
-            Ok(psbt) => {
+            Result::Ok(psbt) => {
                 let max_giveable = psbt.unsigned_tx.output.iter().map(|o| o.value).sum()
                     - psbt
                         .fee_amount()
@@ -412,7 +447,8 @@ where
 
     pub async fn get_tx(&self, txid: Txid) -> Result<Option<Transaction>> {
         let client = self.client.lock().await;
-        let tx = client.get_tx(&txid)?;
+        let tx = client.get_tx(&txid)
+            .context("Failed to get transaction from cache or Electrum server")?;
 
         Ok(tx)
     }
@@ -436,7 +472,7 @@ impl Client {
     fn new(electrum_rpc_url: &str, sync_interval: Duration) -> Result<Self> {
         let client = bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?;
         Ok(Self {
-            electrum: bdk_electrum::BdkElectrumClient::new(client),
+            electrum: client,
             script_history: Default::default(),
             last_sync: Instant::now()
                 .checked_sub(sync_interval)
@@ -458,9 +494,63 @@ impl Client {
     pub fn status_of_script(&self, script: &impl Watchable) -> Result<ScriptStatus> {
         let (script, txid) = script.script_and_txid();
 
-        self.electrum.inner;
+        if !self.script_history.contains_key(&script) {
+            self.script_history.insert(script.clone(), vec![]);
 
-        bail!("unimplemented")
+            // Immediately refetch the status of the script
+            // when we first subscribe to it.
+            self.update_status(true)?;
+        } else {
+            // Otherwise, don't force a refetch.
+            self.update_status(false)?;
+        }
+
+        let history = self.script_history.entry(script).or_default();
+
+        let history_of_tx: Vec<&GetHistoryRes> = history
+            .iter()
+            .filter(|entry| entry.tx_hash == txid)
+            .collect();
+
+        // Destructure history_of_tx into the last entry and the rest.
+        let [rest @ .., last] = history_of_tx.as_slice() else {
+            // If there is no history of the transaction, it is unseen.
+            return Ok(ScriptStatus::Unseen);
+        };
+            
+        // There should only be one entry per txid, we will ignore the rest
+        if !rest.is_empty() {
+            tracing::warn!(%txid, "Found multiple history entries for the same txid. Ignoring all but the last one.");
+        }
+
+        match last.height {
+            // If the height is 0 or less, the transaction is still in the mempool.
+            ..=0 => Ok(ScriptStatus::InMempool),
+            // Otherwise, the transaction has been included in a block.
+            height => Ok(ScriptStatus::Confirmed(
+                Confirmed::from_inclusion_and_latest_block(
+                    u32::try_from(last.height)?,
+                    u32::from(self.latest_block_height)
+                )
+            ))
+        }
+    }
+}
+
+impl EstimateFeeRate for Client {
+    fn estimate_feerate(&self, target_block: usize) -> Result<FeeRate> {
+        // Get the fee rate in BTC/kvB
+        let fee_rate_btc_kvb = self.electrum.estimate_fee(target_block)?;
+        // Convert to sat/vb
+        let fee_rate_sat_vb = Amount::from_btc(fee_rate_btc_kvb / 1_000.)?;
+
+        Ok(FeeRate::from_sat_per_vb(fee_rate_sat_vb.to_sat())?)
+    }
+
+    fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
+        let relay_fee_btc = self.electrum.relay_fee()?;
+
+        Ok(Amount::from_btc(relay_fee_btc))
     }
 }
 
@@ -563,6 +653,7 @@ pub mod old {
     }
 
     impl OldWallet {
+        /// Create a new old wallet.
         pub async fn new(
             data_dir: impl AsRef<Path>,
             xprivkey: ExtendedPrivKey,
@@ -590,7 +681,7 @@ pub mod old {
                 database,
             ) {
                 Ok(w) => w,
-                Err(bdk::Error::ChecksumMismatch) => Self::migrate(data_dir, xprivkey, network)?,
+                Err(bdk::Error::ChecksumMismatch) => Self::old_migrate(data_dir, xprivkey, network)?,
                 err => err?,
             };
 
@@ -605,6 +696,8 @@ pub mod old {
         }
 
         /// Get a full export of the wallet including descriptors and blockheight.
+        /// 
+        /// TODO: Add internal and external derivation indices to the export.
         pub async fn export(&self, role: &str) -> Result<bdk_wallet::export::FullyNodedExport> {
             let wallet = self.wallet.lock().await;
             let export = bdk::wallet::export::FullyNodedExport::export_wallet(
@@ -622,11 +715,13 @@ pub mod old {
             Ok(export)
         }
 
+        /// Create a new old database for the wallet and rename the old old one.
+        /// 
         /// Create a new database for the wallet and rename the old one.
         /// This is necessary when getting a ChecksumMismatch from a wallet
         /// created with an older version of BDK. Only affected Testnet wallets.
         // https://github.com/comit-network/xmr-btc-swap/issues/1182
-        fn migrate(
+        fn old_migrate(
             data_dir: &Path,
             xprivkey: ExtendedPrivKey,
             network: bdk::bitcoin::Network,
@@ -645,8 +740,6 @@ pub mod old {
                 database,
             )?;
 
-            wallet.get_descriptor_for_keychain(keychain);
-
             Ok(wallet)
         }
     }
@@ -661,11 +754,11 @@ fn estimate_fee(
     if transfer_amount.to_sat() <= 546 {
         bail!("Amounts needs to be greater than Bitcoin dust amount.")
     }
-    let fee_rate_svb = fee_rate.as_sat_per_vb();
-    if fee_rate_svb <= 0.0 {
+    let fee_rate_svb = fee_rate.to_sat_per_vb_ceil();
+    if fee_rate_svb <= 0 {
         bail!("Fee rate needs to be > 0")
     }
-    if fee_rate_svb > 100_000_000.0 || min_relay_fee.to_sat() > 100_000_000 {
+    if fee_rate_svb > 100_000_000 || min_relay_fee.to_sat() > 100_000_000 {
         bail!("A fee_rate or min_relay_fee of > 1BTC does not make sense")
     }
 
@@ -678,7 +771,7 @@ fn estimate_fee(
 
     let weight = Decimal::from(weight);
     let weight_factor = dec!(4.0);
-    let fee_rate = Decimal::from_f32(fee_rate_svb).context("Failed to parse fee rate")?;
+    let fee_rate = Decimal::from_u64(fee_rate_svb).context("Failed to parse fee rate")?;
 
     let sats_per_vbyte = weight / weight_factor * fee_rate;
 
@@ -825,12 +918,6 @@ impl fmt::Display for ScriptStatus {
             }
         }
     }
-}
-
-#[cfg(test)]
-pub trait EstimateFeeRate {
-    fn estimate_feerate(&self, target_block: u16) -> Result<FeeRate>;
-    fn min_relay_fee(&self) -> Result<bitcoin::Amount>;
 }
 
 #[cfg(test)]
