@@ -190,11 +190,17 @@ pub async fn main() -> Result<()> {
                 }
             }
 
-            for onion_address in onion_addresses {
-                // For testing
-                tokio::time::sleep(std::time::Duration::from_secs(20)).await;
-                if let Err(e) = swarm.listen_on(onion_address.clone()) {
-                    tracing::warn!("Failed to listen on onion address {}: {}", onion_address, e);
+            if config.tor.register_hidden_service {
+                for onion_address in onion_addresses {
+                    // For testing
+                    tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+                    if let Err(e) = swarm.listen_on(onion_address.clone()) {
+                        tracing::warn!(
+                            "Failed to listen on onion address {}: {}",
+                            onion_address,
+                            e
+                        );
+                    }
                 }
             }
 

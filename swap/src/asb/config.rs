@@ -3,7 +3,7 @@ use crate::fs::{ensure_directory_exists, system_config_dir, system_data_dir};
 use anyhow::{bail, Context, Result};
 use config::ConfigError;
 use dialoguer::theme::ColorfulTheme;
-use dialoguer::Input;
+use dialoguer::{Input, Select};
 use libp2p::core::Multiaddr;
 use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
@@ -87,6 +87,7 @@ pub struct Config {
     pub network: Network,
     pub bitcoin: Bitcoin,
     pub monero: Monero,
+    pub tor: TorConf,
     pub maker: Maker,
 }
 
@@ -197,6 +198,12 @@ pub struct Monero {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct TorConf {
+    pub register_hidden_service: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Maker {
     #[serde(with = "::bitcoin::util::amount::serde::as_btc")]
     pub min_buy_btc: bitcoin::Amount,
@@ -205,6 +212,14 @@ pub struct Maker {
     pub ask_spread: Decimal,
     pub price_ticker_ws_url: Url,
     pub external_bitcoin_redeem_address: Option<bitcoin::Address>,
+}
+
+impl Default for TorConf {
+    fn default() -> Self {
+        Self {
+            register_hidden_service: true,
+        }
+    }
 }
 
 #[derive(thiserror::Error, Debug, Clone, Copy)]
@@ -295,6 +310,13 @@ pub fn query_user_for_initial_config(testnet: bool) -> Result<Config> {
         .default(defaults.monero_wallet_rpc_url)
         .interact_text()?;
 
+    let register_hidden_service = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Do you want a Tor hidden service to be created? This will allow you to run from behind a firewall without opening ports, and hide your IP address. You do not have to run a Tor daemon yourself. We recommend this for most users. (y/n)")
+        .items(&["yes", "no"])
+        .default(0)
+        .interact()?
+        == 0;
+
     let min_buy = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Enter minimum Bitcoin amount you are willing to accept per swap or hit enter to use default.")
         .default(DEFAULT_MIN_BUY_AMOUNT)
@@ -358,6 +380,9 @@ pub fn query_user_for_initial_config(testnet: bool) -> Result<Config> {
             finality_confirmations: None,
             network: monero_network,
         },
+        tor: TorConf {
+            register_hidden_service,
+        },
         maker: Maker {
             min_buy_btc: min_buy,
             max_buy_btc: max_buy,
@@ -403,6 +428,7 @@ mod tests {
                 finality_confirmations: None,
                 network: monero::Network::Stagenet,
             },
+            tor: Default::default(),
             maker: Maker {
                 min_buy_btc: bitcoin::Amount::from_btc(DEFAULT_MIN_BUY_AMOUNT).unwrap(),
                 max_buy_btc: bitcoin::Amount::from_btc(DEFAULT_MAX_BUY_AMOUNT).unwrap(),
@@ -446,6 +472,7 @@ mod tests {
                 finality_confirmations: None,
                 network: monero::Network::Mainnet,
             },
+            tor: Default::default(),
             maker: Maker {
                 min_buy_btc: bitcoin::Amount::from_btc(DEFAULT_MIN_BUY_AMOUNT).unwrap(),
                 max_buy_btc: bitcoin::Amount::from_btc(DEFAULT_MAX_BUY_AMOUNT).unwrap(),
@@ -499,6 +526,7 @@ mod tests {
                 finality_confirmations: None,
                 network: monero::Network::Mainnet,
             },
+            tor: Default::default(),
             maker: Maker {
                 min_buy_btc: bitcoin::Amount::from_btc(DEFAULT_MIN_BUY_AMOUNT).unwrap(),
                 max_buy_btc: bitcoin::Amount::from_btc(DEFAULT_MAX_BUY_AMOUNT).unwrap(),
