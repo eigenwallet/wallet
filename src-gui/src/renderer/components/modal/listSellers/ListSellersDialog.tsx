@@ -17,7 +17,7 @@ import { ChangeEvent, useState } from "react";
 import TruncatedText from "renderer/components/other/TruncatedText";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { listSellersAtRendezvousPoint, PRESET_RENDEZVOUS_POINTS } from "renderer/rpc";
-import { discoveredProvidersByRendezvous } from "store/features/providersSlice";
+import { discoveredMakersByRendezvous } from "store/features/providersSlice";
 import { useAppDispatch } from "store/hooks";
 import { isValidMultiAddressWithPeerId } from "utils/parseUtils";
 
@@ -54,7 +54,7 @@ export default function ListSellersDialog({
   }
 
   function handleSuccess({ sellers }: ListSellersResponse) {
-    dispatch(discoveredProvidersByRendezvous(sellers));
+    dispatch(discoveredMakersByRendezvous(sellers));
 
     const discoveredSellersCount = sellers.length;
     let message: string;
@@ -64,7 +64,7 @@ export default function ListSellersDialog({
         message = `No makers were discovered at the rendezvous point`;
         break;
       case 1:
-        message = `Discovered one provider at the rendezvous point`;
+        message = `Discovered one maker at the rendezvous point`;
         break;
       default:
         message = `Discovered ${discoveredSellersCount} makers at the rendezvous point`;
