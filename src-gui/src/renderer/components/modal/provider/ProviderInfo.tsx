@@ -100,7 +100,7 @@ export default function ProviderInfo({
       <Box className={classes.chipsOuter}>
         {provider.testnet && <Chip label="Testnet" />}
         {provider.uptime && (
-          <Tooltip title="A high uptime (>90%) indicates reliability. Providers with very low uptime may be unreliable and cause swaps to take longer to complete or fail entirely.">
+          <Tooltip title="A high uptime (>90%) indicates reliability. Makers with very low uptime may be unreliable and cause swaps to take longer to complete or fail entirely.">
             <Chip label={`${Math.round(provider.uptime * 100)}% uptime`} />
           </Tooltip>
         )}

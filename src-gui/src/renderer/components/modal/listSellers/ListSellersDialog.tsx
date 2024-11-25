@@ -61,13 +61,13 @@ export default function ListSellersDialog({
 
     switch (discoveredSellersCount) {
       case 0:
-        message = `No providers were discovered at the rendezvous point`;
+        message = `No makers were discovered at the rendezvous point`;
         break;
       case 1:
         message = `Discovered one provider at the rendezvous point`;
         break;
       default:
-        message = `Discovered ${discoveredSellersCount} providers at the rendezvous point`;
+        message = `Discovered ${discoveredSellersCount} makers at the rendezvous point`;
     }
 
     enqueueSnackbar(message, {
@@ -83,10 +83,10 @@ export default function ListSellersDialog({
       <DialogTitle>Dialog makers</DialogTitle>
       <DialogContent dividers>
         <DialogContentText>
-          The rendezvous protocol provides a way to discover providers (trading
+          The rendezvous protocol provides a way to discover makers (trading
           partners) without relying on one singular centralized institution. By
           manually connecting to a rendezvous point run by a volunteer, you can
-          discover providers and then connect and swap with them.
+          discover makers and then connect and swap with them.
         </DialogContentText>
         <TextField
           autoFocus

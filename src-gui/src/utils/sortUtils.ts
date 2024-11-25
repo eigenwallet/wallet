@@ -3,7 +3,7 @@ import { isProviderOnCorrectNetwork, isProviderOutdated } from "./multiAddrUtils
 
 export function sortProviderList(list: ExtendedProviderStatus[]) {
   return list
-    // Filter out providers that are on the wrong network (testnet / mainnet)
+    // Filter out makers that are on the wrong network (testnet / mainnet)
     .filter(isProviderOnCorrectNetwork)
     .concat()
     // Sort by criteria
@@ -24,7 +24,7 @@ export function sortProviderList(list: ExtendedProviderStatus[]) {
       // Otherwise, sort by relevancy score
       return secondEl.relevancy - firstEl.relevancy;
     })
-    // Remove duplicate providers
+    // Remove duplicate makers
     .filter((provider, index, self) =>
       index === self.findIndex((p) => p.peerId === provider.peerId)
     )
