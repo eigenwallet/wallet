@@ -38,8 +38,8 @@ pub mod transport {
         identity: &identity::Keypair,
         maybe_tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
     ) -> Result<(Boxed<(PeerId, StreamMuxerBox)>, Vec<Multiaddr>)> {
-        let maybe_tor_transport = maybe_tor_client
-            .map(|tor| {
+        let maybe_tor_transport = match maybe_tor_client {
+            Some(tor) => {
                 let mut tor_transport = libp2p_community_tor::TorTransport::from_client(
                     tor,
                     AddressConversion::DnsOnly,
@@ -54,20 +54,22 @@ pub mod transport {
                     .build()
                     .expect("We specified a valid nickname");
 
-                // If we cannot listen on the onion address, we don't want to use Tor at all because Alice does not dial
-                // TODO: Except for rendezvous nodes
                 match tor_transport.add_onion_service(onion_service_config, 999) {
-                    Ok(onion_address) => Some((tor_transport, onion_address)),
-                    Err(_) => None,
+                    Ok(onion_address) => Some((tor_transport, vec![onion_address])),
+                    // If we fail to listen on the onion address, we still want to use the tor transport for dialing
+                    Err(err) => {
+                        tracing::warn!(error=%err, "Failed to listen on onion address");
+                        Some((tor_transport, vec![]))
+                    }
                 }
-            })
-            .flatten();
+            }
+            None => None,
+        };
 
         let (maybe_tor_transport, onion_addresses) = match maybe_tor_transport {
-            Some((tor_transport, onion_address)) => {
-                (OptionalTransport::some(tor_transport), vec![onion_address])
+            Some((tor_transport, onion_addresses)) => {
+                (OptionalTransport::some(tor_transport), onion_addresses)
             }
-
             None => (OptionalTransport::none(), vec![]),
         };
 
