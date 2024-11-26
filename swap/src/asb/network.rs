@@ -32,39 +32,48 @@ pub mod transport {
     use super::*;
 
     static ASB_ONION_SERVICE_NICKNAME: &str = "asb";
+    static ASB_ONION_SERVICE_PORT: u16 = 9939;
+
+    type OnionTransportWithAddresses = (Boxed<(PeerId, StreamMuxerBox)>, Vec<Multiaddr>);
 
     /// Creates the libp2p transport for the ASB.
+    ///
+    /// If you pass in a `None` for `maybe_tor_client`, the ASB will not use Tor at all.
+    ///
+    /// If you pass in a `Some(tor_client)`, the ASB will listen on an onion service and return
+    /// the onion address. If it fails to listen on the onion address, it will only use tor for
+    /// dialing and not listening.
     pub fn new(
         identity: &identity::Keypair,
         maybe_tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
-    ) -> Result<(Boxed<(PeerId, StreamMuxerBox)>, Vec<Multiaddr>)> {
-        let maybe_tor_transport = match maybe_tor_client {
-            Some(tor) => {
-                let mut tor_transport = libp2p_community_tor::TorTransport::from_client(
-                    tor,
-                    AddressConversion::DnsOnly,
+    ) -> Result<OnionTransportWithAddresses> {
+        let maybe_tor_transport = maybe_tor_client.map(|tor_client| {
+            let mut tor_transport = libp2p_community_tor::TorTransport::from_client(
+                tor_client,
+                AddressConversion::DnsOnly,
+            );
+
+            let onion_service_config = OnionServiceConfigBuilder::default()
+                .nickname(
+                    ASB_ONION_SERVICE_NICKNAME
+                        .parse()
+                        .expect("Static nickname to be valid"),
+                )
+                .build()
+                .expect("We specified a valid nickname");
+
+            let addresses = tor_transport
+                .add_onion_service(onion_service_config, ASB_ONION_SERVICE_PORT)
+                .map_or_else(
+                    |err| {
+                        tracing::warn!(error=%err, "Failed to listen on onion address");
+                        vec![]
+                    },
+                    |addr| vec![addr],
                 );
 
-                let onion_service_config = OnionServiceConfigBuilder::default()
-                    .nickname(
-                        ASB_ONION_SERVICE_NICKNAME
-                            .parse()
-                            .expect("Static nickname to be valid"),
-                    )
-                    .build()
-                    .expect("We specified a valid nickname");
-
-                match tor_transport.add_onion_service(onion_service_config, 999) {
-                    Ok(onion_address) => Some((tor_transport, vec![onion_address])),
-                    // If we fail to listen on the onion address, we still want to use the tor transport for dialing
-                    Err(err) => {
-                        tracing::warn!(error=%err, "Failed to listen on onion address");
-                        Some((tor_transport, vec![]))
-                    }
-                }
-            }
-            None => None,
-        };
+            (tor_transport, addresses)
+        });
 
         let (maybe_tor_transport, onion_addresses) = match maybe_tor_transport {
             Some((tor_transport, onion_addresses)) => {
