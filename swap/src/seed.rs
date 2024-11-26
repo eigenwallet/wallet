@@ -1,6 +1,6 @@
 use crate::fs::ensure_directory_exists;
 use anyhow::{Context, Result};
-use bdk::bitcoin::util::bip32::ExtendedPrivKey;
+use ::bitcoin::bip32::Xpriv as ExtendedPrivKey;
 use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1::constants::SECRET_KEY_SIZE;
 use bitcoin::secp256k1::{self, SecretKey};
@@ -84,7 +84,7 @@ impl Seed {
 
         let hash = sha256::Hash::from_engine(engine);
 
-        Self(hash.into_inner())
+        Self(hash.to_byte_array())
     }
 
     fn bytes(&self) -> [u8; SEED_LENGTH] {

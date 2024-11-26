@@ -81,7 +81,7 @@ pub fn register_modules(outer_context: Context) -> Result<RpcModule<Context>> {
         let mut params: WithdrawBtcArgs = params_raw.parse()?;
 
         params.address =
-            bitcoin_address::validate(params.address, context.config.env_config.bitcoin_network)
+            bitcoin_address::revalidate_network(params.address, context.config.env_config.bitcoin_network)
                 .to_jsonrpsee_result()?;
 
         params.request(context).await.to_jsonrpsee_result()
@@ -93,7 +93,7 @@ pub fn register_modules(outer_context: Context) -> Result<RpcModule<Context>> {
         params.bitcoin_change_address = params
             .bitcoin_change_address
             .map(|address| {
-                bitcoin_address::validate(address, context.config.env_config.bitcoin_network)
+                bitcoin_address::revalidate_network(address, context.config.env_config.bitcoin_network)
             })
             .transpose()
             .to_jsonrpsee_result()?;
