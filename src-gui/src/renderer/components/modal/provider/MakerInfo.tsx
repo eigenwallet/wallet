@@ -43,7 +43,7 @@ const useStyles = makeStyles((theme) => ({
  */
 function MakerMarkupChip({ maker }: { maker: ExtendedMakerStatus }) {
   const marketExchangeRate = useAppSelector(s => s.rates?.xmrBtcRate);
-  if (marketExchangeRate === null)
+  if (marketExchangeRate == null)
     return null;
 
   const makerExchangeRate = satsToBtc(maker.price);
