@@ -46,7 +46,11 @@ pub mod transport {
                 );
 
                 let onion_service_config = OnionServiceConfigBuilder::default()
-                    .nickname(ASB_ONION_SERVICE_NICKNAME.parse().unwrap())
+                    .nickname(
+                        ASB_ONION_SERVICE_NICKNAME
+                            .parse()
+                            .expect("Static nickname to be valid"),
+                    )
                     .build()
                     .expect("We specified a valid nickname");
 
