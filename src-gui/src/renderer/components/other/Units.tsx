@@ -74,7 +74,7 @@ export function MoneroBitcoinExchangeRate({
   rate: Amount;
   displayMarkup?: boolean;
 }) {
-  const marketRate = useAppSelector((state) => state.rates.xmrBtcRate);
+  const marketRate = useAppSelector((state) => state.rates?.xmrBtcRate);
   const markup = (displayMarkup && marketRate != null) ? `${getMarkup(rate, marketRate).toFixed(2)}% markup` : null;
 
   return (
