@@ -8,7 +8,6 @@ use ::bitcoin::{OutPoint, TxIn, TxOut, Txid};
 use anyhow::{bail, Context, Result};
 use bdk_wallet::WalletPersister;
 use bdk_wallet::miniscript::Descriptor;
-use bdk::psbt::PsbtUtils;
 use bitcoin::{locktime::absolute::LockTime as PackedLockTime, ScriptBuf, Sequence};
 use serde::{Deserialize, Serialize};
 
@@ -98,8 +97,8 @@ impl TxLock {
         })
     }
 
-    pub fn lock_amount(&self) -> Result<Amount> {
-        Ok(self.inner.clone().extract_tx()?.output[self.lock_output_vout()].value)
+    pub fn lock_amount(&self) -> Amount {
+        self.inner.clone().extract_tx_unchecked_fee_rate().output[self.lock_output_vout()].value
     }
 
     pub fn fee(&self) -> Result<Amount> {
@@ -111,8 +110,8 @@ impl TxLock {
         )
     }
 
-    pub fn txid(&self) -> Result<Txid> {
-        Ok(self.inner.clone().extract_tx()?.compute_txid())
+    pub fn txid(&self) -> Txid {
+        self.inner.clone().extract_tx_unchecked_fee_rate().compute_txid()
     }
 
     pub fn as_outpoint(&self) -> OutPoint {
@@ -136,7 +135,7 @@ impl TxLock {
     fn lock_output_vout(&self) -> usize {
         self.inner
             .clone()
-            .extract_tx()
+            .extract_tx_unchecked_fee_rate()
             .output
             .iter()
             .position(|output| output.script_pubkey == self.output_descriptor.script_pubkey())
@@ -159,17 +158,16 @@ impl TxLock {
             witness: Default::default(),
         };
 
-        let fee = spending_fee.to_sat();
         let tx_out = TxOut {
-            value: self.inner.clone().extract_tx().output[self.lock_output_vout()].value - fee,
+            value: self.inner.clone().extract_tx_unchecked_fee_rate().output[self.lock_output_vout()].value - spending_fee,
             script_pubkey: spend_address.script_pubkey(),
         };
 
-        tracing::debug!(%fee, "Constructed Bitcoin spending transaction");
+        tracing::debug!(fee=%spending_fee.to_sat(), "Constructed Bitcoin spending transaction");
 
         Transaction {
-            version: 2,
-            lock_time: PackedLockTime::Blocks(0),
+            version: bitcoin::transaction::Version(2),
+            lock_time: PackedLockTime::from_height(0).expect("0 to be below lock time threshold"),
             input: vec![tx_in],
             output: vec![tx_out],
         }
@@ -188,7 +186,7 @@ impl From<TxLock> for PartiallySignedTransaction {
 
 impl Watchable for TxLock {
     fn id(&self) -> Txid {
-        self.txid()
+        self.txid() 
     }
 
     fn script(&self) -> ScriptBuf {
@@ -276,7 +274,7 @@ mod tests {
     async fn bob_make_psbt(
         A: PublicKey,
         B: PublicKey,
-        wallet: &Wallet<bdk::database::MemoryDatabase, StaticFeeRate>,
+        wallet: &Wallet<bdk_wallet::rusqlite::Connection>,
         amount: Amount,
     ) -> PartiallySignedTransaction {
         let change = wallet.new_address().await.unwrap();

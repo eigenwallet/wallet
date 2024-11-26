@@ -149,7 +149,7 @@ async fn next_state(
             // Sign the Bitcoin lock transaction
             let (state3, tx_lock) = state2.lock_btc().await?;
             let signed_tx = bitcoin_wallet
-                .sign_and_finalize(tx_lock.clone())
+                .sign_and_finalize(tx_lock.clone().into())
                 .await
                 .context("Failed to sign Bitcoin lock transaction")?;
 

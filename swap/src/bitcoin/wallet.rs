@@ -8,6 +8,7 @@ use bdk_wallet::bitcoin::Network;
 use bdk_wallet::descriptor::IntoWalletDescriptor;
 use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
+use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::{rusqlite, KeychainKind};
 use bdk_wallet::PersistedWallet;
 use bdk_wallet::SignOptions;
@@ -183,7 +184,7 @@ where
     /// Get the target block of this wallet.
     /// 
     /// This is the the number of blocks we want to wait at most for
-    /// one of our transactions to be confirmed.
+    /// one ofour transaction to be confirmed.
     pub fn target_block(&self) -> usize {
         self.target_block
     }
@@ -1037,7 +1038,7 @@ pub struct WalletBuilder {
     utxo_amount: u64,
     sats_per_vb: f32,
     min_relay_fee_sats: u64,
-    key: bdk::bitcoin::util::bip32::ExtendedPrivKey,
+    key: bdk_wallet::bip32::Xpriv,
     num_utxos: u8,
 }
 
@@ -1084,13 +1085,12 @@ impl WalletBuilder {
         }
     }
 
-    pub fn build(self) -> Wallet<bdk::database::MemoryDatabase, StaticFeeRate> {
-        use bdk::database::{BatchOperations, MemoryDatabase, SyncTime};
-        use bdk::{testutils, BlockTime};
+    pub fn build(self) -> Wallet<bdk_wallet::rusqlite::Connection> {
+        use bdk_wallet::{testutils, BlockTime};
 
         let descriptors = testutils!(@descriptors (&format!("wpkh({}/*)", self.key)));
 
-        let mut database = MemoryDatabase::new();
+        let mut database = Connection::open_in_memory().expect("sqlite in memory to work");
 
         for index in 0..self.num_utxos {
             bdk::populate_test_db!(

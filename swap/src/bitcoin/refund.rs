@@ -4,11 +4,11 @@ use crate::bitcoin::{
     TooManyInputs, Transaction, TxCancel,
 };
 use crate::{bitcoin, monero};
-use ::bitcoin::secp256k1;
-use ::bitcoin::util::sighash::SighashCache;
-use ::bitcoin::{EcdsaSighashType, Script, Sighash, Txid};
+use ::bitcoin::{secp256k1, ScriptBuf};
+use ::bitcoin::sighash::SighashCache;
+use ::bitcoin::{EcdsaSighashType, Script, Txid, sighash::SegwitV0Sighash as Sighash};
 use anyhow::{bail, Context, Result};
-use bdk::miniscript::Descriptor;
+use bdk_wallet::miniscript::Descriptor;
 use ecdsa_fun::Signature;
 use std::collections::HashMap;
 
@@ -19,7 +19,7 @@ pub struct TxRefund {
     inner: Transaction,
     digest: Sighash,
     cancel_output_descriptor: Descriptor<::bitcoin::PublicKey>,
-    watch_script: Script,
+    watch_script: ScriptBuf,
 }
 
 impl TxRefund {
@@ -27,13 +27,13 @@ impl TxRefund {
         let tx_refund = tx_cancel.build_spend_transaction(refund_address, None, spending_fee);
 
         let digest = SighashCache::new(&tx_refund)
-            .segwit_signature_hash(
+            .p2wpkh_signature_hash(
                 0, // Only one input: cancel transaction
                 &tx_cancel
                     .output_descriptor
                     .script_code()
                     .expect("scriptcode"),
-                tx_cancel.amount().to_sat(),
+                tx_cancel.amount(),
                 EcdsaSighashType::All,
             )
             .expect("sighash");
@@ -76,16 +76,16 @@ impl TxRefund {
             // The order in which these are inserted doesn't matter
             satisfier.insert(
                 A,
-                ::bitcoin::EcdsaSig {
-                    sig: sig_a,
-                    hash_ty: EcdsaSighashType::All,
+                ::bitcoin::ecdsa::Signature {
+                    signature: sig_a,
+                    sighash_type: EcdsaSighashType::All,
                 },
             );
             satisfier.insert(
                 B,
-                ::bitcoin::EcdsaSig {
-                    sig: sig_b,
-                    hash_ty: EcdsaSighashType::All,
+                ::bitcoin::ecdsa::Signature {
+                    signature: sig_b,
+                    sighash_type: EcdsaSighashType::All,
                 },
             );
 
@@ -161,7 +161,7 @@ impl Watchable for TxRefund {
         self.txid()
     }
 
-    fn script(&self) -> Script {
+    fn script(&self) -> ScriptBuf {
         self.watch_script.clone()
     }
 }

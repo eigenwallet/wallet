@@ -27,7 +27,7 @@ pub use wallet::WalletBuilder;
 use ::bitcoin::secp256k1::ecdsa;
 use ::bitcoin::hashes::Hash;
 use crate::bitcoin::wallet::ScriptStatus;
-use ::bitcoin::hashes::sha256d::Hash as Sighash;
+use ::bitcoin::sighash::SegwitV0Sighash as Sighash;
 use anyhow::{bail, Context, Result};
 use bdk_wallet::miniscript::descriptor::Wsh;
 use bdk_wallet::miniscript::{Descriptor, Segwitv0};

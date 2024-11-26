@@ -3,11 +3,11 @@ use crate::bitcoin::{
     verify_encsig, verify_sig, Address, Amount, EmptyWitnessStack, EncryptedSignature, NoInputs,
     NotThreeWitnesses, PublicKey, SecretKey, TooManyInputs, Transaction, TxLock,
 };
-use ::bitcoin::{Sighash, Txid};
+use ::bitcoin::{sighash::SegwitV0Sighash as Sighash, Txid};
 use anyhow::{bail, Context, Result};
-use bdk::miniscript::Descriptor;
-use bitcoin::secp256k1;
-use bitcoin::util::sighash::SighashCache;
+use bdk_wallet::miniscript::Descriptor;
+use bitcoin::{secp256k1, ScriptBuf};
+use bitcoin::sighash::SighashCache;
 use bitcoin::{EcdsaSighashType, Script};
 use ecdsa_fun::adaptor::{Adaptor, HashTranscript};
 use ecdsa_fun::fun::Scalar;
@@ -23,7 +23,7 @@ pub struct TxRedeem {
     inner: Transaction,
     digest: Sighash,
     lock_output_descriptor: Descriptor<::bitcoin::PublicKey>,
-    watch_script: Script,
+    watch_script: ScriptBuf,
 }
 
 impl TxRedeem {
@@ -33,10 +33,10 @@ impl TxRedeem {
         let tx_redeem = tx_lock.build_spend_transaction(redeem_address, None, spending_fee);
 
         let digest = SighashCache::new(&tx_redeem)
-            .segwit_signature_hash(
+            .p2wpkh_signature_hash(
                 0, // Only one input: lock_input (lock transaction)
                 &tx_lock.output_descriptor.script_code().expect("scriptcode"),
-                tx_lock.lock_amount().to_sat(),
+                tx_lock.lock_amount(),
                 EcdsaSighashType::All,
             )
             .expect("sighash");
@@ -93,16 +93,16 @@ impl TxRedeem {
             // The order in which these are inserted doesn't matter
             satisfier.insert(
                 A,
-                ::bitcoin::EcdsaSig {
-                    sig: sig_a,
-                    hash_ty: EcdsaSighashType::All,
+                ::bitcoin::ecdsa::Signature {
+                    signature: sig_a,
+                    sighash_type: EcdsaSighashType::All,
                 },
             );
             satisfier.insert(
                 B,
-                ::bitcoin::EcdsaSig {
-                    sig: sig_b,
-                    hash_ty: EcdsaSighashType::All,
+                ::bitcoin::ecdsa::Signature {
+                    signature: sig_b,
+                    sighash_type: EcdsaSighashType::All,
                 },
             );
 
@@ -159,7 +159,7 @@ impl Watchable for TxRedeem {
         self.txid()
     }
 
-    fn script(&self) -> Script {
+    fn script(&self) -> ScriptBuf {
         self.watch_script.clone()
     }
 }

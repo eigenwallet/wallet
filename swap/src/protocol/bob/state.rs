@@ -9,7 +9,7 @@ use crate::monero::{monero_private_key, TransferProof};
 use crate::monero_ext::ScalarExt;
 use crate::protocol::{Message0, Message1, Message2, Message3, Message4, CROSS_CURVE_PROOF_SYSTEM};
 use anyhow::{anyhow, bail, Context, Result};
-use bdk::database::BatchDatabase;
+use bdk_wallet::WalletPersister;
 use ecdsa_fun::adaptor::{Adaptor, HashTranscript};
 use ecdsa_fun::nonce::Deterministic;
 use ecdsa_fun::Signature;
@@ -25,7 +25,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum BobState {
     Started {
-        #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+        #[serde(with = "::bitcoin::amount::serde::as_sat")]
         btc_amount: bitcoin::Amount,
         change_address: bitcoin::Address,
     },
@@ -181,14 +181,14 @@ impl State0 {
         }
     }
 
-    pub async fn receive<D, C>(
+    pub async fn receive<Persister>(
         self,
-        wallet: &bitcoin::Wallet<D, C>,
+        wallet: &bitcoin::Wallet<>,
         msg: Message1,
     ) -> Result<State1>
     where
-        C: EstimateFeeRate,
-        D: BatchDatabase,
+        Persister: WalletPersister,
+        <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
     {
         let valid = CROSS_CURVE_PROOF_SYSTEM.verify(
             &msg.dleq_proof_s_a,
@@ -329,13 +329,13 @@ pub struct State2 {
     tx_cancel_sig_a: Signature,
     tx_refund_encsig: bitcoin::EncryptedSignature,
     min_monero_confirmations: u64,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_redeem_fee: bitcoin::Amount,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_punish_fee: bitcoin::Amount,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub tx_refund_fee: bitcoin::Amount,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub tx_cancel_fee: bitcoin::Amount,
 }
 
@@ -408,11 +408,11 @@ pub struct State3 {
     tx_cancel_sig_a: Signature,
     tx_refund_encsig: bitcoin::EncryptedSignature,
     min_monero_confirmations: u64,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_redeem_fee: bitcoin::Amount,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_refund_fee: bitcoin::Amount,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_cancel_fee: bitcoin::Amount,
 }
 
@@ -526,11 +526,11 @@ pub struct State4 {
     tx_cancel_sig_a: Signature,
     tx_refund_encsig: bitcoin::EncryptedSignature,
     monero_wallet_restore_blockheight: BlockHeight,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_redeem_fee: bitcoin::Amount,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_refund_fee: bitcoin::Amount,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_cancel_fee: bitcoin::Amount,
 }
 
