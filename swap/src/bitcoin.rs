@@ -16,7 +16,6 @@ pub use crate::bitcoin::timelocks::{BlockHeight, ExpiredTimelocks};
 pub use ::bitcoin::amount::Amount;
 pub use ::bitcoin::psbt::Psbt as PartiallySignedTransaction;
 pub use ::bitcoin::{Address, AddressType, Network, Transaction, Txid};
-use bitcoin::secp256k1::ecdsa;
 pub use ecdsa_fun::adaptor::EncryptedSignature;
 pub use ecdsa_fun::fun::Scalar;
 pub use ecdsa_fun::Signature;
@@ -25,11 +24,13 @@ pub use wallet::Wallet;
 #[cfg(test)]
 pub use wallet::WalletBuilder;
 
+use ::bitcoin::secp256k1::ecdsa;
+use ::bitcoin::hashes::Hash;
 use crate::bitcoin::wallet::ScriptStatus;
 use ::bitcoin::hashes::sha256d::Hash as Sighash;
 use anyhow::{bail, Context, Result};
-use bdk::miniscript::descriptor::Wsh;
-use bdk::miniscript::{Descriptor, Segwitv0};
+use bdk_wallet::miniscript::descriptor::Wsh;
+use bdk_wallet::miniscript::{Descriptor, Segwitv0};
 use ecdsa_fun::adaptor::{Adaptor, HashTranscript};
 use ecdsa_fun::fun::Point;
 use ecdsa_fun::nonce::Deterministic;
@@ -42,6 +43,7 @@ use std::str::FromStr;
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Network")]
 #[allow(non_camel_case_types)]
+#[non_exhaustive]
 pub enum network {
     #[serde(rename = "Mainnet")]
     Bitcoin,
@@ -80,7 +82,7 @@ impl SecretKey {
     pub fn sign(&self, digest: Sighash) -> Signature {
         let ecdsa = ECDSA::<Deterministic<Sha256>>::default();
 
-        ecdsa.sign(&self.inner, &digest.into_inner())
+        ecdsa.sign(&self.inner, &digest.to_byte_array())
     }
 
     // TxRefund encsigning explanation:
@@ -103,7 +105,7 @@ impl SecretKey {
             Deterministic<Sha256>,
         >::default();
 
-        adaptor.encrypted_sign(&self.inner, &Y.0, &digest.into_inner())
+        adaptor.encrypted_sign(&self.inner, &Y.0, &digest.to_byte_array())
     }
 }
 
@@ -124,7 +126,7 @@ impl From<PublicKey> for Point {
 }
 
 impl TryFrom<PublicKey> for bitcoin::PublicKey {
-    type Error = bitcoin::util::key::Error;
+    type Error = bitcoin::key::FromSliceError;
 
     fn try_from(pubkey: PublicKey) -> Result<Self, Self::Error> {
         let bytes = pubkey.0.to_bytes();
@@ -170,7 +172,7 @@ pub fn verify_sig(
 ) -> Result<()> {
     let ecdsa = ECDSA::verify_only();
 
-    if ecdsa.verify(&verification_key.0, &transaction_sighash.into_inner(), sig) {
+    if ecdsa.verify(&verification_key.0, &transaction_sighash.to_byte_array(), sig) {
         Ok(())
     } else {
         bail!(InvalidSignature)
@@ -192,7 +194,7 @@ pub fn verify_encsig(
     if adaptor.verify_encrypted_signature(
         &verification_key.0,
         &encryption_key.0,
-        &digest.into_inner(),
+        &digest.to_byte_array(),
         encsig,
     ) {
         Ok(())
@@ -216,7 +218,7 @@ pub fn build_shared_output_descriptor(
         .replace('B', &B.to_string());
 
     let miniscript =
-        bdk::miniscript::Miniscript::<bitcoin::PublicKey, Segwitv0>::from_str(&miniscript)
+        bdk_wallet::miniscript::Miniscript::<bitcoin::PublicKey, Segwitv0>::from_str(&miniscript)
             .expect("a valid miniscript");
 
     Ok(Descriptor::Wsh(Wsh::new(miniscript)?))
@@ -255,7 +257,8 @@ pub fn current_epoch(
 }
 
 pub mod bitcoin_address {
-    use anyhow::{bail, Result};
+    use anyhow::{Context, Result};
+    use bitcoin::{address::{NetworkChecked, NetworkUnchecked}, Address};
     use serde::Serialize;
     use std::str::FromStr;
 
@@ -268,32 +271,21 @@ pub mod bitcoin_address {
         actual: bitcoin::Network,
     }
 
-    pub fn parse(addr_str: &str) -> Result<bitcoin::Address> {
-        let address = bitcoin::Address::from_str(addr_str)?;
-
-        if address.address_type() != Some(bitcoin::AddressType::P2wpkh) {
-            anyhow::bail!("Invalid Bitcoin address provided, only bech32 format is supported!")
-        }
-
-        Ok(address)
-    }
-
-    pub fn validate(
-        address: bitcoin::Address,
+    pub fn parse_and_validate_network(
+        address: &str,
         expected_network: bitcoin::Network,
     ) -> Result<bitcoin::Address> {
-        if address.network != expected_network {
-            bail!(BitcoinAddressNetworkMismatch {
-                expected: expected_network,
-                actual: address.network
-            });
-        }
-
-        Ok(address)
+        let addres = bitcoin::Address::from_str(address)?;
+        let addres = addres
+            .require_network(expected_network)
+            .with_context(|| format!(
+                "bitcoin address network mismatch, expected `{expected_network:?}`",
+            ))?;
+        Ok(addres)
     }
 
-    pub fn validate_is_testnet(
-        address: bitcoin::Address,
+    pub fn parse_and_validate(
+        address: &str,
         is_testnet: bool,
     ) -> Result<bitcoin::Address> {
         let expected_network = if is_testnet {
@@ -301,7 +293,17 @@ pub mod bitcoin_address {
         } else {
             bitcoin::Network::Bitcoin
         };
-        validate(address, expected_network)
+        parse_and_validate_network(address, expected_network)
+    }
+
+    pub fn validate(address: Address::<NetworkUnchecked>, is_testnet: bool) -> Result<Address<NetworkChecked>> {
+        let expected_network = if is_testnet {
+            bitcoin::Network::Testnet
+        } else {
+            bitcoin::Network::Bitcoin
+        };
+        Ok(address.require_network(expected_network)
+            .context("bitcoin address network mismatch")?)
     }
 }
 
@@ -521,11 +523,11 @@ mod tests {
     // signatures can have 68, 69, 70, 71, or 72 bytes. Since most of our
     // transactions have 2 signatures the weight can be up to 8 bytes less than
     // the static weight (4 bytes per signature).
-    fn assert_weight(transaction: Transaction, expected_weight: usize, tx_name: &str) {
+    fn assert_weight(transaction: Transaction, expected_weight: u64, tx_name: &str) {
         let is_weight = transaction.weight();
 
         assert!(
-            expected_weight - is_weight <= 8,
+            expected_weight - is_weight.to_wu() <= 8,
             "{} to have weight {}, but was {}. Transaction: {:#?}",
             tx_name,
             expected_weight,
@@ -538,7 +540,7 @@ mod tests {
     fn compare_point_hex() {
         // secp256kfun Point and secp256k1 PublicKey should have the same bytes and hex representation
         let secp = secp256k1::Secp256k1::default();
-        let keypair = secp256k1::KeyPair::new(&secp, &mut OsRng);
+        let keypair = secp256k1::Keypair::new(&secp, &mut OsRng);
 
         let pubkey = keypair.public_key();
         let point: Point<_, Public, NonZero> = Point::from_bytes(pubkey.serialize()).unwrap();

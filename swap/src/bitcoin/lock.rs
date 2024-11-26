@@ -2,13 +2,14 @@ use crate::bitcoin::wallet::{EstimateFeeRate, Watchable};
 use crate::bitcoin::{
     build_shared_output_descriptor, Address, Amount, PublicKey, Transaction, Wallet,
 };
-use ::bitcoin::util::psbt::PartiallySignedTransaction;
+use bdk_wallet::psbt::PsbtUtils;
+use ::bitcoin::psbt::Psbt as PartiallySignedTransaction;
 use ::bitcoin::{OutPoint, TxIn, TxOut, Txid};
 use anyhow::{bail, Context, Result};
-use bdk::database::BatchDatabase;
-use bdk::miniscript::Descriptor;
+use bdk_wallet::WalletPersister;
+use bdk_wallet::miniscript::Descriptor;
 use bdk::psbt::PsbtUtils;
-use bitcoin::{PackedLockTime, Script, Sequence};
+use bitcoin::{locktime::absolute::LockTime as PackedLockTime, ScriptBuf, Sequence};
 use serde::{Deserialize, Serialize};
 
 const SCRIPT_SIZE: usize = 34;
@@ -21,20 +22,20 @@ pub struct TxLock {
 }
 
 impl TxLock {
-    pub async fn new<D, C>(
-        wallet: &Wallet<D, C>,
+    pub async fn new<Persister>(
+        wallet: &Wallet<Persister>,
         amount: Amount,
         A: PublicKey,
         B: PublicKey,
         change: bitcoin::Address,
     ) -> Result<Self>
     where
-        C: EstimateFeeRate,
-        D: BatchDatabase,
+    Persister: WalletPersister + Sized,
+    <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
     {
         let lock_output_descriptor = build_shared_output_descriptor(A.0, B.0)?;
         let address = lock_output_descriptor
-            .address(wallet.get_network())
+            .address(wallet.network())
             .expect("can derive address from descriptor");
 
         let psbt = wallet
@@ -59,14 +60,14 @@ impl TxLock {
         btc: Amount,
     ) -> Result<Self> {
         let shared_output_candidate = match psbt.unsigned_tx.output.as_slice() {
-            [shared_output_candidate, _] if shared_output_candidate.value == btc.to_sat() => {
+            [shared_output_candidate, _] if shared_output_candidate.value == btc => {
                 shared_output_candidate
             }
-            [_, shared_output_candidate] if shared_output_candidate.value == btc.to_sat() => {
+            [_, shared_output_candidate] if shared_output_candidate.value == btc => {
                 shared_output_candidate
             }
             // A single output is possible if Bob funds without any change necessary
-            [shared_output_candidate] if shared_output_candidate.value == btc.to_sat() => {
+            [shared_output_candidate] if shared_output_candidate.value == btc => {
                 shared_output_candidate
             }
             [_, _] => {
@@ -97,21 +98,21 @@ impl TxLock {
         })
     }
 
-    pub fn lock_amount(&self) -> Amount {
-        Amount::from_sat(self.inner.clone().extract_tx().output[self.lock_output_vout()].value)
+    pub fn lock_amount(&self) -> Result<Amount> {
+        Ok(self.inner.clone().extract_tx()?.output[self.lock_output_vout()].value)
     }
 
     pub fn fee(&self) -> Result<Amount> {
-        Ok(Amount::from_sat(
+        Ok(
             self.inner
                 .clone()
                 .fee_amount()
                 .context("The PSBT is missing a TxOut for an input")?,
-        ))
+        )
     }
 
-    pub fn txid(&self) -> Txid {
-        self.inner.clone().extract_tx().txid()
+    pub fn txid(&self) -> Result<Txid> {
+        Ok(self.inner.clone().extract_tx()?.compute_txid())
     }
 
     pub fn as_outpoint(&self) -> OutPoint {
@@ -126,7 +127,7 @@ impl TxLock {
         SCRIPT_SIZE
     }
 
-    pub fn script_pubkey(&self) -> Script {
+    pub fn script_pubkey(&self) -> ScriptBuf {
         self.output_descriptor.script_pubkey()
     }
 
@@ -168,7 +169,7 @@ impl TxLock {
 
         Transaction {
             version: 2,
-            lock_time: PackedLockTime(0),
+            lock_time: PackedLockTime::Blocks(0),
             input: vec![tx_in],
             output: vec![tx_out],
         }
@@ -190,7 +191,7 @@ impl Watchable for TxLock {
         self.txid()
     }
 
-    fn script(&self) -> Script {
+    fn script(&self) -> ScriptBuf {
         self.output_descriptor.script_pubkey()
     }
 }

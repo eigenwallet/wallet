@@ -170,6 +170,24 @@ where
         })
     }
 
+    /// Get the network of this wallet.
+    pub fn network(&self) -> Network {
+        self.network
+    }
+
+    /// Get the finality confirmations of this wallet.
+    pub fn finality_confirmations(&self) -> u32 {
+        self.finality_confirmations
+    }
+
+    /// Get the target block of this wallet.
+    /// 
+    /// This is the the number of blocks we want to wait at most for
+    /// one of our transactions to be confirmed.
+    pub fn target_block(&self) -> usize {
+        self.target_block
+    }
+
     /// Broadcast the given transaction to the network and emit a tracing statement
     /// if done so successfully.
     ///
@@ -1055,7 +1073,7 @@ impl WalletBuilder {
         }
     }
 
-    pub fn with_key(self, key: bitcoin::util::bip32::ExtendedPrivKey) -> Self {
+    pub fn with_key(self, key: bitcoin::bip32::Xpriv) -> Self {
         Self { key, ..self }
     }
 
