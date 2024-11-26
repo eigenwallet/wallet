@@ -21,12 +21,14 @@ use sigma_fun::ext::dl_secp256k1_ed25519_eq::CrossCurveDLEQProof;
 use std::fmt;
 use std::sync::Arc;
 use uuid::Uuid;
+use crate::bitcoin::address_serde;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum BobState {
     Started {
         #[serde(with = "::bitcoin::amount::serde::as_sat")]
         btc_amount: bitcoin::Amount,
+        #[serde(with = "address_serde")]
         change_address: bitcoin::Address,
     },
     SwapSetupCompleted(State2),
@@ -322,8 +324,11 @@ pub struct State2 {
     pub xmr: monero::Amount,
     pub cancel_timelock: CancelTimelock,
     pub punish_timelock: PunishTimelock,
+    #[serde(with = "address_serde")]
     pub refund_address: bitcoin::Address,
+    #[serde(with = "address_serde")]
     redeem_address: bitcoin::Address,
+    #[serde(with = "address_serde")]
     punish_address: bitcoin::Address,
     pub tx_lock: bitcoin::TxLock,
     tx_cancel_sig_a: Signature,
@@ -402,7 +407,9 @@ pub struct State3 {
     xmr: monero::Amount,
     pub cancel_timelock: CancelTimelock,
     punish_timelock: PunishTimelock,
+    #[serde(with = "address_serde")]
     refund_address: bitcoin::Address,
+    #[serde(with = "address_serde")]
     redeem_address: bitcoin::Address,
     pub tx_lock: bitcoin::TxLock,
     tx_cancel_sig_a: Signature,
@@ -520,7 +527,9 @@ pub struct State4 {
     v: monero::PrivateViewKey,
     pub cancel_timelock: CancelTimelock,
     punish_timelock: PunishTimelock,
+    #[serde(with = "address_serde")]
     refund_address: bitcoin::Address,
+    #[serde(with = "address_serde")]
     redeem_address: bitcoin::Address,
     pub tx_lock: bitcoin::TxLock,
     tx_cancel_sig_a: Signature,
@@ -703,13 +712,14 @@ pub struct State6 {
     pub monero_wallet_restore_blockheight: BlockHeight,
     cancel_timelock: CancelTimelock,
     punish_timelock: PunishTimelock,
+    #[serde(with = "address_serde")]
     refund_address: bitcoin::Address,
     tx_lock: bitcoin::TxLock,
     tx_cancel_sig_a: Signature,
     tx_refund_encsig: bitcoin::EncryptedSignature,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub tx_refund_fee: bitcoin::Amount,
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub tx_cancel_fee: bitcoin::Amount,
 }
 

@@ -1038,7 +1038,7 @@ pub struct WalletBuilder {
     utxo_amount: u64,
     sats_per_vb: f32,
     min_relay_fee_sats: u64,
-    key: bdk_wallet::bip32::Xpriv,
+    key: bitcoin::bip32::Xpriv,
     num_utxos: u8,
 }
 

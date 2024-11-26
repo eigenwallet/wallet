@@ -52,6 +52,34 @@ pub enum network {
     Regtest,
 }
 
+/// This module is used to serialize and deserialize bitcoin addresses
+/// even though the bitcoin crate does not support it for Address<NetworkChecked>.
+pub mod address_serde {
+    use std::str::FromStr;
+
+    use bitcoin::address::{Address, NetworkChecked, NetworkUnchecked};
+    use serde::{Deserializer, Serialize, Serializer, Deserialize};
+
+    pub fn serialize<S>(address: &Address<NetworkChecked>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        address.to_string().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Address<NetworkChecked>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let unchecked: Address<NetworkUnchecked> = Address::from_str(&String::deserialize(deserializer)?)
+            .map_err(serde::de::Error::custom)?;
+        
+        Ok(unchecked
+            .require_network(bitcoin::Network::Bitcoin)
+            .map_err(serde::de::Error::custom)?)
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct SecretKey {
     inner: Scalar,
@@ -513,10 +541,10 @@ mod tests {
             .unwrap();
         let refund_transaction = bob_state6.signed_refund_transaction().unwrap();
 
-        assert_weight(redeem_transaction, TxRedeem::weight(), "TxRedeem");
-        assert_weight(cancel_transaction, TxCancel::weight(), "TxCancel");
-        assert_weight(punish_transaction, TxPunish::weight(), "TxPunish");
-        assert_weight(refund_transaction, TxRefund::weight(), "TxRefund");
+        assert_weight(redeem_transaction, TxRedeem::weight() as u64, "TxRedeem");
+        assert_weight(cancel_transaction, TxCancel::weight() as u64, "TxCancel");
+        assert_weight(punish_transaction, TxPunish::weight() as u64, "TxPunish");
+        assert_weight(refund_transaction, TxRefund::weight() as u64, "TxRefund");
     }
 
     // Weights fluctuate because of the length of the signatures. Valid ecdsa
