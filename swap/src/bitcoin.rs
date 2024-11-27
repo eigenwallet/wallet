@@ -78,6 +78,38 @@ pub mod address_serde {
             .require_network(bitcoin::Network::Bitcoin)
             .map_err(serde::de::Error::custom)?)
     }
+
+    /// This submodule supports Option<Address>.
+    pub mod option {
+        use super::*;
+
+        pub fn serialize<S>(address: &Option<Address<NetworkChecked>>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            match address {
+                Some(addr) => addr.to_string().serialize(serializer),
+                None => serializer.serialize_none()
+            }
+        }
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Address<NetworkChecked>>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            let opt: Option<String> = Option::deserialize(deserializer)?;
+            match opt {
+                Some(s) => {
+                    let unchecked: Address<NetworkUnchecked> = Address::from_str(&s)
+                        .map_err(serde::de::Error::custom)?;
+                    Ok(Some(unchecked
+                        .require_network(bitcoin::Network::Bitcoin)
+                        .map_err(serde::de::Error::custom)?))
+                }
+                None => Ok(None)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -299,6 +331,16 @@ pub mod bitcoin_address {
         actual: bitcoin::Network,
     }
 
+    pub fn parse(addr_str: &str) -> Result<bitcoin::Address<NetworkUnchecked>> {
+        let address = bitcoin::Address::from_str(addr_str)?;
+
+        if address.assume_checked_ref().address_type() != Some(bitcoin::AddressType::P2wpkh) {
+            anyhow::bail!("Invalid Bitcoin address provided, only bech32 format is supported!")
+        }
+
+        Ok(address)
+    }
+
     /// Parse the address and validate the network.
     pub fn parse_and_validate_network(
         address: &str,
@@ -346,6 +388,11 @@ pub mod bitcoin_address {
     pub fn revalidate_network(address: Address, expected_network: bitcoin::Network) -> Result<Address> {
         address.as_unchecked().clone().require_network(expected_network)
             .context("bitcoin address network mismatch")
+    }
+
+    /// Validate the address network even though the address is already checked.
+    pub fn revalidate(address: Address, is_testnet: bool) -> Result<Address> {
+        revalidate_network(address, if is_testnet { bitcoin::Network::Testnet } else { bitcoin::Network::Bitcoin })
     }
 }
 

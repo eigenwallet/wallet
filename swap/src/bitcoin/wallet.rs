@@ -18,6 +18,7 @@ use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use url::Url;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
@@ -417,7 +418,7 @@ where
     /// already accounting for the fees we need to spend to get the
     /// transaction confirmed.
     pub async fn max_giveable(&self, locking_script_size: usize) -> Result<Amount> {
-        let wallet = self.wallet.lock().await;
+        let mut wallet = self.wallet.lock().await;
         let balance = wallet.balance();
         if balance.total() < DUST_AMOUNT {
             return Ok(Amount::ZERO);
@@ -441,11 +442,14 @@ where
         let response = tx_builder.finish();
         match response {
             Result::Ok(psbt) => {
-                let max_giveable = psbt.unsigned_tx.output.iter().map(|o| o.value).sum()
+                let max_giveable = psbt.unsigned_tx.output.iter()
+                        .map(|o| o.value)
+                        .reduce(|a, b| a + b)
+                        .unwrap_or(Amount::ZERO)
                     - psbt
                         .fee_amount()
                         .expect("fees are always present with Electrum backend");
-                Ok(Amount::from_sat(max_giveable))
+                Ok(max_giveable)
             }
             Err(e) => bail!("Failed to build transaction. {:#}", e),
         }
@@ -500,7 +504,7 @@ where
 
 impl Client {
     /// Create a new client to this electrum server.
-    fn new(electrum_rpc_url: &str, sync_interval: Duration) -> Result<Self> {
+    pub fn new(electrum_rpc_url: &str, sync_interval: Duration) -> Result<Self> {
         let client = bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?;
         Ok(Self {
             electrum: BdkElectrumClient::new(client),
@@ -576,7 +580,7 @@ impl Client {
     }
 
     /// Get the status of a script.
-    pub fn status_of_script(&self, script: &impl Watchable) -> Result<ScriptStatus> {
+    pub fn status_of_script(&mut self, script: &impl Watchable) -> Result<ScriptStatus> {
         let (script, txid) = script.script_and_txid();
 
         if !self.script_history.contains_key(&script) {
