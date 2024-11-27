@@ -4,9 +4,9 @@ use crate::bitcoin::{
     TooManyInputs, Transaction, TxCancel,
 };
 use crate::{bitcoin, monero};
-use ::bitcoin::{secp256k1, ScriptBuf};
 use ::bitcoin::sighash::SighashCache;
-use ::bitcoin::{EcdsaSighashType, Script, Txid, sighash::SegwitV0Sighash as Sighash};
+use ::bitcoin::{secp256k1, ScriptBuf};
+use ::bitcoin::{sighash::SegwitV0Sighash as Sighash, EcdsaSighashType, Script, Txid};
 use anyhow::{bail, Context, Result};
 use bdk_wallet::miniscript::Descriptor;
 use ecdsa_fun::Signature;

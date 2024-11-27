@@ -6,8 +6,8 @@ use crate::bitcoin::{
 use ::bitcoin::{sighash::SegwitV0Sighash as Sighash, Txid};
 use anyhow::{bail, Context, Result};
 use bdk_wallet::miniscript::Descriptor;
-use bitcoin::{secp256k1, ScriptBuf};
 use bitcoin::sighash::SighashCache;
+use bitcoin::{secp256k1, ScriptBuf};
 use bitcoin::{EcdsaSighashType, Script};
 use ecdsa_fun::adaptor::{Adaptor, HashTranscript};
 use ecdsa_fun::fun::Scalar;

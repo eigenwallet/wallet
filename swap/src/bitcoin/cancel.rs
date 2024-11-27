@@ -6,8 +6,8 @@ use crate::bitcoin::{
 use ::bitcoin::sighash::SighashCache;
 use ::bitcoin::transaction::Version;
 use ::bitcoin::{
-    secp256k1, EcdsaSighashType, OutPoint, locktime::absolute::LockTime as PackedLockTime, ScriptBuf, Sequence, sighash::SegwitV0Sighash as Sighash, TxIn, TxOut,
-    Txid,
+    locktime::absolute::LockTime as PackedLockTime, secp256k1, sighash::SegwitV0Sighash as Sighash,
+    EcdsaSighashType, OutPoint, ScriptBuf, Sequence, TxIn, TxOut, Txid,
 };
 use anyhow::Result;
 use bdk_wallet::miniscript::Descriptor;

@@ -9,16 +9,15 @@ use bdk_wallet::descriptor::IntoWalletDescriptor;
 use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite::Connection;
-use bdk_wallet::{rusqlite, KeychainKind};
 use bdk_wallet::PersistedWallet;
 use bdk_wallet::SignOptions;
 use bdk_wallet::WalletPersister;
+use bdk_wallet::{rusqlite, KeychainKind};
 use bitcoin::ScriptBuf;
 use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use url::Url;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
@@ -28,6 +27,7 @@ use std::time::Duration;
 use std::time::Instant;
 use tokio::sync::{watch, Mutex};
 use tracing::{debug_span, Instrument};
+use url::Url;
 
 use super::BlockHeight;
 
@@ -143,7 +143,7 @@ where
     <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
 {
     /// Create a new wallet. The descriptor is the wallet descriptor for the external and internal keys.
-    /// 
+    ///
     /// A persistor is the database connection used to persist the wallet,
     /// mostly a sqlite connection.
     pub async fn new(
@@ -161,7 +161,7 @@ where
             .context("Failed to create wallet")?;
 
         let client = Client::new(electrum_rpc_url, sync_interval)?;
-        
+
         Ok(Self {
             wallet: Arc::new(Mutex::new(wallet)),
             client: Arc::new(Mutex::new(client)),
@@ -183,7 +183,7 @@ where
     }
 
     /// Get the target block of this wallet.
-    /// 
+    ///
     /// This is the the number of blocks we want to wait at most for
     /// one ofour transaction to be confirmed.
     pub fn target_block(&self) -> usize {
@@ -316,23 +316,16 @@ where
 
     /// Returns the total Bitcoin balance, which includes pending funds
     pub async fn balance(&self) -> Result<Amount> {
-        Ok(self
-            .wallet
-            .lock()
-            .await
-            .balance()
-            .total())
+        Ok(self.wallet.lock().await.balance().total())
     }
 
     /// Reveals the next address from the wallet.
     pub async fn new_address(&self) -> Result<Address> {
         let mut wallet = self.wallet.lock().await;
 
-        let address = wallet
-            .reveal_next_address(KeychainKind::External)
-            .address;
+        let address = wallet.reveal_next_address(KeychainKind::External).address;
 
-        // Important: persist that we revealed a new address. 
+        // Important: persist that we revealed a new address.
         // Otherwise the wallet might reuse it (bad).
         let mut persister = self.persister.lock().await;
         wallet.persist(&mut persister)?;
@@ -341,10 +334,12 @@ where
     }
 
     /// Calculate the fee for a given transaction.
-    /// 
+    ///
     /// Will fail if the transaction inputs are not owned by this wallet.
     pub async fn transaction_fee(&self, txid: Txid) -> Result<Amount> {
-        let transaction = self.get_tx(txid).await
+        let transaction = self
+            .get_tx(txid)
+            .await
             .context("Could not find tx in bdk wallet when trying to determine fees")?;
         let fee = self.wallet.lock().await.calculate_fee(&transaction)?;
 
@@ -442,10 +437,13 @@ where
         let response = tx_builder.finish();
         match response {
             Result::Ok(psbt) => {
-                let max_giveable = psbt.unsigned_tx.output.iter()
-                        .map(|o| o.value)
-                        .reduce(|a, b| a + b)
-                        .unwrap_or(Amount::ZERO)
+                let max_giveable = psbt
+                    .unsigned_tx
+                    .output
+                    .iter()
+                    .map(|o| o.value)
+                    .reduce(|a, b| a + b)
+                    .unwrap_or(Amount::ZERO)
                     - psbt
                         .fee_amount()
                         .expect("fees are always present with Electrum backend");
@@ -473,7 +471,8 @@ where
     /// Get a transaction from the Electrum server or the cache.
     pub async fn get_tx(&self, txid: Txid) -> Result<Transaction> {
         let client = self.client.lock().await;
-        let tx = client.get_tx(txid)
+        let tx = client
+            .get_tx(txid)
             .context("Failed to get transaction from cache or Electrum server")?;
 
         Ok(tx)
@@ -483,7 +482,8 @@ where
     pub async fn sync(&self) -> Result<()> {
         const BATCH_SIZE: usize = 64;
 
-        let sync_request = self.wallet
+        let sync_request = self
+            .wallet
             .lock()
             .await
             .start_sync_with_revealed_spks()
@@ -519,7 +519,7 @@ impl Client {
     }
 
     /// Update the client state, if the refresh duration has passed.
-    /// 
+    ///
     /// Optionally force an update even if the sync interval has not passed.
     pub fn update_state(&mut self, force: bool) -> Result<()> {
         let now = Instant::now();
@@ -537,14 +537,18 @@ impl Client {
 
     /// Update the block height.
     fn update_block_height(&mut self) -> Result<()> {
-        let latest_block = self.electrum
+        let latest_block = self
+            .electrum
             .inner
             .block_headers_subscribe()
             .context("Failed to subscribe to header notifications")?;
         let latest_block_height = BlockHeight::try_from(latest_block)?;
 
         if latest_block_height > self.latest_block_height {
-            tracing::trace!(block_height=u32::from(latest_block_height), "Got notification for new block");
+            tracing::trace!(
+                block_height = u32::from(latest_block_height),
+                "Got notification for new block"
+            );
             self.latest_block_height = latest_block_height;
         }
 
@@ -555,13 +559,18 @@ impl Client {
     fn update_script_histories(&mut self) -> Result<()> {
         let scripts = self.script_history.keys().map(|s| s.as_script());
 
-        let histories = self.electrum
+        let histories = self
+            .electrum
             .inner
             .batch_script_get_history(scripts)
             .context("Failed to fetch script histories")?;
 
         if histories.len() != self.script_history.len() {
-            bail!("Expected {} script histories, got {}", self.script_history.len(), histories.len());
+            bail!(
+                "Expected {} script histories, got {}",
+                self.script_history.len(),
+                histories.len()
+            );
         }
 
         let scripts = self.script_history.keys().cloned();
@@ -572,10 +581,11 @@ impl Client {
 
     /// Broadcast a transaction to the network.
     pub fn transaction_broadcast(&self, transaction: &Transaction) -> Result<Arc<Txid>> {
-        Ok(Arc::new(self.electrum
-            .inner
-            .transaction_broadcast(transaction)
-            .context("Failed to broadcast transaction")?
+        Ok(Arc::new(
+            self.electrum
+                .inner
+                .transaction_broadcast(transaction)
+                .context("Failed to broadcast transaction")?,
         ))
     }
 
@@ -606,7 +616,7 @@ impl Client {
             // If there is no history of the transaction, it is unseen.
             return Ok(ScriptStatus::Unseen);
         };
-            
+
         // There should only be one entry per txid, we will ignore the rest
         if !rest.is_empty() {
             tracing::warn!(%txid, "Found multiple history entries for the same txid. Ignoring all but the last one.");
@@ -619,16 +629,18 @@ impl Client {
             height => Ok(ScriptStatus::Confirmed(
                 Confirmed::from_inclusion_and_latest_block(
                     u32::try_from(last.height)?,
-                    u32::from(self.latest_block_height)
-                )
-            ))
+                    u32::from(self.latest_block_height),
+                ),
+            )),
         }
     }
 
     /// Get a transaction from the Electrum server.
     /// Fails if the transaction is not found.
     pub fn get_tx(&self, txid: Txid) -> Result<Transaction> {
-        self.electrum.inner.transaction_get(&txid)
+        self.electrum
+            .inner
+            .transaction_get(&txid)
             .context("Failed to get transaction from the Electrum server")
     }
 }
@@ -640,16 +652,13 @@ impl EstimateFeeRate for Client {
         // Convert to sat/vb
         let fee_rate_sat_vb = Amount::from_btc(fee_rate_btc_kvb / 1_000.)?;
 
-        FeeRate::from_sat_per_vb(
-            fee_rate_sat_vb.to_sat()
-        ).ok_or(anyhow!("Fee rate overflow"))
+        FeeRate::from_sat_per_vb(fee_rate_sat_vb.to_sat()).ok_or(anyhow!("Fee rate overflow"))
     }
 
     fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
         let relay_fee_btc = self.electrum.inner.relay_fee()?;
 
-        Amount::from_btc(relay_fee_btc)
-            .context("fee out of range")
+        Amount::from_btc(relay_fee_btc).context("fee out of range")
     }
 }
 
@@ -780,7 +789,9 @@ pub mod old {
                 database,
             ) {
                 Ok(w) => w,
-                Err(bdk::Error::ChecksumMismatch) => Self::old_migrate(data_dir, xprivkey, network)?,
+                Err(bdk::Error::ChecksumMismatch) => {
+                    Self::old_migrate(data_dir, xprivkey, network)?
+                }
                 err => err?,
             };
 
@@ -795,7 +806,7 @@ pub mod old {
         }
 
         /// Get a full export of the wallet including descriptors and blockheight.
-        /// 
+        ///
         /// TODO: Add internal and external derivation indices to the export.
         pub async fn export(&self, role: &str) -> Result<bdk_wallet::export::FullyNodedExport> {
             let wallet = self.wallet.lock().await;
@@ -815,7 +826,7 @@ pub mod old {
         }
 
         /// Create a new old database for the wallet and rename the old old one.
-        /// 
+        ///
         /// Create a new database for the wallet and rename the old one.
         /// This is necessary when getting a ChecksumMismatch from a wallet
         /// created with an older version of BDK. Only affected Testnet wallets.

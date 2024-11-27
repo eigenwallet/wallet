@@ -1,3 +1,4 @@
+use crate::bitcoin::address_serde;
 use crate::bitcoin::wallet::{EstimateFeeRate, Subscription};
 use crate::bitcoin::{
     self, current_epoch, CancelTimelock, ExpiredTimelocks, PunishTimelock, Transaction, TxCancel,
@@ -21,7 +22,6 @@ use sigma_fun::ext::dl_secp256k1_ed25519_eq::CrossCurveDLEQProof;
 use std::fmt;
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::bitcoin::address_serde;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum BobState {
@@ -183,11 +183,7 @@ impl State0 {
         }
     }
 
-    pub async fn receive<Persister>(
-        self,
-        wallet: &bitcoin::Wallet<>,
-        msg: Message1,
-    ) -> Result<State1>
+    pub async fn receive<Persister>(self, wallet: &bitcoin::Wallet, msg: Message1) -> Result<State1>
     where
         Persister: WalletPersister,
         <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,

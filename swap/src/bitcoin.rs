@@ -24,9 +24,9 @@ pub use wallet::Wallet;
 #[cfg(test)]
 pub use wallet::WalletBuilder;
 
-use ::bitcoin::secp256k1::ecdsa;
-use ::bitcoin::hashes::Hash;
 use crate::bitcoin::wallet::ScriptStatus;
+use ::bitcoin::hashes::Hash;
+use ::bitcoin::secp256k1::ecdsa;
 use ::bitcoin::sighash::SegwitV0Sighash as Sighash;
 use anyhow::{bail, Context, Result};
 use bdk_wallet::miniscript::descriptor::Wsh;
@@ -58,7 +58,7 @@ pub mod address_serde {
     use std::str::FromStr;
 
     use bitcoin::address::{Address, NetworkChecked, NetworkUnchecked};
-    use serde::{Deserializer, Serialize, Serializer, Deserialize};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
     pub fn serialize<S>(address: &Address<NetworkChecked>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -71,9 +71,10 @@ pub mod address_serde {
     where
         D: Deserializer<'de>,
     {
-        let unchecked: Address<NetworkUnchecked> = Address::from_str(&String::deserialize(deserializer)?)
-            .map_err(serde::de::Error::custom)?;
-        
+        let unchecked: Address<NetworkUnchecked> =
+            Address::from_str(&String::deserialize(deserializer)?)
+                .map_err(serde::de::Error::custom)?;
+
         Ok(unchecked
             .require_network(bitcoin::Network::Bitcoin)
             .map_err(serde::de::Error::custom)?)
@@ -83,30 +84,37 @@ pub mod address_serde {
     pub mod option {
         use super::*;
 
-        pub fn serialize<S>(address: &Option<Address<NetworkChecked>>, serializer: S) -> Result<S::Ok, S::Error>
+        pub fn serialize<S>(
+            address: &Option<Address<NetworkChecked>>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error>
         where
             S: Serializer,
         {
             match address {
                 Some(addr) => addr.to_string().serialize(serializer),
-                None => serializer.serialize_none()
+                None => serializer.serialize_none(),
             }
         }
 
-        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Address<NetworkChecked>>, D::Error>
+        pub fn deserialize<'de, D>(
+            deserializer: D,
+        ) -> Result<Option<Address<NetworkChecked>>, D::Error>
         where
             D: Deserializer<'de>,
         {
             let opt: Option<String> = Option::deserialize(deserializer)?;
             match opt {
                 Some(s) => {
-                    let unchecked: Address<NetworkUnchecked> = Address::from_str(&s)
-                        .map_err(serde::de::Error::custom)?;
-                    Ok(Some(unchecked
-                        .require_network(bitcoin::Network::Bitcoin)
-                        .map_err(serde::de::Error::custom)?))
+                    let unchecked: Address<NetworkUnchecked> =
+                        Address::from_str(&s).map_err(serde::de::Error::custom)?;
+                    Ok(Some(
+                        unchecked
+                            .require_network(bitcoin::Network::Bitcoin)
+                            .map_err(serde::de::Error::custom)?,
+                    ))
                 }
-                None => Ok(None)
+                None => Ok(None),
             }
         }
     }
@@ -232,7 +240,11 @@ pub fn verify_sig(
 ) -> Result<()> {
     let ecdsa = ECDSA::verify_only();
 
-    if ecdsa.verify(&verification_key.0, &transaction_sighash.to_byte_array(), sig) {
+    if ecdsa.verify(
+        &verification_key.0,
+        &transaction_sighash.to_byte_array(),
+        sig,
+    ) {
         Ok(())
     } else {
         bail!(InvalidSignature)
@@ -318,7 +330,10 @@ pub fn current_epoch(
 
 pub mod bitcoin_address {
     use anyhow::{Context, Result};
-    use bitcoin::{address::{NetworkChecked, NetworkUnchecked, NetworkValidation}, Address};
+    use bitcoin::{
+        address::{NetworkChecked, NetworkUnchecked, NetworkValidation},
+        Address,
+    };
     use serde::Serialize;
     use std::str::FromStr;
 
@@ -347,19 +362,14 @@ pub mod bitcoin_address {
         expected_network: bitcoin::Network,
     ) -> Result<bitcoin::Address> {
         let addres = bitcoin::Address::from_str(address)?;
-        let addres = addres
-            .require_network(expected_network)
-            .with_context(|| format!(
-                "bitcoin address network mismatch, expected `{expected_network:?}`",
-            ))?;
+        let addres = addres.require_network(expected_network).with_context(|| {
+            format!("bitcoin address network mismatch, expected `{expected_network:?}`",)
+        })?;
         Ok(addres)
     }
 
     /// Parse the address and validate the network.
-    pub fn parse_and_validate(
-        address: &str,
-        is_testnet: bool,
-    ) -> Result<bitcoin::Address> {
+    pub fn parse_and_validate(address: &str, is_testnet: bool) -> Result<bitcoin::Address> {
         let expected_network = if is_testnet {
             bitcoin::Network::Testnet
         } else {
@@ -369,7 +379,10 @@ pub mod bitcoin_address {
     }
 
     /// Validate the address network.
-    pub fn validate(address: Address::<NetworkUnchecked>, is_testnet: bool) -> Result<Address<NetworkChecked>> {
+    pub fn validate(
+        address: Address<NetworkUnchecked>,
+        is_testnet: bool,
+    ) -> Result<Address<NetworkChecked>> {
         let expected_network = if is_testnet {
             bitcoin::Network::Testnet
         } else {
@@ -379,20 +392,37 @@ pub mod bitcoin_address {
     }
 
     /// Validate the address network.
-    pub fn validate_network(address: Address<NetworkUnchecked>, expected_network: bitcoin::Network) -> Result<Address<NetworkChecked>> {
-        Ok(address.require_network(expected_network)
+    pub fn validate_network(
+        address: Address<NetworkUnchecked>,
+        expected_network: bitcoin::Network,
+    ) -> Result<Address<NetworkChecked>> {
+        Ok(address
+            .require_network(expected_network)
             .context("bitcoin address network mismatch")?)
     }
 
     /// Validate the address network even though the address is already checked.
-    pub fn revalidate_network(address: Address, expected_network: bitcoin::Network) -> Result<Address> {
-        address.as_unchecked().clone().require_network(expected_network)
+    pub fn revalidate_network(
+        address: Address,
+        expected_network: bitcoin::Network,
+    ) -> Result<Address> {
+        address
+            .as_unchecked()
+            .clone()
+            .require_network(expected_network)
             .context("bitcoin address network mismatch")
     }
 
     /// Validate the address network even though the address is already checked.
     pub fn revalidate(address: Address, is_testnet: bool) -> Result<Address> {
-        revalidate_network(address, if is_testnet { bitcoin::Network::Testnet } else { bitcoin::Network::Bitcoin })
+        revalidate_network(
+            address,
+            if is_testnet {
+                bitcoin::Network::Testnet
+            } else {
+                bitcoin::Network::Bitcoin
+            },
+        )
     }
 }
 

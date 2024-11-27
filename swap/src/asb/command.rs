@@ -435,7 +435,8 @@ mod tests {
             env_config: mainnet_env_config,
             cmd: Command::WithdrawBtc {
                 amount: None,
-                address: bitcoin_address::parse_and_validate(BITCOIN_MAINNET_ADDRESS, false).unwrap(),
+                address: bitcoin_address::parse_and_validate(BITCOIN_MAINNET_ADDRESS, false)
+                    .unwrap(),
             },
         };
         let args = parse_args(raw_ars).unwrap();
@@ -612,7 +613,8 @@ mod tests {
             env_config: testnet_env_config,
             cmd: Command::WithdrawBtc {
                 amount: None,
-                address: bitcoin_address::parse_and_validate(BITCOIN_TESTNET_ADDRESS, true).unwrap(),
+                address: bitcoin_address::parse_and_validate(BITCOIN_TESTNET_ADDRESS, true)
+                    .unwrap(),
             },
         };
         let args = parse_args(raw_ars).unwrap();
@@ -752,8 +754,7 @@ mod tests {
 
     #[test]
     fn given_bitcoin_address_network_mismatch_then_error() {
-        let error =
-            bitcoin_address::parse_and_validate(BITCOIN_MAINNET_ADDRESS, true).unwrap_err();
+        let error = bitcoin_address::parse_and_validate(BITCOIN_MAINNET_ADDRESS, true).unwrap_err();
 
         assert_eq!(
             error
@@ -765,7 +766,8 @@ mod tests {
             }
         );
 
-        let error = bitcoin_address::parse_and_validate(BITCOIN_TESTNET_ADDRESS, false).unwrap_err();
+        let error =
+            bitcoin_address::parse_and_validate(BITCOIN_TESTNET_ADDRESS, false).unwrap_err();
 
         assert_eq!(
             error

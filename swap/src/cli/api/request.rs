@@ -21,7 +21,6 @@ use qrcode::render::unicode;
 use qrcode::QrCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use url::Url;
 use std::cmp::min;
 use std::convert::TryInto;
 use std::future::Future;
@@ -34,6 +33,7 @@ use tracing::debug_span;
 use tracing::Instrument;
 use tracing::Span;
 use typeshare::typeshare;
+use url::Url;
 use uuid::Uuid;
 
 /// This trait is implemented by all types of request args that

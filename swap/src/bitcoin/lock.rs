@@ -2,12 +2,12 @@ use crate::bitcoin::wallet::{EstimateFeeRate, Watchable};
 use crate::bitcoin::{
     build_shared_output_descriptor, Address, Amount, PublicKey, Transaction, Wallet,
 };
-use bdk_wallet::psbt::PsbtUtils;
 use ::bitcoin::psbt::Psbt as PartiallySignedTransaction;
 use ::bitcoin::{OutPoint, TxIn, TxOut, Txid};
 use anyhow::{bail, Context, Result};
-use bdk_wallet::WalletPersister;
 use bdk_wallet::miniscript::Descriptor;
+use bdk_wallet::psbt::PsbtUtils;
+use bdk_wallet::WalletPersister;
 use bitcoin::{locktime::absolute::LockTime as PackedLockTime, ScriptBuf, Sequence};
 use serde::{Deserialize, Serialize};
 
@@ -29,8 +29,8 @@ impl TxLock {
         change: bitcoin::Address,
     ) -> Result<Self>
     where
-    Persister: WalletPersister + Sized,
-    <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
+        Persister: WalletPersister + Sized,
+        <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
     {
         let lock_output_descriptor = build_shared_output_descriptor(A.0, B.0)?;
         let address = lock_output_descriptor
@@ -102,16 +102,18 @@ impl TxLock {
     }
 
     pub fn fee(&self) -> Result<Amount> {
-        Ok(
-            self.inner
-                .clone()
-                .fee_amount()
-                .context("The PSBT is missing a TxOut for an input")?,
-        )
+        Ok(self
+            .inner
+            .clone()
+            .fee_amount()
+            .context("The PSBT is missing a TxOut for an input")?)
     }
 
     pub fn txid(&self) -> Txid {
-        self.inner.clone().extract_tx_unchecked_fee_rate().compute_txid()
+        self.inner
+            .clone()
+            .extract_tx_unchecked_fee_rate()
+            .compute_txid()
     }
 
     pub fn as_outpoint(&self) -> OutPoint {
@@ -159,7 +161,10 @@ impl TxLock {
         };
 
         let tx_out = TxOut {
-            value: self.inner.clone().extract_tx_unchecked_fee_rate().output[self.lock_output_vout()].value - spending_fee,
+            value: self.inner.clone().extract_tx_unchecked_fee_rate().output
+                [self.lock_output_vout()]
+            .value
+                - spending_fee,
             script_pubkey: spend_address.script_pubkey(),
         };
 
@@ -186,7 +191,7 @@ impl From<TxLock> for PartiallySignedTransaction {
 
 impl Watchable for TxLock {
     fn id(&self) -> Txid {
-        self.txid() 
+        self.txid()
     }
 
     fn script(&self) -> ScriptBuf {

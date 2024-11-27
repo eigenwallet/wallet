@@ -1,6 +1,6 @@
 use crate::fs::ensure_directory_exists;
-use anyhow::{Context, Result};
 use ::bitcoin::bip32::Xpriv as ExtendedPrivKey;
+use anyhow::{Context, Result};
 use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::secp256k1::constants::SECRET_KEY_SIZE;
 use bitcoin::secp256k1::{self, SecretKey};
