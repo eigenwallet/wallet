@@ -15,6 +15,7 @@ use ecdsa_fun::nonce::Deterministic;
 use ecdsa_fun::Signature;
 use sha2::Sha256;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use super::extract_ecdsa_sig;
 
@@ -118,7 +119,7 @@ impl TxRedeem {
 
     pub fn extract_signature_by_key(
         &self,
-        candidate_transaction: Transaction,
+        candidate_transaction: Arc<Transaction>,
         B: PublicKey,
     ) -> Result<Signature> {
         let input = match candidate_transaction.input.as_slice() {

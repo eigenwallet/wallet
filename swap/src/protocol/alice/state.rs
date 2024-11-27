@@ -14,6 +14,7 @@ use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sigma_fun::ext::dl_secp256k1_ed25519_eq::CrossCurveDLEQProof;
 use std::fmt;
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -477,7 +478,7 @@ impl State3 {
 
     pub fn extract_monero_private_key(
         &self,
-        published_refund_tx: bitcoin::Transaction,
+        published_refund_tx: Arc<bitcoin::Transaction>,
     ) -> Result<monero::PrivateKey> {
         self.tx_refund().extract_monero_private_key(
             published_refund_tx,
@@ -490,13 +491,13 @@ impl State3 {
     pub async fn check_for_tx_cancel(
         &self,
         bitcoin_wallet: &bitcoin::Wallet,
-    ) -> Result<Transaction> {
+    ) -> Result<Arc<Transaction>> {
         let tx_cancel = self.tx_cancel();
         let tx = bitcoin_wallet.get_raw_transaction(tx_cancel.txid()).await?;
         Ok(tx)
     }
 
-    pub async fn fetch_tx_refund(&self, bitcoin_wallet: &bitcoin::Wallet) -> Result<Transaction> {
+    pub async fn fetch_tx_refund(&self, bitcoin_wallet: &bitcoin::Wallet) -> Result<Arc<Transaction>> {
         let tx_refund = self.tx_refund();
         let tx = bitcoin_wallet.get_raw_transaction(tx_refund.txid()).await?;
         Ok(tx)

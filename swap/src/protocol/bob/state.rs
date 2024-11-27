@@ -183,7 +183,7 @@ impl State0 {
         }
     }
 
-    pub async fn receive<Persister>(self, wallet: &bitcoin::Wallet, msg: Message1) -> Result<State1>
+    pub async fn receive<Persister>(self, wallet: &bitcoin::Wallet<Persister>, msg: Message1) -> Result<State1>
     where
         Persister: WalletPersister,
         <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
@@ -754,7 +754,7 @@ impl State6 {
     pub async fn check_for_tx_cancel(
         &self,
         bitcoin_wallet: &bitcoin::Wallet,
-    ) -> Result<Transaction> {
+    ) -> Result<Arc<Transaction>> {
         let tx_cancel = self.construct_tx_cancel()?;
 
         let tx = bitcoin_wallet.get_raw_transaction(tx_cancel.txid()).await?;

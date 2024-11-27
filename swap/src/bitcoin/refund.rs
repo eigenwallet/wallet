@@ -11,6 +11,7 @@ use anyhow::{bail, Context, Result};
 use bdk_wallet::miniscript::Descriptor;
 use ecdsa_fun::Signature;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use super::extract_ecdsa_sig;
 
@@ -101,7 +102,7 @@ impl TxRefund {
 
     pub fn extract_monero_private_key(
         &self,
-        published_refund_tx: bitcoin::Transaction,
+        published_refund_tx: Arc<bitcoin::Transaction>,
         s_a: monero::Scalar,
         a: bitcoin::SecretKey,
         S_b_bitcoin: bitcoin::PublicKey,
@@ -125,7 +126,7 @@ impl TxRefund {
 
     fn extract_signature_by_key(
         &self,
-        candidate_transaction: Transaction,
+        candidate_transaction: Arc<Transaction>,
         B: PublicKey,
     ) -> Result<Signature> {
         let input = match candidate_transaction.input.as_slice() {

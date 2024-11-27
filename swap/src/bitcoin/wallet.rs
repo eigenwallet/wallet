@@ -5,14 +5,15 @@ use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
 use bdk_electrum::BdkElectrumClient;
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::bitcoin::Network;
-use bdk_wallet::descriptor::IntoWalletDescriptor;
 use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite::Connection;
+use bdk_wallet::template::{Bip84, DescriptorTemplate};
 use bdk_wallet::PersistedWallet;
 use bdk_wallet::SignOptions;
 use bdk_wallet::WalletPersister;
-use bdk_wallet::{rusqlite, KeychainKind};
+use bdk_wallet::KeychainKind;
+use bitcoin::bip32::Xpriv;
 use bitcoin::ScriptBuf;
 use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid};
 use rust_decimal::prelude::*;
@@ -22,6 +23,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -37,7 +39,7 @@ const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.03);
 const MAX_ABSOLUTE_TX_FEE: Decimal = dec!(100_000);
 const DUST_AMOUNT: Amount = Amount::from_sat(546);
 
-const WALLET_NEW: &str = "wallet-new";
+const WALLET_PATH: &str = "wallet-new";
 
 /// This is our wrapper around a bdk wallet and a corresponding
 /// bdk electrum client.
@@ -47,7 +49,7 @@ const WALLET_NEW: &str = "wallet-new";
 /// This wallet is generic over the persister, which may be a
 /// rusqlite connection, or an in-memory database, or something else.
 #[derive(Clone)]
-pub struct Wallet<Persister = rusqlite::Connection> {
+pub struct Wallet<Persister = Connection> {
     /// The wallet, which is persisted to the disk.
     wallet: Arc<Mutex<PersistedWallet<Persister>>>,
     /// The database connection used to persist the wallet.
@@ -137,32 +139,40 @@ pub trait EstimateFeeRate {
     fn min_relay_fee(&self) -> Result<bitcoin::Amount>;
 }
 
-impl<Persister> Wallet<Persister>
-where
-    Persister: WalletPersister + Sized,
-    <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
-{
+impl Wallet {
     /// Create a new wallet. The descriptor is the wallet descriptor for the external and internal keys.
     ///
     /// A persistor is the database connection used to persist the wallet,
     /// mostly a sqlite connection.
-    pub async fn new(
-        descriptor: impl IntoWalletDescriptor + Send + Clone + 'static,
+    fn new<Persister>(
+        xprivkey: Xpriv,
         network: Network,
         electrum_rpc_url: &str,
         mut persister: Persister,
         finality_confirmations: u32,
         target_block: usize,
         sync_interval: Duration,
-    ) -> Result<Wallet<Persister>> {
-        let wallet = bdk_wallet::Wallet::create(descriptor.clone(), descriptor.clone())
+    ) -> Result<Wallet<Persister>>
+    where
+        Persister: WalletPersister + Sized,
+        <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
+    {
+        let (descriptor, ..) = Bip84(xprivkey, KeychainKind::External)
+            .build(network)
+            .context("Failed to build external wallet descriptor")?;
+
+        let (change_descriptor, ..) = Bip84(xprivkey, KeychainKind::Internal)
+            .build(network)
+            .context("Failed to build change wallet descriptor")?;
+
+        let wallet = bdk_wallet::Wallet::create(descriptor, change_descriptor)
             .network(network)
             .create_wallet(&mut persister)
             .context("Failed to create wallet")?;
 
         let client = Client::new(electrum_rpc_url, sync_interval)?;
 
-        Ok(Self {
+        Ok(Wallet {
             wallet: Arc::new(Mutex::new(wallet)),
             client: Arc::new(Mutex::new(client)),
             network,
@@ -172,6 +182,42 @@ where
         })
     }
 
+    /// Create a new wallet, persisted to a sqlite database.
+    pub fn with_sqlite(
+        xprivkey: Xpriv,
+        network: Network,
+        electrum_rpc_url: &str,
+        data_dir: impl AsRef<Path>,
+        finality_confirmations: u32,
+        target_block: usize,
+        sync_interval: Duration
+    ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
+
+        let wallet_dir = data_dir.as_ref().join(WALLET_PATH);
+        let wallet_path = wallet_dir.join("walletdb.sqlite");
+        let connection = Connection::open(wallet_path)?;
+
+        Ok(Self::new(xprivkey, network, electrum_rpc_url, connection, finality_confirmations, target_block, sync_interval)?)
+    }
+
+    /// Create a new wallet, persisted to an in-memory sqlite database.
+    /// Should only be used for testing.
+    #[cfg(test)]
+    pub fn with_sqlite_in_memory(
+        xprivkey: Xpriv,
+        network: Network,
+        electrum_rpc_url: &str,
+        finality_confirmations: u32,
+        target_block: usize,
+        sync_interval: Duration
+    ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
+        Ok(Self::new(xprivkey, network, electrum_rpc_url, bdk_wallet::rusqlite::Connection::open_in_memory()?, finality_confirmations, target_block, sync_interval)?)
+    }
+}
+
+// These are the methods that are always available, regardless of the persister.
+impl<T> Wallet<T>
+{
     /// Get the network of this wallet.
     pub fn network(&self) -> Network {
         self.network
@@ -189,6 +235,14 @@ where
     pub fn target_block(&self) -> usize {
         self.target_block
     }
+}
+
+impl<Persister> Wallet<Persister>
+where
+    Persister: WalletPersister + Sized,
+    <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
+{
+    
 
     /// Broadcast the given transaction to the network and emit a tracing statement
     /// if done so successfully.
@@ -219,7 +273,7 @@ where
         Ok((txid, subscription))
     }
 
-    pub async fn get_raw_transaction(&self, txid: Txid) -> Result<Transaction> {
+    pub async fn get_raw_transaction(&self, txid: Txid) -> Result<Arc<Transaction>> {
         self.get_tx(txid)
             .await
             .with_context(|| format!("Could not get raw tx with id: {}", txid))
@@ -469,7 +523,7 @@ where
     }
 
     /// Get a transaction from the Electrum server or the cache.
-    pub async fn get_tx(&self, txid: Txid) -> Result<Transaction> {
+    pub async fn get_tx(&self, txid: Txid) -> Result<Arc<Transaction>> {
         let client = self.client.lock().await;
         let tx = client
             .get_tx(txid)
@@ -581,12 +635,13 @@ impl Client {
 
     /// Broadcast a transaction to the network.
     pub fn transaction_broadcast(&self, transaction: &Transaction) -> Result<Arc<Txid>> {
-        Ok(Arc::new(
-            self.electrum
-                .inner
-                .transaction_broadcast(transaction)
-                .context("Failed to broadcast transaction")?,
-        ))
+        // Broadcast the transaction to the network.
+        let res = self.electrum.transaction_broadcast(transaction).context("Failed to broadcast transaction")?;
+
+        // Add the transaction to the cache.
+        self.electrum.populate_tx_cache(vec![transaction.clone()]);
+
+        Ok(Arc::new(res))
     }
 
     /// Get the status of a script.
@@ -628,7 +683,7 @@ impl Client {
             // Otherwise, the transaction has been included in a block.
             height => Ok(ScriptStatus::Confirmed(
                 Confirmed::from_inclusion_and_latest_block(
-                    u32::try_from(last.height)?,
+                    u32::try_from(height)?,
                     u32::from(self.latest_block_height),
                 ),
             )),
@@ -637,10 +692,9 @@ impl Client {
 
     /// Get a transaction from the Electrum server.
     /// Fails if the transaction is not found.
-    pub fn get_tx(&self, txid: Txid) -> Result<Transaction> {
+    pub fn get_tx(&self, txid: Txid) -> Result<Arc<Transaction>> {
         self.electrum
-            .inner
-            .transaction_get(&txid)
+            .fetch_tx(txid)
             .context("Failed to get transaction from the Electrum server")
     }
 }
@@ -742,6 +796,7 @@ pub mod old {
     use bdk::bitcoin::{util::bip32::ExtendedPrivKey, Network};
     use bdk::sled::Tree;
     use bdk::KeychainKind;
+    use bitcoin::Amount;
     use tokio::sync::Mutex;
 
     use crate::env;
@@ -755,9 +810,27 @@ pub mod old {
     /// We need to contruct it before migration to get the keys and revelation indeces.
     pub struct OldWallet<D = Tree> {
         wallet: Arc<Mutex<bdk::Wallet<D>>>,
-        finality_confirmations: u32,
         network: Network,
-        target_block: u16,
+    }
+
+    /// This is all the data we need from the old wallet to be able to migrate it
+    /// and check whether we did it correctly.
+    pub struct Export {
+        /// Wallet descriptor and blockheight.
+        pub export: bdk_wallet::export::FullyNodedExport,
+        /// Index of the last external address that was revealed.
+        pub external_derivation_index: u32,
+        /// Index of the last internal address that was revealed.
+        pub internal_derivation_index: u32,
+        
+        // The following we include to check whether the migration was successful
+
+        /// The balance of the wallet.
+        pub balance: Amount,
+        /// The last internal address that was revealed.
+        pub last_revealed_internal: String,
+        /// The last external address that was revealed.
+        pub last_revealed_external: String,
     }
 
     impl OldWallet {
@@ -766,7 +839,6 @@ pub mod old {
             data_dir: impl AsRef<Path>,
             xprivkey: ExtendedPrivKey,
             env_config: env::Config,
-            target_block: u16,
         ) -> Result<Self> {
             let data_dir = data_dir.as_ref();
             let wallet_dir = data_dir.join(WALLET);
@@ -799,16 +871,13 @@ pub mod old {
 
             Ok(Self {
                 wallet: Arc::new(Mutex::new(wallet)),
-                finality_confirmations: env_config.bitcoin_finality_confirmations,
                 network,
-                target_block,
             })
         }
 
         /// Get a full export of the wallet including descriptors and blockheight.
-        ///
-        /// TODO: Add internal and external derivation indices to the export.
-        pub async fn export(&self, role: &str) -> Result<bdk_wallet::export::FullyNodedExport> {
+        /// It also includes the internal (change) address and external (receiving) address derivation indices.
+        pub async fn export(&self, role: &str) -> Result<Export> {
             let wallet = self.wallet.lock().await;
             let export = bdk::wallet::export::FullyNodedExport::export_wallet(
                 &wallet,
@@ -817,12 +886,31 @@ pub mod old {
             )
             .map_err(|_| anyhow!("Failed to export old wallet descriptor"))?;
 
+            let balance = wallet.get_balance()?;
+
             // Because we upgraded bdk, the type id changed.
             // Thus, we serialize to json and then deserialize to the new type.
             let json = serde_json::to_string(&export)?;
             let export = serde_json::from_str::<bdk_wallet::export::FullyNodedExport>(&json)?;
 
-            Ok(export)
+            let external_info = wallet
+                .get_address(bdk::wallet::AddressIndex::LastUnused)?;
+            let external_derivation_index = external_info.index;
+            let last_revealed_external = external_info.address.to_string(); 
+
+            let internal_info = wallet
+                .get_internal_address(bdk::wallet::AddressIndex::LastUnused)?;
+            let internal_derivation_index = internal_info.index;
+            let last_revealed_internal = internal_info.address.to_string();
+
+            Ok(Export {
+                export,
+                internal_derivation_index,
+                external_derivation_index,
+                balance: Amount::from_sat(balance.get_total()),
+                last_revealed_internal,
+                last_revealed_external,
+            })
         }
 
         /// Create a new old database for the wallet and rename the old old one.
@@ -1037,6 +1125,13 @@ pub struct StaticFeeRate {
 }
 
 #[cfg(test)]
+impl StaticFeeRate {
+    pub fn new(fee_rate: FeeRate, min_relay_fee: bitcoin::Amount) -> Self {
+        Self { fee_rate, min_relay_fee }
+    }
+}
+
+#[cfg(test)]
 impl EstimateFeeRate for StaticFeeRate {
     fn estimate_feerate(&self, _target_block: usize) -> Result<FeeRate> {
         Ok(self.fee_rate)
@@ -1101,40 +1196,20 @@ impl WalletBuilder {
     }
 
     pub fn build(self) -> Wallet<bdk_wallet::rusqlite::Connection> {
-        use bdk_wallet::{testutils, BlockTime};
-
-        let descriptors = testutils!(@descriptors (&format!("wpkh({}/*)", self.key)));
-
         let mut database = Connection::open_in_memory().expect("sqlite in memory to work");
 
-        for index in 0..self.num_utxos {
-            bdk::populate_test_db!(
-                &mut database,
-                testutils! {
-                    @tx ( (@external descriptors, index as u32) => self.utxo_amount ) (@confirmations 1)
-                },
-                Some(100)
-            );
-        }
-        let block_time = bdk::BlockTime {
-            height: 100,
-            timestamp: 0,
-        };
-        let sync_time = SyncTime { block_time };
-        database.set_sync_time(sync_time).unwrap();
+        // TODO: find a way to populate the database that works with the new bdk version
+        // for index in 0..self.num_utxos {
+        //     bdk::populate_test_db!(
+        //         &mut database,
+        //         testutils! {
+        //             @tx ( (@external descriptors, index as u32) => self.utxo_amount ) (@confirmations 1)
+        //         },
+        //         Some(100)
+        //     );
+        // }
 
-        let wallet = bdk::Wallet::new(&descriptors.0, None, Network::Regtest, database).unwrap();
-
-        Wallet {
-            client: Arc::new(Mutex::new(StaticFeeRate {
-                fee_rate: FeeRate::from_sat_per_vb(self.sats_per_vb),
-                min_relay_fee: bitcoin::Amount::from_sat(self.min_relay_fee_sats),
-            })),
-            wallet: Arc::new(Mutex::new(wallet)),
-            finality_confirmations: 1,
-            network: Network::Regtest,
-            target_block: 1,
-        }
+        super::Wallet::with_sqlite_in_memory(self.key, Network::Regtest, None, 1, 1, Duration::from_secs(10)).unwrap()
     }
 }
 
