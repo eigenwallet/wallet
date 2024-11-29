@@ -242,7 +242,7 @@ where
     Persister: WalletPersister + Sized,
     <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
 {
-    
+
 
     /// Broadcast the given transaction to the network and emit a tracing statement
     /// if done so successfully.
@@ -1198,7 +1198,7 @@ impl WalletBuilder {
     pub fn build(self) -> Wallet<bdk_wallet::rusqlite::Connection> {
         let mut database = Connection::open_in_memory().expect("sqlite in memory to work");
 
-        // TODO: find a way to populate the database that works with the new bdk version
+        panic!("TODO: find a way to populate the database that works with the new bdk version");
         // for index in 0..self.num_utxos {
         //     bdk::populate_test_db!(
         //         &mut database,
