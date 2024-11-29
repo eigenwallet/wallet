@@ -149,27 +149,10 @@ pub async fn main() -> Result<()> {
             // Connect to Kraken
             let kraken_price_updates = kraken::connect(config.maker.price_ticker_ws_url.clone())?;
 
-            // Setup Tor hidden services
-            let tor_client =
-                tor::Client::new(config.tor.socks5_port).with_control_port(config.tor.control_port);
-            let _ac = match tor_client.assert_tor_running().await {
-                Ok(_) => {
-                    tracing::info!("Setting up Tor hidden service");
-                    let ac =
-                        register_tor_services(config.network.clone().listen, tor_client, &seed)
-                            .await?;
-                    Some(ac)
-                }
-                Err(_) => {
-                    tracing::warn!("Tor not found. Running on clear net");
-                    None
-                }
-            };
-
             let kraken_rate = KrakenRate::new(config.maker.ask_spread, kraken_price_updates);
             let namespace = XmrBtcNamespace::from_is_testnet(testnet);
 
-            // Init Tor client
+            // Initialize Tor client
             let tor_client = init_tor_client(&config.data.dir).await?.into();
 
             let (mut swarm, onion_addresses) = swarm::asb(
@@ -192,9 +175,10 @@ pub async fn main() -> Result<()> {
 
             if config.tor.register_hidden_service {
                 for onion_address in onion_addresses {
-                    // We need to sleep here to allow the Tor daemon to register the hidden service
-                    // This is a temporary workaround
-                    tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+                    // We need to sleep here to wait for the bootstrap process to start BEFORE instructing libp2p to listen on the onion address
+                    // This is a temporary workaround but if we don't do this it does not work
+                    tracing::info!("Waiting for 5s to allow onion service bootstrapping to start");
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
                     match swarm.listen_on(onion_address.clone()) {
                         Err(e) => {
