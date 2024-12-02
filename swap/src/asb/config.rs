@@ -200,6 +200,7 @@ pub struct Monero {
 #[serde(deny_unknown_fields)]
 pub struct TorConf {
     pub register_hidden_service: bool,
+    pub hidden_service_num_intro_points: u8,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -218,6 +219,7 @@ impl Default for TorConf {
     fn default() -> Self {
         Self {
             register_hidden_service: true,
+            hidden_service_num_intro_points: 5,
         }
     }
 }
@@ -382,6 +384,7 @@ pub fn query_user_for_initial_config(testnet: bool) -> Result<Config> {
         },
         tor: TorConf {
             register_hidden_service,
+            ..Default::default()
         },
         maker: Maker {
             min_buy_btc: min_buy,

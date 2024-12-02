@@ -46,40 +46,41 @@ pub mod transport {
     pub fn new(
         identity: &identity::Keypair,
         maybe_tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
+        num_intro_points: u8,
+        register_hidden_service: bool,
     ) -> Result<OnionTransportWithAddresses> {
-        let maybe_tor_transport = maybe_tor_client.map(|tor_client| {
+        let (maybe_tor_transport, onion_addresses) = if let Some(tor_client) = maybe_tor_client {
             let mut tor_transport = libp2p_community_tor::TorTransport::from_client(
                 tor_client,
                 AddressConversion::DnsOnly,
             );
 
-            let onion_service_config = OnionServiceConfigBuilder::default()
-                .nickname(
-                    ASB_ONION_SERVICE_NICKNAME
-                        .parse()
-                        .expect("Static nickname to be valid"),
-                )
-                .build()
-                .expect("We specified a valid nickname");
+            let addresses = if register_hidden_service {
+                let onion_service_config = OnionServiceConfigBuilder::default()
+                    .nickname(
+                        ASB_ONION_SERVICE_NICKNAME
+                            .parse()
+                            .expect("Static nickname to be valid"),
+                    )
+                    .num_intro_points(num_intro_points)
+                    .build()
+                    .expect("We specified a valid nickname");
 
-            let addresses = tor_transport
-                .add_onion_service(onion_service_config, ASB_ONION_SERVICE_PORT)
-                .map_or_else(
-                    |err| {
+                match tor_transport.add_onion_service(onion_service_config, ASB_ONION_SERVICE_PORT)
+                {
+                    Ok(addr) => vec![addr],
+                    Err(err) => {
                         tracing::warn!(error=%err, "Failed to listen on onion address");
                         vec![]
-                    },
-                    |addr| vec![addr],
-                );
+                    }
+                }
+            } else {
+                vec![]
+            };
 
-            (tor_transport, addresses)
-        });
-
-        let (maybe_tor_transport, onion_addresses) = match maybe_tor_transport {
-            Some((tor_transport, onion_addresses)) => {
-                (OptionalTransport::some(tor_transport), onion_addresses)
-            }
-            None => (OptionalTransport::none(), vec![]),
+            (OptionalTransport::some(tor_transport), addresses)
+        } else {
+            (OptionalTransport::none(), vec![])
         };
 
         let tcp = maybe_tor_transport
