@@ -175,11 +175,6 @@ pub async fn main() -> Result<()> {
             }
 
             for onion_address in onion_addresses {
-                // We need to sleep here to wait for the bootstrap process to start BEFORE instructing libp2p to listen on the onion address
-                // This is a temporary workaround but if we don't do this it does not work
-                tracing::info!("Waiting for 5s to allow onion service bootstrapping to start");
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-
                 match swarm.listen_on(onion_address.clone()) {
                     Err(e) => {
                         tracing::warn!(

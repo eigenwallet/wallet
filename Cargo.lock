@@ -4742,8 +4742,8 @@ dependencies = [
 
 [[package]]
 name = "libp2p-community-tor"
-version = "0.4.1"
-source = "git+https://github.com/UnstoppableSwap/libp2p-tor?branch=feat/listen-hidden-service#0a973c81cc0b18ef7ba1cc3d5838f2ca8e63e5e2"
+version = "0.5.0"
+source = "git+https://github.com/UnstoppableSwap/libp2p-tor?branch=fix/announce-address-immed#3b227a639fb2169662a0b6fba8fd116560ed0adf"
 dependencies = [
  "anyhow",
  "arti-client",
