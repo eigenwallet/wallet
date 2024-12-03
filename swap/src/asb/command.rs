@@ -2,7 +2,7 @@ use crate::asb::config::GetDefaults;
 use crate::bitcoin::{bitcoin_address, Amount};
 use crate::env;
 use crate::env::GetConfig;
-use anyhow::{bail, Result};
+use anyhow::Result;
 use bitcoin::address::NetworkUnchecked;
 use bitcoin::Address;
 use serde::Serialize;

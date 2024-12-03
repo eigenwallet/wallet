@@ -48,7 +48,7 @@ impl TxRefund {
     }
 
     pub fn txid(&self) -> Txid {
-        self.inner.txid()
+        self.inner.compute_txid()
     }
 
     pub fn digest(&self) -> Sighash {

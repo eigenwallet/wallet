@@ -1,4 +1,5 @@
 use crate::bitcoin::{Address, Amount, Transaction};
+use crate::seed::Seed;
 use anyhow::{anyhow, bail, Context, Result};
 use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
 use bdk_electrum::BdkElectrumClient;
@@ -136,11 +137,15 @@ pub trait EstimateFeeRate {
 }
 
 impl Wallet {
-    /// Create a new wallet. The descriptor is the wallet descriptor for the external and internal keys.
-    ///
-    /// A persistor is the database connection used to persist the wallet,
-    /// mostly a sqlite connection.
-    fn create_new<Persister>(
+    /// If this many consequent addresses are unused, we stop the full scan.
+    /// This needs to be a very big number, because we generate a lot of addresses
+    /// which might end up unused.
+    const SCAN_STOP_GAP: usize = 1_000;
+    /// The batch size for the full scan.
+    const SCAN_BATCH_SIZE: usize = 5;
+
+    /// Create a new wallet in the database and perform a full scan.
+    async fn create_new<Persister>(
         xprivkey: Xpriv,
         network: Network,
         electrum_rpc_url: &str,
@@ -148,6 +153,7 @@ impl Wallet {
         finality_confirmations: u32,
         target_block: usize,
         sync_interval: Duration,
+        old_wallet: Option<old::Export>
     ) -> Result<Wallet<Persister>>
     where
         Persister: WalletPersister + Sized,
@@ -166,17 +172,26 @@ impl Wallet {
             .create_wallet(&mut persister)
             .context("Failed to create wallet")?;
 
+        // If we have an old wallet, we need to reveal the addresses that were used before
+        // to speed up the initial sync.
+        if let Some(old_wallet) = old_wallet {
+            tracing::info!("Migrating from old Bitcoin wallet, revealing addresses");
+            let _ = wallet.reveal_addresses_to(KeychainKind::External, old_wallet.external_derivation_index);
+            let _ = wallet.reveal_addresses_to(KeychainKind::Internal, old_wallet.internal_derivation_index);
+            wallet.persist(&mut persister)?;
+        }
+
         let client = Client::new(electrum_rpc_url, sync_interval)?;
 
-        tracing::debug!("Starting full bitcoin wallet scan");
+        tracing::debug!("Starting initial Bitcoin wallet scan");
 
         let full_scan = wallet.start_full_scan();
-        let full_scan_result = client.electrum.full_scan(full_scan, 5, 5, true)?;
+        let full_scan_result = client.electrum.full_scan(full_scan, Self::SCAN_STOP_GAP, Self::SCAN_BATCH_SIZE, true)?;
 
         wallet.apply_update(full_scan_result)?;
         wallet.persist(&mut persister)?;
 
-        tracing::debug!("Full bitcoin wallet scan completed");
+        tracing::debug!("Initial Bitcoin wallet scan completed");
 
         Ok(Wallet {
             wallet: Arc::new(Mutex::new(wallet)),
@@ -188,7 +203,8 @@ impl Wallet {
         })
     }
 
-    fn create_existing<Persister>(
+    /// Load existing wallet data from the database and perform a sync.
+    async fn create_existing<Persister>(
         xprivkey: Xpriv,
         network: Network,
         electrum_rpc_url: &str,
@@ -209,64 +225,97 @@ impl Wallet {
             .build(network)
             .context("Failed to build change wallet descriptor")?;
 
-        let mut wallet = bdk_wallet::Wallet::load()
+        tracing::debug!("Loading Bitcoin wallet from database");
+
+        let wallet = bdk_wallet::Wallet::load()
             .extract_keys()
             .descriptor(KeychainKind::External, Some(descriptor))
             .descriptor(KeychainKind::Internal, Some(change_descriptor))
             .load_wallet(&mut persister)
-            .context("Failed to create wallet")?
+            .context("Failed to open database")?
             .context("No wallet found in database")?;
 
         let client = Client::new(electrum_rpc_url, sync_interval)?;
 
-        tracing::info!("Starting full bitcoin wallet scan");
-
-        let full_scan = wallet.start_full_scan();
-        let full_scan_result = client.electrum.full_scan(full_scan, 50, 5, true)?;
-
-        wallet.apply_update(full_scan_result)?;
-        wallet.persist(&mut persister)?;
-
-        tracing::info!("Full bitcoin wallet scan completed");
-
-        Ok(Wallet {
+        let wallet = Wallet {
             wallet: Arc::new(Mutex::new(wallet)),
             client: Arc::new(Mutex::new(client)),
             network,
             finality_confirmations,
             target_block,
             persister: Arc::new(Mutex::new(persister)),
-        })
+        };
+
+        wallet.sync().await?;
+
+        Ok(wallet)
     }
 
     /// Create a new wallet, persisted to a sqlite database.
-    pub fn with_sqlite(
-        xprivkey: Xpriv,
+    pub async fn with_sqlite(
+        seed: &Seed,
         network: Network,
         electrum_rpc_url: &str,
         data_dir: impl AsRef<Path>,
         finality_confirmations: u32,
         target_block: usize,
-        sync_interval: Duration
+        sync_interval: Duration,
+        env_config: crate::env::Config
     ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
+        let xprivkey = seed.derive_extended_private_key(env_config.bitcoin_network)?;
 
-        let wallet_dir = data_dir.as_ref().join("wallet");
-        let wallet_path = wallet_dir.join("walletdb-new.sqlite");
+        let wallet_dir = data_dir.as_ref().join("wallet").join("wallet-new");
+        let wallet_path = wallet_dir.join("walletdb.sqlite");
         let wallet_exists = wallet_path.exists();
+
+        // Check if the old wallet directory exists and export the data if it does.
+        let old_wallet_dir = data_dir.as_ref().join(old::WALLET);
+        let export = match !wallet_exists && old_wallet_dir.exists() {
+            false => None,
+            true => {
+                tracing::info!("Found old wallet directory, fetching data for migration");
+
+                // We need to support the legacy wallet format for the migration path.
+                // We need to convert the network to the legacy BDK network type.
+                let legacy_network = match network {
+                    Network::Bitcoin => bdk::bitcoin::Network::Bitcoin,
+                    Network::Testnet => bdk::bitcoin::Network::Testnet,
+                    _ => bail!("Unsupported network: {}", network),
+                };
+
+                let xprivkey = seed.derive_extended_private_key_legacy(legacy_network)?;
+                let old_wallet = old::OldWallet::new(&old_wallet_dir, xprivkey, env_config).await?;
+
+                let export = old_wallet.export("old-wallet").await?;
+
+                tracing::debug!(
+                    old_balance=%export.balance, 
+                    external_index=%export.external_derivation_index, 
+                    internal_index=%export.internal_derivation_index, 
+                    "Fetched data from old wallet for migration"
+                );
+
+                Some(export)
+            }
+        };
+
+
+        // Make sure the wallet directory exists.
+        tokio::fs::create_dir_all(&wallet_dir).await?;
 
         let connection = Connection::open(&wallet_path)?;
 
         if wallet_exists {
-            Self::create_existing(xprivkey, network, electrum_rpc_url, connection, finality_confirmations, target_block, sync_interval)
+            Self::create_existing(xprivkey, network, electrum_rpc_url, connection, finality_confirmations, target_block, sync_interval).await
         } else {
-            Self::create_new(xprivkey, network, electrum_rpc_url, connection, finality_confirmations, target_block, sync_interval)
+            Self::create_new(xprivkey, network, electrum_rpc_url, connection, finality_confirmations, target_block, sync_interval, export).await
         }
     }
 
     /// Create a new wallet, persisted to an in-memory sqlite database.
     /// Should only be used for testing.
     #[cfg(test)]
-    pub fn with_sqlite_in_memory(
+    pub async fn with_sqlite_in_memory(
         xprivkey: Xpriv,
         network: Network,
         electrum_rpc_url: &str,
@@ -274,7 +323,7 @@ impl Wallet {
         target_block: usize,
         sync_interval: Duration
     ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
-        Ok(Self::create_new(xprivkey, network, electrum_rpc_url, bdk_wallet::rusqlite::Connection::open_in_memory()?, finality_confirmations, target_block, sync_interval)?)
+        Ok(Self::create_new(xprivkey, network, electrum_rpc_url, bdk_wallet::rusqlite::Connection::open_in_memory()?, finality_confirmations, target_block, sync_interval, None).await?)
     }
 }
 
@@ -869,7 +918,7 @@ pub mod old {
 
     use crate::env;
 
-    const WALLET: &str = "wallet";
+    pub const WALLET: &str = "wallet";
     const WALLET_OLD: &str = "wallet-old";
 
     const SLED_TREE_NAME: &str = "default_tree";

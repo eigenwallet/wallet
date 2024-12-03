@@ -41,6 +41,17 @@ impl Seed {
         Ok(private_key)
     }
 
+    /// Same as `derive_extended_private_key`, but using the legacy BDK API.
+    ///
+    /// This is only used for the migration path from the old wallet format to the new one.
+    pub fn derive_extended_private_key_legacy(&self, network: bdk::bitcoin::Network) -> Result<bdk::bitcoin::util::bip32::ExtendedPrivKey> {
+        let seed = self.derive(b"BITCOIN_EXTENDED_PRIVATE_KEY").bytes();
+        let private_key = bdk::bitcoin::util::bip32::ExtendedPrivKey::new_master(network, &seed)
+            .context("Failed to create new master extended private key")?;
+
+        Ok(private_key)
+    }
+
     pub fn derive_libp2p_identity(&self) -> identity::Keypair {
         let bytes = self.derive(b"NETWORK").derive(b"LIBP2P_IDENTITY").bytes();
 

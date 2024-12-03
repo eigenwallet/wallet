@@ -460,14 +460,16 @@ async fn init_bitcoin_wallet(
     let xprivkey = seed.derive_extended_private_key(env_config.bitcoin_network)?;
 
     let wallet = bitcoin::Wallet::with_sqlite(
-        xprivkey,
+        seed,
         env_config.bitcoin_network,
         &electrum_rpc_url.as_str(),
         &data_dir,
         env_config.bitcoin_finality_confirmations,
         bitcoin_target_block as usize,
-        env_config.bitcoin_sync_interval()
+        env_config.bitcoin_sync_interval(),
+        env_config
     )
+    .await
     .context("Failed to initialize Bitcoin wallet")?;
 
     wallet.sync().await?;
