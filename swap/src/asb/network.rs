@@ -68,7 +68,13 @@ pub mod transport {
 
                 match tor_transport.add_onion_service(onion_service_config, ASB_ONION_SERVICE_PORT)
                 {
-                    Ok(addr) => vec![addr],
+                    Ok(addr) => {
+                        tracing::debug!(
+                            %addr,
+                            "Setting up onion service for libp2p to listen on"
+                        );
+                        vec![addr]
+                    }
                     Err(err) => {
                         tracing::warn!(error=%err, "Failed to listen on onion address");
                         vec![]
