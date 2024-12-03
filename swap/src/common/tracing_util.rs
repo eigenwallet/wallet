@@ -100,7 +100,7 @@ pub fn init(
         )?);
 
     // We only want to log everything from the swap and asb crates at the level to the terminal
-    let env_filtered = env_filter(level_filter, vec!["swap", "asb"])?;
+    let env_filtered = env_filter(level_filter, vec!["swap", "asb", "libp2p_community_tor"])?;
 
     // Apply the environment filter and box the layer for the terminal
     let final_terminal_layer = match format {
