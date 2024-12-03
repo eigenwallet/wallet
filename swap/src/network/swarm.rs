@@ -57,6 +57,7 @@ where
         &identity,
         maybe_tor_client,
         tor_conf.hidden_service_num_intro_points,
+        tor_conf.register_hidden_service,
     )?;
 
     let swarm = SwarmBuilder::with_existing_identity(identity)
