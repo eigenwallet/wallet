@@ -75,9 +75,7 @@ pub mod address_serde {
             Address::from_str(&String::deserialize(deserializer)?)
                 .map_err(serde::de::Error::custom)?;
 
-        Ok(unchecked
-            .require_network(bitcoin::Network::Bitcoin)
-            .map_err(serde::de::Error::custom)?)
+        Ok(unchecked.assume_checked())
     }
 
     /// This submodule supports Option<Address>.
@@ -108,11 +106,7 @@ pub mod address_serde {
                 Some(s) => {
                     let unchecked: Address<NetworkUnchecked> =
                         Address::from_str(&s).map_err(serde::de::Error::custom)?;
-                    Ok(Some(
-                        unchecked
-                            .require_network(bitcoin::Network::Bitcoin)
-                            .map_err(serde::de::Error::custom)?,
-                    ))
+                    Ok(Some(unchecked.assume_checked()))
                 }
                 None => Ok(None),
             }

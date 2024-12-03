@@ -213,7 +213,7 @@ pub struct Maker {
     pub max_buy_btc: bitcoin::Amount,
     pub ask_spread: Decimal,
     pub price_ticker_ws_url: Url,
-    #[serde(with = "crate::bitcoin::address_serde::option")]
+    #[serde(default, with = "crate::bitcoin::address_serde::option")]
     pub external_bitcoin_redeem_address: Option<bitcoin::Address>,
 }
 
