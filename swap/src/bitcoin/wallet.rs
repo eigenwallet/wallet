@@ -8,7 +8,7 @@ use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::template::{Bip84, DescriptorTemplate};
-use bdk_wallet::{ChangeSet, LoadParams, PersistedWallet};
+use bdk_wallet::{Balance, ChangeSet, LoadParams, PersistedWallet};
 use bdk_wallet::SignOptions;
 use bdk_wallet::WalletPersister;
 use bdk_wallet::KeychainKind;
@@ -252,10 +252,11 @@ impl Wallet {
 
         let wallet_dir = data_dir.as_ref().join("wallet");
         let wallet_path = wallet_dir.join("walletdb-new.sqlite");
+        let wallet_exists = wallet_path.exists();
 
         let connection = Connection::open(&wallet_path)?;
 
-        if wallet_path.exists() {
+        if wallet_exists {
             Self::create_existing(xprivkey, network, electrum_rpc_url, connection, finality_confirmations, target_block, sync_interval)
         } else {
             Self::create_new(xprivkey, network, electrum_rpc_url, connection, finality_confirmations, target_block, sync_interval)
@@ -433,6 +434,11 @@ where
     /// Returns the total Bitcoin balance, which includes pending funds
     pub async fn balance(&self) -> Result<Amount> {
         Ok(self.wallet.lock().await.balance().total())
+    }
+
+    /// Returns the balance info of the wallet, including unconfirmed funds etc.
+    pub async fn balance_info(&self) -> Result<Balance> {
+        Ok(self.wallet.lock().await.balance())
     }
 
     /// Reveals the next address from the wallet.
