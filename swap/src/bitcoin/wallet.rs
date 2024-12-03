@@ -1,5 +1,4 @@
 use crate::bitcoin::{Address, Amount, Transaction};
-use anyhow::Ok;
 use anyhow::{anyhow, bail, Context, Result};
 use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
 use bdk_electrum::BdkElectrumClient;
@@ -9,7 +8,7 @@ use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::template::{Bip84, DescriptorTemplate};
-use bdk_wallet::PersistedWallet;
+use bdk_wallet::{ChangeSet, LoadParams, PersistedWallet};
 use bdk_wallet::SignOptions;
 use bdk_wallet::WalletPersister;
 use bdk_wallet::KeychainKind;
@@ -23,13 +22,12 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use tokio::sync::{watch, Mutex};
 use tracing::{debug_span, Instrument};
-use url::Url;
 
 use super::BlockHeight;
 
@@ -38,8 +36,6 @@ use super::BlockHeight;
 const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.03);
 const MAX_ABSOLUTE_TX_FEE: Decimal = dec!(100_000);
 const DUST_AMOUNT: Amount = Amount::from_sat(546);
-
-const WALLET_PATH: &str = "wallet-new";
 
 /// This is our wrapper around a bdk wallet and a corresponding
 /// bdk electrum client.
@@ -144,7 +140,7 @@ impl Wallet {
     ///
     /// A persistor is the database connection used to persist the wallet,
     /// mostly a sqlite connection.
-    fn new<Persister>(
+    fn create_new<Persister>(
         xprivkey: Xpriv,
         network: Network,
         electrum_rpc_url: &str,
@@ -165,12 +161,73 @@ impl Wallet {
             .build(network)
             .context("Failed to build change wallet descriptor")?;
 
-        let wallet = bdk_wallet::Wallet::create(descriptor, change_descriptor)
+        let mut wallet = bdk_wallet::Wallet::create(descriptor, change_descriptor)
             .network(network)
             .create_wallet(&mut persister)
             .context("Failed to create wallet")?;
 
         let client = Client::new(electrum_rpc_url, sync_interval)?;
+
+        tracing::debug!("Starting full bitcoin wallet scan");
+
+        let full_scan = wallet.start_full_scan();
+        let full_scan_result = client.electrum.full_scan(full_scan, 5, 5, true)?;
+
+        wallet.apply_update(full_scan_result)?;
+        wallet.persist(&mut persister)?;
+
+        tracing::debug!("Full bitcoin wallet scan completed");
+
+        Ok(Wallet {
+            wallet: Arc::new(Mutex::new(wallet)),
+            client: Arc::new(Mutex::new(client)),
+            network,
+            finality_confirmations,
+            target_block,
+            persister: Arc::new(Mutex::new(persister)),
+        })
+    }
+
+    fn create_existing<Persister>(
+        xprivkey: Xpriv,
+        network: Network,
+        electrum_rpc_url: &str,
+        mut persister: Persister,
+        finality_confirmations: u32,
+        target_block: usize,
+        sync_interval: Duration,
+    ) -> Result<Wallet<Persister>>
+    where
+        Persister: WalletPersister + Sized,
+        <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
+    {
+        let (descriptor, ..) = Bip84(xprivkey, KeychainKind::External)
+            .build(network)
+            .context("Failed to build external wallet descriptor")?;
+
+        let (change_descriptor, ..) = Bip84(xprivkey, KeychainKind::Internal)
+            .build(network)
+            .context("Failed to build change wallet descriptor")?;
+
+        let mut wallet = bdk_wallet::Wallet::load()
+            .extract_keys()
+            .descriptor(KeychainKind::External, Some(descriptor))
+            .descriptor(KeychainKind::Internal, Some(change_descriptor))
+            .load_wallet(&mut persister)
+            .context("Failed to create wallet")?
+            .context("No wallet found in database")?;
+
+        let client = Client::new(electrum_rpc_url, sync_interval)?;
+
+        tracing::info!("Starting full bitcoin wallet scan");
+
+        let full_scan = wallet.start_full_scan();
+        let full_scan_result = client.electrum.full_scan(full_scan, 50, 5, true)?;
+
+        wallet.apply_update(full_scan_result)?;
+        wallet.persist(&mut persister)?;
+
+        tracing::info!("Full bitcoin wallet scan completed");
 
         Ok(Wallet {
             wallet: Arc::new(Mutex::new(wallet)),
@@ -193,11 +250,16 @@ impl Wallet {
         sync_interval: Duration
     ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
 
-        let wallet_dir = data_dir.as_ref().join(WALLET_PATH);
-        let wallet_path = wallet_dir.join("walletdb.sqlite");
-        let connection = Connection::open(wallet_path)?;
+        let wallet_dir = data_dir.as_ref().join("wallet");
+        let wallet_path = wallet_dir.join("walletdb-new.sqlite");
 
-        Ok(Self::new(xprivkey, network, electrum_rpc_url, connection, finality_confirmations, target_block, sync_interval)?)
+        let connection = Connection::open(&wallet_path)?;
+
+        if wallet_path.exists() {
+            Self::create_existing(xprivkey, network, electrum_rpc_url, connection, finality_confirmations, target_block, sync_interval)
+        } else {
+            Self::create_new(xprivkey, network, electrum_rpc_url, connection, finality_confirmations, target_block, sync_interval)
+        }
     }
 
     /// Create a new wallet, persisted to an in-memory sqlite database.
@@ -211,7 +273,7 @@ impl Wallet {
         target_block: usize,
         sync_interval: Duration
     ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
-        Ok(Self::new(xprivkey, network, electrum_rpc_url, bdk_wallet::rusqlite::Connection::open_in_memory()?, finality_confirmations, target_block, sync_interval)?)
+        Ok(Self::create_new(xprivkey, network, electrum_rpc_url, bdk_wallet::rusqlite::Connection::open_in_memory()?, finality_confirmations, target_block, sync_interval)?)
     }
 }
 
