@@ -1,4 +1,3 @@
-use crate::asb::config::TorConf;
 use crate::asb::{LatestRate, RendezvousNode};
 use crate::libp2p_ext::MultiAddrExt;
 use crate::network::rendezvous::XmrBtcNamespace;
