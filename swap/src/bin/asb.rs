@@ -245,7 +245,7 @@ pub async fn main() -> Result<()> {
                 "BTC Amount",
                 "XMR Amount",
                 "Exchange Rate",
-                "Trading Partner Peer ID",
+                "Taker Peer ID",
                 "Completed",
             ]);
 
@@ -507,7 +507,7 @@ impl SwapDetails {
             btc_amount = %self.btc_amount,
             xmr_amount = %self.xmr_amount,
             exchange_rate = %self.exchange_rate,
-            trading_partner_peer_id = %self.peer_id,
+            taker_peer_id = %self.peer_id,
             completed = self.completed,
             "Found swap in database"
         );
