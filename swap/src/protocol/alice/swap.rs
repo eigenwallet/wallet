@@ -155,7 +155,8 @@ where
                     wait_time.as_secs()
                 )
             })
-            .await?;
+            .await
+            .expect("We should never run out of retries while locking Monero");
 
             match transfer_proof {
                 // If the transfer was successful, we transition to the next state
@@ -326,7 +327,7 @@ where
                 )
             })
             .await
-            .expect("We should never run out of retries while publishing the redeem transaction")
+            .expect("We should never run out of retries while publishing the Bitcoin redeem transaction")
             {
                 // We successfully published the redeem transaction
                 // We wait until we see the transaction in the mempool before transitioning to the next state
@@ -445,7 +446,6 @@ where
         } => {
             // TODO: We should retry indefinitely here until we find the refund transaction
             // TODO: If we crash while we are waiting for the punish_tx to be confirmed (punish_btc waits until confirmation), we will remain in this state forever because we will attempt to re-publish the punish transaction
-            // as soon as we restart which will fail because it has already been included
             let punish = state3.punish_btc(bitcoin_wallet).await;
 
             match punish {
