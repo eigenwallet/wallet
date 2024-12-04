@@ -272,100 +272,85 @@ where
             encrypted_signature,
             state3,
         } => {
-            match state3.expired_timelocks(bitcoin_wallet).await? {
-                ExpiredTimelocks::None { .. } => {
+            // Try to sign the redeem transaction, otherwise wait for the cancel timelock to expire
+            let tx_redeem = match state3.signed_redeem_transaction(*encrypted_signature) {
+                Ok(tx_redeem) => tx_redeem,
+                Err(error) => {
+                    tracing::error!("Failed to construct redeem transaction: {:#}", error);
+                    tracing::info!(
+                        timelock = %state3.cancel_timelock,
+                        "Waiting for cancellation timelock to expire",
+                    );
+
                     let tx_lock_status = bitcoin_wallet.subscribe_to(state3.tx_lock.clone()).await;
-                    match state3.signed_redeem_transaction(*encrypted_signature) {
-                        Ok(tx) => {
-                            // Retry indefinitely to publish the redeem transaction, until the cancel timelock expires
-                            // Publishing the redeem transaction might fail on the first try due to any number of reasons
-                            let backoff = backoff::ExponentialBackoffBuilder::new()
-                                .with_max_elapsed_time(None)
-                                .with_max_interval(Duration::from_secs(60))
-                                .build();
 
-                            match backoff::future::retry_notify(backoff.clone(), || async {
-                                // If the cancel timelock is expired, there is no need to try to publish the redeem transaction anymore
-                                if !matches!(
-                                    state3.expired_timelocks(bitcoin_wallet).await?,
-                                    ExpiredTimelocks::None { .. }
-                                ) {
-                                    return Ok(None);
-                                }
+                    tx_lock_status
+                        .wait_until_confirmed_with(state3.cancel_timelock)
+                        .await?;
 
-                                bitcoin_wallet
-                                    .broadcast(tx.clone(), "redeem")
-                                    .await
-                                    .map(Some)
-                                    .map_err(backoff::Error::transient)
-                            }, |e, wait_time: Duration| {
-                                tracing::warn!(
-                                    swap_id = %swap_id,
-                                    error = ?e,
-                                    "Failed to broadcast Bitcoin redeem transaction. We will retry in {} seconds",
-                                    wait_time.as_secs()
-                                )
-                            })
-                            .await
-                            {
-                                // We successfully published the redeem transaction
-                                // We wait until we see the transaction in the mempool before transitioning to the next state
-                                Ok(Some((_, subscription))) => match subscription.wait_until_seen().await {
-                                    Ok(_) => AliceState::BtcRedeemTransactionPublished { state3 },
-                                    Err(e) => {
-                                        // We extract the txid and the hex representation of the transaction
-                                        // this'll allow the user to manually re-publish the transaction
-                                        let txid = tx.txid();
-                                        let tx_hex = serialize_hex(&tx);
+                    return Ok(AliceState::CancelTimelockExpired {
+                        monero_wallet_restore_blockheight,
+                        transfer_proof,
+                        state3,
+                    });
+                }
+            };
 
-                                        bail!("Waiting for Bitcoin redeem transaction to be in mempool failed with {}! The redeem transaction was published, but it is not ensured that the transaction was included! You might be screwed. You can try to manually re-publish the transaction (TxID: {}, Tx Hex: {})", e, txid, tx_hex)
-                                    }
-                                },
+            // Retry indefinitely to publish the redeem transaction, until the cancel timelock expires
+            // Publishing the redeem transaction might fail on the first try due to any number of reasons
+            let backoff = backoff::ExponentialBackoffBuilder::new()
+                .with_max_elapsed_time(None)
+                .with_max_interval(Duration::from_secs(60))
+                .build();
 
-                                // Cancel timelock expired before we could publish the redeem transaction
-                                Ok(None) => {
-                                    tracing::error!("We were unable to publish the redeem transaction before the timelock expired.");
+            match backoff::future::retry_notify(backoff.clone(), || async {
+                // If the cancel timelock is expired, there is no need to try to publish the redeem transaction anymore
+                if !matches!(
+                    state3.expired_timelocks(bitcoin_wallet).await?,
+                    ExpiredTimelocks::None { .. }
+                ) {
+                    return Ok(None);
+                }
 
-                                    AliceState::CancelTimelockExpired {
-                                        monero_wallet_restore_blockheight,
-                                        transfer_proof,
-                                        state3,
-                                    }
-                                }
+                bitcoin_wallet
+                    .broadcast(tx_redeem.clone(), "redeem")
+                    .await
+                    .map(Some)
+                    .map_err(backoff::Error::transient)
+            }, |e, wait_time: Duration| {
+                tracing::warn!(
+                    swap_id = %swap_id,
+                    error = ?e,
+                    "Failed to broadcast Bitcoin redeem transaction. We will retry in {} seconds",
+                    wait_time.as_secs()
+                )
+            })
+            .await
+            .expect("We should never run out of retries while publishing the redeem transaction")
+            {
+                // We successfully published the redeem transaction
+                // We wait until we see the transaction in the mempool before transitioning to the next state
+                Some((txid, subscription)) => match subscription.wait_until_seen().await {
+                    Ok(_) => AliceState::BtcRedeemTransactionPublished { state3 },
+                    Err(e) => {
+                        // We extract the txid and the hex representation of the transaction
+                        // this'll allow the user to manually re-publish the transaction
+                        let tx_hex = serialize_hex(&tx_redeem);
 
-                                // We should never reach this because we retry indefinitely
-                                Err(error) => {
-                                    unreachable!(
-                                        "We construct the backoff without a max_elapsed_time. We should never error while retrying to publish the redeem transaction: {:#}",
-                                        error
-                                    )
-                                }
-                            }
-                        }
-                        Err(error) => {
-                            tracing::error!("Failed to construct redeem transaction: {:#}", error);
-                            tracing::info!(
-                                timelock = %state3.cancel_timelock,
-                                "Waiting for cancellation timelock to expire",
-                            );
+                        bail!("Waiting for Bitcoin redeem transaction to be in mempool failed with {}! The redeem transaction was published, but it is not ensured that the transaction was included! You might be screwed. You can try to manually re-publish the transaction (TxID: {}, Tx Hex: {})", e, txid, tx_hex)
+                    }
+                },
 
-                            tx_lock_status
-                                .wait_until_confirmed_with(state3.cancel_timelock)
-                                .await?;
+                // Cancel timelock expired before we could publish the redeem transaction
+                None => {
+                    tracing::error!("We were unable to publish the redeem transaction before the timelock expired.");
 
-                            AliceState::CancelTimelockExpired {
-                                monero_wallet_restore_blockheight,
-                                transfer_proof,
-                                state3,
-                            }
-                        }
+                    AliceState::CancelTimelockExpired {
+                        monero_wallet_restore_blockheight,
+                        transfer_proof,
+                        state3,
                     }
                 }
-                _ => AliceState::CancelTimelockExpired {
-                    monero_wallet_restore_blockheight,
-                    transfer_proof,
-                    state3,
-                },
             }
         }
         AliceState::BtcRedeemTransactionPublished { state3 } => {
