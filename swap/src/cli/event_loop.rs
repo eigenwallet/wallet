@@ -427,7 +427,7 @@ impl EventLoopHandle {
             tracing::warn!(
                 error = ?err,
                 "Failed to setup swap. We will retry in {} seconds",
-                wait_time.as_secs_f64()
+                wait_time.as_secs()
             )
         })
         .await
@@ -467,7 +467,7 @@ impl EventLoopHandle {
             tracing::warn!(
                 error = ?err,
                 "Failed to request quote. We will retry in {} seconds",
-                wait_time.as_secs_f64()
+                wait_time.as_secs()
             )
         })
         .await
@@ -493,7 +493,7 @@ impl EventLoopHandle {
             tracing::warn!(
                 error = ?err,
                 "Failed to request cooperative XMR redeem. We will retry in {} seconds",
-                wait_time.as_secs_f64()
+                wait_time.as_secs()
             )
         })
         .await
@@ -526,7 +526,7 @@ impl EventLoopHandle {
             tracing::warn!(
                 error = ?err,
                 "Failed to send encrypted signature. We will retry in {} seconds",
-                wait_time.as_secs_f64()
+                wait_time.as_secs()
             )
         })
         .await

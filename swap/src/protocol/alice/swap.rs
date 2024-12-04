@@ -159,7 +159,7 @@ where
                     swap_id = %swap_id,
                     error = ?e,
                     "Failed to lock Monero. We will retry in {} seconds",
-                    wait_time.as_secs_f64()
+                    wait_time.as_secs()
                 )
             })
             .await?;
@@ -311,7 +311,7 @@ where
                                     swap_id = %swap_id,
                                     error = ?e,
                                     "Failed to broadcast Bitcoin redeem transaction. We will retry in {} seconds",
-                                    wait_time.as_secs_f64()
+                                    wait_time.as_secs()
                                 )
                             })
                             .await

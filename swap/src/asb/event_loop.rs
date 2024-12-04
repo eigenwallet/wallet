@@ -746,7 +746,7 @@ impl EventLoopHandle {
                     swap_id = %self.swap_id,
                     error = ?e,
                     "Failed to send transfer proof. We will retry in {} seconds",
-                    wait_time.as_secs_f64()
+                    wait_time.as_secs()
                 )
             },
         )
