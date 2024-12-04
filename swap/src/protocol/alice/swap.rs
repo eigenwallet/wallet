@@ -137,13 +137,6 @@ where
                 let monero_wallet_restore_blockheight = monero_wallet
                     .block_height()
                     .await
-                    .inspect_err(|e| {
-                        tracing::warn!(
-                            swap_id = %swap_id,
-                            error = ?e,
-                            "Failed to get Monero wallet block height while trying to lock XMR. We will retry."
-                        )
-                    })
                     .context("Failed to get Monero wallet block height")
                     .map_err(backoff::Error::transient)?;
 
@@ -284,16 +277,15 @@ where
                     let tx_lock_status = bitcoin_wallet.subscribe_to(state3.tx_lock.clone()).await;
                     match state3.signed_redeem_transaction(*encrypted_signature) {
                         Ok(tx) => {
-                            // We will retry indefinitely to publish the redeem transaction, until the cancel timelock expires
-                            // We might not be able to publish the redeem transaction on the first try due to any number of reasons
+                            // Retry indefinitely to publish the redeem transaction, until the cancel timelock expires
+                            // Publishing the redeem transaction might fail on the first try due to any number of reasons
                             let backoff = backoff::ExponentialBackoffBuilder::new()
                                 .with_max_elapsed_time(None)
                                 .with_max_interval(Duration::from_secs(60))
                                 .build();
 
                             match backoff::future::retry_notify(backoff.clone(), || async {
-                                // If the cancel timelock is expired, we do not need to publish anymore
-                                // We cannot use a tokio::select! here because this is not cancellation safe
+                                // If the cancel timelock is expired, there is no need to try to publish the redeem transaction anymore
                                 if !matches!(
                                     state3.expired_timelocks(bitcoin_wallet).await?,
                                     ExpiredTimelocks::None { .. }
