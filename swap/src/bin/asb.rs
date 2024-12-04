@@ -235,7 +235,7 @@ pub async fn main() -> Result<()> {
 
             event_loop.run().await;
         }
-        Command::History => {
+        Command::History { only_unfinished } => {
             let db = open_db(db_file, AccessMode::ReadOnly, None).await?;
             let mut table = Table::new();
 
@@ -253,6 +253,14 @@ pub async fn main() -> Result<()> {
 
             let all_swaps = db.all().await?;
             for (swap_id, state) in all_swaps {
+                let state: AliceState = state
+                    .try_into()
+                    .expect("Alice database only has Alice states");
+
+                if only_unfinished && is_complete(&state) {
+                    continue;
+                }
+
                 match SwapDetails::from_db_state(swap_id.clone(), state, &db).await {
                     Ok(details) => {
                         if json {
@@ -440,10 +448,9 @@ struct SwapDetails {
 impl SwapDetails {
     async fn from_db_state(
         swap_id: Uuid,
-        state: State,
+        latest_state: AliceState,
         db: &Arc<dyn Database + Send + Sync>,
     ) -> Result<Self> {
-        let latest_state: AliceState = state.try_into()?;
         let completed = is_complete(&latest_state);
 
         let all_states = db.get_states(swap_id.clone()).await?;
