@@ -1312,7 +1312,7 @@ impl WalletBuilder {
         }
     }
 
-    pub fn build(self) -> Wallet<bdk_wallet::rusqlite::Connection> {
+    pub async fn build(self) -> Wallet<bdk_wallet::rusqlite::Connection> {
         let mut database = Connection::open_in_memory().expect("sqlite in memory to work");
 
         panic!("TODO: find a way to populate the database that works with the new bdk version");
@@ -1326,7 +1326,7 @@ impl WalletBuilder {
         //     );
         // }
 
-        super::Wallet::with_sqlite_in_memory(self.key, Network::Regtest, None, 1, 1, Duration::from_secs(10)).unwrap()
+        super::Wallet::with_sqlite_in_memory(self.key, Network::Regtest, None, 1, 1, Duration::from_secs(10)).await.unwrap()
     }
 }
 
