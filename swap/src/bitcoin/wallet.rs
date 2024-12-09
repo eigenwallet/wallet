@@ -1315,7 +1315,7 @@ impl WalletBuilder {
     pub async fn build(self) -> Wallet<bdk_wallet::rusqlite::Connection> {
         let mut database = Connection::open_in_memory().expect("sqlite in memory to work");
 
-        panic!("TODO: find a way to populate the database that works with the new bdk version");
+        compile_error!("TODO: find a way to populate the database that works with the new bdk version");
         // for index in 0..self.num_utxos {
         //     bdk::populate_test_db!(
         //         &mut database,
@@ -1470,7 +1470,7 @@ mod tests {
         #[test]
         fn given_randon_amount_random_fee_and_random_relay_rate_but_fix_weight_does_not_error(
             amount in 547u64..,
-            sat_per_vb in 1..100_000_000,
+            sat_per_vb in 1u64..100_000_000,
             relay_fee in 0u64..100_000_000u64
         ) {
             let weight = 400;
@@ -1525,7 +1525,7 @@ mod tests {
     proptest! {
         #[test]
         fn given_fee_above_max_should_always_errors(
-            sat_per_vb in 100_000_000..,
+            sat_per_vb in 100_000_000u64..,
         ) {
             let weight = 400;
             let amount = bitcoin::Amount::from_sat(547u64);
@@ -1678,7 +1678,7 @@ DEBUG swap::bitcoin::wallet: Bitcoin transaction status changed txid=00000000000
 
     proptest::proptest! {
         #[test]
-        fn funding_never_fails_with_insufficient_funds(funding_amount in 3000u32.., num_utxos in 1..5u8, sats_per_vb in 1..500, key in crate::proptest::bitcoin::extended_priv_key(), alice in crate::proptest::ecdsa_fun::point(), bob in crate::proptest::ecdsa_fun::point()) {
+        fn funding_never_fails_with_insufficient_funds(funding_amount in 3000u32.., num_utxos in 1..5u8, sats_per_vb in 1u64..500u64, key in crate::proptest::bitcoin::extended_priv_key(), alice in crate::proptest::ecdsa_fun::point(), bob in crate::proptest::ecdsa_fun::point()) {
             proptest::prop_assume!(alice != bob);
 
             tokio::runtime::Runtime::new().unwrap().block_on(async move {
