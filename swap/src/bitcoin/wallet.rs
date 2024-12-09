@@ -1263,7 +1263,7 @@ impl EstimateFeeRate for StaticFeeRate {
 #[derive(Debug)]
 pub struct WalletBuilder {
     utxo_amount: u64,
-    sats_per_vb: f32,
+    sats_per_vb: u64,
     min_relay_fee_sats: u64,
     key: bitcoin::bip32::Xpriv,
     num_utxos: u8,
@@ -1278,7 +1278,7 @@ impl WalletBuilder {
     pub fn new(amount: u64) -> Self {
         WalletBuilder {
             utxo_amount: amount,
-            sats_per_vb: 1.0,
+            sats_per_vb: 1,
             min_relay_fee_sats: 1000,
             key: "tprv8ZgxMBicQKsPeZRHk4rTG6orPS2CRNFX3njhUXx5vj9qGog5ZMH4uGReDWN5kCkY3jmWEtWause41CDvBRXD1shKknAMKxT99o9qUTRVC6m".parse().unwrap(),
             num_utxos: 1,
@@ -1287,13 +1287,13 @@ impl WalletBuilder {
 
     pub fn with_zero_fees(self) -> Self {
         Self {
-            sats_per_vb: 0.0,
+            sats_per_vb: 0,
             min_relay_fee_sats: 0,
             ..self
         }
     }
 
-    pub fn with_fees(self, sats_per_vb: f32, min_relay_fee_sats: u64) -> Self {
+    pub fn with_fees(self, sats_per_vb: u64, min_relay_fee_sats: u64) -> Self {
         Self {
             sats_per_vb,
             min_relay_fee_sats,
@@ -1335,6 +1335,7 @@ mod tests {
     use super::*;
     use crate::bitcoin::{PublicKey, TxLock};
     use crate::tracing_ext::capture_logs;
+    use bitcoin::address::NetworkUnchecked;
     use bitcoin::hashes::Hash;
     use proptest::prelude::*;
     use tracing::level_filters::LevelFilter;
@@ -1400,8 +1401,8 @@ mod tests {
         let weight = 400;
         let amount = bitcoin::Amount::from_sat(100_000_000);
 
-        let sat_per_vb = 100.0;
-        let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb);
+        let sat_per_vb = 100;
+        let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
         let relay_fee = bitcoin::Amount::ONE_SAT;
         let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
@@ -1417,8 +1418,8 @@ mod tests {
         let weight = 400;
         let amount = bitcoin::Amount::from_sat(100_000_000);
 
-        let sat_per_vb = 1.0;
-        let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb);
+        let sat_per_vb = 1;
+        let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
         let relay_fee = bitcoin::Amount::from_sat(100_000);
         let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
@@ -1435,8 +1436,8 @@ mod tests {
         let weight = 400;
         let amount = bitcoin::Amount::from_sat(1_000_000);
 
-        let sat_per_vb = 1_000.0;
-        let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb);
+        let sat_per_vb = 1_000;
+        let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
         let relay_fee = bitcoin::Amount::ONE_SAT;
         let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
@@ -1454,8 +1455,8 @@ mod tests {
         let weight = 400;
         let amount = bitcoin::Amount::from_sat(100_000_000);
 
-        let sat_per_vb = 4_000_000.0;
-        let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb);
+        let sat_per_vb = 4_000_000;
+        let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
         let relay_fee = bitcoin::Amount::ONE_SAT;
         let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
@@ -1469,13 +1470,13 @@ mod tests {
         #[test]
         fn given_randon_amount_random_fee_and_random_relay_rate_but_fix_weight_does_not_error(
             amount in 547u64..,
-            sat_per_vb in 1.0f32..100_000_000.0f32,
+            sat_per_vb in 1..100_000_000,
             relay_fee in 0u64..100_000_000u64
         ) {
             let weight = 400;
             let amount = bitcoin::Amount::from_sat(amount);
 
-            let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb);
+            let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
             let relay_fee = bitcoin::Amount::from_sat(relay_fee);
             let _is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
@@ -1491,8 +1492,8 @@ mod tests {
             let weight = 400;
             let amount = bitcoin::Amount::from_sat(amount);
 
-            let sat_per_vb = 100.0;
-            let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb);
+            let sat_per_vb = 100;
+            let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
             let relay_fee = bitcoin::Amount::ONE_SAT;
             let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
@@ -1510,8 +1511,8 @@ mod tests {
             let weight = 400;
             let amount = bitcoin::Amount::from_sat(amount);
 
-            let sat_per_vb = 1_000.0;
-            let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb);
+            let sat_per_vb = 1_000;
+            let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
             let relay_fee = bitcoin::Amount::ONE_SAT;
             let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
@@ -1524,12 +1525,12 @@ mod tests {
     proptest! {
         #[test]
         fn given_fee_above_max_should_always_errors(
-            sat_per_vb in 100_000_000.0f32..,
+            sat_per_vb in 100_000_000..,
         ) {
             let weight = 400;
             let amount = bitcoin::Amount::from_sat(547u64);
 
-            let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb);
+            let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
             let relay_fee = bitcoin::Amount::from_sat(1);
             assert!(estimate_fee(weight, amount, fee_rate, relay_fee).is_err());
@@ -1545,7 +1546,7 @@ mod tests {
             let weight = 400;
             let amount = bitcoin::Amount::from_sat(547u64);
 
-            let fee_rate = FeeRate::from_sat_per_vb(1.0);
+            let fee_rate = FeeRate::from_sat_per_vb(1).unwrap();
 
             let relay_fee = bitcoin::Amount::from_sat(relay_fee);
             assert!(estimate_fee(weight, amount, fee_rate, relay_fee).is_err());
@@ -1554,7 +1555,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_no_balance_returns_amount_0() {
-        let wallet = WalletBuilder::new(0).with_fees(1.0, 1).build();
+        let wallet = WalletBuilder::new(0).with_fees(1, 1).build().await;
         let amount = wallet.max_giveable(TxLock::script_size()).await.unwrap();
 
         assert_eq!(amount, Amount::ZERO);
@@ -1562,7 +1563,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_balance_below_min_relay_fee_returns_amount_0() {
-        let wallet = WalletBuilder::new(1000).with_fees(1.0, 1001).build();
+        let wallet = WalletBuilder::new(1000).with_fees(1, 1001).build().await;
         let amount = wallet.max_giveable(TxLock::script_size()).await.unwrap();
 
         assert_eq!(amount, Amount::ZERO);
@@ -1570,7 +1571,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_balance_above_relay_fee_returns_amount_greater_0() {
-        let wallet = WalletBuilder::new(10_000).build();
+        let wallet = WalletBuilder::new(10_000).build().await;
         let amount = wallet.max_giveable(TxLock::script_size()).await.unwrap();
 
         assert!(amount.to_sat() > 0);
@@ -1590,7 +1591,7 @@ mod tests {
         let balance = 2000;
 
         // We don't care about fees in this test, thus use a zero fee rate
-        let wallet = WalletBuilder::new(balance).with_zero_fees().build();
+        let wallet = WalletBuilder::new(balance).with_zero_fees().build().await;
 
         // sorting is only relevant for amounts that have a change output
         // if the change output is below dust it will be dropped by the BDK
@@ -1615,10 +1616,11 @@ mod tests {
 
     #[tokio::test]
     async fn can_override_change_address() {
-        let wallet = WalletBuilder::new(50_000).build();
+        let wallet = WalletBuilder::new(50_000).build().await;
         let custom_change = "bcrt1q08pfqpsyrt7acllzyjm8q5qsz5capvyahm49rw"
-            .parse::<Address>()
-            .unwrap();
+            .parse::<Address::<NetworkUnchecked>>()
+            .unwrap()
+            .assume_checked();
 
         let psbt = wallet
             .send_to_address(
@@ -1632,7 +1634,7 @@ mod tests {
 
         match transaction.output.as_slice() {
             [first, change] => {
-                assert_eq!(first.value, 10_000);
+                assert_eq!(first.value, Amount::from_sat(10_000));
                 assert_eq!(change.script_pubkey, custom_change.script_pubkey());
             }
             _ => panic!("expected exactly two outputs"),
@@ -1644,7 +1646,7 @@ mod tests {
         let writer = capture_logs(LevelFilter::DEBUG);
 
         let inner = bitcoin::hashes::sha256d::Hash::all_zeros();
-        let tx = Txid::from_hash(inner);
+        let tx = Txid::from_raw_hash(inner);
         let mut old = None;
         old = Some(trace_status_change(tx, old, ScriptStatus::Unseen));
         old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
@@ -1676,11 +1678,16 @@ DEBUG swap::bitcoin::wallet: Bitcoin transaction status changed txid=00000000000
 
     proptest::proptest! {
         #[test]
-        fn funding_never_fails_with_insufficient_funds(funding_amount in 3000u32.., num_utxos in 1..5u8, sats_per_vb in 1.0..500.0f32, key in crate::proptest::bitcoin::extended_priv_key(), alice in crate::proptest::ecdsa_fun::point(), bob in crate::proptest::ecdsa_fun::point()) {
+        fn funding_never_fails_with_insufficient_funds(funding_amount in 3000u32.., num_utxos in 1..5u8, sats_per_vb in 1..500, key in crate::proptest::bitcoin::extended_priv_key(), alice in crate::proptest::ecdsa_fun::point(), bob in crate::proptest::ecdsa_fun::point()) {
             proptest::prop_assume!(alice != bob);
 
             tokio::runtime::Runtime::new().unwrap().block_on(async move {
-                let wallet = WalletBuilder::new(funding_amount as u64).with_key(key).with_num_utxos(num_utxos).with_fees(sats_per_vb, 1000).build();
+                let wallet = WalletBuilder::new(funding_amount as u64)
+                    .with_key(key)
+                    .with_num_utxos(num_utxos)
+                    .with_fees(sats_per_vb, 1000)
+                    .build()
+                    .await;
 
                 let amount = wallet.max_giveable(TxLock::script_size()).await.unwrap();
                 let psbt: PartiallySignedTransaction = TxLock::new(&wallet, amount, PublicKey::from(alice), PublicKey::from(bob), wallet.new_address().await.unwrap()).await.unwrap().into();
