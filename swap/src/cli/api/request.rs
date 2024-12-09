@@ -462,8 +462,12 @@ pub async fn get_swap_infos_all(context: Arc<Context>) -> Result<Vec<GetSwapInfo
     let mut swap_infos = Vec::new();
 
     for (swap_id, _) in swap_ids {
-        let swap_info = get_swap_info(GetSwapInfoArgs { swap_id }, context.clone()).await?;
-        swap_infos.push(swap_info);
+        match get_swap_info(GetSwapInfoArgs { swap_id }, context.clone()).await {
+            Ok(swap_info) => swap_infos.push(swap_info),
+            Err(error) => {
+                tracing::error!(%swap_id, %error, "Failed to get swap info");
+            }
+        }
     }
 
     Ok(swap_infos)
@@ -628,7 +632,7 @@ pub async fn buy_xmr(
 
     let mut swarm = swarm::cli(
         seed.derive_libp2p_identity(),
-        context.config.tor_socks5_port,
+        context.tor_client.clone(),
         behaviour,
     )
     .await?;
@@ -816,7 +820,7 @@ pub async fn resume_swap(
         ),
         (seed.clone(), context.config.namespace),
     );
-    let mut swarm = swarm::cli(seed.clone(), context.config.tor_socks5_port, behaviour).await?;
+    let mut swarm = swarm::cli(seed.clone(), context.tor_client.clone(), behaviour).await?;
     let our_peer_id = swarm.local_peer_id();
 
     tracing::debug!(peer_id = %our_peer_id, "Network layer initialized");
@@ -1086,7 +1090,7 @@ pub async fn list_sellers(
         rendezvous_node_peer_id,
         rendezvous_point,
         context.config.namespace,
-        context.config.tor_socks5_port,
+        context.tor_client.clone(),
         identity,
     )
     .await?;
@@ -1227,17 +1231,9 @@ where
         }
 
         loop {
-            println!("max_giveable: {}", max_giveable);
-            println!("bid_quote.min_quantity: {}", bid_quote.min_quantity);
             let min_outstanding = bid_quote.min_quantity - max_giveable;
-            println!("min_outstanding: {}", min_outstanding);
             let min_bitcoin_lock_tx_fee = estimate_fee(min_outstanding).await?;
-            println!("min_bitcoin_lock_tx_fee: {}", min_bitcoin_lock_tx_fee);
             let min_deposit_until_swap_will_start = min_outstanding + min_bitcoin_lock_tx_fee;
-            println!(
-                "min_deposit_until_swap_will_start: {}",
-                min_deposit_until_swap_will_start
-            );
             let max_deposit_until_maximum_amount_is_reached =
                 maximum_amount - max_giveable + min_bitcoin_lock_tx_fee;
 

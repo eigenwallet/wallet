@@ -40,7 +40,7 @@ import {
 } from "store/features/rpcSlice";
 import { swapProgressEventReceived } from "store/features/swapSlice";
 import { store } from "./store/storeRenderer";
-import { Provider } from "models/apiModel";
+import { Maker } from "models/apiModel";
 import { providerToConcatenatedMultiAddr } from "utils/multiAddrUtils";
 import { MoneroRecoveryResponse } from "models/rpcModel";
 import { ListSellersResponse } from "../models/tauriModel";
@@ -48,7 +48,7 @@ import logger from "utils/logger";
 import { getNetwork, getNetworkName, isTestnet } from "store/config";
 import { Blockchain, Network } from "store/features/settingsSlice";
 import { setStatus } from "store/features/nodesSlice";
-import { discoveredProvidersByRendezvous } from "store/features/providersSlice";
+import { discoveredMakersByRendezvous } from "store/features/makersSlice";
 
 export const PRESET_RENDEZVOUS_POINTS = [
   "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
@@ -57,71 +57,11 @@ export const PRESET_RENDEZVOUS_POINTS = [
 export async function fetchSellersAtPresetRendezvousPoints() {
   await Promise.all(PRESET_RENDEZVOUS_POINTS.map(async (rendezvousPoint) => {
     const response = await listSellersAtRendezvousPoint(rendezvousPoint);
-    store.dispatch(discoveredProvidersByRendezvous(response.sellers));
+    store.dispatch(discoveredMakersByRendezvous(response.sellers));
 
-    console.log(`Discovered ${response.sellers.length} sellers at rendezvous point ${rendezvousPoint} during startup fetch`);
+    logger.log(`Discovered ${response.sellers.length} sellers at rendezvous point ${rendezvousPoint} during startup fetch`);
   }),
   );
-}
-
-export async function initEventListeners() {
-  // This operation is in-expensive
-  // We do this in case we miss the context init progress event because the frontend took too long to load
-  // TOOD: Replace this with a more reliable mechanism (such as an event replay mechanism)
-  if (await checkContextAvailability()) {
-    store.dispatch(contextStatusEventReceived({ type: "Available" }));
-  } else {
-    // Warning: If we reload the page while the Context is being initialized, this function will throw an error
-    initializeContext().catch((e) => {
-      logger.error(e, "Failed to initialize context on page load. This might be because we reloaded the page while the context was being initialized");
-      // Wait a short time before retrying
-      setTimeout(() => {
-        initializeContext().catch((e) => {
-          logger.error(e, "Failed to initialize context even after retry");
-        });
-      }, 2000); // 2 second delay
-    });
-  }
-
-  listen<TauriSwapProgressEventWrapper>("swap-progress-update", (event) => {
-    console.log("Received swap progress event", event.payload);
-    store.dispatch(swapProgressEventReceived(event.payload));
-  });
-
-  listen<TauriContextStatusEvent>("context-init-progress-update", (event) => {
-    console.log("Received context init progress event", event.payload);
-    store.dispatch(contextStatusEventReceived(event.payload));
-  });
-
-  listen<TauriLogEvent>("cli-log-emitted", (event) => {
-    console.log("Received cli log event", event.payload);
-    store.dispatch(receivedCliLog(event.payload));
-  });
-
-  listen<BalanceResponse>("balance-change", (event) => {
-    console.log("Received balance change event", event.payload);
-    store.dispatch(rpcSetBalance(event.payload.balance));
-  });
-
-  listen<TauriDatabaseStateEvent>("swap-database-state-update", (event) => {
-    console.log("Received swap database state update event", event.payload);
-    getSwapInfo(event.payload.swap_id);
-
-    // This is ugly but it's the best we can do for now
-    // Sometimes we are too quick to fetch the swap info and the new state is not yet reflected
-    // in the database. So we wait a bit before fetching the new state
-    setTimeout(() => getSwapInfo(event.payload.swap_id), 3000);
-  });
-
-  listen<TauriTimelockChangeEvent>('timelock-change', (event) => {
-    console.log('Received timelock change event', event.payload);
-    store.dispatch(timelockChangeEventReceived(event.payload));
-  })
-
-  listen<TauriBackgroundRefundEvent>('background-refund', (event) => {
-    console.log('Received background refund event', event.payload);
-    store.dispatch(rpcSetBackgroundRefundState(event.payload));
-  })
 }
 
 async function invoke<ARGS, RESPONSE>(
@@ -178,7 +118,7 @@ export async function withdrawBtc(address: string): Promise<string> {
 }
 
 export async function buyXmr(
-  seller: Provider,
+  seller: Maker,
   bitcoin_change_address: string | null,
   monero_receive_address: string,
 ) {
@@ -279,7 +219,7 @@ export async function initializeContext() {
     monero_node_url: moneroNode,
   };
 
-  console.log("Initializing context with settings", tauriSettings);
+  logger.info("Initializing context with settings", tauriSettings);
 
   await invokeUnsafe<void>("initialize_context", {
     settings: tauriSettings,

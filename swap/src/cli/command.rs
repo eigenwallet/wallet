@@ -34,8 +34,6 @@ pub const DEFAULT_ELECTRUM_RPC_URL_TESTNET: &str = "tcp://electrum.blockstream.i
 const DEFAULT_BITCOIN_CONFIRMATION_TARGET: u16 = 1;
 pub const DEFAULT_BITCOIN_CONFIRMATION_TARGET_TESTNET: u16 = 1;
 
-const DEFAULT_TOR_SOCKS5_PORT: &str = "9050";
-
 /// Represents the result of parsing the command-line parameters.
 
 #[derive(Debug)]
@@ -86,9 +84,9 @@ where
 
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
+                    .with_tor(tor.enable_tor)
                     .with_bitcoin(bitcoin)
                     .with_monero(monero)
-                    .with_tor(tor)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
@@ -185,9 +183,9 @@ where
         } => {
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
+                    .with_tor(tor.enable_tor)
                     .with_bitcoin(bitcoin)
                     .with_monero(monero)
-                    .with_tor(tor)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
@@ -232,9 +230,9 @@ where
         } => {
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
+                    .with_tor(tor.enable_tor)
                     .with_bitcoin(bitcoin)
                     .with_monero(monero)
-                    .with_tor(tor)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
@@ -249,12 +247,10 @@ where
         CliCommand::CancelAndRefund {
             swap_id: SwapId { swap_id },
             bitcoin,
-            tor,
         } => {
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
                     .with_bitcoin(bitcoin)
-                    .with_tor(tor)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
@@ -274,7 +270,7 @@ where
         } => {
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
-                    .with_tor(tor)
+                    .with_tor(tor.enable_tor)
                     .with_data_dir(data)
                     .with_debug(debug)
                     .with_json(json)
@@ -476,9 +472,6 @@ enum CliCommand {
 
         #[structopt(flatten)]
         bitcoin: Bitcoin,
-
-        #[structopt(flatten)]
-        tor: Tor,
     },
     /// Discover and list sellers (i.e. ASB providers)
     ListSellers {
@@ -563,11 +556,10 @@ impl Bitcoin {
 #[derive(structopt::StructOpt, Debug)]
 pub struct Tor {
     #[structopt(
-        long = "tor-socks5-port",
-        help = "Your local Tor socks5 proxy port",
-        default_value = DEFAULT_TOR_SOCKS5_PORT
+        long = "enable-tor",
+        help = "Bootstrap a tor client and use it for all libp2p connections"
     )]
-    pub tor_socks5_port: u16,
+    pub enable_tor: bool,
 }
 
 #[derive(structopt::StructOpt, Debug)]

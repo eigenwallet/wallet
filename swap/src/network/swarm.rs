@@ -2,13 +2,16 @@ use crate::asb::{LatestRate, RendezvousNode};
 use crate::libp2p_ext::MultiAddrExt;
 use crate::network::rendezvous::XmrBtcNamespace;
 use crate::seed::Seed;
-use crate::{asb, bitcoin, cli, env, tor};
+use crate::{asb, bitcoin, cli, env};
 use anyhow::Result;
+use arti_client::TorClient;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::SwarmBuilder;
 use libp2p::{identity, Multiaddr, Swarm};
 use std::fmt::Debug;
+use std::sync::Arc;
 use std::time::Duration;
+use tor_rtcompat::tokio::TokioRustlsRuntime;
 
 #[allow(clippy::too_many_arguments)]
 pub fn asb<LR>(
@@ -20,7 +23,10 @@ pub fn asb<LR>(
     env_config: env::Config,
     namespace: XmrBtcNamespace,
     rendezvous_addrs: &[Multiaddr],
-) -> Result<Swarm<asb::Behaviour<LR>>>
+    maybe_tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
+    register_hidden_service: bool,
+    num_intro_points: u8,
+) -> Result<(Swarm<asb::Behaviour<LR>>, Vec<Multiaddr>)>
 where
     LR: LatestRate + Send + 'static + Debug + Clone,
 {
@@ -47,7 +53,12 @@ where
         rendezvous_nodes,
     );
 
-    let transport = asb::transport::new(&identity)?;
+    let (transport, onion_addresses) = asb::transport::new(
+        &identity,
+        maybe_tor_client,
+        register_hidden_service,
+        num_intro_points,
+    )?;
 
     let swarm = SwarmBuilder::with_existing_identity(identity)
         .with_tokio()
@@ -56,23 +67,18 @@ where
         .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::MAX))
         .build();
 
-    Ok(swarm)
+    Ok((swarm, onion_addresses))
 }
 
 pub async fn cli<T>(
     identity: identity::Keypair,
-    tor_socks5_port: u16,
+    maybe_tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
     behaviour: T,
 ) -> Result<Swarm<T>>
 where
     T: NetworkBehaviour,
 {
-    let maybe_tor_socks5_port = match tor::Client::new(tor_socks5_port).assert_tor_running().await {
-        Ok(()) => Some(tor_socks5_port),
-        Err(_) => None,
-    };
-
-    let transport = cli::transport::new(&identity, maybe_tor_socks5_port)?;
+    let transport = cli::transport::new(&identity, maybe_tor_client)?;
 
     let swarm = SwarmBuilder::with_existing_identity(identity)
         .with_tokio()

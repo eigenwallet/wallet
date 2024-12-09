@@ -1,22 +1,22 @@
 import { useState, useEffect } from "react";
+import { Table, Td, Th, Tr } from 'nextra/components'
 
-export default function SwapProviderTable() {
+export default function SwapMakerTable() {
   function satsToBtc(sats) {
     return sats / 100000000;
   }
 
-  async function getProviders() {
-    // from https://unstoppableswap.net/api/list with cors disabled
+  async function getMakers() {
     const response = await fetch("https://api.unstoppableswap.net/api/list");
     const data = await response.json();
     return data;
   }
 
-  const [providers, setProviders] = useState([]);
+  const [makers, setMakers] = useState([]);
 
   useEffect(() => {
-    getProviders().then((data) => {
-      setProviders(data);
+    getMakers().then((data) => {
+      setMakers(data);
     });
   }, []);
 
@@ -26,30 +26,32 @@ export default function SwapProviderTable() {
         overflowX: "scroll",
       }}
     >
-      <table>
+      <Table>
         <thead>
-          <tr>
-            <th>Multiaddress</th>
-            <th>Peer ID</th>
-            <th>Minimum Amount</th>
-            <th>Maximum Amount</th>
-            <th>Exchange Rate</th>
-            <th>Uptime</th>
-          </tr>
+          <Tr>
+            <Th>Network</Th>
+            <Th>Multiaddress</Th>
+            <Th>Peer ID</Th>
+            <Th>Minimum Amount</Th>
+            <Th>Maximum Amount</Th>
+            <Th>Exchange Rate</Th>
+          </Tr>
         </thead>
         <tbody>
-          {providers.map((provider) => (
-            <tr key={provider.peerId}>
-              <td>{provider.multiAddr}</td>
-              <td>{provider.peerId}</td>
-              <td>{satsToBtc(provider.minSwapAmount)} BTC</td>
-              <td>{satsToBtc(provider.maxSwapAmount)} BTC</td>
-              <td>{satsToBtc(provider.price)} XMR/BTC</td>
-              <td>{(provider.uptime * 100).toFixed(1)}%</td>
-            </tr>
+          {makers.map((maker) => (
+            <Tr key={maker.peerId}>
+              <Td>
+                {maker.testnet ? "Testnet" : "Mainnet"}
+              </Td>
+              <Td>{maker.multiAddr}</Td>
+              <Td>{maker.peerId}</Td>
+              <Td>{satsToBtc(maker.minSwapAmount)} BTC</Td>
+              <Td>{satsToBtc(maker.maxSwapAmount)} BTC</Td>
+              <Td>{satsToBtc(maker.price)} XMR/BTC</Td>
+            </Tr>
           ))}
         </tbody>
-      </table>
+      </Table>
     </div>
   );
 }

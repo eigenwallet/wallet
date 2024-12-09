@@ -382,10 +382,10 @@ where
                             tracing::info!(swap_id = %swap_id, peer = %peer, "Fullfilled cooperative XMR redeem request");
                         }
                         SwarmEvent::Behaviour(OutEvent::Rendezvous(libp2p::rendezvous::client::Event::Registered { rendezvous_node, ttl, namespace })) => {
-                            tracing::info!("Successfully registered with rendezvous node: {} with namespace: {} and TTL: {:?}", rendezvous_node, namespace, ttl);
+                            tracing::trace!("Successfully registered with rendezvous node: {} with namespace: {} and TTL: {:?}", rendezvous_node, namespace, ttl);
                         }
                         SwarmEvent::Behaviour(OutEvent::Rendezvous(libp2p::rendezvous::client::Event::RegisterFailed { rendezvous_node, namespace, error })) => {
-                            tracing::error!("Registration with rendezvous node {} failed for namespace {}: {:?}", rendezvous_node, namespace, error);
+                            tracing::trace!("Registration with rendezvous node {} failed for namespace {}: {:?}", rendezvous_node, namespace, error);
                         }
                         SwarmEvent::Behaviour(OutEvent::OutboundRequestResponseFailure {peer, error, request_id, protocol}) => {
                             tracing::error!(
@@ -413,7 +413,7 @@ where
                                 "Communication error: {:#}", error);
                         }
                         SwarmEvent::ConnectionEstablished { peer_id: peer, endpoint, .. } => {
-                            tracing::debug!(%peer, address = %endpoint.get_remote_address(), "New connection established");
+                            tracing::trace!(%peer, address = %endpoint.get_remote_address(), "New connection established");
 
                             // If we have buffered transfer proofs for this peer, we can now send them
                             if let Some(transfer_proofs) = self.buffered_transfer_proofs.remove(&peer) {
@@ -429,13 +429,13 @@ where
                             }
                         }
                         SwarmEvent::IncomingConnectionError { send_back_addr: address, error, .. } => {
-                            tracing::warn!(%address, "Failed to set up connection with peer: {:#}", error);
+                            tracing::trace!(%address, "Failed to set up connection with peer: {:#}", error);
                         }
                         SwarmEvent::ConnectionClosed { peer_id: peer, num_established: 0, endpoint, cause: Some(error), connection_id } => {
-                            tracing::debug!(%peer, address = %endpoint.get_remote_address(), %connection_id, "Lost connection to peer: {:#}", error);
+                            tracing::trace!(%peer, address = %endpoint.get_remote_address(), %connection_id, "Lost connection to peer: {:#}", error);
                         }
                         SwarmEvent::ConnectionClosed { peer_id: peer, num_established: 0, endpoint, cause: None, connection_id } => {
-                            tracing::info!(%peer, address = %endpoint.get_remote_address(), %connection_id,  "Successfully closed connection");
+                            tracing::trace!(%peer, address = %endpoint.get_remote_address(), %connection_id,  "Successfully closed connection");
                         }
                         SwarmEvent::NewListenAddr{address, ..} => {
                             tracing::info!(%address, "New listen address reported");
@@ -490,10 +490,10 @@ where
                     )
                 })?;
 
-        tracing::debug!(%ask_price, %xmr_balance, %max_bitcoin_for_monero, "Computed quote");
+        tracing::trace!(%ask_price, %xmr_balance, %max_bitcoin_for_monero, "Computed quote");
 
         if min_buy > max_bitcoin_for_monero {
-            tracing::warn!(
+            tracing::trace!(
                         "Your Monero balance is too low to initiate a swap, as your minimum swap amount is {}. You could at most swap {}",
                         min_buy, max_bitcoin_for_monero
                     );
@@ -506,7 +506,7 @@ where
         }
 
         if max_buy > max_bitcoin_for_monero {
-            tracing::warn!(
+            tracing::trace!(
                     "Your Monero balance is too low to initiate a swap with the maximum swap amount {} that you have specified in your config. You can at most swap {}",
                     max_buy, max_bitcoin_for_monero
                 );
@@ -717,28 +717,40 @@ impl EventLoopHandle {
 
         let transfer_proof = self.build_transfer_proof_request(msg);
 
-        backoff::future::retry(backoff, || async {
-            // Create a oneshot channel to receive the acknowledgment of the transfer proof
-            let (singular_sender, singular_receiver) = oneshot::channel();
+        backoff::future::retry_notify(
+            backoff,
+            || async {
+                // Create a oneshot channel to receive the acknowledgment of the transfer proof
+                let (singular_sender, singular_receiver) = oneshot::channel();
 
-            if let Err(err) = sender.send((self.peer, transfer_proof.clone(), singular_sender)) {
-                let err = anyhow!(err).context("Failed to communicate transfer proof through event loop channel");
-                tracing::error!(%err, swap_id = %self.swap_id, "Failed to send transfer proof");
-                return Err(backoff::Error::permanent(err));
-            }
+                if let Err(err) = sender.send((self.peer, transfer_proof.clone(), singular_sender))
+                {
+                    return Err(backoff::Error::permanent(anyhow!(err).context(
+                        "Failed to communicate transfer proof through event loop channel",
+                    )));
+                }
 
-            match singular_receiver.await {
-                Ok(Ok(())) => Ok(()),
-                Ok(Err(err)) => {
-                    tracing::warn!(%err, "Failed to send transfer proof due to a network error. We will retry");
-                    Err(backoff::Error::transient(anyhow!(err)))
+                match singular_receiver.await {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(err)) => Err(backoff::Error::transient(
+                        anyhow!(err)
+                            .context("A network error occurred while sending the transfer proof"),
+                    )),
+                    Err(_) => Err(backoff::Error::permanent(anyhow!(
+                        "The sender channel should never be closed without sending a response"
+                    ))),
                 }
-                Err(_) => {
-                    Err(backoff::Error::permanent(anyhow!("The sender channel should never be closed without sending a response")))
-                }
-            }
-        })
-            .await?;
+            },
+            |e, wait_time: Duration| {
+                tracing::warn!(
+                    swap_id = %self.swap_id,
+                    error = ?e,
+                    "Failed to send transfer proof. We will retry in {} seconds",
+                    wait_time.as_secs()
+                )
+            },
+        )
+        .await?;
 
         self.transfer_proof_sender.take();
 

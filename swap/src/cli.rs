@@ -45,7 +45,7 @@ mod tests {
             rendezvous_peer_id,
             rendezvous_address,
             namespace,
-            0,
+            None,
             identity::Keypair::generate_ed25519(),
         );
         let sellers = tokio::time::timeout(Duration::from_secs(15), list_sellers)

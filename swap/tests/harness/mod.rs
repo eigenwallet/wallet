@@ -243,7 +243,7 @@ async fn start_alice(
     let latest_rate = FixedRate::default();
     let resume_only = false;
 
-    let mut swarm = swarm::asb(
+    let (mut swarm, _) = swarm::asb(
         seed,
         min_buy,
         max_buy,
@@ -252,6 +252,9 @@ async fn start_alice(
         env_config,
         XmrBtcNamespace::Testnet,
         &[],
+        None,
+        false,
+        1,
     )
     .unwrap();
     swarm.listen_on(listen_address).unwrap();
@@ -494,8 +497,6 @@ impl BobParams {
         swap_id: Uuid,
         db: Arc<dyn Database + Send + Sync>,
     ) -> Result<(cli::EventLoop, cli::EventLoopHandle)> {
-        let tor_socks5_port = get_port()
-            .expect("We don't care about Tor in the tests so we get a free port to disable it.");
         let identity = self.seed.derive_libp2p_identity();
 
         let behaviour = cli::Behaviour::new(
@@ -504,7 +505,7 @@ impl BobParams {
             self.bitcoin_wallet.clone(),
             (identity.clone(), XmrBtcNamespace::Testnet),
         );
-        let mut swarm = swarm::cli(identity.clone(), tor_socks5_port, behaviour).await?;
+        let mut swarm = swarm::cli(identity.clone(), None, behaviour).await?;
         swarm.add_peer_address(self.alice_peer_id, self.alice_address.clone());
 
         cli::EventLoop::new(swap_id, swarm, self.alice_peer_id, db.clone())

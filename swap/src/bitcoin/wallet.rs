@@ -839,7 +839,7 @@ fn trace_status_change(txid: Txid, old: Option<ScriptStatus>, new: ScriptStatus)
             tracing::debug!(%txid, status = %new_status, "Found relevant Bitcoin transaction");
         }
         (Some(old_status), new_status) if old_status != new_status => {
-            tracing::debug!(%txid, %new_status, %old_status, "Bitcoin transaction status changed");
+            tracing::trace!(%txid, %new_status, %old_status, "Bitcoin transaction status changed");
         }
         _ => {}
     }

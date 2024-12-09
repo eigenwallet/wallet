@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { ExtendedProviderStatus, ProviderStatus } from "models/apiModel";
+import { ExtendedMakerStatus, MakerStatus } from "models/apiModel";
 import {
   TauriLogEvent,
   GetSwapInfoResponse,
@@ -16,7 +16,7 @@ import logger from "utils/logger";
 interface State {
   balance: number | null;
   withdrawTxId: string | null;
-  rendezvous_discovered_sellers: (ExtendedProviderStatus | ProviderStatus)[];
+  rendezvous_discovered_sellers: (ExtendedMakerStatus | MakerStatus)[];
   swapInfos: {
     [swapId: string]: GetSwapInfoResponseExt;
   };
@@ -69,10 +69,26 @@ export const rpcSlice = createSlice({
       slice,
       action: PayloadAction<TauriContextStatusEvent>,
     ) {
-      slice.status = action.payload;
+      // If we are already initializing, and we receive a new partial status, we update the existing status
+      if (slice.status?.type === "Initializing" && action.payload.type === "Initializing") {
+        for (const partialStatus of action.payload.content) {
+          // We find the existing status with the same type
+          const existingStatus = slice.status.content.find(s => s.componentName === partialStatus.componentName);
+          if (existingStatus) {
+            // If we find it, we update the content
+            existingStatus.progress = partialStatus.progress;
+          } else {
+            // Otherwise, we add the new partial status
+            slice.status.content.push(partialStatus);
+          }
+        }
+      } else {
+        // Otherwise, we replace the whole status
+        slice.status = action.payload;
+      }
     },
     timelockChangeEventReceived(
-      slice,
+      slice: RPCSlice,
       action: PayloadAction<TauriTimelockChangeEvent>
     ) {
       if (slice.state.swapInfos[action.payload.swap_id]) {
@@ -87,9 +103,9 @@ export const rpcSlice = createSlice({
     rpcSetWithdrawTxId(slice, action: PayloadAction<string>) {
       slice.state.withdrawTxId = action.payload;
     },
-    rpcSetRendezvousDiscoveredProviders(
+    rpcSetRendezvousDiscoveredMakers(
       slice,
-      action: PayloadAction<(ExtendedProviderStatus | ProviderStatus)[]>,
+      action: PayloadAction<(ExtendedMakerStatus | MakerStatus)[]>,
     ) {
       slice.state.rendezvous_discovered_sellers = action.payload;
     },
@@ -130,7 +146,7 @@ export const {
   rpcSetBalance,
   rpcSetWithdrawTxId,
   rpcResetWithdrawTxId,
-  rpcSetRendezvousDiscoveredProviders,
+  rpcSetRendezvousDiscoveredMakers,
   rpcSetSwapInfo,
   rpcSetMoneroRecoveryKeys,
   rpcResetMoneroRecoveryKeys,
