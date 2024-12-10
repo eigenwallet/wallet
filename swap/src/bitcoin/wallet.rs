@@ -1315,7 +1315,7 @@ impl WalletBuilder {
     pub async fn build(self) -> Wallet<bdk_wallet::rusqlite::Connection> {
         let mut database = Connection::open_in_memory().expect("sqlite in memory to work");
 
-        compile_error!("TODO: find a way to populate the database that works with the new bdk version");
+        panic!("TODO: find a way to populate the database that works with the new bdk version");
         // for index in 0..self.num_utxos {
         //     bdk::populate_test_db!(
         //         &mut database,

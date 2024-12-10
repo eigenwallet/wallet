@@ -9265,6 +9265,7 @@ dependencies = [
  "reqwest",
  "rust_decimal",
  "rust_decimal_macros",
+ "rustls 0.23.19",
  "serde",
  "serde_cbor",
  "serde_json",
