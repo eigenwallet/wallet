@@ -62,14 +62,14 @@ function ProviderReputation({ provider }: { provider: ExtendedProviderStatus }) 
     return null;
   }
 
-  return <Tooltip title="How many swaps you've made with this provider, how many were successful, and how many were refunded">
+  return <Tooltip title="Of the swaps you've made with this maker, how many were successful, how many were refunded, and how many were punished">
     <Chip label={
       <Box display="flex" style={{ gap: "0.5rem" }}>
-        <Box color="success.main">{successfullSwaps} success</Box>
+        <Box color="success.main">{successfullSwaps}</Box>
         <Divider orientation="vertical" flexItem />
-        <Box color="warning.main">{refundedSwaps} refund</Box>
+        <Box color="warning.main">{refundedSwaps}</Box>
         <Divider orientation="vertical" flexItem />
-        <Box color="error.main">{failedSwaps} fail</Box>
+        <Box color="error.main">{failedSwaps}</Box>
       </Box>
     } />
   </Tooltip>
