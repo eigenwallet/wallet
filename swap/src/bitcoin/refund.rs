@@ -28,7 +28,7 @@ impl TxRefund {
         let tx_refund = tx_cancel.build_spend_transaction(refund_address, None, spending_fee);
 
         let digest = SighashCache::new(&tx_refund)
-            .p2wpkh_signature_hash(
+            .p2wsh_signature_hash(
                 0, // Only one input: cancel transaction
                 &tx_cancel
                     .output_descriptor

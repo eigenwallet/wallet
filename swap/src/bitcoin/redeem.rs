@@ -34,7 +34,7 @@ impl TxRedeem {
         let tx_redeem = tx_lock.build_spend_transaction(redeem_address, None, spending_fee);
 
         let digest = SighashCache::new(&tx_redeem)
-            .p2wpkh_signature_hash(
+            .p2wsh_signature_hash(
                 0, // Only one input: lock_input (lock transaction)
                 &tx_lock.output_descriptor.script_code().expect("scriptcode"),
                 tx_lock.lock_amount(),
