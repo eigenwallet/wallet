@@ -95,10 +95,10 @@ pub fn register_modules(outer_context: Context) -> Result<RpcModule<Context>> {
         params.bitcoin_change_address = params
             .bitcoin_change_address
             .map(|address| {
-                bitcoin_address::revalidate_network(
+                bitcoin_address::validate_network(
                     address,
                     context.config.env_config.bitcoin_network,
-                )
+                ).map(|a| a.into_unchecked())
             })
             .transpose()
             .to_jsonrpsee_result()?;

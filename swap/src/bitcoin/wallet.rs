@@ -819,17 +819,18 @@ impl Client {
 impl EstimateFeeRate for Client {
     fn estimate_feerate(&self, target_block: usize) -> Result<FeeRate> {
         // Get the fee rate in BTC/kvB
-        let fee_rate_btc_kvb = self.electrum.inner.estimate_fee(target_block)?;
-        // Convert to sat/vb
-        let fee_rate_sat_vb = Amount::from_btc(fee_rate_btc_kvb / 1_000.)?;
+        let btc_per_kvb = self.electrum.inner.estimate_fee(target_block)?;
+        let amount_per_kvb = Amount::from_btc(btc_per_kvb)?;
+        // Convert to sat/kwu
+        let amount_per_kwu = amount_per_kvb.checked_div(4).context("fee rate overflow")?;
 
-        FeeRate::from_sat_per_vb(fee_rate_sat_vb.to_sat()).ok_or(anyhow!("Fee rate overflow"))
+        Ok(FeeRate::from_sat_per_kwu(amount_per_kwu.to_sat()))
     }
 
     fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
         let relay_fee_btc = self.electrum.inner.relay_fee()?;
 
-        Amount::from_btc(relay_fee_btc).context("fee out of range")
+        Amount::from_btc(relay_fee_btc).context("relay fee out of range")
     }
 }
 

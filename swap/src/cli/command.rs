@@ -80,7 +80,8 @@ where
 
             let bitcoin_change_address = bitcoin_change_address
                 .map(|address| bitcoin_address::validate(address, is_testnet))
-                .transpose()?;
+                .transpose()?
+                .map(|address| address.into_unchecked());
 
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
@@ -93,7 +94,7 @@ where
                     .build()
                     .await?,
             );
-
+            
             BuyXmrArgs {
                 seller,
                 bitcoin_change_address,

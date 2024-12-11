@@ -11,6 +11,7 @@ use crate::network::swarm;
 use crate::protocol::bob::{BobState, Swap};
 use crate::protocol::{bob, State};
 use crate::{bitcoin, cli, monero, rpc};
+use ::bitcoin::address::NetworkUnchecked;
 use ::bitcoin::Txid;
 use ::monero::Network;
 use anyhow::{bail, Context as AnyContext, Result};
@@ -57,8 +58,7 @@ pub struct BuyXmrArgs {
     #[typeshare(serialized_as = "string")]
     pub seller: Multiaddr,
     #[typeshare(serialized_as = "Option<string>")]
-    #[serde(with = "crate::bitcoin::address_serde::option")]
-    pub bitcoin_change_address: Option<bitcoin::Address>,
+    pub bitcoin_change_address: Option<bitcoin::Address<NetworkUnchecked>>,
     #[typeshare(serialized_as = "string")]
     pub monero_receive_address: monero::Address,
 }
@@ -591,7 +591,9 @@ pub async fn buy_xmr(
     );
 
     let bitcoin_change_address = match bitcoin_change_address {
-        Some(addr) => addr,
+        Some(addr) => addr
+            .require_network(bitcoin_wallet.network())
+            .context("Address is not on the correct network")?,
         None => {
             let internal_wallet_address = bitcoin_wallet.new_address().await?;
 
