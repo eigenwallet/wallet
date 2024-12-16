@@ -94,7 +94,7 @@ where
                     .build()
                     .await?,
             );
-            
+
             BuyXmrArgs {
                 seller,
                 bitcoin_change_address,

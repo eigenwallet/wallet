@@ -42,9 +42,7 @@ const DEFAULT_WALLET_NAME: &str = "asb-wallet";
 pub async fn main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
-        .map_err(|e|
-            anyhow::anyhow!("failed to install default rustls provider: {:?}", e)
-        )?;
+        .map_err(|e| anyhow::anyhow!("failed to install default rustls provider: {:?}", e))?;
 
     let Arguments {
         testnet,
@@ -381,7 +379,7 @@ async fn init_bitcoin_wallet(
         env_config.bitcoin_finality_confirmations,
         config.bitcoin.target_block as usize,
         env_config.bitcoin_sync_interval(),
-        env_config
+        env_config,
     )
     .await
     .context("Failed to initialize Bitcoin wallet")?;

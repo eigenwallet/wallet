@@ -183,7 +183,11 @@ impl State0 {
         }
     }
 
-    pub async fn receive<Persister>(self, wallet: &bitcoin::Wallet<Persister>, msg: Message1) -> Result<State1>
+    pub async fn receive<Persister>(
+        self,
+        wallet: &bitcoin::Wallet<Persister>,
+        msg: Message1,
+    ) -> Result<State1>
     where
         Persister: WalletPersister,
         <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,

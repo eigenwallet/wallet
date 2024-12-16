@@ -497,7 +497,10 @@ impl State3 {
         Ok(tx)
     }
 
-    pub async fn fetch_tx_refund(&self, bitcoin_wallet: &bitcoin::Wallet) -> Result<Arc<Transaction>> {
+    pub async fn fetch_tx_refund(
+        &self,
+        bitcoin_wallet: &bitcoin::Wallet,
+    ) -> Result<Arc<Transaction>> {
         let tx_refund = self.tx_refund();
         let tx = bitcoin_wallet.get_raw_transaction(tx_refund.txid()).await?;
         Ok(tx)
