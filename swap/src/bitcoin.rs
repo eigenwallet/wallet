@@ -325,7 +325,7 @@ pub fn current_epoch(
 pub mod bitcoin_address {
     use anyhow::{Context, Result};
     use bitcoin::{
-        address::{NetworkChecked, NetworkUnchecked, NetworkValidation},
+        address::{NetworkChecked, NetworkUnchecked},
         Address,
     };
     use serde::Serialize;

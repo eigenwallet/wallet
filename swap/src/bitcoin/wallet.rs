@@ -12,7 +12,7 @@ use bdk_wallet::template::{Bip84, DescriptorTemplate};
 use bdk_wallet::KeychainKind;
 use bdk_wallet::SignOptions;
 use bdk_wallet::WalletPersister;
-use bdk_wallet::{Balance, ChangeSet, LoadParams, PersistedWallet};
+use bdk_wallet::{Balance, PersistedWallet};
 use bitcoin::bip32::Xpriv;
 use bitcoin::ScriptBuf;
 use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid};
@@ -144,6 +144,108 @@ impl Wallet {
     /// The batch size for the full scan.
     const SCAN_BATCH_SIZE: usize = 5;
 
+    /// Create a new wallet, persisted to a sqlite database.
+    pub async fn with_sqlite(
+        seed: &Seed,
+        network: Network,
+        electrum_rpc_url: &str,
+        data_dir: impl AsRef<Path>,
+        finality_confirmations: u32,
+        target_block: usize,
+        sync_interval: Duration,
+        env_config: crate::env::Config,
+    ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
+        let xprivkey = seed.derive_extended_private_key(env_config.bitcoin_network)?;
+
+        let wallet_dir = data_dir.as_ref().join("wallet").join("wallet-new");
+        let wallet_path = wallet_dir.join("walletdb.sqlite");
+        let wallet_exists = wallet_path.exists();
+
+        // Check if the old wallet directory exists and export the data if it does.
+        let old_wallet_dir = data_dir.as_ref().join(old::WALLET);
+        let export = match !wallet_exists && old_wallet_dir.exists() {
+            false => None,
+            true => {
+                tracing::info!("Found old wallet directory, fetching data for migration");
+
+                // We need to support the legacy wallet format for the migration path.
+                // We need to convert the network to the legacy BDK network type.
+                let legacy_network = match network {
+                    Network::Bitcoin => bdk::bitcoin::Network::Bitcoin,
+                    Network::Testnet => bdk::bitcoin::Network::Testnet,
+                    _ => bail!("Unsupported network: {}", network),
+                };
+
+                let xprivkey = seed.derive_extended_private_key_legacy(legacy_network)?;
+                let old_wallet = old::OldWallet::new(&old_wallet_dir, xprivkey, env_config).await?;
+
+                let export = old_wallet.export("old-wallet").await?;
+
+                tracing::debug!(
+                    old_balance=%export.balance,
+                    external_index=%export.external_derivation_index,
+                    internal_index=%export.internal_derivation_index,
+                    "Fetched data from old wallet for migration"
+                );
+
+                Some(export)
+            }
+        };
+
+        // Make sure the wallet directory exists.
+        tokio::fs::create_dir_all(&wallet_dir).await?;
+
+        let connection = Connection::open(&wallet_path)?;
+
+        if wallet_exists {
+            Self::create_existing(
+                xprivkey,
+                network,
+                electrum_rpc_url,
+                connection,
+                finality_confirmations,
+                target_block,
+                sync_interval,
+            )
+            .await
+        } else {
+            Self::create_new(
+                xprivkey,
+                network,
+                electrum_rpc_url,
+                connection,
+                finality_confirmations,
+                target_block,
+                sync_interval,
+                export,
+            )
+            .await
+        }
+    }
+
+    /// Create a new wallet, persisted to an in-memory sqlite database.
+    /// Should only be used for testing.
+    pub async fn with_sqlite_in_memory(
+        seed: &Seed,
+        network: Network,
+        electrum_rpc_url: &str,
+        finality_confirmations: u32,
+        target_block: usize,
+        sync_interval: Duration,
+    ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
+        Ok(Self::create_new(
+            seed.derive_extended_private_key(network)?,
+            network,
+            electrum_rpc_url,
+            bdk_wallet::rusqlite::Connection::open_in_memory()?,
+            finality_confirmations,
+            target_block,
+            sync_interval,
+            None,
+        )
+        .await?)
+    }
+
     /// Create a new wallet in the database and perform a full scan.
     async fn create_new<Persister>(
         xprivkey: Xpriv,
@@ -258,108 +360,9 @@ impl Wallet {
         Ok(wallet)
     }
 
-    /// Create a new wallet, persisted to a sqlite database.
-    pub async fn with_sqlite(
-        seed: &Seed,
-        network: Network,
-        electrum_rpc_url: &str,
-        data_dir: impl AsRef<Path>,
-        finality_confirmations: u32,
-        target_block: usize,
-        sync_interval: Duration,
-        env_config: crate::env::Config,
-    ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
-        let xprivkey = seed.derive_extended_private_key(env_config.bitcoin_network)?;
+    
 
-        let wallet_dir = data_dir.as_ref().join("wallet").join("wallet-new");
-        let wallet_path = wallet_dir.join("walletdb.sqlite");
-        let wallet_exists = wallet_path.exists();
-
-        // Check if the old wallet directory exists and export the data if it does.
-        let old_wallet_dir = data_dir.as_ref().join(old::WALLET);
-        let export = match !wallet_exists && old_wallet_dir.exists() {
-            false => None,
-            true => {
-                tracing::info!("Found old wallet directory, fetching data for migration");
-
-                // We need to support the legacy wallet format for the migration path.
-                // We need to convert the network to the legacy BDK network type.
-                let legacy_network = match network {
-                    Network::Bitcoin => bdk::bitcoin::Network::Bitcoin,
-                    Network::Testnet => bdk::bitcoin::Network::Testnet,
-                    _ => bail!("Unsupported network: {}", network),
-                };
-
-                let xprivkey = seed.derive_extended_private_key_legacy(legacy_network)?;
-                let old_wallet = old::OldWallet::new(&old_wallet_dir, xprivkey, env_config).await?;
-
-                let export = old_wallet.export("old-wallet").await?;
-
-                tracing::debug!(
-                    old_balance=%export.balance,
-                    external_index=%export.external_derivation_index,
-                    internal_index=%export.internal_derivation_index,
-                    "Fetched data from old wallet for migration"
-                );
-
-                Some(export)
-            }
-        };
-
-        // Make sure the wallet directory exists.
-        tokio::fs::create_dir_all(&wallet_dir).await?;
-
-        let connection = Connection::open(&wallet_path)?;
-
-        if wallet_exists {
-            Self::create_existing(
-                xprivkey,
-                network,
-                electrum_rpc_url,
-                connection,
-                finality_confirmations,
-                target_block,
-                sync_interval,
-            )
-            .await
-        } else {
-            Self::create_new(
-                xprivkey,
-                network,
-                electrum_rpc_url,
-                connection,
-                finality_confirmations,
-                target_block,
-                sync_interval,
-                export,
-            )
-            .await
-        }
-    }
-
-    /// Create a new wallet, persisted to an in-memory sqlite database.
-    /// Should only be used for testing.
-    #[cfg(test)]
-    pub async fn with_sqlite_in_memory(
-        xprivkey: Xpriv,
-        network: Network,
-        electrum_rpc_url: &str,
-        finality_confirmations: u32,
-        target_block: usize,
-        sync_interval: Duration,
-    ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
-        Ok(Self::create_new(
-            xprivkey,
-            network,
-            electrum_rpc_url,
-            bdk_wallet::rusqlite::Connection::open_in_memory()?,
-            finality_confirmations,
-            target_block,
-            sync_interval,
-            None,
-        )
-        .await?)
-    }
+    
 }
 
 // These are the methods that are always available, regardless of the persister.

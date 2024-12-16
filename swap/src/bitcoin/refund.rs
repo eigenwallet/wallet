@@ -6,7 +6,7 @@ use crate::bitcoin::{
 use crate::{bitcoin, monero};
 use ::bitcoin::sighash::SighashCache;
 use ::bitcoin::{secp256k1, ScriptBuf};
-use ::bitcoin::{sighash::SegwitV0Sighash as Sighash, EcdsaSighashType, Script, Txid};
+use ::bitcoin::{sighash::SegwitV0Sighash as Sighash, EcdsaSighashType, Txid};
 use anyhow::{bail, Context, Result};
 use bdk_wallet::miniscript::Descriptor;
 use ecdsa_fun::Signature;

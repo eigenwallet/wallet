@@ -124,7 +124,7 @@ tokio-tar = "0.3"
 zip = "0.5"
 
 [dev-dependencies]
-bitcoin-harness = { git = "https://github.com/delta1/bitcoin-harness-rs.git", rev = "80cc8d05db2610d8531011be505b7bee2b5cdf9f" }
+bitcoin-harness = { path = "../bitcoin-harness" }
 get-port = "3"
 jsonrpsee = { version = "0.16.2", features = [ "ws-client" ] }
 mockito = "1.4"

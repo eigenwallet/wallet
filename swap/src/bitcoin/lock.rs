@@ -1,4 +1,4 @@
-use crate::bitcoin::wallet::{EstimateFeeRate, Watchable};
+use crate::bitcoin::wallet::Watchable;
 use crate::bitcoin::{
     build_shared_output_descriptor, Address, Amount, PublicKey, Transaction, Wallet,
 };
@@ -202,7 +202,6 @@ impl Watchable for TxLock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bitcoin::wallet::StaticFeeRate;
     use crate::bitcoin::WalletBuilder;
 
     #[tokio::test]

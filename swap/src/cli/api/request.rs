@@ -1015,7 +1015,7 @@ pub async fn withdraw_btc(
         .await?;
 
     Ok(WithdrawBtcResponse {
-        txid: signed_tx.txid().to_string(),
+        txid: signed_tx.compute_txid().to_string(),
         amount,
     })
 }

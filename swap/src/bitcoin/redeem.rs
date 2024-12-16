@@ -8,7 +8,7 @@ use anyhow::{bail, Context, Result};
 use bdk_wallet::miniscript::Descriptor;
 use bitcoin::sighash::SighashCache;
 use bitcoin::{secp256k1, ScriptBuf};
-use bitcoin::{EcdsaSighashType, Script};
+use bitcoin::EcdsaSighashType;
 use ecdsa_fun::adaptor::{Adaptor, HashTranscript};
 use ecdsa_fun::fun::Scalar;
 use ecdsa_fun::nonce::Deterministic;
@@ -51,7 +51,7 @@ impl TxRedeem {
     }
 
     pub fn txid(&self) -> Txid {
-        self.inner.txid()
+        self.inner.compute_txid()
     }
 
     pub fn digest(&self) -> Sighash {

@@ -1,5 +1,5 @@
 use crate::bitcoin::address_serde;
-use crate::bitcoin::wallet::{EstimateFeeRate, Subscription};
+use crate::bitcoin::wallet::Subscription;
 use crate::bitcoin::{
     self, current_epoch, CancelTimelock, ExpiredTimelocks, PunishTimelock, Transaction, TxCancel,
     TxLock, Txid, Wallet,
@@ -785,7 +785,7 @@ impl State6 {
         bitcoin_wallet: &bitcoin::Wallet,
     ) -> Result<bitcoin::Txid> {
         let signed_tx_refund = self.signed_refund_transaction()?;
-        let signed_tx_refund_txid = signed_tx_refund.txid();
+        let signed_tx_refund_txid = signed_tx_refund.compute_txid();
         bitcoin_wallet.broadcast(signed_tx_refund, "refund").await?;
 
         Ok(signed_tx_refund_txid)

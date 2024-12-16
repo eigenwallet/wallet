@@ -529,8 +529,6 @@ async fn init_bitcoin_wallet(
     env_config: EnvConfig,
     bitcoin_target_block: u16,
 ) -> Result<bitcoin::Wallet> {
-    let xprivkey = seed.derive_extended_private_key(env_config.bitcoin_network)?;
-
     let wallet = bitcoin::Wallet::with_sqlite(
         seed,
         env_config.bitcoin_network,
