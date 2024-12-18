@@ -619,6 +619,7 @@ where
     /// already accounting for the fees we need to spend to get the
     /// transaction confirmed.
     pub async fn max_giveable(&self, locking_script_size: usize) -> Result<Amount> {
+        tracing::debug!("Calculating max giveable");
         let mut wallet = self.wallet.lock().await;
         let balance = wallet.balance();
         if balance.total() < DUST_AMOUNT {
@@ -640,23 +641,19 @@ where
         tx_builder.fee_rate(fee_rate);
         tx_builder.drain_wallet();
 
-        let response = tx_builder.finish();
-        match response {
-            Result::Ok(psbt) => {
-                let max_giveable = psbt
-                    .unsigned_tx
-                    .output
-                    .iter()
-                    .map(|o| o.value)
-                    .reduce(|a, b| a + b)
-                    .unwrap_or(Amount::ZERO)
-                    - psbt
-                        .fee_amount()
-                        .expect("fees are always present with Electrum backend");
-                Ok(max_giveable)
-            }
-            Err(e) => bail!("Failed to build transaction. {:#}", e),
-        }
+        let psbt = tx_builder.finish()
+            .context("Failed to build transaction to figure out max giveable")?;
+
+        let max_giveable = psbt
+            .unsigned_tx
+            .output
+            .iter()
+            .map(|o| o.value)
+            .sum::<Amount>();
+
+        tracing::debug!(fee=%psbt.fee_amount().unwrap().to_sat(), "Calculated max giveable");
+
+        Ok(max_giveable)
     }
 
     /// Estimate total tx fee for a pre-defined target block based on the
@@ -1356,6 +1353,7 @@ impl WalletBuilder {
         let mut database = Connection::open_in_memory().expect("sqlite in memory to work");
 
         panic!("TODO: find a way to populate the database that works with the new bdk version");
+
         // for index in 0..self.num_utxos {
         //     bdk::populate_test_db!(
         //         &mut database,
@@ -1366,7 +1364,7 @@ impl WalletBuilder {
         //     );
         // }
 
-        super::Wallet::with_sqlite_in_memory(
+        let mut wallet = super::Wallet::with_sqlite_in_memory(
             self.key,
             Network::Regtest,
             None,
@@ -1375,7 +1373,9 @@ impl WalletBuilder {
             Duration::from_secs(10),
         )
         .await
-        .unwrap()
+        .unwrap();
+
+        wallet
     }
 }
 
