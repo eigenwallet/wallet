@@ -192,6 +192,9 @@ impl Wallet {
             }
         };
 
+        // Connect to the electrum server.
+        let client = Client::new(electrum_rpc_url, sync_interval)?;
+
         // Make sure the wallet directory exists.
         tokio::fs::create_dir_all(&wallet_dir).await?;
 
@@ -201,22 +204,20 @@ impl Wallet {
             Self::create_existing(
                 xprivkey,
                 network,
-                electrum_rpc_url,
+                client,
                 connection,
                 finality_confirmations,
                 target_block,
-                sync_interval,
             )
             .await
         } else {
             Self::create_new(
                 xprivkey,
                 network,
-                electrum_rpc_url,
+                client,
                 connection,
                 finality_confirmations,
                 target_block,
-                sync_interval,
                 export,
             )
             .await
@@ -228,19 +229,16 @@ impl Wallet {
     pub async fn with_sqlite_in_memory(
         seed: &Seed,
         network: Network,
-        electrum_rpc_url: &str,
         finality_confirmations: u32,
         target_block: usize,
-        sync_interval: Duration,
     ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
         Ok(Self::create_new(
             seed.derive_extended_private_key(network)?,
             network,
-            electrum_rpc_url,
+            Client::new("", Duration::ZERO).unwrap(),
             bdk_wallet::rusqlite::Connection::open_in_memory()?,
             finality_confirmations,
             target_block,
-            sync_interval,
             None,
         )
         .await?)
@@ -250,11 +248,10 @@ impl Wallet {
     async fn create_new<Persister>(
         xprivkey: Xpriv,
         network: Network,
-        electrum_rpc_url: &str,
+        client: Client,
         mut persister: Persister,
         finality_confirmations: u32,
         target_block: usize,
-        sync_interval: Duration,
         old_wallet: Option<old::Export>,
     ) -> Result<Wallet<Persister>>
     where
@@ -285,8 +282,6 @@ impl Wallet {
             wallet.persist(&mut persister)?;
         }
 
-        let client = Client::new(electrum_rpc_url, sync_interval)?;
-
         tracing::debug!("Starting initial Bitcoin wallet scan");
 
         let full_scan = wallet.start_full_scan();
@@ -316,11 +311,10 @@ impl Wallet {
     async fn create_existing<Persister>(
         xprivkey: Xpriv,
         network: Network,
-        electrum_rpc_url: &str,
+        client: Client,
         mut persister: Persister,
         finality_confirmations: u32,
         target_block: usize,
-        sync_interval: Duration,
     ) -> Result<Wallet<Persister>>
     where
         Persister: WalletPersister + Sized,
@@ -344,8 +338,6 @@ impl Wallet {
             .context("Failed to open database")?
             .context("No wallet found in database")?;
 
-        let client = Client::new(electrum_rpc_url, sync_interval)?;
-
         let wallet = Wallet {
             wallet: Arc::new(Mutex::new(wallet)),
             client: Arc::new(Mutex::new(client)),
@@ -359,10 +351,6 @@ impl Wallet {
 
         Ok(wallet)
     }
-
-    
-
-    
 }
 
 // These are the methods that are always available, regardless of the persister.
@@ -507,6 +495,7 @@ where
             .sign(&mut psbt, SignOptions::default())?;
 
         if !finalized {
+            tracing::error!(outputs = ?psbt.outputs, "PSBT is not finalized");
             bail!("PSBT is not finalized")
         }
 
@@ -562,16 +551,18 @@ where
         amount: Amount,
         change_override: Option<Address>,
     ) -> Result<PartiallySignedTransaction> {
-        // TODO: check if this is still needed
-        // if self.network != address.network {
-        //     bail!("Cannot build PSBT because network of given address is {} but wallet is on network {}", address.network, self.network);
-        // }
+        // Check address and change address for network equality.
+        address
+            .as_unchecked()
+            .clone()
+            .require_network(self.network)
+            .context("Address is not on the correct network")?;
 
-        // if let Some(change) = change_override.as_ref() {
-        //     if self.network != change.network {
-        //         bail!("Cannot build PSBT because network of given address is {} but wallet is on network {}", change.network, self.network);
-        //     }
-        // }
+        change_override
+            .as_ref()
+            .map(|a| a.as_unchecked().clone().require_network(self.network))
+            .transpose()
+            .context("Change address is not on the correct network")?;
 
         let mut wallet = self.wallet.lock().await;
         let client = self.client.lock().await;
@@ -581,8 +572,10 @@ where
         let mut tx_builder = wallet.build_tx();
         tx_builder.add_recipient(script.clone(), amount);
         tx_builder.fee_rate(fee_rate);
-        let psbt = tx_builder.finish()?;
-        let mut psbt: PartiallySignedTransaction = psbt;
+        let mut psbt = tx_builder.finish()?;
+
+        // Drop the lock on the wallet and client to avoid deadlocks.
+        let (_, _) = (wallet, client);
 
         match psbt.unsigned_tx.output.as_mut_slice() {
             // our primary output is the 2nd one? reverse the vectors
@@ -604,6 +597,7 @@ where
             &mut psbt.outputs.as_mut_slice(),
             change_override,
         ) {
+            tracing::info!(change_override = ?change_override, "Overwriting change address");
             change.script_pubkey = change_override.script_pubkey();
             // Might be populated based on the previously set change address, but for the
             // overwrite we don't know unless we ask the user for more information.
@@ -641,7 +635,8 @@ where
         tx_builder.fee_rate(fee_rate);
         tx_builder.drain_wallet();
 
-        let psbt = tx_builder.finish()
+        let psbt = tx_builder
+            .finish()
             .context("Failed to build transaction to figure out max giveable")?;
 
         let max_giveable = psbt

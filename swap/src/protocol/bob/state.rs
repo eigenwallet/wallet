@@ -183,15 +183,7 @@ impl State0 {
         }
     }
 
-    pub async fn receive<Persister>(
-        self,
-        wallet: &bitcoin::Wallet<Persister>,
-        msg: Message1,
-    ) -> Result<State1>
-    where
-        Persister: WalletPersister,
-        <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
-    {
+    pub async fn receive(self, wallet: &bitcoin::Wallet, msg: Message1) -> Result<State1> {
         let valid = CROSS_CURVE_PROOF_SYSTEM.verify(
             &msg.dleq_proof_s_a,
             (
@@ -206,6 +198,12 @@ impl State0 {
         if !valid {
             bail!("Alice's dleq proof doesn't verify")
         }
+
+        tracing::info!(
+            amount = %self.btc,
+            change = %self.refund_address,
+            "Creating tx lock"
+        );
 
         let tx_lock = bitcoin::TxLock::new(
             wallet,

@@ -7,7 +7,6 @@ use ::bitcoin::{OutPoint, TxIn, TxOut, Txid};
 use anyhow::{bail, Context, Result};
 use bdk_wallet::miniscript::Descriptor;
 use bdk_wallet::psbt::PsbtUtils;
-use bdk_wallet::WalletPersister;
 use bitcoin::{locktime::absolute::LockTime as PackedLockTime, ScriptBuf, Sequence};
 use serde::{Deserialize, Serialize};
 
@@ -21,16 +20,13 @@ pub struct TxLock {
 }
 
 impl TxLock {
-    pub async fn new<Persister>(
-        wallet: &Wallet<Persister>,
+    pub async fn new(
+        wallet: &Wallet,
         amount: Amount,
         A: PublicKey,
         B: PublicKey,
         change: bitcoin::Address,
     ) -> Result<Self>
-    where
-        Persister: WalletPersister + Sized,
-        <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
     {
         let lock_output_descriptor = build_shared_output_descriptor(A.0, B.0)?;
         let address = lock_output_descriptor
