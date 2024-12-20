@@ -495,7 +495,7 @@ impl SwapDetails {
 
     fn to_table_row(&self) -> Vec<String> {
         vec![
-            self.swap_id,
+            self.swap_id.clone(),
             self.start_date.clone(),
             self.state.clone(),
             self.btc_lock_txid.clone(),
