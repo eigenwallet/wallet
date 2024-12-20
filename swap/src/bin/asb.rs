@@ -261,7 +261,7 @@ pub async fn main() -> Result<()> {
                     continue;
                 }
 
-                match SwapDetails::from_db_state(swap_id.clone(), state, &db).await {
+                match SwapDetails::from_db_state(swap_id, state, &db).await {
                     Ok(details) => {
                         if json {
                             details.log_info();
@@ -453,7 +453,7 @@ impl SwapDetails {
     ) -> Result<Self> {
         let completed = is_complete(&latest_state);
 
-        let all_states = db.get_states(swap_id.clone()).await?;
+        let all_states = db.get_states(swap_id).await?;
         let state3 = all_states
             .iter()
             .find_map(|s| match s {
@@ -463,9 +463,9 @@ impl SwapDetails {
             .context("Failed to get \"BtcLockTransactionSeen\" state")?;
 
         let exchange_rate = Self::calculate_exchange_rate(state3.btc, state3.xmr)?;
-        let start_date = db.get_swap_start_date(swap_id.clone()).await?;
+        let start_date = db.get_swap_start_date(swap_id).await?;
         let btc_lock_txid = state3.tx_lock.txid();
-        let peer_id = db.get_peer_id(swap_id.clone()).await?;
+        let peer_id = db.get_peer_id(swap_id).await?;
 
         Ok(Self {
             swap_id: swap_id.to_string(),
@@ -495,7 +495,7 @@ impl SwapDetails {
 
     fn to_table_row(&self) -> Vec<String> {
         vec![
-            self.swap_id.clone(),
+            self.swap_id,
             self.start_date.clone(),
             self.state.clone(),
             self.btc_lock_txid.clone(),
