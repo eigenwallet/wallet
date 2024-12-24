@@ -32,12 +32,12 @@ where
             env_config: env_config(testnet),
             cmd: Command::Start { resume_only },
         },
-        RawCommand::History => Arguments {
+        RawCommand::History { only_unfinished } => Arguments {
             testnet,
             json,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
-            cmd: Command::History,
+            cmd: Command::History { only_unfinished },
         },
         RawCommand::Logs {
             logs_dir: dir_path,
@@ -181,7 +181,9 @@ pub enum Command {
     Start {
         resume_only: bool,
     },
-    History,
+    History {
+        only_unfinished: bool,
+    },
     Config,
     Logs {
         logs_dir: Option<PathBuf>,
@@ -279,7 +281,10 @@ pub enum RawCommand {
         swap_id: Option<Uuid>,
     },
     #[structopt(about = "Prints swap-id and the state of each swap ever made.")]
-    History,
+    History {
+        #[structopt(long = "only-unfinished", help = "Only print in progress swaps")]
+        only_unfinished: bool,
+    },
     #[structopt(about = "Prints the current config")]
     Config,
     #[structopt(about = "Allows withdrawing BTC from the internal Bitcoin wallet.")]
@@ -395,7 +400,9 @@ mod tests {
             json: false,
             config_path: default_mainnet_conf_path,
             env_config: mainnet_env_config,
-            cmd: Command::History,
+            cmd: Command::History {
+                only_unfinished: false,
+            },
         };
         let args = parse_args(raw_ars).unwrap();
         assert_eq!(expected_args, args);
@@ -571,7 +578,9 @@ mod tests {
             json: false,
             config_path: default_testnet_conf_path,
             env_config: testnet_env_config,
-            cmd: Command::History,
+            cmd: Command::History {
+                only_unfinished: false,
+            },
         };
         let args = parse_args(raw_ars).unwrap();
         assert_eq!(expected_args, args);
