@@ -569,6 +569,7 @@ where
         let fee_rate = client.estimate_feerate(self.target_block)?;
         let script = address.script_pubkey();
 
+        // Build the transaction.
         let mut tx_builder = wallet.build_tx();
         tx_builder.add_recipient(script.clone(), amount);
         tx_builder.fee_rate(fee_rate);
