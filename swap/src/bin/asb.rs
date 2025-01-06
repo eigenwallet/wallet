@@ -77,7 +77,7 @@ pub async fn main() -> Result<()> {
         Ok(config) => config,
         Err(ConfigNotInitialized {}) => {
             initial_setup(config_path.clone(), query_user_for_initial_config(testnet)?)?;
-            read_config(config_path)?.expect("after initial setup config can be read")
+            read_config(config_path.clone())?.expect("after initial setup config can be read")
         }
     };
 
@@ -288,6 +288,7 @@ pub async fn main() -> Result<()> {
             }
         }
         Command::Config => {
+            tracing::info!(config_path=?config_path.clone(), "Reading config file");
             let config_json = serde_json::to_string_pretty(&config)?;
             println!("{}", config_json);
         }
