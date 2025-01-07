@@ -88,6 +88,7 @@ export default function WaitingForBtcDepositPage({
             <Alert severity="info">
               Please do not use replace-by-fee on your deposit transaction.
               You'll need to start a new swap if you do.
+              The funds will be available for future swaps.
             </Alert>
           </Box>
         }
