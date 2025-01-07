@@ -1,4 +1,10 @@
 # An Overview of Becoming a Maker
 
+Makers run an automated swap backend (`asb`), which users can connect to and swap with.
+The `asb` accepts Bitcoin and sells Monero, for a fee.
 
+The `asb` needs to communicate with the Bitcoin and Monero blockchains.
+For this, it uses `monero-wallet-rpc` (Monero) and `electrs` (Bitcoin).
+We strongly recommend also running your own `monerod` and `bitcoind` nodes.
+This means that you don't have to rely on third parties for your blockchain data, but it also takes about 1TB of storage.
 
