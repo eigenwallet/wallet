@@ -1,5 +1,5 @@
 use crate::asb::{Behaviour, OutEvent, Rate};
-use crate::monero::Amount;
+use crate::monero::{Amount, MONERO_FEE};
 use crate::network::cooperative_xmr_redeem_after_punish::CooperativeXmrRedeemRejectReason;
 use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, Rejected};
 use crate::network::quote::BidQuote;
@@ -489,7 +489,7 @@ where
             .iter()
             .filter_map(|(_, state)| match state {
                 State::Alice(AliceState::BtcLockTransactionSeen { state3 })
-                | State::Alice(AliceState::BtcLocked { state3 }) => Some(state3.xmr),
+                | State::Alice(AliceState::BtcLocked { state3 }) => Some(state3.xmr + MONERO_FEE),
                 _ => None,
             })
             .fold(Amount::ZERO, |acc, amount| acc + amount);
