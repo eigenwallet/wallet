@@ -479,16 +479,34 @@ where
         // use unlocked monero balance for quote
         let xmr_balance = Amount::from_piconero(balance.unlocked_balance);
 
-        let max_bitcoin_for_monero =
-            xmr_balance
-                .max_bitcoin_for_price(ask_price)
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Bitcoin price ({}) x Monero ({}) overflow",
-                        ask_price,
-                        xmr_balance
-                    )
-                })?;
+        // From our full balance we need to subtract any Monero that is 'reserved' for ongoing swaps
+        // (where the Bitcoin has been (or is being) locked but we haven't sent the Monero yet).
+
+        let reserved: Amount = self
+            .db
+            .all()
+            .await?
+            .iter()
+            .filter_map(|(_, state)| match state {
+                State::Alice(AliceState::BtcLockTransactionSeen { state3 })
+                | State::Alice(AliceState::BtcLocked { state3 }) => Some(state3.xmr),
+                _ => None,
+            })
+            .fold(Amount::ZERO, |acc, amount| acc + amount);
+
+        let free_monero_balance = xmr_balance
+            .checked_sub(reserved)
+            .context("reserved more monero than we've got")?;
+
+        let max_bitcoin_for_monero = free_monero_balance
+            .max_bitcoin_for_price(ask_price)
+            .ok_or_else(|| {
+                anyhow!(
+                    "Bitcoin price ({}) x Monero ({}) overflow",
+                    ask_price,
+                    xmr_balance
+                )
+            })?;
 
         tracing::trace!(%ask_price, %xmr_balance, %max_bitcoin_for_monero, "Computed quote");
 
