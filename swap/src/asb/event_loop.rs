@@ -481,6 +481,10 @@ where
 
         // From our full balance we need to subtract any Monero that is 'reserved' for ongoing swaps
         // (where the Bitcoin has been (or is being) locked but we haven't sent the Monero yet).
+        //
+        // TODO: Better manage monero funds. Currently we store all Monero in one UTXO, then the change
+        // address is blocked for 10 blocks before we can use it again.
+        // We should distribute the monero funds into multiple UTXOs, to avoid blocking large amounts of the total balance.
 
         let reserved: Amount = self
             .db
