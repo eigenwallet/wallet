@@ -1,4 +1,4 @@
-use monero_c_rust::{NetworkType, WalletConfig, WalletError, WalletManager};
+use monero_c_rust::{NetworklletConfig, WalletError, WalletManager};
 use tempfile::TempDir;
 
 fn main() -> Result<(), WalletError> {
@@ -12,8 +12,8 @@ fn main() -> Result<(), WalletError> {
         wallet_str.to_string(),
         "password".to_string(),
         "capital chief route liar question fix clutch water outside pave hamster occur always learn license knife".to_string(),
-        NetworkType::Stagenet,
-        1767926, // Restore from the beginning of the blockchain.
+        Network::Stagenet,
+        0, // Restore from the beginning of the blockchain.
         1, // Default KDF rounds.
         "".to_string(), // No seed offset.
         true, // Create a new wallet.

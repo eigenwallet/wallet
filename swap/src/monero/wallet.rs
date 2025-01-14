@@ -1,3 +1,4 @@
+use crate::asb::EventLoop;
 use crate::env::Config;
 use crate::monero::{
     Amount, InsufficientFunds, PrivateViewKey, PublicViewKey, TransferProof, TxHash,
@@ -23,7 +24,6 @@ use url::Url;
 /// - a seed
 /// - a wallet name
 
-#[derive(Debug)]
 pub struct Wallet {
     manager: Arc<WalletManager>,
     inner: Mutex<NativeWallet>,
@@ -112,16 +112,12 @@ impl Wallet {
 
     /// Re-open the wallet using the internally stored name.
     pub async fn re_open(&self) -> Result<()> {
-        self.inner
-            .lock()
-            .await
-            .open_wallet(self.name.clone())
-            .await?;
+        self.inner.lock().await.close_wallet()?;
         Ok(())
     }
 
-    pub async fn open(&self, filename: String) -> Result<()> {
-        self.inner.lock().await.open_wallet(filename).await?;
+    pub async fn open(&self, filename: PathBuf) -> Result<()> {
+        self.manager.open_wallet(filename, "", self.network)?;
         Ok(())
     }
 
@@ -183,7 +179,7 @@ impl Wallet {
 
         // Close the default wallet before generating the other wallet to ensure that
         // it saves its state correctly
-        let _ = self.inner.lock().await.close_wallet().await?;
+        let _ = self.inner.lock().await.close_wallet()?;
 
         let _ = self
             .inner
@@ -333,7 +329,7 @@ impl Wallet {
         Ok(self.inner.lock().await.get_balance(0)?)
     }
 
-    pub async fn block_height(&self) -> Result<BlockHeight> {
+    pub async fn block_height(&self) -> Result<monero_c_rust::BlockHeight> {
         Ok(self.manager.get_height()?)
     }
 
@@ -341,34 +337,38 @@ impl Wallet {
         self.main_address
     }
 
-    pub async fn refresh(&self, max_attempts: usize) -> Result<Refreshed> {
+    pub async fn refresh(&self, max_attempts: usize) -> Result<monero_c_rust::Refreshed> {
         const RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
         for i in 1..=max_attempts {
             tracing::info!(name = %self.name, attempt=i, "Syncing Monero wallet");
 
-            let result = self.inner.lock().await.refresh().await;
+            let result = self.inner.lock().await.refresh();
 
             match result {
                 Ok(refreshed) => {
-                    tracing::info!(name = %self.name, "Monero wallet synced");
+                    tracing::info!(name = %self.name, "Syncing Monero wallet");
+
+                    loop {
+                        let sync_height = self.inner.lock().await.get_blockchain_height()?;
+                        let daemon_height = self.manager.get_height()?;
+
+                        if sync_height >= daemon_height {
+                            tracing::info!(name = %self.name, "Monero wallet synced");
+                            break;
+                        }
+
+                        tracing::info!(name = %self.name, %sync_height, %daemon_height, "Syncing Monero wallet");
+
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+
                     return Ok(refreshed);
                 }
                 Err(error) => {
                     let attempts_left = max_attempts - i;
 
-                    // We would not want to fail here if the height is not available
-                    // as it is not critical for the operation of the wallet.
-                    // We can just log a warning and continue.
-                    let height = match self.inner.lock().await.get_height().await {
-                        Ok(height) => height.to_string(),
-                        Err(_) => {
-                            tracing::warn!(name = %self.name, "Failed to fetch Monero wallet height during sync");
-                            "unknown".to_string()
-                        }
-                    };
-
-                    tracing::warn!(attempt=i, %height, %attempts_left, name = %self.name, %error, "Failed to sync Monero wallet");
+                    tracing::warn!(attempt=i, %attempts_left, name = %self.name, %error, "Failed to sync Monero wallet");
 
                     if attempts_left == 0 {
                         return Err(error.into());
@@ -382,7 +382,8 @@ impl Wallet {
     }
 
     pub async fn close_wallet(&self) -> Result<()> {
-        self.inner.lock().await.close_wallet()
+        self.inner.lock().await.close_wallet()?;
+        Ok(())
     }
 }
 
@@ -406,10 +407,8 @@ type ConfirmationListener =
     Box<dyn Fn(u64) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + 'static>;
 
 #[allow(clippy::too_many_arguments)]
-async fn wait_for_confirmations_with<
-    C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
->(
-    client: &Mutex<C>,
+async fn wait_for_confirmations_with(
+    client: &Mutex<monero_c_rust::Wallet>,
     transfer_proof: TransferProof,
     to_address: Address,
     expected: Amount,
@@ -426,22 +425,19 @@ async fn wait_for_confirmations_with<
         let txid = transfer_proof.tx_hash().to_string();
         let client = client.lock().await;
 
-        let tx = match client
-            .check_tx_key(
-                txid.clone(),
-                transfer_proof.tx_key.to_string(),
-                to_address.to_string(),
-            )
-            .await
-        {
+        let tx = match client.check_tx_key(
+            txid.clone(),
+            transfer_proof.tx_key.to_string(),
+            to_address.to_string(),
+            None,
+            None,
+            None,
+        ) {
             Ok(proof) => proof,
-            Err(jsonrpc::Error::JsonRpc(jsonrpc::JsonRpcError {
-                code: -1,
-                message,
-                data,
-            })) => {
-                tracing::debug!(message, ?data);
-                tracing::warn!(%txid, message, "`monero-wallet-rpc` failed to fetch transaction, may need to be restarted");
+            /*
+            TODO: monero-native todo, re-implement
+            Err(err) => {
+                tracing::warn!(%txid, %err, "Failed to fetch Monero transaction, may need to be restarted");
                 continue;
             }
             // TODO: Implement this using a generic proxy for each function call once https://github.com/thomaseizinger/rust-jsonrpc-client/issues/47 is fixed.
@@ -452,7 +448,7 @@ async fn wait_for_confirmations_with<
                 );
                 let _ = client.open_wallet(wallet_name.clone()).await;
                 continue;
-            }
+            }*/
             Err(other) => {
                 tracing::debug!(
                     %txid,

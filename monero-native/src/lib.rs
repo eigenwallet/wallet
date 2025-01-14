@@ -9,26 +9,31 @@ pub mod bindings;
 pub use bindings::WalletStatus_Critical;
 pub use bindings::WalletStatus_Error;
 pub use bindings::WalletStatus_Ok;
+use monero::{Block, Network};
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NetworkType {
-    Mainnet = bindings::NetworkType_MAINNET as isize,
-    Testnet = bindings::NetworkType_TESTNET as isize,
-    Stagenet = bindings::NetworkType_STAGENET as isize,
+trait NetworkToFromCInt: Sized {
+    fn from_c_int(value: c_int) -> Option<Self>;
+    fn to_c_int(self) -> c_int;
 }
 
-impl NetworkType {
-    pub fn from_c_int(value: c_int) -> Option<Self> {
+impl NetworkToFromCInt for Network {
+    fn from_c_int(value: c_int) -> Option<Self> {
         match value {
-            bindings::NetworkType_MAINNET => Some(NetworkType::Mainnet),
-            bindings::NetworkType_TESTNET => Some(NetworkType::Testnet),
-            bindings::NetworkType_STAGENET => Some(NetworkType::Stagenet),
+            bindings::NetworkType_MAINNET => Some(Network::Mainnet),
+            bindings::NetworkType_TESTNET => Some(Network::Testnet),
+            bindings::NetworkType_STAGENET => Some(Network::Stagenet),
             _ => None,
         }
     }
 
-    pub fn to_c_int(self) -> c_int {
-        self as c_int
+    fn to_c_int(self) -> c_int {
+        match self {
+            Network::Mainnet => bindings::NetworkType_MAINNET,
+            Network::Testnet => bindings::NetworkType_TESTNET,
+            Network::Stagenet => bindings::NetworkType_STAGENET,
+        }
     }
 }
 
@@ -93,7 +98,16 @@ impl Default for WalletConfig {
     }
 }
 
-pub type BlockHeight = u64;
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, PartialOrd, Ord, Eq)]
+pub struct BlockHeight {
+    pub height: u64,
+}
+
+impl fmt::Display for BlockHeight {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.height)
+    }
+}
 
 #[derive(Debug)]
 pub struct Refreshed;
@@ -153,7 +167,7 @@ impl WalletManager {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use tempfile::TempDir;
     ///
     /// let temp_dir = TempDir::new().expect("Failed to create temporary directory");
@@ -161,7 +175,7 @@ impl WalletManager {
     /// let wallet_str = wallet_path.to_str().unwrap();
     ///
     /// let manager = WalletManager::new().unwrap();
-    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet);
+    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet);
     /// assert!(wallet_result.is_ok(), "Failed to create wallet: {:?}", wallet_result.err());
     /// let wallet = wallet_result.unwrap();
     ///
@@ -201,7 +215,7 @@ impl WalletManager {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use tempfile::TempDir;
     ///
     /// let temp_dir = TempDir::new().expect("Failed to create temporary directory");
@@ -209,7 +223,7 @@ impl WalletManager {
     /// let wallet_str = wallet_path.to_str().unwrap();
     ///
     /// let manager = WalletManager::new().unwrap();
-    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet);
+    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet);
     /// assert!(wallet_result.is_ok(), "Failed to create wallet: {:?}", wallet_result.err());
     /// let wallet = wallet_result.unwrap();
     ///
@@ -264,7 +278,7 @@ impl WalletManager {
     /// # Example
     ///
     /// ```
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use std::fs;
     /// use std::path::Path;
     /// use tempfile::TempDir;
@@ -274,7 +288,7 @@ impl WalletManager {
     /// let wallet_str = wallet_path.to_str().unwrap();
     ///
     /// let manager = WalletManager::new().unwrap();
-    /// let wallet = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet);
+    /// let wallet = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet);
     /// assert!(wallet.is_ok());
     ///
     /// // Clean up wallet files.
@@ -286,7 +300,7 @@ impl WalletManager {
         path: PathBuf,
         password: &str,
         language: &str,
-        network_type: NetworkType,
+        network_type: Network,
     ) -> WalletResult<Wallet> {
         let c_path = CString::new(path.to_str().unwrap())
             .map_err(|_| WalletError::FfiError("Invalid path".to_string()))?;
@@ -325,7 +339,7 @@ impl WalletManager {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use tempfile::TempDir;
     /// use std::fs;
     ///
@@ -340,7 +354,7 @@ impl WalletManager {
     ///     wallet_str,
     ///     "strong_password".to_string(),
     ///     mnemonic,
-    ///     NetworkType::Mainnet,
+    ///     Network::Mainnet,
     ///     0, // Restore from the beginning of the blockchain.
     ///     1, // Default KDF rounds.
     ///     "".to_string(), // No seed offset.
@@ -357,7 +371,7 @@ impl WalletManager {
         path: String,
         password: String,
         seed: String,
-        network_type: NetworkType,
+        network_type: Network,
         restore_height: u64,
         kdf_rounds: u64,
         seed_offset: String, // TODO: Make an Option.
@@ -403,7 +417,7 @@ impl WalletManager {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use tempfile::TempDir;
     /// use std::fs;
     ///
@@ -418,7 +432,7 @@ impl WalletManager {
     ///     wallet_str.clone(),
     ///     "password".to_string(),
     ///     polyseed,
-    ///     NetworkType::Mainnet,
+    ///     Network::Mainnet,
     ///     0, // Restore from the beginning of the blockchain.
     ///     1, // Default KDF rounds.
     ///     "".to_string(), // No seed offset.
@@ -436,7 +450,7 @@ impl WalletManager {
         path: String,
         password: String,
         polyseed: String,
-        network_type: NetworkType,
+        network_type: Network,
         restore_height: u64,
         kdf_rounds: u64,
         seed_offset: String,
@@ -496,7 +510,7 @@ impl WalletManager {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use std::fs;
     /// use std::path::Path;
     /// use tempfile::TempDir;
@@ -514,7 +528,7 @@ impl WalletManager {
     ///     0, // Restore from the beginning of the blockchain.
     ///     "password".to_string(),
     ///     "English".to_string(),
-    ///     NetworkType::Mainnet,
+    ///     Network::Mainnet,
     ///     1, // Default KDF rounds.
     /// );
     /// assert!(wallet.is_ok(), "Failed to generate wallet from keys: {:?}", wallet.err());
@@ -532,7 +546,7 @@ impl WalletManager {
         restore_height: u64,
         password: String,
         language: String,
-        network_type: NetworkType,
+        network_type: Network,
         kdf_rounds: u64,
     ) -> WalletResult<Wallet> {
         let c_filename = CString::new(filename)
@@ -581,7 +595,7 @@ impl WalletManager {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use tempfile::TempDir;
     /// use std::fs;
     ///
@@ -592,7 +606,7 @@ impl WalletManager {
     /// let manager = WalletManager::new().unwrap();
     ///
     /// // First, create a wallet to open later.
-    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet);
+    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet);
     /// assert!(wallet_result.is_ok(), "Failed to create wallet: {:?}", wallet_result.err());
     /// let wallet = wallet_result.unwrap();
     ///
@@ -600,7 +614,7 @@ impl WalletManager {
     /// drop(wallet);
     ///
     /// // Now try to open the existing wallet.
-    /// let open_result = manager.open_wallet(wallet_str, "password", NetworkType::Mainnet);
+    /// let open_result = manager.open_wallet(wallet_str, "password", Network::Mainnet);
     /// assert!(open_result.is_ok(), "Failed to open wallet: {:?}", open_result.err());
     /// let opened_wallet = open_result.unwrap();
     ///
@@ -612,7 +626,7 @@ impl WalletManager {
         self: &Arc<Self>,
         path: PathBuf,
         password: &str,
-        network_type: NetworkType,
+        network_type: Network,
     ) -> WalletResult<Wallet> {
         let c_path = CString::new(path.into_os_string().into_string().unwrap())
             .map_err(|_| WalletError::FfiError("Invalid path".to_string()))?;
@@ -650,7 +664,7 @@ impl WalletManager {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     ///
     /// let manager = WalletManager::new().unwrap();
     /// let height = manager.get_height().unwrap();
@@ -661,14 +675,16 @@ impl WalletManager {
             let height = bindings::MONERO_WalletManager_blockchainHeight(self.ptr.as_ptr());
             // Assuming the FFI call does not set an error, directly return the height.
             // If error handling is required, additional checks should be implemented here.
-            Ok(height)
+            Ok(BlockHeight { height })
         }
     }
 
     pub fn get_height_target(&self) -> WalletResult<BlockHeight> {
         unsafe {
             let target_height = bindings::MONERO_WalletManager_blockTarget(self.ptr.as_ptr());
-            Ok(target_height)
+            Ok(BlockHeight {
+                height: target_height,
+            })
         }
     }
 }
@@ -679,7 +695,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use tempfile::TempDir;
     /// use std::fs;
     ///
@@ -688,7 +704,7 @@ impl Wallet {
     /// let wallet_str = wallet_path.to_str().unwrap();
     ///
     /// let manager = WalletManager::new().unwrap();
-    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet);
+    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet);
     /// assert!(wallet_result.is_ok(), "Failed to create wallet: {:?}", wallet_result.err());
     /// let wallet = wallet_result.unwrap();
     ///
@@ -734,7 +750,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use tempfile::TempDir;
     /// use std::fs;
     ///
@@ -743,7 +759,7 @@ impl Wallet {
     /// let wallet_str = wallet_path.to_str().unwrap();
     ///
     /// let manager = WalletManager::new().unwrap();
-    /// let wallet = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet).unwrap();
+    /// let wallet = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet).unwrap();
     /// let address = wallet.get_address(0, 0);
     /// assert!(address.is_ok(), "Failed to get address: {:?}", address.err());
     ///
@@ -771,7 +787,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use tempfile::TempDir;
     /// use std::fs;
     ///
@@ -780,7 +796,7 @@ impl Wallet {
     /// let wallet_str = wallet_path.to_str().unwrap();
     ///
     /// let manager = WalletManager::new().unwrap();
-    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet);
+    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet);
     /// assert!(wallet_result.is_ok(), "Failed to create wallet: {:?}", wallet_result.err());
     /// let wallet = wallet_result.unwrap();
     /// let is_deterministic = wallet.is_deterministic();
@@ -805,10 +821,10 @@ impl Wallet {
     /// # Example
     ///
     /// ```
-    /// use monero_c_rust::{WalletManager, NetworkType, WalletError};
+    /// use monero_c_rust::{WalletManager, Network, WalletError};
     /// let manager = WalletManager::new().unwrap();
     /// // Intentionally pass an invalid wallet to force an error.
-    /// let invalid_wallet = manager.create_wallet("", "", "", NetworkType::Mainnet);
+    /// let invalid_wallet = manager.create_wallet("", "", "", Network::Mainnet);
     /// if let Err(err) = invalid_wallet {
     ///     if let WalletError::WalletErrorCode(_, error_msg) = err {
     ///         // Check that an error message was produced
@@ -849,7 +865,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```
-    /// use monero_c_rust::{WalletManager, NetworkType, WalletResult};
+    /// use monero_c_rust::{WalletManager, Network, WalletResult};
     /// use tempfile::TempDir;
     ///
     /// let temp_dir = TempDir::new().expect("Failed to create temporary directory");
@@ -857,7 +873,7 @@ impl Wallet {
     /// let wallet_str = wallet_path.to_str().unwrap();
     ///
     /// let manager = WalletManager::new().unwrap();
-    /// let _wallet = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet).unwrap();
+    /// let _wallet = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet).unwrap();
     ///
     /// let balance = _wallet.get_balance(0);
     /// assert!(balance.is_ok(), "Failed to get balance: {:?}", balance.err());
@@ -887,7 +903,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use tempfile::TempDir;
     /// use std::fs;
     ///
@@ -898,7 +914,7 @@ impl Wallet {
     ///
     /// // Initialize the wallet manager and create a wallet.
     /// let manager = WalletManager::new().unwrap();
-    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet);
+    /// let wallet_result = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet);
     /// assert!(wallet_result.is_ok(), "Failed to create wallet: {:?}", wallet_result.err());
     /// let wallet = wallet_result.unwrap();
     ///
@@ -925,7 +941,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use tempfile::TempDir;
     /// use std::fs;
     ///
@@ -934,7 +950,7 @@ impl Wallet {
     /// let wallet_str = wallet_path.to_str().unwrap();
     ///
     /// let manager = WalletManager::new().unwrap();
-    /// let wallet = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet).expect("Failed to create wallet");
+    /// let wallet = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet).expect("Failed to create wallet");
     ///
     /// // Initially, there should be one account (the primary account).
     /// let initial_accounts = wallet.get_accounts().expect("Failed to retrieve accounts");
@@ -996,7 +1012,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType, WalletResult};
+    /// use monero_c_rust::{WalletManager, Network, WalletResult};
     /// use tempfile::TempDir;
     /// use std::fs;
     ///
@@ -1005,7 +1021,7 @@ impl Wallet {
     /// let wallet_str = wallet_path.to_str().unwrap();
     ///
     /// let manager = WalletManager::new().unwrap();
-    /// let mut wallet = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet).unwrap();
+    /// let mut wallet = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet).unwrap();
     ///
     /// // Use the wallet for operations...
     ///
@@ -1044,7 +1060,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType, WalletConfig};
+    /// use monero_c_rust::{WalletManager, Network, WalletConfig};
     /// use tempfile::TempDir;
     ///
     /// let temp_dir = TempDir::new().expect("Failed to create temporary directory");
@@ -1052,7 +1068,7 @@ impl Wallet {
     /// let wallet_str = wallet_path.to_str().unwrap();
     ///
     /// let manager = WalletManager::new().unwrap();
-    /// let wallet = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+    /// let wallet = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet)
     ///     .expect("Failed to create wallet");
     ///
     /// let config = WalletConfig {
@@ -1151,7 +1167,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType, WalletConfig};
+    /// use monero_c_rust::{WalletManager, Network, WalletConfig};
     /// use std::fs;
     /// use tempfile::TempDir;
     ///
@@ -1166,7 +1182,7 @@ impl Wallet {
     ///
     ///     // Create a new wallet.
     ///     let wallet = manager
-    ///         .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+    ///         .create_wallet(wallet_str, "password", "English", Network::Mainnet)
     ///         .expect("Failed to create wallet");
     ///
     ///     // Define the wallet initialization configuration.
@@ -1218,10 +1234,10 @@ impl Wallet {
         }
     }
 
-    pub fn get_blockchain_height(&self) -> WalletResult<u64> {
+    pub fn get_blockchain_height(&self) -> WalletResult<BlockHeight> {
         unsafe {
             let height = bindings::MONERO_Wallet_blockChainHeight(self.ptr.as_ptr());
-            Ok(height)
+            Ok(BlockHeight { height })
         }
     }
 
@@ -1345,6 +1361,21 @@ impl Wallet {
         }
     }
 
+    /// Transfers `amount` monero from `account_index` to `address`.
+    pub async fn transfer_single(
+        &self,
+        account_index: u32,
+        amount: u64,
+        address: &str,
+    ) -> WalletResult<Transfer> {
+        let dest = vec![Destination {
+            amount,
+            address: address.to_owned(),
+        }];
+
+        Ok(self.transfer(account_index, dest, true, false)?)
+    }
+
     /// Sweep all funds from the specific account to the specified destination.
     ///
     /// TODO: Example / docs-tests.
@@ -1448,7 +1479,7 @@ impl Wallet {
     /// # Example
     ///
     /// ```rust
-    /// use monero_c_rust::{WalletManager, NetworkType};
+    /// use monero_c_rust::{WalletManager, Network};
     /// use tempfile::TempDir;
     /// use std::fs;
     ///
@@ -1457,7 +1488,7 @@ impl Wallet {
     /// let wallet_str = wallet_path.to_str().unwrap();
     ///
     /// let manager = WalletManager::new().unwrap();
-    /// let wallet = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet).unwrap();
+    /// let wallet = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet).unwrap();
     ///
     /// // Change the seed language to Spanish
     /// let result = wallet.set_seed_language("Spanish");
@@ -1618,8 +1649,7 @@ fn test_wallet_manager_creation() {
         .to_str()
         .expect("Failed to convert wallet path to string");
 
-    let wallet_result =
-        manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet);
+    let wallet_result = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet);
     assert!(wallet_result.is_ok(), "WalletManager creation failed");
 
     teardown(&temp_dir).expect("Failed to clean up after test");
@@ -1634,7 +1664,7 @@ fn test_wallet_creation() {
         .to_str()
         .expect("Failed to convert wallet path to string");
 
-    let wallet = manager.create_wallet(wallet_str, "password", "English", NetworkType::Mainnet);
+    let wallet = manager.create_wallet(wallet_str, "password", "English", Network::Mainnet);
     assert!(wallet.is_ok(), "Failed to create wallet");
 
     let wallet = wallet.unwrap();
@@ -1658,7 +1688,7 @@ fn test_get_seed() {
 
     // Create a new wallet.
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
 
     // Test getting seed with no offset (None).
@@ -1695,7 +1725,7 @@ fn test_get_address() {
         .expect("Failed to convert wallet path to string");
 
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
     let result = wallet.get_address(0, 0);
     assert!(result.is_ok(), "Failed to get address: {:?}", result.err());
@@ -1714,7 +1744,7 @@ fn test_is_deterministic() {
         .expect("Failed to convert wallet path to string");
 
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
     let result = wallet.is_deterministic();
     assert!(
@@ -1732,9 +1762,9 @@ fn test_wallet_creation_with_different_networks() {
     let (manager, temp_dir) = setup().expect("Failed to set up test environment");
 
     let wallets = vec![
-        ("mainnet_wallet", NetworkType::Mainnet),
-        ("testnet_wallet", NetworkType::Testnet),
-        ("stagenet_wallet", NetworkType::Stagenet),
+        ("mainnet_wallet", Network::Mainnet),
+        ("testnet_wallet", Network::Testnet),
+        ("stagenet_wallet", Network::Stagenet),
     ];
 
     for (name, net_type) in wallets {
@@ -1767,7 +1797,7 @@ fn test_restore_mnemonic_success() {
         wallet_str.clone(),
         "password".to_string(),
         mnemonic_seed,
-        NetworkType::Mainnet,
+        Network::Mainnet,
         0,              // Restore from the beginning of the blockchain.
         1,              // Default KDF rounds.
         "".to_string(), // No seed offset.
@@ -1798,7 +1828,7 @@ fn test_restore_polyseed_success() {
         wallet_str.clone(),
         "password".to_string(),
         polyseed.clone(),
-        NetworkType::Mainnet,
+        Network::Mainnet,
         0,              // Restore from the beginning of the blockchain.
         1,              // Default KDF rounds.
         "".to_string(), // No seed offset.
@@ -1833,7 +1863,7 @@ fn test_generate_from_keys_unit() {
     let restore_height = 0;
     let password = "password";
     let language = "English";
-    let network_type = NetworkType::Mainnet;
+    let network_type = Network::Mainnet;
     let kdf_rounds = 1;
 
     let result = manager.generate_from_keys(
@@ -1867,7 +1897,7 @@ fn test_multiple_address_generation() {
         .expect("Failed to convert wallet path to string");
 
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
 
     for i in 0..5 {
@@ -1922,7 +1952,7 @@ fn test_wallet_status() {
 
     // Create a wallet to use for status checking
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
 
     // Check the status of the wallet, expecting it to be OK
@@ -1947,14 +1977,14 @@ fn test_open_wallet() {
 
     // Create a wallet to be opened later
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
 
     // Drop the wallet so it can be opened later
     drop(wallet);
 
     // Try to open the wallet
-    let open_result = manager.open_wallet(wallet_str, "password", NetworkType::Mainnet);
+    let open_result = manager.open_wallet(wallet_str, "password", Network::Mainnet);
     assert!(
         open_result.is_ok(),
         "Failed to open wallet: {:?}",
@@ -1974,7 +2004,7 @@ fn test_get_balance() {
         .expect("Failed to convert wallet path to string");
 
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .unwrap();
 
     let balance_result = wallet.get_balance(0);
@@ -2003,7 +2033,7 @@ fn test_create_account() {
 
     // Create a wallet.
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
 
     // Create a new account.
@@ -2027,7 +2057,7 @@ fn test_get_accounts() {
         .expect("Failed to convert wallet path to string");
 
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
 
     // Add two accounts for testing
@@ -2061,7 +2091,7 @@ fn test_close_wallet() {
 
     // Create a wallet.
     let mut wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
 
     // Close the wallet.
@@ -2108,7 +2138,7 @@ fn test_init_success() {
 
     // Create a wallet.
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
 
     // Define initialization configuration.
@@ -2150,7 +2180,7 @@ fn test_refresh_success() {
 
     // Create the wallet.
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
     println!("Wallet created successfully.");
 
@@ -2202,7 +2232,7 @@ fn test_set_seed_language() {
 
     // Create a new wallet.
     let wallet = manager
-        .create_wallet(wallet_str, "password", "English", NetworkType::Mainnet)
+        .create_wallet(wallet_str, "password", "English", Network::Mainnet)
         .expect("Failed to create wallet");
 
     // Set the seed language to Spanish.
@@ -2239,7 +2269,7 @@ fn test_check_tx_key() {
             wallet_str.clone(),
             "password".to_string(),
             mnemonic_seed.clone(),
-            NetworkType::Mainnet,
+            Network::Mainnet,
             0,
             1,
             passphrase.clone(),
@@ -2308,7 +2338,7 @@ fn test_invalid_check_tx_key() {
             wallet_str.clone(),
             "password".to_string(),
             mnemonic_seed.clone(),
-            NetworkType::Mainnet,
+            Network::Mainnet,
             0,
             1,
             passphrase.clone(),
@@ -2356,3 +2386,9 @@ fn test_invalid_check_tx_key() {
     fs::remove_file(format!("{}.keys", wallet_path.display()))
         .expect("Failed to delete test wallet keys");
 }
+
+// Add these markers to make NonNull<c_void> safe to share between threads
+unsafe impl Send for WalletManager {}
+unsafe impl Sync for WalletManager {}
+unsafe impl Send for Wallet {}
+unsafe impl Sync for Wallet {}

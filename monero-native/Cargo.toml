@@ -13,10 +13,12 @@ path = "src/lib.rs"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-decimal = "2.1.0"
 mockall = "0.13.0"
+rust_decimal = "1.36.0"
+serde = "1.0.217"
 tempfile = "3.13.0"
 thiserror = "2.0.9"
+monero = { version = "0.12", features = [ "serde_support" ] }
 
 [build-dependencies]
 bindgen = "0.70.1"
