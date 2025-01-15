@@ -27,6 +27,7 @@ import {
   resetSettings,
   setFetchFiatPrices,
   setFiatCurrency,
+  setTor,
   setTorBridge,
 } from "store/features/settingsSlice";
 import {
@@ -83,11 +84,11 @@ export default function SettingsBox() {
           <TableContainer>
             <Table>
               <TableBody>
+                <TorSettings />
                 <ElectrumRpcUrlSetting />
                 <MoneroNodeUrlSetting />
                 <FetchFiatPricesSetting />
                 <ThemeSetting />
-                <TorBridgeSetting />
               </TableBody>
             </Table>
           </TableContainer>
@@ -211,7 +212,7 @@ function ElectrumRpcUrlSetting() {
   return (
     <TableRow>
       <TableCell>
-        <SettingLabel label="Custom Electrum RPC URL" tooltip="This is the URL of the Electrum server that the GUI will connect to. It is used to sync Bitcoin transactions. If you leave this field empty, the GUI will choose from a list of known servers at random." />
+        <SettingLabel label="Custom Electrum RPC URL" tooltip="This is the URL of the Electrum server that the GUI will connect to. It is used to sync Bitcoin transactions. If you leave this field empty, the GUI will choose from a list of known servers at random. Requires a restart to take effect." />
       </TableCell>
       <TableCell>
         <IconButton
@@ -260,7 +261,7 @@ function MoneroNodeUrlSetting() {
   return (
     <TableRow>
       <TableCell>
-        <SettingLabel label="Custom Monero Node URL" tooltip="This is the URL of the Monero node that the GUI will connect to. Ensure the node is listening for RPC connections over HTTP. If you leave this field empty, the GUI will choose from a list of known nodes at random." />
+        <SettingLabel label="Custom Monero Node URL" tooltip="This is the URL of the Monero node that the GUI will connect to. Ensure the node is listening for RPC connections over HTTP. If you leave this field empty, the GUI will choose from a list of known nodes at random. Requires a restart to take effect." />
       </TableCell>
       <TableCell>
         <IconButton
@@ -313,10 +314,11 @@ function ThemeSetting() {
 }
 
 /**
- * A setting that allows you to configure a Tor bridge.
+ * A setting that allows you to configure Tor.
  */
-function TorBridgeSetting() {
+function TorSettings() {
   const torBridge = useSettings((s) => s.torBridge);
+  const enableTor = useSettings((s) => s.enableTor);
   const dispatch = useAppDispatch();
 
   const isValidBridge = (bridge: string) => {
@@ -325,25 +327,43 @@ function TorBridgeSetting() {
   };
 
   return (
-    <TableRow>
-      <TableCell>
-        <SettingLabel
-          label="Tor Bridge"
-          tooltip="Configure an obfs4 Tor bridge to use. This can help bypass Tor blocking. Leave empty to use the default Tor network configuration."
-        />
-      </TableCell>
-      <TableCell>
-        <ValidatedTextField
-          value={torBridge || ""}
-          onValidatedChange={(value) => dispatch(setTorBridge(value || null))}
-          placeholder="obfs4 X.X.X.X:YYYY [...]"
-          fullWidth
-          variant="outlined"
-          noErrorWhenEmpty
-          isValid={isValidBridge}
-        />
-      </TableCell>
-    </TableRow>
+    <>
+      <TableRow>
+        <TableCell>
+          <SettingLabel
+            label="Enable Tor"
+            tooltip="Whether to enable the integrated Tor client. Turn this off if on Tails or other tor-integrated systems. Requires a restart to take effect."
+          />
+        </TableCell>
+        <TableCell>
+          <Switch
+            color="primary"
+            checked={enableTor}
+            onChange={(event) => dispatch(setTor(event.currentTarget.checked))}
+          />
+        </TableCell>
+      </TableRow>
+      {enableTor ? <TableRow>
+        <TableCell>
+          <SettingLabel
+            label="Tor Bridge"
+            tooltip="Configure an obfs4 Tor bridge to use. This can help bypass Tor blocking. Leave empty to use the default Tor network configuration. Requires a restart to take effect."
+          />
+        </TableCell>
+        <TableCell>
+          <ValidatedTextField
+            value={torBridge || ""}
+            onValidatedChange={(value) => dispatch(setTorBridge(value || null))}
+            placeholder="obfs4 X.X.X.X:YYYY [...]"
+            fullWidth
+            variant="outlined"
+            noErrorWhenEmpty
+            isValid={isValidBridge}
+          />
+        </TableCell>
+      </TableRow>
+        : <></>}
+    </>
   );
 }
 
