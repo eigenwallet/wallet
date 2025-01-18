@@ -46,6 +46,7 @@ import { Theme } from "renderer/components/theme";
 import { Add, ArrowUpward, Delete, Edit, HourglassEmpty } from "@material-ui/icons";
 import { getNetwork } from "store/config";
 import { currencySymbol } from "utils/formatUtils";
+import BridgeRequest from "renderer/components/other/BridgeRequest";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -320,10 +321,15 @@ function TorSettings() {
   const torBridge = useSettings((s) => s.torBridge);
   const enableTor = useSettings((s) => s.enableTor);
   const dispatch = useAppDispatch();
+  const [bridgeDialogOpen, setBridgeDialogOpen] = useState(false);
 
   const isValidBridge = (bridge: string) => {
     if (bridge.length === 0) return true; // empty is valid
     return bridge.startsWith("obfs4 "); // basic validation - must start with obfs4
+  };
+
+  const handleBridgeSubmit = (bridge: string) => {
+    dispatch(setTorBridge(bridge));
   };
 
   return (
@@ -351,15 +357,29 @@ function TorSettings() {
           />
         </TableCell>
         <TableCell>
-          <ValidatedTextField
-            value={torBridge || ""}
-            onValidatedChange={(value) => dispatch(setTorBridge(value || null))}
-            placeholder="obfs4 X.X.X.X:YYYY [...]"
-            fullWidth
-            variant="outlined"
-            noErrorWhenEmpty
-            isValid={isValidBridge}
-          />
+          <Box display="flex" alignItems="center" style={{ gap: '8px' }}>
+            <ValidatedTextField
+              value={torBridge || ""}
+              onValidatedChange={(value) => dispatch(setTorBridge(value || null))}
+              placeholder="obfs4 X.X.X.X:YYYY [...]"
+              fullWidth
+              variant="outlined"
+              noErrorWhenEmpty
+              isValid={isValidBridge}
+            />
+            <BridgeRequest
+              open={bridgeDialogOpen}
+              onSubmit={handleBridgeSubmit}
+              onClose={() => setBridgeDialogOpen(false)}
+            />
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => setBridgeDialogOpen(true)}
+            >
+              Request Bridge
+            </Button>
+          </Box>
         </TableCell>
       </TableRow>
         : <></>}
