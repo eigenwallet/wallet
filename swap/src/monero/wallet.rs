@@ -170,10 +170,12 @@ impl Wallet {
                         address = %self.main_address,
                         "Failed to transfer Monero to default wallet: {:#}", error
                     );
+                    return Err(error.into());
                 }
             },
             Err(error) => {
                 tracing::warn!("Failed to refresh generated wallet: {:#}", error);
+                return Err(error.into());
             }
         }
 
