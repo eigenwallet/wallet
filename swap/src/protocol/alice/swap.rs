@@ -441,7 +441,7 @@ where
                             monero_wallet,
                             monero_wallet_restore_blockheight,
                             swap_id.to_string(),
-                            spend_key.clone(),
+                            spend_key,
                             transfer_proof.clone(),
                         )
                         .await
