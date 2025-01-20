@@ -133,7 +133,7 @@ impl Wallet {
         .await?;
 
         // Refresh the generated wallet
-        if let Err(error) = self.refresh(3).await {
+        if let Err(error) = self.refresh(20).await {
             return Err(anyhow::anyhow!(error)
                 .context("Failed to refresh generated wallet for sweeping to default wallet"));
         }
