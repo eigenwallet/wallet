@@ -498,9 +498,10 @@ where
             })
             .fold(Amount::ZERO, |acc, amount| acc + amount);
 
-        let free_monero_balance = xmr_balance
-            .checked_sub(reserved)
-            .context("reserved more monero than we've got")?;
+        let free_monero_balance = xmr_balance.checked_sub(reserved).unwrap_or_else(|_| {
+            tracing::warn!("Monero funds needed for ongoing swaps exceed current balance.");
+            Amount::ZERO
+        });
 
         let max_bitcoin_for_monero = free_monero_balance
             .max_bitcoin_for_price(ask_price)
