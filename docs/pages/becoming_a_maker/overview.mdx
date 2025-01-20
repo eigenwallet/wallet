@@ -1,3 +1,5 @@
+import { Callout } from 'nextra/components'
+
 ## An Overview of Becoming a Maker
 
 Makers run an automated swap backend (`asb`), which users can connect to and swap with.
@@ -55,30 +57,14 @@ First, make sure you're in the directory with the `docker-compose.yml` file:
 cd asb-docker-compose/mainnet
 ```
 
-Then, you can start all the services with the following command:
+If you aren't familiar with docker compose, here are the most important commands:
 
-```bash copy
-docker compose up -d
-```
-
-To stop the services:
-
-```bash copy
-docker compose down
-```
-
-To update the services:
-
-```bash copy
-docker compose pull
-docker compose up -d
-```
-
-Access the logs of the services:
-
-```bash copy
-docker compose logs -f
-```
+| Command | Description |
+| --- | --- |
+| `docker compose up -d` | Start all services. |
+| `docker compose down` | Stop all services. |
+| `docker compose pull` | Pull the latest images for all services. You need to run `docker compose up -d` after this to actually update the services. |
+| `docker compose logs -f` | Access the logs of all services. To only see the last e.g. 100 lines, use `docker compose logs -f | tail -n 100`. |
 
 You can also execute `asb` commands, to get the history of swaps for example:
 
@@ -86,13 +72,23 @@ You can also execute `asb` commands, to get the history of swaps for example:
 docker compose exec mainnet_asb asb --config=/asb-data/config_mainnet.toml history
 ```
 
-Below is a list of commands you can use.
-Some of them require access to some resources, in which case you'll need to stop the asb first and then resume afterwards.
+Below is a list of asb commands you can use.
+Some of them require access to some resources, in which case you'll need to stop the asb first and then resume afterwards:
 
 ```bash copy
 docker compose down
+docker compose exec mainnet_asb asb --config=/asb-data/config_mainnet.toml <command>
 docker compose up -d
 ```
+
+| Command | Description |
+| --- | --- |
+| `help` | Prints a list of available options and commands (under _subcommands_). |
+| `history` | Prints a list of all previous and current swaps. |
+| `start` | Starts the asb. This is automatically done when you run `docker compose up -d`. |
+| `config` | Prints the current configuration. |
+| `export-bitcoin-wallet` | Prints the internal bitcoin wallet descriptor which can be used to access the asb's bitcoin wallet. |
+| `withdraw-btc --address` | Withdraws Bitcoin from the internal wallet into a specified address. |
 
 ### Asb Configuration
 
@@ -197,9 +193,53 @@ hidden_service_num_intro_points = 5
 | `hidden_service_num_intro_points` | If the asb registers an onion service, this specifies the number of introduction points the asb will use. |
 
 
+### Network Section
+
+The `network` section specifies the asb's networking configuration.
+This includes:
+ - which rendezvous points the asb will connect to,
+ - on which port, and
+ - external addresses the asb will advertise to the rendezvous points.
+
+<Callout type="info">
+These addresses are specified using the multiaddr format ([link](https://multiformats.io/multiaddr)).
+A multiaddr combines all necessary information into a single string.
+
+For example, the first rendezvous point's multiaddr specifies the rendezvous point at the DNS address `discover.unstoppableswap.net`, on port `8888` with the peer ID `12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE`.
+</Callout>
+
+```toml filename="config_mainnet.toml"
+# ...
+
+[network]
+# the ip and port the asb will listen on
+listen = ["/ip4/0.0.0.0/tcp/9939"] 
+
+# the rendezvous points the asb will connect to (address, port and peer id)
+rendezvous_point = [
+    "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE", 
+    "/dns4/eratosthen.es/tcp/7798/p2p/12D3KooWAh7EXXa2ZyegzLGdjvj1W4G3EXrTGrf6trraoT1MEobs"
+]
+
+# the external addresses the asb will advertise to the rendezvous points (only address)
+external_addresses = [
+    # e.g. "/dns4/your.domain.com"
+]
+```
+
+| Option | Description | Format |
+| --- | --- | --- |
+| `listen` | The ip and port the asb will listen on. The IP address `0.0.0.0` means the asb will listen on all IP addresses. Remember that the asb service is running in a docker container. Make sure the port is the same as in the `.env` file. | This multiaddr should only include an IP address and a port number. |
+| `rendezvous_point` | A list of rendezvous points the asb will connect to. | These multiaddrs should include an address (e.g. IPv4, IPv6, DNS), a port number and a peer ID. |
+| `external_addresses` | A list of external addresses the asb will advertise to the rendezvous points. If you registered a domain, you can add it here. If you enabled the onion service, it will be included automatically, so you don't need to specify the onion address. | These multiaddrs should only include an address (e.g. IPv4, IPv6, DNS). |
+
+
+Et, voilà! 
+You've successfully configured your asb.
+
 ### Default Configuration
 
-This is what a standard configuration might look like.
+This is what the default configuration might look like.
 
 ```toml filename="config_mainnet.toml" copy
 [maker]
@@ -227,7 +267,8 @@ dir = "/asb-data/"
 [network]
 listen = ["/ip4/0.0.0.0/tcp/9939"]
 rendezvous_point = [
-    # ...
+    "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE", 
+    "/dns4/eratosthen.es/tcp/7798/p2p/12D3KooWAh7EXXa2ZyegzLGdjvj1W4G3EXrTGrf6trraoT1MEobs"
 ]
 external_addresses = []
 ```
