@@ -29,6 +29,8 @@ import {
   CheckElectrumNodeResponse,
   GetMoneroAddressesResponse,
   TauriBackgroundRefundEvent,
+  CheckBridgeValidityArgs,
+  CheckBridgeValidityResponse,
 } from "models/tauriModel";
 import {
   contextStatusEventReceived,
@@ -213,12 +215,20 @@ export async function initializeContext() {
   );
 
 
+  const torBridge = store.getState().settings.torBridge;
+  const obfs4proxyPath = store.getState().settings.obfs4proxyPath;
+
+  const torBridgeConfig = (torBridge == null || obfs4proxyPath == null) ? null : {
+    bridges: [torBridge],
+    obfs4proxy_path: obfs4proxyPath,
+  };
+
   // Initialize Tauri settings with null values
   const tauriSettings: TauriSettings = {
     electrum_rpc_url: bitcoinNode,
     monero_node_url: moneroNode,
     enable_tor: store.getState().settings.enableTor,
-    tor_bridges: store.getState().settings.torBridge ? [store.getState().settings.torBridge] : null,
+    tor_bridges: torBridgeConfig,
   };
 
   logger.info("Initializing context with settings", tauriSettings);
@@ -278,4 +288,12 @@ export async function updateAllNodeStatuses() {
 
 export async function getMoneroAddresses(): Promise<GetMoneroAddressesResponse> {
   return await invokeNoArgs<GetMoneroAddressesResponse>("get_monero_addresses");
+}
+
+export async function checkBridgeValidity(bridge: string): Promise<boolean> {
+  const response = await invoke<CheckBridgeValidityArgs, CheckBridgeValidityResponse>("check_bridge_validity", {
+    bridge,
+  });
+
+  return response.valid;
 }

@@ -270,6 +270,17 @@ pub struct TauriBackgroundRefundEvent {
     state: BackgroundRefundState,
 }
 
+#[typeshare]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TauriTorBridges {
+    /// The URL of the Tor bridges to use.
+    #[typeshare(serialized_as = "Vec<string>")]
+    pub bridges: Vec<String>,
+    /// Path to obfs4proxy binary
+    #[typeshare(serialized_as = "string")]
+    pub obfs4proxy_path: String,
+}
+
 /// This struct contains the settings for the Context
 #[typeshare]
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -281,7 +292,6 @@ pub struct TauriSettings {
     pub electrum_rpc_url: Option<Url>,
     /// Whether to enable the integrated Tor client.
     pub enable_tor: bool,
-    /// The URL of the Tor bridges to use.
-    #[typeshare(serialized_as = "Vec<string>")]
-    pub tor_bridges: Option<Vec<String>>,
+    /// The URL of the Tor bridges to use, and the path to the obfs4proxy binary.
+    pub tor_bridges: Option<TauriTorBridges>,
 }

@@ -27,6 +27,7 @@ import {
   resetSettings,
   setFetchFiatPrices,
   setFiatCurrency,
+  setObfs4proxyPath,
   setTor,
   setTorBridge,
 } from "store/features/settingsSlice";
@@ -47,6 +48,7 @@ import { Add, ArrowUpward, Delete, Edit, HourglassEmpty } from "@material-ui/ico
 import { getNetwork } from "store/config";
 import { currencySymbol } from "utils/formatUtils";
 import BridgeRequest from "renderer/components/other/BridgeRequest";
+import { checkBridgeValidity } from "renderer/rpc";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -320,16 +322,20 @@ function ThemeSetting() {
 function TorSettings() {
   const torBridge = useSettings((s) => s.torBridge);
   const enableTor = useSettings((s) => s.enableTor);
+  const obfs4proxyPath = useSettings((s) => s.obfs4proxyPath);
   const dispatch = useAppDispatch();
   const [bridgeDialogOpen, setBridgeDialogOpen] = useState(false);
 
-  const isValidBridge = (bridge: string) => {
-    if (bridge.length === 0) return true; // empty is valid
-    return bridge.startsWith("obfs4 "); // basic validation - must start with obfs4
+  const isValidBridge = async (bridge: string) => {
+    return await checkBridgeValidity(bridge);
   };
 
   const handleBridgeSubmit = (bridge: string) => {
     dispatch(setTorBridge(bridge));
+  };
+
+  const handleObfs4proxyPathSubmit = (path: string) => {
+    dispatch(setObfs4proxyPath(path));
   };
 
   return (
@@ -349,7 +355,7 @@ function TorSettings() {
           />
         </TableCell>
       </TableRow>
-      {enableTor ? <TableRow>
+      {enableTor ? <><TableRow>
         <TableCell>
           <SettingLabel
             label="Tor Bridge"
@@ -380,9 +386,17 @@ function TorSettings() {
               Request Bridge
             </Button>
           </Box>
-        </TableCell>
-      </TableRow>
-        : <></>}
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell>
+            <SettingLabel label="Path to obfs4proxy binary" tooltip="This is the path to the obfs4proxy binary. This is required if you are using Tor bridges. Requires a restart to take effect." />
+          </TableCell>
+          <TableCell>
+            <ValidatedTextField value={obfs4proxyPath || ""} onValidatedChange={(value) => handleObfs4proxyPathSubmit(value || null)} placeholder="Path to obfs4proxy binary" fullWidth variant="outlined" noErrorWhenEmpty={torBridge === null} isValid={() => true} />
+          </TableCell>
+        </TableRow>
+      </> : <></>}
     </>
   );
 }

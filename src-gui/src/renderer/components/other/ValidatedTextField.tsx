@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 
 interface ValidatedTextFieldProps extends Omit<TextFieldProps, "onChange" | "value"> {
   value: string | null;
-  isValid: (value: string) => boolean;
+  isValid: (value: string) => boolean | Promise<boolean>;
   onValidatedChange: (value: string | null) => void;
   allowEmpty?: boolean;
   noErrorWhenEmpty?: boolean;
@@ -22,26 +22,42 @@ export default function ValidatedTextField({
   ...props
 }: ValidatedTextFieldProps) {
   const [inputValue, setInputValue] = useState(value || "");
+  const [isValidating, setIsValidating] = useState(false);
+  const [isError, setIsError] = useState(false);
 
   const handleChange = useCallback(
-    (newValue: string) => {
+    async (newValue: string) => {
       const trimmedValue = newValue.trim();
       setInputValue(trimmedValue);
-
+      
       if (trimmedValue === "" && allowEmpty) {
+        setIsError(false);
         onValidatedChange(null);
-      } else if (isValid(trimmedValue)) {
-        onValidatedChange(trimmedValue);
+        return;
+      }
+      
+      if (trimmedValue === "" && noErrorWhenEmpty) {
+        setIsError(false);
+        return;
+      }
+
+      setIsValidating(true);
+      try {
+        const validationResult = await Promise.resolve(isValid(trimmedValue));
+        setIsError(!validationResult);
+        if (validationResult) {
+          onValidatedChange(trimmedValue);
+        }
+      } finally {
+        setIsValidating(false);
       }
     },
-    [allowEmpty, isValid, onValidatedChange]
+    [allowEmpty, noErrorWhenEmpty, isValid, onValidatedChange]
   );
 
   useEffect(() => {
-    setInputValue(value || "");
+    handleChange(value || "");
   }, [value]);
-
-  const isError = allowEmpty && inputValue === "" || inputValue === "" && noErrorWhenEmpty ? false : !isValid(inputValue);
 
   return (
     <TextField
@@ -51,6 +67,7 @@ export default function ValidatedTextField({
       error={isError}
       helperText={isError ? helperText : ""}
       variant={variant}
+      disabled={isValidating}
       {...props}
     />
   );

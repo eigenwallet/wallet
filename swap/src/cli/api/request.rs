@@ -14,6 +14,7 @@ use crate::{bitcoin, cli, monero, rpc};
 use ::bitcoin::Txid;
 use ::monero::Network;
 use anyhow::{bail, Context as AnyContext, Result};
+use arti_client::config::BridgeConfigBuilder;
 use libp2p::core::Multiaddr;
 use libp2p::PeerId;
 use once_cell::sync::Lazy;
@@ -1339,6 +1340,34 @@ impl CheckMoneroNodeArgs {
         };
 
         Ok(CheckMoneroNodeResponse { available })
+    }
+}
+
+#[typeshare]
+#[derive(Deserialize, Clone)]
+pub struct CheckBridgeValidityArgs {
+    pub bridge: String,
+}
+
+#[typeshare]
+#[derive(Serialize, Clone)]
+pub struct CheckBridgeValidityResponse {
+    pub valid: bool,
+}
+
+impl CheckBridgeValidityArgs {
+    /// This validates a bridge string to make sure it's
+    /// - a valid bridge
+    /// - uses the obfs4 transport
+    pub async fn request(self) -> Result<CheckBridgeValidityResponse> {
+        let bridge = self.bridge.parse::<BridgeConfigBuilder>();
+
+        Ok(CheckBridgeValidityResponse {
+            valid: match bridge {
+                Ok(bridge) => bridge.get_transport() == Some("obfs4"),
+                Err(_) => false,
+            },
+        })
     }
 }
 

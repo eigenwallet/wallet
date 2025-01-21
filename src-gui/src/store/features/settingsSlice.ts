@@ -13,6 +13,8 @@ export interface SettingsState {
   enableTor: boolean;
   /// obsf4 tor bridge to use
   torBridge: string | null;
+  /// Path to obfs4proxy binary
+  obfs4proxyPath: string | null;
 }
 
 export enum FiatCurrency {
@@ -133,6 +135,9 @@ const alertsSlice = createSlice({
     setTorBridge(slice, action: PayloadAction<string | null>) {
       slice.torBridge = action.payload;
     },
+    setObfs4proxyPath(slice, action: PayloadAction<string | null>) {
+      slice.obfs4proxyPath = action.payload;
+    },
     addNode(slice, action: PayloadAction<{ network: Network, type: Blockchain, node: string }>) {
       // Make sure the node is not already in the list
       if (slice.nodes[action.payload.network][action.payload.type].includes(action.payload.node)) {
@@ -159,6 +164,7 @@ export const {
   setFetchFiatPrices,
   setFiatCurrency,
   setTorBridge,
+  setObfs4proxyPath,
   setTor,
 } = alertsSlice.actions;
 

@@ -206,6 +206,7 @@ pub struct ContextBuilder {
     tor: bool,
     bridges: Vec<String>,
     tauri_handle: Option<TauriHandle>,
+    obfs4proxy_path: Option<String>,
 }
 
 impl ContextBuilder {
@@ -230,6 +231,7 @@ impl ContextBuilder {
             tor: false,
             bridges: vec![],
             tauri_handle: None,
+            obfs4proxy_path: None,
         }
     }
 
@@ -285,6 +287,12 @@ impl ContextBuilder {
     // Which bridges to use
     pub fn with_bridges(mut self, bridges: impl Into<Vec<String>>) -> Self {
         self.bridges = bridges.into();
+        self
+    }
+
+    /// Path to obfs4proxy binary
+    pub fn with_obfs4proxy_path(mut self, path: impl Into<Option<String>>) -> Self {
+        self.obfs4proxy_path = path.into();
         self
     }
 
@@ -416,12 +424,16 @@ impl ContextBuilder {
                 ]),
             );
 
-            let maybe_tor_client = init_tor_client(&data_dir, self.bridges)
-                .await
-                .inspect_err(|err| {
-                    tracing::warn!(%err, "Failed to create Tor client. We will continue without Tor");
-                })
-                .ok();
+            let maybe_tor_client = init_tor_client(
+                &data_dir,
+                self.bridges,
+                self.obfs4proxy_path.clone(),
+            )
+            .await
+            .inspect_err(|err| {
+                tracing::warn!(%err, "Failed to create Tor client. We will continue without Tor");
+            })
+            .ok();
 
             self.tauri_handle.emit_context_init_progress_event(
                 TauriContextStatusEvent::Initializing(vec![
