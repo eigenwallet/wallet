@@ -499,7 +499,7 @@ where
             .fold(Amount::ZERO, |acc, amount| acc + amount);
 
         let free_monero_balance = xmr_balance.checked_sub(reserved).unwrap_or_else(|_| {
-            tracing::warn!("Monero funds needed for ongoing swaps exceed current balance.");
+            tracing::warn!(%xmr_balance, missing=%(reserved - xmr_balance), "Monero balance is too low for ongoing swaps, need more funds to complete all ongoing swaps.");
             Amount::ZERO
         });
 
