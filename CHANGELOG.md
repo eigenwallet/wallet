@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Docs: Added a dedicated page for makers.
+- Docs: Improved the refund and punish page.
+
 ## [1.0.0-rc.11] - 2024-12-22
 
 - ASB: The `history` command will now display additional information about each swap such as the amounts involved, the current state and the txid of the Bitcoin lock transaction.
