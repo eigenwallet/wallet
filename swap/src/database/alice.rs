@@ -3,7 +3,7 @@ use crate::monero;
 use crate::monero::{monero_private_key, TransferProof};
 use crate::protocol::alice;
 use crate::protocol::alice::AliceState;
-use monero_rpc::wallet::BlockHeight;
+use monero_c_rust::BlockHeight;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 

@@ -1238,9 +1238,9 @@ extern "C" {
         txid: *const ::std::os::raw::c_char,
         tx_key: *const ::std::os::raw::c_char,
         address: *const ::std::os::raw::c_char,
-        received: u64,
-        in_pool: bool,
-        confirmations: u64,
+        received: *mut u64,
+        in_pool: *mut bool,
+        confirmations: *mut u64,
     ) -> bool;
 }
 extern "C" {

@@ -1,4 +1,3 @@
-use crate::asb::EventLoop;
 use crate::env::Config;
 use crate::monero::{
     Amount, InsufficientFunds, PrivateViewKey, PublicViewKey, TransferProof, TxHash,
@@ -6,8 +5,7 @@ use crate::monero::{
 use ::monero::{Address, Network, PrivateKey, PublicKey};
 use anyhow::{Context, Result};
 use monero_c_rust::{Wallet as NativeWallet, WalletManager};
-use monero_rpc::wallet::{BlockHeight, MoneroWalletRpc as _, Refreshed};
-use monero_rpc::{jsonrpc, wallet};
+use monero_c_rust::BlockHeight;
 use std::future::Future;
 use std::ops::Div;
 use std::path::PathBuf;
@@ -17,7 +15,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::time::Interval;
-use url::Url;
 
 /// Structure here:
 /// Wallet has constructor functions that take a WalletManager and create a new wallet based on:
@@ -41,16 +38,17 @@ impl Wallet {
         name: String,
         env_config: Config,
     ) -> Result<Self> {
-        // TODO: Make this a configurable path, static for the entire lifetime of the program (data dir)
         let tempDir = std::env::temp_dir();
-        let path = tempDir.join(name);
+        let name = name.clone();
+        let path = tempDir.join(&name);
 
-        if manager.wallet_exists(path)? {
-            match manager.open_wallet(path, "", env_config.monero_network) {
+        if manager.as_ref().wallet_exists(path.clone())? {
+            match manager.open_wallet(path.clone(), "", env_config.monero_network) {
                 Err(error) => {
                     return Err(error.into());
                 }
-                Ok(wallet) => {
+                Ok(mut wallet) => {
+                    let address = wallet.get_address(0, 0)?;
                     tracing::debug!(monero_wallet_name = %name, "Opened Monero wallet");
 
                     return Ok(Self {
@@ -58,33 +56,31 @@ impl Wallet {
                         inner: Mutex::new(wallet),
                         network: env_config.monero_network,
                         name,
-                        main_address: monero::Address::from_str(
-                            wallet.get_address(0, 0)?.as_str(),
-                        )?,
+                        main_address: monero::Address::from_str(address.as_str())?,
                         sync_interval: env_config.monero_sync_interval(),
                         path,
                     });
                 }
             }
         } else {
-            tracing::debug!(monero_wallet_name = %name, "Attempted to open Monero wallet, but it does not exist. We will create it.");
+            tracing::debug!(monero_wallet_name = %name.clone(), "Attempted to open Monero wallet, but it does not exist. We will create it.");
 
-            match manager.create_wallet(path, "English", "", env_config.monero_network) {
+            match manager.create_wallet(path.clone(), "English", "", env_config.monero_network) {
                 Err(error) => {
                     tracing::error!(%error, "Failed to create Monero wallet");
                     return Err(error.into());
                 }
                 Ok(wallet) => {
-                    tracing::info!(monero_wallet_name = %name, %path, "Created Monero wallet");
+                    tracing::info!(monero_wallet_name = %name, "Created Monero wallet");
+
+                    let address = monero::Address::from_str(wallet.get_address(0, 0)?.as_str())?;
 
                     return Ok(Self {
                         manager,
                         inner: Mutex::new(wallet),
                         network: env_config.monero_network,
                         name,
-                        main_address: monero::Address::from_str(
-                            wallet.get_address(0, 0)?.as_str(),
-                        )?,
+                        main_address: address,
                         sync_interval: env_config.monero_sync_interval(),
                         path,
                     });
@@ -135,16 +131,15 @@ impl Wallet {
 
         let address = Address::standard(self.network, public_spend_key, public_view_key);
 
-        let wallet = self.inner.lock().await;
+        let mut wallet = self.inner.lock().await;
 
         // Properly close the wallet before generating the other wallet to ensure that
         // it saves its state correctly
         let _ = wallet
             .close_wallet()
-            .await
             .context("Failed to close wallet")?;
 
-        let _ = wallet
+        let _ = self.manager
             .generate_from_keys(
                 file_name,
                 address.to_string(),
@@ -152,9 +147,10 @@ impl Wallet {
                 PrivateKey::from(private_view_key).to_string(),
                 restore_height.height,
                 String::from(""),
-                true,
+                String::from("English"),
+                self.network,
+                1,
             )
-            .await
             .context("Failed to generate new wallet from keys")?;
 
         Ok(())
@@ -181,10 +177,7 @@ impl Wallet {
         // it saves its state correctly
         let _ = self.inner.lock().await.close_wallet()?;
 
-        let _ = self
-            .inner
-            .lock()
-            .await
+        let _ = self.manager
             .generate_from_keys(
                 file_name,
                 temp_wallet_address.to_string(),
@@ -192,9 +185,10 @@ impl Wallet {
                 PrivateKey::from(private_view_key).to_string(),
                 restore_height.height,
                 String::from(""),
-                true,
-            )
-            .await?;
+                String::from("English"),
+                self.network,
+                1,
+            )?;
 
         // Try to send all the funds from the generated wallet to the default wallet
         match self.refresh(3).await {
@@ -202,18 +196,16 @@ impl Wallet {
                 .inner
                 .lock()
                 .await
-                .sweep_all(0, self.main_address.to_string(), true)
-                .await
+                .sweep_all(0, self.main_address, true)
             {
                 Ok(sweep_all) => {
-                    for tx in sweep_all.tx_hash_list {
-                        tracing::info!(
-                            %tx,
-                            monero_address = %self.main_address,
-                            "Monero transferred back to default wallet");
-                    }
+                    tracing::info!(
+                        txid = %sweep_all.txid,
+                        monero_address = %self.main_address,
+                        "Monero transferred back to default wallet");
                 }
                 Err(error) => {
+                    // TODO: Re-add the retry fix here from https://github.com/UnstoppableSwap/core/pull/254
                     tracing::warn!(
                         address = %self.main_address,
                         "Failed to transfer Monero to default wallet: {:#}", error
@@ -226,11 +218,8 @@ impl Wallet {
         }
 
         let _ = self
-            .inner
-            .lock()
-            .await
-            .open_wallet(self.name.clone())
-            .await?;
+            .manager
+            .open_wallet(self.path.clone(), "", self.network)?;
 
         Ok(())
     }
@@ -254,12 +243,12 @@ impl Wallet {
         tracing::debug!(
             %amount,
             to = %public_spend_key,
-            tx_id = %res.tx_hash,
+            tx_id = %res.txid,
             "Successfully initiated Monero transfer"
         );
 
         Ok(TransferProof::new(
-            TxHash(res.tx_hash),
+            TxHash(res.txid),
             res.tx_key
                 .context("Missing tx_key in `transfer` response")?,
         ))
@@ -317,11 +306,9 @@ impl Wallet {
             .inner
             .lock()
             .await
-            .sweep_all(address.to_string())
-            .await?;
+            .sweep_all(0, address, true)?;
 
-        let tx_hashes = sweep_all.tx_hash_list.into_iter().map(TxHash).collect();
-        Ok(tx_hashes)
+        Ok(vec![TxHash(sweep_all.txid)])
     }
 
     /// Get the balance of the primary account.
@@ -429,9 +416,6 @@ async fn wait_for_confirmations_with(
             txid.clone(),
             transfer_proof.tx_key.to_string(),
             to_address.to_string(),
-            None,
-            None,
-            None,
         ) {
             Ok(proof) => proof,
             /*

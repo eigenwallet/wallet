@@ -9,7 +9,7 @@ use crate::monero_ext::ScalarExt;
 use crate::protocol::{Message0, Message1, Message2, Message3, Message4, CROSS_CURVE_PROOF_SYSTEM};
 use crate::{bitcoin, monero};
 use anyhow::{anyhow, bail, Context, Result};
-use monero_rpc::wallet::BlockHeight;
+use monero_c_rust::BlockHeight;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sigma_fun::ext::dl_secp256k1_ed25519_eq::CrossCurveDLEQProof;

@@ -13,7 +13,7 @@ use bdk::database::BatchDatabase;
 use ecdsa_fun::adaptor::{Adaptor, HashTranscript};
 use ecdsa_fun::nonce::Deterministic;
 use ecdsa_fun::Signature;
-use monero_rpc::wallet::BlockHeight;
+use monero_c_rust::BlockHeight;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -677,7 +677,8 @@ impl State5 {
             tracing::info!(%wallet_file_name,
                 "Falling back to trying to open the wallet if it already exists",
             );
-            monero_wallet.open(wallet_file_name).await?;
+            todo!("We dont know the path only the name because of temp dir");
+            // monero_wallet.open(wallet_file_name).await?;
         }
 
         // Ensure that the generated wallet is synced so we have a proper balance

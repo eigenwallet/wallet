@@ -3,13 +3,14 @@ use std::fmt;
 use std::os::raw::{c_int, c_void};
 use std::path::PathBuf;
 use std::ptr::NonNull;
+use std::str::FromStr;
 use std::sync::Arc;
 
 pub mod bindings;
 pub use bindings::WalletStatus_Critical;
 pub use bindings::WalletStatus_Error;
 pub use bindings::WalletStatus_Ok;
-use monero::{Block, Network};
+use monero::{Address, Block, Network};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -127,7 +128,7 @@ pub struct Transfer {
     /// The transaction ID of the transfer.
     pub txid: String,
     /// The transaction key, if requested.
-    pub tx_key: Option<String>,
+    pub tx_key: Option<monero::PrivateKey>,
     /// The total amount sent in the transfer.
     pub amount: u64,
     /// The fee associated with the transfer.
@@ -137,10 +138,12 @@ pub struct Transfer {
 /// Represents the result of checking a transaction key against a transaction ID and address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CheckTxKey {
-    /// Indicates whether the transaction key is valid.
-    pub valid: bool,
-    /// An optional error message providing details if the verification fails.
-    pub error: Option<String>,
+    /// The amount received in the transaction.
+    pub received: u64,
+    /// Indicates whether the transaction is in the pool.
+    pub in_pool: bool,
+    /// The number of confirmations for the transaction.
+    pub confirmations: u64,
 }
 
 impl WalletManager {
@@ -494,7 +497,7 @@ impl WalletManager {
     }
 
     /// Checks if a given wallet exists
-    pub fn wallet_exists(self, path: PathBuf) -> WalletResult<bool> {
+    pub fn wallet_exists(&self, path: PathBuf) -> WalletResult<bool> {
         let c_path = CString::new(path.to_str().unwrap())
             .map_err(|_| WalletError::FfiError("Invalid name".to_string()))?;
 
@@ -1331,10 +1334,13 @@ impl Wallet {
                     .map_err(|_| WalletError::FfiError("Invalid txid".to_string()))?;
                 let tx_key_ptr =
                     bindings::MONERO_Wallet_getTxKey(self.ptr.as_ptr(), c_txid.as_ptr());
+                
                 if tx_key_ptr.is_null() {
                     None
                 } else {
-                    Some(CStr::from_ptr(tx_key_ptr).to_string_lossy().into_owned())
+                    let tx_key = CStr::from_ptr(tx_key_ptr).to_string_lossy().into_owned();
+                    let tx_key = monero::PrivateKey::from_str(tx_key.as_str()).unwrap();
+                    Some(tx_key)
                 }
             } else {
                 None
@@ -1382,11 +1388,11 @@ impl Wallet {
     pub fn sweep_all(
         &self,
         account_index: u32,
-        destination: Destination,
+        destination: monero::Address,
         get_tx_key: bool,
     ) -> WalletResult<Transfer> {
         // Convert the destination address to a CString.
-        let c_address = CString::new(destination.address.clone())
+        let c_address = CString::new(destination.to_string())
             .map_err(|_| WalletError::FfiError("Invalid address".to_string()))?;
 
         // Placeholder values for fields not needed in sweep_all.
@@ -1447,7 +1453,9 @@ impl Wallet {
                 if tx_key_ptr.is_null() {
                     None
                 } else {
-                    Some(CStr::from_ptr(tx_key_ptr).to_string_lossy().into_owned())
+                    let tx_key = CStr::from_ptr(tx_key_ptr).to_string_lossy().into_owned();
+                    let tx_key = monero::PrivateKey::from_str(tx_key.as_str()).unwrap();
+                    Some(tx_key)
                 }
             } else {
                 None
@@ -1520,9 +1528,6 @@ impl Wallet {
         txid: String,
         tx_key: String,
         address: String,
-        received: Option<u64>,
-        in_pool: Option<bool>,
-        confirmations: Option<u64>,
     ) -> WalletResult<CheckTxKey> {
         // Convert Rust strings to C-compatible strings.
         let c_txid = CString::new(txid)
@@ -1533,9 +1538,9 @@ impl Wallet {
             .map_err(|_| WalletError::FfiError("Invalid address string".to_string()))?;
 
         // Assign default values if optional parameters are not provided.
-        let received_val = received.unwrap_or(0);
-        let in_pool_val = in_pool.unwrap_or(false);
-        let confirmations_val = confirmations.unwrap_or(0);
+        let mut received_val = 0;
+        let mut in_pool_val = false;
+        let mut confirmations_val = 0;
 
         // Call the C function.
         let result = unsafe {
@@ -1544,16 +1549,17 @@ impl Wallet {
                 c_txid.as_ptr(),
                 c_tx_key.as_ptr(),
                 c_address.as_ptr(),
-                received_val,
-                in_pool_val,
-                confirmations_val,
+                &mut received_val,
+                &mut in_pool_val,
+                &mut confirmations_val,
             )
         };
 
         if result {
             Ok(CheckTxKey {
-                valid: true,
-                error: None,
+                received: received_val,
+                in_pool: in_pool_val,
+                confirmations: confirmations_val,
             })
         } else {
             // Retrieve the last error.
