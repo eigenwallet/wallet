@@ -63,8 +63,9 @@ If you aren't familiar with docker compose, here are the most important commands
 | --- | --- |
 | `docker compose up -d` | Start all services. |
 | `docker compose down` | Stop all services. |
+| `docker compose ps` | List all currently running services. |
 | `docker compose pull` | Pull the latest images for all services. You need to run `docker compose up -d` after this to actually update the services. |
-| `docker compose logs -f` | Access the logs of all services. To only see the last e.g. 100 lines, use `docker compose logs -f | tail -n 100`. |
+| `docker compose logs -f` | Access the logs of all services. To only get the logs of a specific service, use `docker compose logs -f <service_name>`. To only see the last e.g. 100 lines, use `docker compose logs -f --tail 100`. |
 
 You can also execute `asb` commands, to get the history of swaps for example:
 
@@ -88,7 +89,7 @@ docker compose up -d
 | `start` | Starts the asb. This is automatically done when you run `docker compose up -d`. |
 | `config` | Prints the current configuration. |
 | `export-bitcoin-wallet` | Prints the internal bitcoin wallet descriptor which can be used to access the asb's bitcoin wallet. |
-| `withdraw-btc --address` | Withdraws Bitcoin from the internal wallet into a specified address. |
+| `withdraw-btc --address <YOUR_ADDRESS>` | Withdraws Bitcoin from the internal wallet into a specified address. |
 
 ### Asb Configuration
 
@@ -217,13 +218,12 @@ listen = ["/ip4/0.0.0.0/tcp/9939"]
 
 # the rendezvous points the asb will connect to (address, port and peer id)
 rendezvous_point = [
-    "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE", 
-    "/dns4/eratosthen.es/tcp/7798/p2p/12D3KooWAh7EXXa2ZyegzLGdjvj1W4G3EXrTGrf6trraoT1MEobs"
+    "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE"
 ]
 
 # the external addresses the asb will advertise to the rendezvous points (only address)
 external_addresses = [
-    # e.g. "/dns4/your.domain.com"
+    # e.g. "/dns4/your.domain.com/tcp/9939/p2p/your1peer2id"
 ]
 ```
 
