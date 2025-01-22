@@ -69,7 +69,7 @@ export default function DaemonControlBox() {
             isIconButton
             requiresContext={false}
             size="small"
-            tooltipTitle="Open the data directory of the Swap Daemon in your file explorer"
+            tooltipTitle="Open the data directory in your file explorer"
             onInvoke={async () => {
               const dataDir = await getDataDir();
               await revealItemInDir(dataDir);

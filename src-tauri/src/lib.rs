@@ -186,7 +186,7 @@ pub fn run() {
             check_electrum_node,
             get_wallet_descriptor,
             get_data_dir,
-            resolve_approval_request,
+            resolve_approval_request
         ])
         .setup(setup)
         .build(tauri::generate_context!())
