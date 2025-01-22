@@ -5,7 +5,7 @@ import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { useAppSelector } from "store/hooks";
 import InfoBox from "../../modal/swap/InfoBox";
 import CliLogsBox from "../../other/RenderedCliLog";
-import { initializeContext } from "renderer/rpc";
+import { getDataDir, initializeContext } from "renderer/rpc";
 import { relaunch } from "@tauri-apps/plugin-process";
 import RotateLeftIcon from "@material-ui/icons/RotateLeft";
 
@@ -68,9 +68,9 @@ export default function DaemonControlBox() {
             isIconButton
             size="small"
             tooltipTitle="Open the data directory of the Swap Daemon in your file explorer"
-            onInvoke={() => {
-              // TODO: Implement this
-              throw new Error("Not implemented");
+            onInvoke={async () => {
+              const dataDir = await getDataDir();
+              open(dataDir);
             }}
           />
         </Box>
