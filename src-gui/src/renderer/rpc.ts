@@ -165,10 +165,10 @@ export async function getLogsOfSwap(
 }
 
 export async function listSellersAtRendezvousPoint(
-  rendezvousPointAddress: string,
+  rendezvousPointAddresses: string[],
 ): Promise<ListSellersResponse> {
   return await invoke<ListSellersArgs, ListSellersResponse>("list_sellers", {
-    rendezvous_point: rendezvousPointAddress,
+    rendezvous_points: rendezvousPointAddresses,
   });
 }
 
