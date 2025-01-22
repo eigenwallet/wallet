@@ -8,6 +8,7 @@ import CliLogsBox from "../../other/RenderedCliLog";
 import { getDataDir, initializeContext } from "renderer/rpc";
 import { relaunch } from "@tauri-apps/plugin-process";
 import RotateLeftIcon from "@material-ui/icons/RotateLeft";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 const useStyles = makeStyles((theme) => ({
   actionsOuter: {
@@ -66,11 +67,12 @@ export default function DaemonControlBox() {
           <PromiseInvokeButton
             endIcon={<FolderOpenIcon />}
             isIconButton
+            requiresContext={false}
             size="small"
-            tooltipTitle="Open the data directory of the Swap Daemon in your file explorer"
+            tooltipTitle="Open the data directory in your file explorer"
             onInvoke={async () => {
               const dataDir = await getDataDir();
-              open(dataDir);
+              await revealItemInDir(dataDir);
             }}
           />
         </Box>

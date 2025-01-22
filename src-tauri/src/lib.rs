@@ -156,6 +156,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_balance,
             get_monero_addresses,
@@ -175,6 +176,7 @@ pub fn run() {
             check_monero_node,
             check_electrum_node,
             get_wallet_descriptor,
+            get_data_dir
         ])
         .setup(setup)
         .build(tauri::generate_context!())
