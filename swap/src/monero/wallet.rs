@@ -96,9 +96,9 @@ impl Wallet {
             .await
             .context("Failed to close wallet")?;
 
-        let _ = wallet
+        match wallet
             .generate_from_keys(
-                file_name,
+                file_name.clone(),
                 address.to_string(),
                 private_spend_key.to_string(),
                 PrivateKey::from(private_view_key).to_string(),
@@ -107,9 +107,23 @@ impl Wallet {
                 true,
             )
             .await
-            .context("Failed to generate new wallet from keys")?;
+        {
+            Ok(_) => Ok(()),
+            // If we got a `wallet already exists` error, we try to open the wallet instead
+            Err(error) if format!("{:?}", error).contains("Wallet already exists") => {
+                tracing::debug!(
+                    wallet_file = &file_name,
+                    "Wallet already exists, loading instead of generating"
+                );
 
-        Ok(())
+                wallet
+                    .open_wallet(file_name)
+                    .await
+                    .map(|_| ())
+                    .context("Failed to open existing wallet")
+            }
+            Err(error) => Err(error).context("Failed to generate new wallet from keys"),
+        }
     }
 
     /// Close the wallet and open (load) another wallet by generating it from
