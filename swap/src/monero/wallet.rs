@@ -26,33 +26,40 @@ pub struct Wallet {
 
 impl Wallet {
     /// Connect to a wallet RPC and load the given wallet by name.
-    pub async fn open_or_create(url: Url, name: String, env_config: Config) -> Result<Self> {
+    pub async fn connect_to(url: Url, wallet_name: String, env_config: Config) -> Result<Self> {
         let client = wallet::Client::new(url)?;
 
-        match client.open_wallet(name.clone()).await {
+        // Try to open the wallet.
+        match client.open_wallet(wallet_name.clone()).await {
+            Ok(_) => tracing::debug!(monero_wallet_name = %wallet_name, "Opened Monero wallet"),
             Err(error) => {
-                tracing::debug!(%error, "Open wallet response error");
-                client.create_wallet(name.clone(), "English".to_owned()).await.context(
-                    "Unable to create Monero wallet, please ensure that the monero-wallet-rpc is available",
+                // If the wallet doesn't exist, create it.
+                tracing::debug!(%error, "Failed to open Monero wallet, trying to create instead");
+
+                client.create_wallet(wallet_name.clone(), "English".to_owned()).await.context(
+                    "Unable to create Monero wallet. Please ensure that monero-wallet-rpc is available",
                 )?;
 
-                tracing::debug!(monero_wallet_name = %name, "Created Monero wallet");
+                tracing::debug!(monero_wallet_name = %wallet_name, "Created Monero wallet");
             }
-            Ok(_) => tracing::debug!(monero_wallet_name = %name, "Opened Monero wallet"),
         }
 
-        Self::connect(client, name, env_config).await
+        Self::connect(client, wallet_name, env_config).await
     }
 
     /// Connects to a wallet RPC where a wallet is already loaded.
-    pub async fn connect(client: wallet::Client, name: String, env_config: Config) -> Result<Self> {
+    pub async fn connect(
+        client: wallet::Client,
+        wallet_name: String,
+        env_config: Config,
+    ) -> Result<Self> {
         let main_address =
             monero::Address::from_str(client.get_address(0).await?.address.as_str())?;
 
         Ok(Self {
             inner: Mutex::new(client),
             network: env_config.monero_network,
-            name,
+            name: wallet_name,
             main_address,
             sync_interval: env_config.monero_sync_interval(),
         })
@@ -68,14 +75,17 @@ impl Wallet {
         Ok(())
     }
 
+    /// Open a wallet by filename.
     pub async fn open(&self, filename: String) -> Result<()> {
         self.inner.lock().await.open_wallet(filename).await?;
         Ok(())
     }
 
     /// Close the wallet and open (load) another wallet by generating it from
-    /// keys. The generated wallet will remain loaded.
-    pub async fn create_from_and_load(
+    /// keys.
+    /// The generated wallet will remain loaded.
+    /// If the wallet already exists, it will be opened instead.
+    pub async fn create_from_keys_or_open(
         &self,
         file_name: String,
         private_spend_key: PrivateKey,
@@ -138,7 +148,7 @@ impl Wallet {
         restore_height: BlockHeight,
     ) -> Result<()> {
         // Close the default wallet, generate the new wallet from the keys and load it
-        self.create_from_and_load(
+        self.create_from_keys_or_open(
             file_name,
             private_spend_key,
             private_view_key,
