@@ -380,7 +380,7 @@ async fn wait_for_confirmations_with<
                     wallet_name,
                     txid
                 );
-                
+
                 if let Err(err) = client.open_wallet(wallet_name.clone()).await {
                     tracing::warn!(
                         %err,
