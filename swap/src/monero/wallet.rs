@@ -331,6 +331,9 @@ pub struct WatchRequest {
     pub expected: Amount,
 }
 
+/// This is a shorthand for the dynamic type we use to pass listeners to
+/// i.e. the `wait_for_confirmations` function. It is basically
+/// an `async fn` which takes a `u64` and returns nothing, but in dynamic.
 type ConfirmationListener =
     Box<dyn Fn(u64) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + 'static>;
 
