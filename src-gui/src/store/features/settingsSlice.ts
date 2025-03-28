@@ -106,6 +106,7 @@ const initialState: SettingsState = {
   fiatCurrency: FiatCurrency.Usd,
   enableTor: true,
   torBridge: null,
+  obfs4proxyPath: null,
 };
 
 const alertsSlice = createSlice({

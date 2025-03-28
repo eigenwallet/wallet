@@ -43,7 +43,7 @@ pub async fn init_tor_client(
             }
         }
     } else if !bridges.is_empty() {
-        tracing::warn!("Tor bridges cannot be used without obfs4proxy");
+        tracing::warn!("Tor bridges cannot be used without an obfs4proxy binary");
     }
 
     let config = builder
