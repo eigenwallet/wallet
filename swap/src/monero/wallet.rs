@@ -11,13 +11,12 @@ use std::ops::Div;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::time::Duration;
-use tokio::sync::Mutex;
 use tokio::time::Interval;
 use url::Url;
 
 #[derive(Debug)]
 pub struct Wallet {
-    inner: Mutex<wallet::Client>,
+    inner: wallet::Client,
     network: Network,
     name: String,
     main_address: monero::Address,
@@ -50,7 +49,7 @@ impl Wallet {
             monero::Address::from_str(client.get_address(0).await?.address.as_str())?;
 
         Ok(Self {
-            inner: Mutex::new(client),
+            inner: client,
             network: env_config.monero_network,
             name,
             main_address,
@@ -60,16 +59,12 @@ impl Wallet {
 
     /// Re-open the wallet using the internally stored name.
     pub async fn re_open(&self) -> Result<()> {
-        self.inner
-            .lock()
-            .await
-            .open_wallet(self.name.clone())
-            .await?;
+        self.inner.open_wallet(self.name.clone()).await?;
         Ok(())
     }
 
     pub async fn open(&self, filename: String) -> Result<()> {
-        self.inner.lock().await.open_wallet(filename).await?;
+        self.inner.open_wallet(filename).await?;
         Ok(())
     }
 
@@ -87,16 +82,16 @@ impl Wallet {
 
         let address = Address::standard(self.network, public_spend_key, public_view_key);
 
-        let wallet = self.inner.lock().await;
-
         // Properly close the wallet before generating the other wallet to ensure that
         // it saves its state correctly
-        let _ = wallet
+        let _ = self
+            .inner
             .close_wallet()
             .await
             .context("Failed to close wallet")?;
 
-        let _ = wallet
+        let _ = self
+            .inner
             .generate_from_keys(
                 file_name,
                 address.to_string(),
@@ -131,12 +126,10 @@ impl Wallet {
 
         // Close the default wallet before generating the other wallet to ensure that
         // it saves its state correctly
-        let _ = self.inner.lock().await.close_wallet().await?;
+        let _ = self.inner.close_wallet().await?;
 
         let _ = self
             .inner
-            .lock()
-            .await
             .generate_from_keys(
                 file_name,
                 temp_wallet_address.to_string(),
@@ -150,13 +143,7 @@ impl Wallet {
 
         // Try to send all the funds from the generated wallet to the default wallet
         match self.refresh(3).await {
-            Ok(_) => match self
-                .inner
-                .lock()
-                .await
-                .sweep_all(self.main_address.to_string())
-                .await
-            {
+            Ok(_) => match self.inner.sweep_all(self.main_address.to_string()).await {
                 Ok(sweep_all) => {
                     for tx in sweep_all.tx_hash_list {
                         tracing::info!(
@@ -179,19 +166,12 @@ impl Wallet {
             }
         }
 
-        let _ = self
-            .inner
-            .lock()
-            .await
-            .open_wallet(self.name.clone())
-            .await?;
+        let _ = self.inner.open_wallet(self.name.clone()).await?;
 
         Ok(())
     }
 
     pub async fn transfer(&self, request: TransferRequest) -> Result<TransferProof> {
-        let inner = self.inner.lock().await;
-
         let TransferRequest {
             public_spend_key,
             public_view_key,
@@ -201,7 +181,8 @@ impl Wallet {
         let destination_address =
             Address::standard(self.network, public_spend_key, public_view_key.into());
 
-        let res = inner
+        let res = self
+            .inner
             .transfer_single(0, amount.as_piconero(), &destination_address.to_string())
             .await?;
 
@@ -267,12 +248,7 @@ impl Wallet {
     }
 
     pub async fn sweep_all(&self, address: Address) -> Result<Vec<TxHash>> {
-        let sweep_all = self
-            .inner
-            .lock()
-            .await
-            .sweep_all(address.to_string())
-            .await?;
+        let sweep_all = self.inner.sweep_all(address.to_string()).await?;
 
         let tx_hashes = sweep_all.tx_hash_list.into_iter().map(TxHash).collect();
         Ok(tx_hashes)
@@ -280,11 +256,11 @@ impl Wallet {
 
     /// Get the balance of the primary account.
     pub async fn get_balance(&self) -> Result<wallet::GetBalance> {
-        Ok(self.inner.lock().await.get_balance(0).await?)
+        Ok(self.inner.get_balance(0).await?)
     }
 
     pub async fn block_height(&self) -> Result<BlockHeight> {
-        Ok(self.inner.lock().await.get_height().await?)
+        Ok(self.inner.get_height().await?)
     }
 
     pub fn get_main_address(&self) -> Address {
@@ -297,7 +273,7 @@ impl Wallet {
         for i in 1..=max_attempts {
             tracing::info!(name = %self.name, attempt=i, "Syncing Monero wallet");
 
-            let result = self.inner.lock().await.refresh().await;
+            let result = self.inner.refresh().await;
 
             match result {
                 Ok(refreshed) => {
@@ -310,7 +286,7 @@ impl Wallet {
                     // We would not want to fail here if the height is not available
                     // as it is not critical for the operation of the wallet.
                     // We can just log a warning and continue.
-                    let height = match self.inner.lock().await.get_height().await {
+                    let height = match self.inner.get_height().await {
                         Ok(height) => height.to_string(),
                         Err(_) => {
                             tracing::warn!(name = %self.name, "Failed to fetch Monero wallet height during sync");
@@ -355,7 +331,7 @@ type ConfirmationListener =
 async fn wait_for_confirmations_with<
     C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
 >(
-    client: &Mutex<C>,
+    client: &C,
     transfer_proof: TransferProof,
     to_address: Address,
     expected: Amount,
@@ -370,7 +346,6 @@ async fn wait_for_confirmations_with<
         check_interval.tick().await; // tick() at the beginning of the loop so every `continue` tick()s as well
 
         let txid = transfer_proof.tx_hash().to_string();
-        let client = client.lock().await;
 
         let tx = match client
             .check_tx_key(
@@ -445,12 +420,13 @@ mod tests {
     use crate::tracing_ext::capture_logs;
     use monero_rpc::wallet::CheckTxKey;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use tokio::sync::Mutex;
     use tracing::metadata::LevelFilter;
 
     async fn wait_for_confirmations<
         C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
     >(
-        client: &Mutex<C>,
+        client: &C,
         transfer_proof: TransferProof,
         to_address: Address,
         expected: Amount,
@@ -479,7 +455,7 @@ mod tests {
         })]));
 
         let result = wait_for_confirmations(
-            &client,
+            &*client.lock().await,
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
             }),
@@ -530,7 +506,7 @@ mod tests {
         ]));
 
         wait_for_confirmations(
-            &client,
+            &*client.lock().await,
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
             }),
@@ -577,7 +553,7 @@ mod tests {
         ]));
 
         wait_for_confirmations(
-            &client,
+            &*client.lock().await,
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
             }),
