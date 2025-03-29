@@ -32,7 +32,6 @@ use testcontainers::clients::Cli;
 use testcontainers::{Container, RunnableImage};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
-use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, timeout};
 use tracing_subscriber::util::SubscriberInitExt;
@@ -225,7 +224,7 @@ async fn start_alice(
     listen_address: Multiaddr,
     env_config: Config,
     bitcoin_wallet: Arc<bitcoin::Wallet>,
-    monero_wallet: Arc<Mutex<monero::Wallet>>,
+    monero_wallet: Arc<monero::Wallet>,
 ) -> (AliceApplicationHandle, Receiver<alice::Swap>) {
     if let Some(parent_dir) = db_path.parent() {
         ensure_directory_exists(parent_dir).unwrap();
@@ -289,7 +288,7 @@ async fn init_test_wallets(
     electrum_rpc_port: u16,
     seed: &Seed,
     env_config: Config,
-) -> (Arc<bitcoin::Wallet>, Arc<Mutex<monero::Wallet>>) {
+) -> (Arc<bitcoin::Wallet>, Arc<monero::Wallet>) {
     monero
         .init_wallet(
             name,
@@ -356,7 +355,7 @@ async fn init_test_wallets(
         }
     }
 
-    (Arc::new(btc_wallet), Arc::new(Mutex::new(xmr_wallet)))
+    (Arc::new(btc_wallet), Arc::new(xmr_wallet))
 }
 
 const MONERO_WALLET_NAME_BOB: &str = "bob";
@@ -413,7 +412,7 @@ pub struct BobParams {
     seed: Seed,
     db_path: PathBuf,
     bitcoin_wallet: Arc<bitcoin::Wallet>,
-    monero_wallet: Arc<Mutex<monero::Wallet>>,
+    monero_wallet: Arc<monero::Wallet>,
     alice_address: Multiaddr,
     alice_peer_id: PeerId,
     env_config: Config,
@@ -431,7 +430,7 @@ impl BobParams {
     pub async fn get_change_receive_addresses(&self) -> (bitcoin::Address, monero::Address) {
         (
             self.bitcoin_wallet.new_address().await.unwrap(),
-            self.monero_wallet.lock().await.get_main_address(),
+            self.monero_wallet.get_main_address(),
         )
     }
 
@@ -453,7 +452,7 @@ impl BobParams {
             self.monero_wallet.clone(),
             self.env_config,
             handle,
-            self.monero_wallet.lock().await.get_main_address(),
+            self.monero_wallet.get_main_address(),
         )
         .await?;
 
@@ -485,7 +484,7 @@ impl BobParams {
             self.monero_wallet.clone(),
             self.env_config,
             handle,
-            self.monero_wallet.lock().await.get_main_address(),
+            self.monero_wallet.get_main_address(),
             self.bitcoin_wallet.new_address().await?,
             btc_amount,
         );
@@ -544,14 +543,14 @@ pub struct TestContext {
 
     alice_starting_balances: StartingBalances,
     alice_bitcoin_wallet: Arc<bitcoin::Wallet>,
-    alice_monero_wallet: Arc<Mutex<monero::Wallet>>,
+    alice_monero_wallet: Arc<monero::Wallet>,
     alice_swap_handle: mpsc::Receiver<Swap>,
     alice_handle: AliceApplicationHandle,
 
     pub bob_params: BobParams,
     bob_starting_balances: StartingBalances,
     bob_bitcoin_wallet: Arc<bitcoin::Wallet>,
-    bob_monero_wallet: Arc<Mutex<monero::Wallet>>,
+    bob_monero_wallet: Arc<monero::Wallet>,
 }
 
 impl TestContext {
@@ -627,7 +626,7 @@ impl TestContext {
         .unwrap();
 
         assert_eventual_balance(
-            &*self.alice_monero_wallet.lock().await,
+            self.alice_monero_wallet.as_ref(),
             Ordering::Less,
             self.alice_redeemed_xmr_balance(),
         )
@@ -648,7 +647,7 @@ impl TestContext {
 
         // Alice pays fees - comparison does not take exact lock fee into account
         assert_eventual_balance(
-            &*self.alice_monero_wallet.lock().await,
+            self.alice_monero_wallet.as_ref(),
             Ordering::Greater,
             self.alice_refunded_xmr_balance(),
         )
@@ -668,7 +667,7 @@ impl TestContext {
         .unwrap();
 
         assert_eventual_balance(
-            &*self.alice_monero_wallet.lock().await,
+            self.alice_monero_wallet.as_ref(),
             Ordering::Less,
             self.alice_punished_xmr_balance(),
         )
@@ -686,10 +685,10 @@ impl TestContext {
         .unwrap();
 
         // unload the generated wallet by opening the original wallet
-        self.bob_monero_wallet.lock().await.re_open().await.unwrap();
+        self.bob_monero_wallet.re_open().await.unwrap();
 
         assert_eventual_balance(
-            &*self.bob_monero_wallet.lock().await,
+            self.bob_monero_wallet.as_ref(),
             Ordering::Greater,
             self.bob_redeemed_xmr_balance(),
         )
@@ -730,7 +729,7 @@ impl TestContext {
         assert!(bob_cancelled_and_refunded);
 
         assert_eventual_balance(
-            &*self.bob_monero_wallet.lock().await,
+            self.bob_monero_wallet.as_ref(),
             Ordering::Equal,
             self.bob_refunded_xmr_balance(),
         )
@@ -748,7 +747,7 @@ impl TestContext {
         .unwrap();
 
         assert_eventual_balance(
-            &*self.bob_monero_wallet.lock().await,
+            self.bob_monero_wallet.as_ref(),
             Ordering::Equal,
             self.bob_punished_xmr_balance(),
         )
