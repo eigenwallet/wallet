@@ -14,6 +14,7 @@ import { themes } from "./theme";
 import { useEffect } from "react";
 import { setupBackgroundTasks } from "renderer/background";
 import "@fontsource/roboto";
+import IntroductionModal from "./modal/introduction/IntroductionModal";
 
 const useStyles = makeStyles((theme) => ({
   innerContent: {
@@ -35,6 +36,7 @@ export default function App() {
     <ThemeProvider theme={themes[theme]}>
       <GlobalSnackbarProvider>
         <CssBaseline />
+        <IntroductionModal/>
         <Router>
           <Navigation />
           <InnerContent />
