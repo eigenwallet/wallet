@@ -4971,7 +4971,7 @@ dependencies = [
 [[package]]
 name = "libp2p-community-tor"
 version = "0.5.0"
-source = "git+https://github.com/UnstoppableSwap/libp2p-tor?branch=main#20cb35fa4ef5a2a3029c6e3f72949c0414b594cd"
+source = "git+https://github.com/UnstoppableSwap/libp2p-tor?rev=20cb35fa4ef5a2a3029c6e3f72949c0414b594cd#20cb35fa4ef5a2a3029c6e3f72949c0414b594cd"
 dependencies = [
  "anyhow",
  "arti-client",
