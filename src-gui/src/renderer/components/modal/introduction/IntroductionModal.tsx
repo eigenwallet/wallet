@@ -8,6 +8,7 @@ import Slide02_ChooseAMaker from './slides/Slide02_ChooseAMaker'
 import Slide03_PrepareSwap from './slides/Slide03_PrepareSwap'
 import Slide04_ExecuteSwap from './slides/Slide04_ExecuteSwap'
 import Slide06_ReachOut from './slides/Slide06_ReachOut'
+import Slide05_KeepAnEyeOnYourSwaps from './slides/Slide05_KeepAnEyeOnYourSwaps'
 
 const useStyles = makeStyles({
     modal: {
@@ -65,6 +66,10 @@ export default function IntroductionModal() {
             handlePrevious={handlePrevious}
         />,
         <Slide04_ExecuteSwap
+            handleContinue={handleContinue}
+            handlePrevious={handlePrevious}
+        />,
+        <Slide05_KeepAnEyeOnYourSwaps
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
         />,

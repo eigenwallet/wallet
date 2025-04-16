@@ -44,7 +44,7 @@ export default function SlideTemplate({
 
     return (
         <Paper className={classes.paper}>
-            <Box m={3} flex alignContent="center" position="relative" width="50%">
+            <Box m={3} flex alignContent="center" position="relative" width="50%" flexGrow={1}>
                 <Box>
                     {stepLabel && (
                         <Typography
@@ -84,7 +84,6 @@ export default function SlideTemplate({
                     width="50%"
                     display="flex"
                     justifyContent="center"
-                    alignContent="center"
                     p={imagePadded ? "1.5em" : 0}
                 >
                     <img src={imagePath} className={classes.splitImage} />
