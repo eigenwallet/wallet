@@ -1,12 +1,13 @@
 import {
-    Box,
-    Button,
     makeStyles,
     Modal,
-    Paper,
-    Typography,
 } from '@material-ui/core'
 import { useState } from 'react'
+import Slide01_GettingStarted from './slides/Slide01_GettingStarted'
+import Slide02_ChooseAMaker from './slides/Slide02_ChooseAMaker'
+import Slide03_PrepareSwap from './slides/Slide03_PrepareSwap'
+import Slide04_ExecuteSwap from './slides/Slide04_ExecuteSwap'
+import Slide06_ReachOut from './slides/Slide06_ReachOut'
 
 const useStyles = makeStyles({
     modal: {
@@ -20,110 +21,6 @@ const useStyles = makeStyles({
         justifyContent: 'space-between',
     },
 })
-
-type slideProps = {
-    handleContinue: () => void
-    handlePrevious: () => void
-    hidePreviousButton?: boolean
-}
-
-function FirstSlide({
-    handleContinue,
-    handlePrevious,
-    hidePreviousButton,
-}: slideProps) {
-    const classes = useStyles()
-
-    return (
-        <>
-            <Paper className={classes.paper}>
-                <Box m={3} flex alignContent="center" position="relative">
-                    <Box>
-                        <Typography variant="h3">Getting Started</Typography>
-                        <Typography variant="subtitle1">
-                            To make a Atomic Swap with Unstoppable swap you need
-                            a
-                        </Typography>
-                        <ul>
-                            <li>Bitcoin Wallet with Funds for the swap</li>
-                            <li>
-                                Monero Wallet to generate a Monero Redeem
-                                Address
-                            </li>
-                        </ul>
-                    </Box>
-                    <Box
-                        position="absolute"
-                        bottom={0}
-                        width="100%"
-                        display="flex"
-                        justifyContent={
-                            hidePreviousButton ? 'flex-end' : 'space-between'
-                        }
-                    >
-                        {!hidePreviousButton && (
-                            <Button onClick={handlePrevious}>Previous</Button>
-                        )}
-                        <Button
-                            onClick={handleContinue}
-                            variant="contained"
-                            color="primary"
-                        >
-                            Continue
-                        </Button>
-                    </Box>
-                </Box>
-                <Box bgcolor="#212121" width="50%" height="600px"></Box>
-            </Paper>
-        </>
-    )
-}
-
-function SecondSlide({ handleContinue, handlePrevious }: slideProps) {
-    const classes = useStyles()
-
-    return (
-        <>
-            <Paper className={classes.paper}>
-                <Box m={3} flex alignContent="center" position="relative">
-                    <Box>
-                        <Typography variant="h3">
-                            This is the second Slide!
-                        </Typography>
-                        <Typography variant="subtitle1">
-                            To make a Atomic Swap with Unstoppable swap you need
-                            a
-                        </Typography>
-                        <ul>
-                            <li>Bitcoin Wallet with Funds for the swap</li>
-                            <li>
-                                Monero Wallet to generate a Monero Redeem
-                                Address
-                            </li>
-                        </ul>
-                    </Box>
-                    <Box
-                        position="absolute"
-                        bottom={0}
-                        width="100%"
-                        display="flex"
-                        justifyContent="space-between"
-                    >
-                        <Button onClick={handlePrevious}>Previous</Button>
-                        <Button
-                            onClick={handleContinue}
-                            variant="contained"
-                            color="primary"
-                        >
-                            Continue
-                        </Button>
-                    </Box>
-                </Box>
-                <Box bgcolor="#212121" width="50%" height="600px"></Box>
-            </Paper>
-        </>
-    )
-}
 
 export default function IntroductionModal() {
     // Handle Display State
@@ -154,12 +51,24 @@ export default function IntroductionModal() {
     }
 
     const slideComponents = [
-        <FirstSlide
+        <Slide01_GettingStarted
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
             hidePreviousButton
         />,
-        <SecondSlide
+        <Slide02_ChooseAMaker
+            handleContinue={handleContinue}
+            handlePrevious={handlePrevious}
+        />,
+        <Slide03_PrepareSwap
+            handleContinue={handleContinue}
+            handlePrevious={handlePrevious}
+        />,
+        <Slide04_ExecuteSwap
+            handleContinue={handleContinue}
+            handlePrevious={handlePrevious}
+        />,
+        <Slide06_ReachOut
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
         />,

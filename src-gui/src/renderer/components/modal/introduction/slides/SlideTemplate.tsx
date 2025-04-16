@@ -1,23 +1,31 @@
-import { makeStyles, Paper, Box, Typography, Button } from "@material-ui/core"
+import { makeStyles, Paper, Box, Typography, Button } from '@material-ui/core'
 
-type slideProps = {
+type slideTemplateProps = {
     handleContinue: () => void
     handlePrevious: () => void
     hidePreviousButton?: boolean
     stepLabel?: String
     title: String
     children?: React.ReactNode
-    rightSideImage?: React.ReactNode
+    imagePath?: string
+    imagePadded?: boolean
+    customContinueButtonText?: String
 }
 
 const useStyles = makeStyles({
     paper: {
-        width: '80%',
+        height: "80%",
+        width: "80%",
         display: 'flex',
         justifyContent: 'space-between',
     },
     stepLabel: {
-        textTransform: 'uppercase'
+        textTransform: 'uppercase',
+    },
+    splitImage: {
+        height: '100%',
+        width: '100%',
+        objectFit: 'contain'
     }
 })
 
@@ -28,15 +36,24 @@ export default function SlideTemplate({
     stepLabel,
     title,
     children,
-    rightSideImage,
-}: slideProps) {
+    imagePath,
+    imagePadded,
+    customContinueButtonText
+}: slideTemplateProps) {
     const classes = useStyles()
 
     return (
         <Paper className={classes.paper}>
-            <Box m={3} flex alignContent="center" position="relative">
+            <Box m={3} flex alignContent="center" position="relative" width="50%">
                 <Box>
-                    {stepLabel && <Typography variant="overline" className={classes.stepLabel}>{stepLabel}</Typography>}
+                    {stepLabel && (
+                        <Typography
+                            variant="overline"
+                            className={classes.stepLabel}
+                        >
+                            {stepLabel}
+                        </Typography>
+                    )}
                     <Typography variant="h3">{title}</Typography>
                     {children}
                 </Box>
@@ -57,13 +74,22 @@ export default function SlideTemplate({
                         variant="contained"
                         color="primary"
                     >
-                        Continue
+                        {customContinueButtonText ? customContinueButtonText : 'Continue' }
                     </Button>
                 </Box>
             </Box>
-            <Box bgcolor="#212121" width="50%" height="600px">
-                {rightSideImage}
-            </Box>
+            {imagePath && (
+                <Box
+                    bgcolor="#212121"
+                    width="50%"
+                    display="flex"
+                    justifyContent="center"
+                    alignContent="center"
+                    p={imagePadded ? "1.5em" : 0}
+                >
+                    <img src={imagePath} className={classes.splitImage} />
+                </Box>
+            )}
         </Paper>
     )
 }
