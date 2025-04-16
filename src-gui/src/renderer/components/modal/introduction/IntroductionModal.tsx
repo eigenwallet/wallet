@@ -9,6 +9,8 @@ import Slide03_PrepareSwap from './slides/Slide03_PrepareSwap'
 import Slide04_ExecuteSwap from './slides/Slide04_ExecuteSwap'
 import Slide06_ReachOut from './slides/Slide06_ReachOut'
 import Slide05_KeepAnEyeOnYourSwaps from './slides/Slide05_KeepAnEyeOnYourSwaps'
+import { setUserHasSeenIntroduction } from 'store/features/settingsSlice'
+import { useAppDispatch, useSettings } from 'store/hooks'
 
 const useStyles = makeStyles({
     modal: {
@@ -24,8 +26,12 @@ const useStyles = makeStyles({
 })
 
 export default function IntroductionModal() {
+    const userHasSeenIntroduction = useSettings((s) => s.userHasSeenIntroduction);
+
+    const dispatch = useAppDispatch();
+
     // Handle Display State
-    const [open, setOpen] = useState<boolean>(true)
+    const [open, setOpen] = useState<boolean>(!userHasSeenIntroduction)
 
     const handleClose = () => {
         setOpen(false)
@@ -37,6 +43,7 @@ export default function IntroductionModal() {
     const handleContinue = () => {
         if (currentSlideIndex == slideComponents.length - 1) {
             handleClose()
+            dispatch(setUserHasSeenIntroduction(true))
             return
         }
 

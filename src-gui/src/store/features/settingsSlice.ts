@@ -9,6 +9,7 @@ export interface SettingsState {
   /// Whether to fetch fiat prices from the internet
   fetchFiatPrices: boolean;
   fiatCurrency: FiatCurrency;
+  userHasSeenIntroduction: boolean;
 }
 
 export enum FiatCurrency {
@@ -98,6 +99,7 @@ const initialState: SettingsState = {
   theme: Theme.Darker,
   fetchFiatPrices: true,
   fiatCurrency: FiatCurrency.Usd,
+  userHasSeenIntroduction: false
 };
 
 const alertsSlice = createSlice({
@@ -132,6 +134,9 @@ const alertsSlice = createSlice({
     removeNode(slice, action: PayloadAction<{ network: Network, type: Blockchain, node: string }>) {
       slice.nodes[action.payload.network][action.payload.type] = slice.nodes[action.payload.network][action.payload.type].filter(node => node !== action.payload.node);
     },
+    setUserHasSeenIntroduction(slice, action: PayloadAction<boolean>) {
+      slice.userHasSeenIntroduction = action.payload
+    },
     resetSettings(_) {
       return initialState;
     }
@@ -146,6 +151,7 @@ export const {
   resetSettings,
   setFetchFiatPrices,
   setFiatCurrency,
+  setUserHasSeenIntroduction,
 } = alertsSlice.actions;
 
 export default alertsSlice.reducer;

@@ -78,7 +78,7 @@ export default function Slide05_KeepAnEyeOnYourSwaps({
                 flexGrow={1}
             >
                 <Box className={classes.textWrapper}>
-                    <Typography variant="h3">
+                    <Typography variant="h5">
                         Have an eye on your unfinished swaps
                     </Typography>
                     <Typography>
