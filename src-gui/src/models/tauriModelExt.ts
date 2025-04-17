@@ -1,5 +1,6 @@
 import { exhaustiveGuard } from "utils/typescriptUtils";
 import {
+  ConfirmationEvent,
   ExpiredTimelocks,
   GetSwapInfoResponse,
   TauriSwapProgressEvent,
@@ -208,4 +209,23 @@ export function isGetSwapInfoResponseWithTimelock(
   response: GetSwapInfoResponseExt
 ): response is GetSwapInfoResponseExtWithTimelock {
   return response.timelock !== null;
+}
+
+type PendingConfirmationEvent = Extract<ConfirmationEvent, { state: "Pending" }>;
+
+export type PendingPreBtcLockConfirmationEvent = PendingConfirmationEvent & {
+  content: {
+    details: { type: "PreBtcLock" };
+  };
+};
+
+export function isPendingPreBtcLockConfirmationEvent(
+  event: ConfirmationEvent,
+): event is PendingPreBtcLockConfirmationEvent {
+  // Check state first
+  if (event.state !== "Pending") {
+    return false;
+  }
+  // Now check content.details.type safely
+  return event.content.details.type === "PreBtcLock";
 }

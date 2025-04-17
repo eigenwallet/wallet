@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { resolveConfirmation } from 'renderer/rpc';
-import { TauriSwapProgressEventContent } from 'models/tauriModelExt';
+import { isPendingPreBtcLockConfirmationEvent, PendingPreBtcLockConfirmationEvent, TauriSwapProgressEventContent } from 'models/tauriModelExt';
 import {
   SatsAmount,
   PiconeroAmount,
@@ -12,11 +12,11 @@ import {
   Divider,
 } from '@material-ui/core';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
-import { useAppSelector } from 'store/hooks';
+import { useActiveSwapId, useAppSelector } from 'store/hooks';
 import PromiseInvokeButton from 'renderer/components/PromiseInvokeButton';
 import InfoBox from 'renderer/components/modal/swap/InfoBox';
 import CircularProgressWithSubtitle from '../../CircularProgressWithSubtitle';
-import { ConfirmationEvent } from 'models/tauriModel';
+import CheckIcon from '@material-ui/icons/Check';
 
 const useStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -62,21 +62,23 @@ const useStyles = makeStyles((theme: Theme) =>
 );
 
 // Find the PreBtcLock confirmation
-const findPreBtcLockRequest = (
-  confirmations: Record<string, ConfirmationEvent>
-): ConfirmationEvent | undefined => Object.values(confirmations)
-  .find(r => r.content.details.type === 'PreBtcLock' && r.state === 'Pending');
+function usePreBtcLockRequest(): PendingPreBtcLockConfirmationEvent | null {
+  const confirmations = useAppSelector(state => state.rpc.state.pendingConfirmations);
+  const activeSwapId = useActiveSwapId();
+
+  return Object.values(confirmations)
+    .find(r => isPendingPreBtcLockConfirmationEvent(r) && r.content.details.content.swap_id === activeSwapId) as PendingPreBtcLockConfirmationEvent | null;
+}
 
 export default function SwapSetupInflightPage({
   btc_lock_amount,
 }: TauriSwapProgressEventContent<'SwapSetupInflight'>) {
   const classes = useStyles();
-  const pending = useAppSelector(state => state.rpc.state.pendingConfirmations);
-  const request = findPreBtcLockRequest(pending);
+  const request = usePreBtcLockRequest();
 
   const [timeLeft, setTimeLeft] = useState<number>(0);
 
-  const expiresAtMs = request?.state === "Pending" ? request.content.expiration_ts * 1000 : 0;
+  const expiresAtMs = request?.content.expiration_ts * 1000 || 0;
 
   useEffect(() => {
     const tick = () => {
@@ -89,9 +91,8 @@ export default function SwapSetupInflightPage({
     return () => clearInterval(id);
   }, [expiresAtMs]);
 
-  // If we do not have a confirmation request yet, we haven't received the offer yet
-  // Display a loading spinner to the user
-  // The spinner will be displayed as long as the swap_setup request is in flight
+  // If we do not have a confirmation request yet, we haven't received the offer yet from Alice
+  // Display a loading spinner to the user for as long as the swap_setup request is in flight
   if (!request) {
     return <CircularProgressWithSubtitle description={<>Negotiating offer for <SatsAmount amount={btc_lock_amount} /></>} />;
   }
@@ -153,6 +154,7 @@ export default function SwapSetupInflightPage({
             onInvoke={() => resolveConfirmation(request.content.request_id, true)}
             displayErrorSnackbar
             requiresContext
+            endIcon={<CheckIcon />}
           >
             {`Confirm & lock BTC (${timeLeft}s)`}
           </PromiseInvokeButton>
