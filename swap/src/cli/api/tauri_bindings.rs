@@ -1,6 +1,6 @@
 use crate::bitcoin;
 use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use bitcoin::Txid;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -70,7 +70,7 @@ pub enum ConfirmationEvent {
 }
 
 struct PendingConfirmation {
-    responder: oneshot::Sender<bool>,
+    responder: Option<oneshot::Sender<bool>>,
     details: ConfirmationRequestType,
     #[allow(dead_code)]
     expiration_ts: u64,
@@ -129,6 +129,7 @@ impl TauriHandle {
 
         #[cfg(feature = "tauri")]
         {
+            // Compute absolute expiration timestamp, and UUID for the request
             let request_id = Uuid::new_v4();
             let now_secs = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -136,7 +137,7 @@ impl TauriHandle {
                 .as_secs();
             let expiration_ts = now_secs + timeout_secs;
 
-            // Build and emit the pending confirmation event
+            // Build the confirmation event
             let details = request_type.clone();
             let pending_event = ConfirmationEvent::Pending {
                 request_id: request_id.to_string(),
@@ -144,51 +145,56 @@ impl TauriHandle {
                 details: details.clone(),
             };
 
+            // Emit the creation of the confirmation request to the frontend
             self.emit_confirmation(pending_event.clone())?;
 
             tracing::debug!(%request_id, request=?pending_event, "Emitted confirmation request event");
 
-            let (tx, rx) = oneshot::channel();
+            // Construct the data structure we use to internally track the confirmation request
+            let (responder, receiver) = oneshot::channel();
             let timeout_duration = Duration::from_secs(timeout_secs);
 
-            // Insert pending details
             let pending = PendingConfirmation {
-                responder: tx,
+                responder: Some(responder),
                 details: request_type.clone(),
                 expiration_ts,
             };
 
-            // Lock map and insert
+            // Lock map and insert the pending confirmation
             {
                 let mut pending_map = self.0.pending_confirmations.lock().await;
                 pending_map.insert(request_id, pending);
             }
 
-            // Clone Arc for the timeout task
-            let inner_clone = Arc::clone(&self.0);
+            // Determine if the request will be accepted or rejected
+            // Either by being resolved by the user, or by timing out
+            let accepted = tokio::select! {
+                res = receiver => res.map_err(|_| anyhow!("Confirmation responder dropped"))?,
+                _ = tokio::time::sleep(timeout_duration) => {
+                    tracing::debug!(%request_id, "Confirmation request timed out and was therefore rejected");
+                    false
+                },
+            };
 
-            // Spawn timeout to auto-reject
-            tokio::spawn(async move {
-                tokio::time::sleep(timeout_duration).await;
-                let mut map = inner_clone.pending_confirmations.lock().await;
-                if let Some(pending) = map.remove(&request_id) {
-                    let _ = pending.responder.send(false);
-                    let event = ConfirmationEvent::Rejected {
+            let mut map = self.0.pending_confirmations.lock().await;
+            if let Some(pending) = map.remove(&request_id) {
+                let event = if accepted {
+                    ConfirmationEvent::Resolved {
                         request_id: request_id.to_string(),
                         details: pending.details,
-                    };
-                    let _ = tauri::Emitter::emit(
-                        &inner_clone.app_handle,
-                        CONFIRMATION_EVENT_NAME,
-                        event,
-                    );
+                    }
+                } else {
+                    ConfirmationEvent::Rejected {
+                        request_id: request_id.to_string(),
+                        details: pending.details,
+                    }
+                };
 
-                    tracing::debug!(%request_id, "Confirmation request timed out and was therefore rejected");
-                }
-            });
+                self.emit_confirmation(event)?;
+                tracing::debug!(%request_id, %accepted, "Resolved confirmation request");
+            }
 
-            rx.await
-                .map_err(|_| anyhow!("Confirmation responder dropped"))
+            Ok(accepted)
         }
     }
 
@@ -203,23 +209,9 @@ impl TauriHandle {
         #[cfg(feature = "tauri")]
         {
             let mut pending_map = self.0.pending_confirmations.lock().await;
-            if let Some(pending) = pending_map.remove(&request_id) {
-                let _ = pending.responder.send(accepted);
-                let event = if accepted {
-                    ConfirmationEvent::Resolved {
-                        request_id: request_id.to_string(),
-                        details: pending.details,
-                    }
-                } else {
-                    ConfirmationEvent::Rejected {
-                        request_id: request_id.to_string(),
-                        details: pending.details,
-                    }
-                };
-                self.emit_confirmation(event)?;
-
-                tracing::debug!(%request_id, %accepted, "Processed confirmation request from frontend");
-
+            if let Some(pending) = pending_map.get_mut(&request_id) {
+                let _ = pending.responder.take().context("Confirmation responder was already consumed")?.send(accepted);
+                
                 Ok(())
             } else {
                 Err(anyhow!("Confirmation not found or already handled"))
