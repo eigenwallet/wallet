@@ -43,7 +43,7 @@ pub struct PreBtcLockDetails {
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "content")]
-pub enum ApprovalRequestType {
+pub enum ApprovalRequestDetails {
     /// Request approval before locking Bitcoin.
     /// Contains specific details for review.
     PreBtcLock(PreBtcLockDetails),
@@ -52,26 +52,26 @@ pub enum ApprovalRequestType {
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "state", content = "content")]
-pub enum ApprovalEvent {
+pub enum ApprovalRequest {
     Pending {
         request_id: String,
         #[typeshare(serialized_as = "number")]
         expiration_ts: u64,
-        details: ApprovalRequestType,
+        details: ApprovalRequestDetails,
     },
     Resolved {
         request_id: String,
-        details: ApprovalRequestType,
+        details: ApprovalRequestDetails,
     },
     Rejected {
         request_id: String,
-        details: ApprovalRequestType,
+        details: ApprovalRequestDetails,
     },
 }
 
 struct PendingApproval {
     responder: Option<oneshot::Sender<bool>>,
-    details: ApprovalRequestType,
+    details: ApprovalRequestDetails,
     #[allow(dead_code)]
     expiration_ts: u64,
 }
@@ -113,13 +113,13 @@ impl TauriHandle {
     }
 
     /// Helper to emit a approval event via the unified event name
-    fn emit_approval(&self, event: ApprovalEvent) -> Result<()> {
+    fn emit_approval(&self, event: ApprovalRequest) -> Result<()> {
         self.emit_tauri_event(APPROVAL_EVENT_NAME, event)
     }
 
     pub async fn request_approval(
         &self,
-        request_type: ApprovalRequestType,
+        request_type: ApprovalRequestDetails,
         timeout_secs: u64,
     ) -> Result<bool> {
         #[cfg(not(feature = "tauri"))]
@@ -139,7 +139,7 @@ impl TauriHandle {
 
             // Build the approval event
             let details = request_type.clone();
-            let pending_event = ApprovalEvent::Pending {
+            let pending_event = ApprovalRequest::Pending {
                 request_id: request_id.to_string(),
                 expiration_ts,
                 details: details.clone(),
@@ -179,12 +179,12 @@ impl TauriHandle {
             let mut map = self.0.pending_approvals.lock().await;
             if let Some(pending) = map.remove(&request_id) {
                 let event = if accepted {
-                    ApprovalEvent::Resolved {
+                    ApprovalRequest::Resolved {
                         request_id: request_id.to_string(),
                         details: pending.details,
                     }
                 } else {
-                    ApprovalEvent::Rejected {
+                    ApprovalRequest::Rejected {
                         request_id: request_id.to_string(),
                         details: pending.details,
                     }
@@ -227,7 +227,7 @@ impl TauriHandle {
 pub trait TauriEmitter {
     fn request_approval<'life0, 'async_trait>(
         &'life0 self,
-        request_type: ApprovalRequestType,
+        request_type: ApprovalRequestDetails,
         timeout_secs: u64,
     ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
     where
@@ -287,7 +287,7 @@ pub trait TauriEmitter {
 impl TauriEmitter for TauriHandle {
     fn request_approval<'life0, 'async_trait>(
         &'life0 self,
-        request_type: ApprovalRequestType,
+        request_type: ApprovalRequestDetails,
         timeout_secs: u64,
     ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
     where
@@ -314,7 +314,7 @@ impl TauriEmitter for Option<TauriHandle> {
 
     fn request_approval<'life0, 'async_trait>(
         &'life0 self,
-        request_type: ApprovalRequestType,
+        request_type: ApprovalRequestDetails,
         timeout_secs: u64,
     ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
     where

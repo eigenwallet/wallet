@@ -1,6 +1,6 @@
 import { exhaustiveGuard } from "utils/typescriptUtils";
 import {
-  ApprovalEvent,
+  ApprovalRequest,
   ExpiredTimelocks,
   GetSwapInfoResponse,
   TauriSwapProgressEvent,
@@ -211,7 +211,7 @@ export function isGetSwapInfoResponseWithTimelock(
   return response.timelock !== null;
 }
 
-export type PendingApprovalEvent = Extract<ApprovalEvent, { state: "Pending" }>;
+export type PendingApprovalEvent = Extract<ApprovalRequest, { state: "Pending" }>;
 
 export type PendingPreBtcLockApprovalEvent = PendingApprovalEvent & {
   content: {
@@ -220,7 +220,7 @@ export type PendingPreBtcLockApprovalEvent = PendingApprovalEvent & {
 };
 
 export function isPendingPreBtcLockApprovalEvent(
-  event: ApprovalEvent,
+  event: ApprovalRequest,
 ): event is PendingPreBtcLockApprovalEvent {
   // Check if the request is pending
   if (event.state !== "Pending") {
