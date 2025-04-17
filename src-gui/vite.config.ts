@@ -1,6 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { internalIpV4 } from "internal-ip";
-import { defineConfig } from "vite";
+import { defineConfig, PluginOption } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { watch } from "vite-plugin-watch";
 import path from "path";
@@ -8,12 +8,34 @@ import topLevelAwait from "vite-plugin-top-level-await";
 
 const mobile = !!/android|ios/.exec(process.env.TAURI_ENV_PLATFORM);
 
+const reactDevTools = (): PluginOption => {
+  return {
+    name: "react-devtools",
+    apply: "serve", // Only apply this plugin during development
+    transformIndexHtml(html) {
+      return {
+        html,
+        tags: [
+          {
+            tag: "script",
+            attrs: {
+              src: "http://localhost:8097",
+            },
+            injectTo: "head",
+          },
+        ],
+      };
+    },
+  };
+};
+
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
   plugins: [
     react(),
     tsconfigPaths(),
     topLevelAwait(),
+    reactDevTools(),
     // Automatically regenerate the typescript bindings when there's a change to the rust code
     watch({
       pattern: ["../swap/src/**/*"],

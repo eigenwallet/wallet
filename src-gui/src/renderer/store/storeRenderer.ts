@@ -1,9 +1,8 @@
-import { combineReducers, configureStore } from "@reduxjs/toolkit";
-import { persistReducer, persistStore } from "redux-persist";
+import { combineReducers, configureStore, StoreEnhancer } from "@reduxjs/toolkit";
+import { persistReducer, persistStore, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER } from "redux-persist";
 import sessionStorage from "redux-persist/lib/storage/session";
 import { reducers } from "store/combinedReducer";
 import { createMainListeners } from "store/middleware/storeListener";
-import { getNetworkName } from "store/config";
 import { LazyStore } from "@tauri-apps/plugin-store";
 
 // Goal: Maintain application state across page reloads while allowing a clean slate on application restart
@@ -20,14 +19,30 @@ const rootPersistConfig = {
 // Use Tauri's store plugin for persistent settings
 const tauriStore = new LazyStore("settings.bin");
 
+// Helper to adapt Tauri storage to redux-persist (expects stringified JSON)
+const createTauriStorage = () => ({
+  getItem: async (key: string): Promise<string | null> => {
+    const value = await tauriStore.get<unknown>(key);
+    return value == null ? null : JSON.stringify(value);
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    try {
+      await tauriStore.set(key, JSON.parse(value));
+      await tauriStore.save();
+    } catch (err) {
+      console.error(`Error parsing or setting item "${key}" in Tauri store:`, err);
+    }
+  },
+  removeItem: async (key: string): Promise<void> => {
+    await tauriStore.delete(key);
+    await tauriStore.save();
+  },
+});
+
 // Configure how settings are stored and retrieved using Tauri's storage
 const settingsPersistConfig = {
   key: "settings",
-  storage: {
-    getItem: async (key: string) => tauriStore.get(key),
-    setItem: async (key: string, value: unknown) => tauriStore.set(key, value),
-    removeItem: async (key: string) => tauriStore.delete(key),
-  },
+  storage: createTauriStorage(),
 };
 
 // Create a persisted version of the settings reducer
@@ -45,14 +60,41 @@ const rootReducer = combineReducers({
 // Enable persistence for the entire application state
 const persistedReducer = persistReducer(rootPersistConfig, rootReducer);
 
-// Set up the Redux store with persistence and custom middleware
+let remoteDevToolsEnhancer: StoreEnhancer | undefined;
+
+if (import.meta.env.DEV) {
+  console.log('Development mode detected, attempting to enable Redux DevTools Remote...');
+  try {
+    const { devToolsEnhancer } = await import('@redux-devtools/remote');
+    remoteDevToolsEnhancer = devToolsEnhancer({
+      name: 'UnstoppableSwap_RemoteInstance',
+      realtime: true,
+      hostname: 'localhost',
+      port: 8098,
+    });
+    console.log('Redux DevTools Remote enhancer is ready.');
+  } catch (e) {
+    console.warn('Could not enable Redux DevTools Remote.', e);
+    remoteDevToolsEnhancer = undefined;
+  }
+}
+
+// Set up the Redux store with persistence, middleware, and remote DevTools
 export const store = configureStore({
   reducer: persistedReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
-      // Disable serializable to silence warnings about non-serializable actions
-      serializableCheck: false,
+      serializableCheck: {
+        ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
+      },
     }).prepend(createMainListeners().middleware),
+  devTools: false,
+  enhancers: (getDefaultEnhancers) => {
+    const defaultEnhancers = getDefaultEnhancers();
+    return remoteDevToolsEnhancer
+      ? defaultEnhancers.concat(remoteDevToolsEnhancer)
+      : defaultEnhancers;
+  },
 });
 
 // Create a persistor to manage the persisted store
