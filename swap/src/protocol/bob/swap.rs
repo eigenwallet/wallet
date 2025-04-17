@@ -1,6 +1,6 @@
 use crate::bitcoin::wallet::ScriptStatus;
 use crate::bitcoin::{ExpiredTimelocks, TxCancel, TxRefund};
-use crate::cli::api::tauri_bindings::ConfirmationRequestType;
+use crate::cli::api::tauri_bindings::ApprovalRequestType;
 use crate::cli::api::tauri_bindings::{
     PreBtcLockDetails, TauriEmitter, TauriHandle, TauriSwapProgressEvent,
 };
@@ -15,7 +15,7 @@ use std::sync::Arc;
 use tokio::select;
 use uuid::Uuid;
 
-const PRE_BTC_LOCK_CONFIRMATION_TIMEOUT_SECS: u64 = 120;
+const PRE_BTC_LOCK_APPROVAL_TIMEOUT_SECS: u64 = 120;
 
 pub fn is_complete(state: &BobState) -> bool {
     matches!(
@@ -169,22 +169,22 @@ async fn next_state(
                     .value,
             );
 
-            let request = ConfirmationRequestType::PreBtcLock(PreBtcLockDetails {
+            let request = ApprovalRequestType::PreBtcLock(PreBtcLockDetails {
                 btc_lock_amount,
                 btc_network_fee,
                 xmr_receive_amount,
                 swap_id,
             });
 
-            // We request confirmation before locking the Bitcoin, as the exchange rate determined at this step might be different from the
-            // we previously received from Alice.
-            let confirmation_result = event_emitter
-                .request_confirmation(request, PRE_BTC_LOCK_CONFIRMATION_TIMEOUT_SECS)
+            // We request approval before publishing the Bitcoin lock transaction, as the exchange rate determined at this step might be different from the
+            // we previously displayed to the user.
+            let approval_result = event_emitter
+                .request_approval(request, PRE_BTC_LOCK_APPROVAL_TIMEOUT_SECS)
                 .await;
 
-            match confirmation_result {
+            match approval_result {
                 Ok(true) => {
-                    tracing::debug!("User accepted swap offer");
+                    tracing::debug!("User approved swap offer");
 
                     // Publish the signed Bitcoin lock transaction
                     let (..) = bitcoin_wallet.broadcast(signed_tx, "lock").await?;
@@ -195,12 +195,12 @@ async fn next_state(
                     }
                 }
                 Ok(false) => {
-                    tracing::warn!("User denied or timed out on swap offer confirmation");
+                    tracing::warn!("User denied or timed out on swap offer approval");
 
                     BobState::SafelyAborted
                 }
                 Err(err) => {
-                    tracing::warn!(%err, "Failed to get user confirmation for swap offer. Assuming swap was aborted.");
+                    tracing::warn!(%err, "Failed to get user approval for swap offer. Assuming swap was aborted.");
 
                     BobState::SafelyAborted
                 }

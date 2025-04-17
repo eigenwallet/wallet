@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
-import { TauriSwapProgressEventWrapper, TauriContextStatusEvent, TauriLogEvent, BalanceResponse, TauriDatabaseStateEvent, TauriTimelockChangeEvent, TauriBackgroundRefundEvent, ConfirmationEvent } from "models/tauriModel";
-import { contextStatusEventReceived, receivedCliLog, rpcSetBalance, timelockChangeEventReceived, rpcSetBackgroundRefundState, confirmationEventReceived } from "store/features/rpcSlice";
+import { TauriSwapProgressEventWrapper, TauriContextStatusEvent, TauriLogEvent, BalanceResponse, TauriDatabaseStateEvent, TauriTimelockChangeEvent, TauriBackgroundRefundEvent, ApprovalEvent } from "models/tauriModel";
+import { contextStatusEventReceived, receivedCliLog, rpcSetBalance, timelockChangeEventReceived, rpcSetBackgroundRefundState, approvalEventReceived } from "store/features/rpcSlice";
 import { swapProgressEventReceived } from "store/features/swapSlice";
 import logger from "utils/logger";
 import { updatePublicRegistry, updateRates } from "./api";
@@ -84,8 +84,8 @@ export async function setupBackgroundTasks(): Promise<void> {
         store.dispatch(rpcSetBackgroundRefundState(event.payload));
     })
 
-    listen<ConfirmationEvent>("confirmation_event", (event) => {
-        logger.info("Received confirmation_event:", event.payload);
-        store.dispatch(confirmationEventReceived(event.payload));
+    listen<ApprovalEvent>("approval_event", (event) => {
+        logger.info("Received approval_event:", event.payload);
+        store.dispatch(approvalEventReceived(event.payload));
     });
 }

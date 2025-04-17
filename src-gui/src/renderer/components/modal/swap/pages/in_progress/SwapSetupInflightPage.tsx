@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { resolveConfirmation } from 'renderer/rpc';
-import { isPendingPreBtcLockConfirmationEvent, PendingPreBtcLockConfirmationEvent, TauriSwapProgressEventContent } from 'models/tauriModelExt';
+import { resolveApproval } from 'renderer/rpc';
+import { PendingPreBtcLockApprovalEvent, TauriSwapProgressEventContent } from 'models/tauriModelExt';
 import {
   SatsAmount,
   PiconeroAmount,
@@ -12,7 +12,7 @@ import {
   Divider,
 } from '@material-ui/core';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
-import { useActiveSwapId, useAppSelector, usePendingPreBtcLockConfirmation } from 'store/hooks';
+import { useActiveSwapId, usePendingPreBtcLockApproval } from 'store/hooks';
 import PromiseInvokeButton from 'renderer/components/PromiseInvokeButton';
 import InfoBox from 'renderer/components/modal/swap/InfoBox';
 import CircularProgressWithSubtitle from '../../CircularProgressWithSubtitle';
@@ -49,11 +49,11 @@ const useStyles = makeStyles((theme: Theme) =>
 
 /// A hook that returns the PreBtcLock confirmation request for the active swap
 /// Returns null if no confirmation request is found
-function usePreBtcLockRequest(): PendingPreBtcLockConfirmationEvent | null {
-  const confirmations = usePendingPreBtcLockConfirmation();
+function usePreBtcLockRequest(): PendingPreBtcLockApprovalEvent | null {
+  const approvals = usePendingPreBtcLockApproval();
   const activeSwapId = useActiveSwapId();
 
-  return confirmations
+  return approvals
     ?.find(r => r.content.details.content.swap_id === activeSwapId) || null;
 }
 
@@ -127,7 +127,7 @@ export default function SwapSetupInflightPage({
             variant="text"
             size="large"
             className={classes.cancelButton}
-            onInvoke={() => resolveConfirmation(request.content.request_id, false)}
+            onInvoke={() => resolveApproval(request.content.request_id, false)}
             displayErrorSnackbar
             requiresContext
           >
@@ -138,7 +138,7 @@ export default function SwapSetupInflightPage({
             variant="contained"
             color="primary"
             size="large"
-            onInvoke={() => resolveConfirmation(request.content.request_id, true)}
+            onInvoke={() => resolveApproval(request.content.request_id, true)}
             displayErrorSnackbar
             requiresContext
             endIcon={<CheckIcon />}

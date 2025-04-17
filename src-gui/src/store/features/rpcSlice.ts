@@ -6,7 +6,7 @@ import {
   TauriContextStatusEvent,
   TauriTimelockChangeEvent,
   BackgroundRefundState,
-  ConfirmationEvent,
+  ApprovalEvent,
 } from "models/tauriModel";
 import { MoneroRecoveryResponse } from "../../models/rpcModel";
 import { GetSwapInfoResponseExt } from "models/tauriModelExt";
@@ -33,9 +33,9 @@ interface State {
     swapId: string;
     state: BackgroundRefundState;
   } | null;
-  confirmationRequests: {
+  approvalRequests: {
     // Store the full event, keyed by request_id
-    [requestId: string]: ConfirmationEvent;
+    [requestId: string]: ApprovalEvent;
   };
 }
 
@@ -57,7 +57,7 @@ const initialState: RPCSlice = {
       updateState: false,
     },
     backgroundRefund: null,
-    confirmationRequests: {},
+    approvalRequests: {},
   },
   logs: [],
 };
@@ -144,10 +144,10 @@ export const rpcSlice = createSlice({
         state: action.payload.state,
       };
     },
-    confirmationEventReceived(slice, action: PayloadAction<ConfirmationEvent>) {
+    approvalEventReceived(slice, action: PayloadAction<ApprovalEvent>) {
       const event = action.payload;
       const requestId = event.content.request_id;
-      slice.state.confirmationRequests[requestId] = event;
+      slice.state.approvalRequests[requestId] = event;
     },
   },
 });
@@ -164,7 +164,7 @@ export const {
   rpcResetMoneroRecoveryKeys,
   rpcSetBackgroundRefundState,
   timelockChangeEventReceived,
-  confirmationEventReceived,
+  approvalEventReceived,
 } = rpcSlice.actions;
 
 export default rpcSlice.reducer;

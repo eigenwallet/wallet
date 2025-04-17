@@ -23,8 +23,8 @@ import {
   CheckElectrumNodeResponse,
   GetMoneroAddressesResponse,
   GetDataDirArgs,
-  ResolveConfirmationArgs,
-  ResolveConfirmationResponse,
+  ResolveApprovalArgs,
+  ResolveApprovalResponse,
 } from "models/tauriModel";
 import {
   rpcSetBalance,
@@ -276,6 +276,6 @@ export async function getDataDir(): Promise<string> {
   });
 }
 
-export async function resolveConfirmation(requestId: string, accept: boolean): Promise<void> {
-  await invoke<ResolveConfirmationArgs, ResolveConfirmationResponse>("resolve_confirmation", { request_id: requestId, accept });
+export async function resolveApproval(requestId: string, accept: boolean): Promise<void> {
+  await invoke<ResolveApprovalArgs, ResolveApprovalResponse>("resolve_approval_request", { request_id: requestId, accept });
 }

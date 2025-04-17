@@ -1,5 +1,5 @@
 import { sortBy } from "lodash";
-import { BobStateName, GetSwapInfoResponseExt, PendingConfirmationEvent, PendingPreBtcLockConfirmationEvent } from "models/tauriModelExt";
+import { BobStateName, GetSwapInfoResponseExt, PendingApprovalEvent, PendingPreBtcLockApprovalEvent } from "models/tauriModelExt";
 import { TypedUseSelectorHook, useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "renderer/store/storeRenderer";
 import { parseDateString } from "utils/parseUtils";
@@ -138,13 +138,12 @@ export function useNodes<T>(selector: (nodes: NodesSlice) => T): T {
   return selector(nodes);
 }
 
-export function usePendingConfirmations(): PendingConfirmationEvent[] {
-  const confirmations = useAppSelector((state) => state.rpc.state.confirmationRequests);
-  console.log("confirmations", confirmations);
-  return Object.values(confirmations).filter((c) => c.state === "Pending");
+export function usePendingApprovals(): PendingApprovalEvent[] {
+  const approvals = useAppSelector((state) => state.rpc.state.approvalRequests);
+  return Object.values(approvals).filter((c) => c.state === "Pending");
 }
 
-export function usePendingPreBtcLockConfirmation(): PendingPreBtcLockConfirmationEvent[] {
-  const confirmations = usePendingConfirmations();
-  return confirmations.filter((c) => c.content.details.type === "PreBtcLock");
+export function usePendingPreBtcLockApproval(): PendingPreBtcLockApprovalEvent[] {
+  const approvals = usePendingApprovals();
+  return approvals.filter((c) => c.content.details.type === "PreBtcLock");
 }

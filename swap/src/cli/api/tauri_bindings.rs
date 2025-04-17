@@ -23,7 +23,7 @@ const TIMELOCK_CHANGE_EVENT_NAME: &str = "timelock-change";
 const CONTEXT_INIT_PROGRESS_EVENT_NAME: &str = "context-init-progress-update";
 const BALANCE_CHANGE_EVENT_NAME: &str = "balance-change";
 const BACKGROUND_REFUND_EVENT_NAME: &str = "background-refund";
-const CONFIRMATION_EVENT_NAME: &str = "confirmation_event";
+const APPROVAL_EVENT_NAME: &str = "approval_event";
 
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -43,8 +43,8 @@ pub struct PreBtcLockDetails {
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "content")]
-pub enum ConfirmationRequestType {
-    /// Request confirmation before locking Bitcoin.
+pub enum ApprovalRequestType {
+    /// Request approval before locking Bitcoin.
     /// Contains specific details for review.
     PreBtcLock(PreBtcLockDetails),
 }
@@ -52,26 +52,26 @@ pub enum ConfirmationRequestType {
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "state", content = "content")]
-pub enum ConfirmationEvent {
+pub enum ApprovalEvent {
     Pending {
         request_id: String,
         #[typeshare(serialized_as = "number")]
         expiration_ts: u64,
-        details: ConfirmationRequestType,
+        details: ApprovalRequestType,
     },
     Resolved {
         request_id: String,
-        details: ConfirmationRequestType,
+        details: ApprovalRequestType,
     },
     Rejected {
         request_id: String,
-        details: ConfirmationRequestType,
+        details: ApprovalRequestType,
     },
 }
 
-struct PendingConfirmation {
+struct PendingApproval {
     responder: Option<oneshot::Sender<bool>>,
-    details: ConfirmationRequestType,
+    details: ApprovalRequestType,
     #[allow(dead_code)]
     expiration_ts: u64,
 }
@@ -79,7 +79,7 @@ struct PendingConfirmation {
 #[cfg(feature = "tauri")]
 struct TauriHandleInner {
     app_handle: tauri::AppHandle,
-    pending_confirmations: TokioMutex<HashMap<Uuid, PendingConfirmation>>,
+    pending_approvals: TokioMutex<HashMap<Uuid, PendingApproval>>,
 }
 
 #[derive(Clone)]
@@ -96,7 +96,7 @@ impl TauriHandle {
             #[cfg(feature = "tauri")]
             Arc::new(TauriHandleInner {
                 app_handle: tauri_handle,
-                pending_confirmations: TokioMutex::new(HashMap::new()),
+                pending_approvals: TokioMutex::new(HashMap::new()),
             }),
         )
     }
@@ -112,14 +112,14 @@ impl TauriHandle {
         Ok(())
     }
 
-    /// Helper to emit a confirmation event via the unified event name
-    fn emit_confirmation(&self, event: ConfirmationEvent) -> Result<()> {
-        self.emit_tauri_event(CONFIRMATION_EVENT_NAME, event)
+    /// Helper to emit a approval event via the unified event name
+    fn emit_approval(&self, event: ApprovalEvent) -> Result<()> {
+        self.emit_tauri_event(APPROVAL_EVENT_NAME, event)
     }
 
-    pub async fn request_confirmation(
+    pub async fn request_approval(
         &self,
-        request_type: ConfirmationRequestType,
+        request_type: ApprovalRequestType,
         timeout_secs: u64,
     ) -> Result<bool> {
         #[cfg(not(feature = "tauri"))]
@@ -137,93 +137,97 @@ impl TauriHandle {
                 .as_secs();
             let expiration_ts = now_secs + timeout_secs;
 
-            // Build the confirmation event
+            // Build the approval event
             let details = request_type.clone();
-            let pending_event = ConfirmationEvent::Pending {
+            let pending_event = ApprovalEvent::Pending {
                 request_id: request_id.to_string(),
                 expiration_ts,
                 details: details.clone(),
             };
 
-            // Emit the creation of the confirmation request to the frontend
-            self.emit_confirmation(pending_event.clone())?;
+            // Emit the creation of the approval request to the frontend
+            self.emit_approval(pending_event.clone())?;
 
-            tracing::debug!(%request_id, request=?pending_event, "Emitted confirmation request event");
+            tracing::debug!(%request_id, request=?pending_event, "Emitted approval request event");
 
-            // Construct the data structure we use to internally track the confirmation request
+            // Construct the data structure we use to internally track the approval request
             let (responder, receiver) = oneshot::channel();
             let timeout_duration = Duration::from_secs(timeout_secs);
 
-            let pending = PendingConfirmation {
+            let pending = PendingApproval {
                 responder: Some(responder),
                 details: request_type.clone(),
                 expiration_ts,
             };
 
-            // Lock map and insert the pending confirmation
+            // Lock map and insert the pending approval
             {
-                let mut pending_map = self.0.pending_confirmations.lock().await;
+                let mut pending_map = self.0.pending_approvals.lock().await;
                 pending_map.insert(request_id, pending);
             }
 
             // Determine if the request will be accepted or rejected
             // Either by being resolved by the user, or by timing out
             let accepted = tokio::select! {
-                res = receiver => res.map_err(|_| anyhow!("Confirmation responder dropped"))?,
+                res = receiver => res.map_err(|_| anyhow!("Approval responder dropped"))?,
                 _ = tokio::time::sleep(timeout_duration) => {
-                    tracing::debug!(%request_id, "Confirmation request timed out and was therefore rejected");
+                    tracing::debug!(%request_id, "Approval request timed out and was therefore rejected");
                     false
                 },
             };
 
-            let mut map = self.0.pending_confirmations.lock().await;
+            let mut map = self.0.pending_approvals.lock().await;
             if let Some(pending) = map.remove(&request_id) {
                 let event = if accepted {
-                    ConfirmationEvent::Resolved {
+                    ApprovalEvent::Resolved {
                         request_id: request_id.to_string(),
                         details: pending.details,
                     }
                 } else {
-                    ConfirmationEvent::Rejected {
+                    ApprovalEvent::Rejected {
                         request_id: request_id.to_string(),
                         details: pending.details,
                     }
                 };
 
-                self.emit_confirmation(event)?;
-                tracing::debug!(%request_id, %accepted, "Resolved confirmation request");
+                self.emit_approval(event)?;
+                tracing::debug!(%request_id, %accepted, "Resolved approval request");
             }
 
             Ok(accepted)
         }
     }
 
-    pub async fn resolve_confirmation(&self, request_id: Uuid, accepted: bool) -> Result<()> {
+    pub async fn resolve_approval(&self, request_id: Uuid, accepted: bool) -> Result<()> {
         #[cfg(not(feature = "tauri"))]
         {
             return Err(anyhow!(
-                "Cannot resolve confirmation: Tauri feature not enabled."
+                "Cannot resolve approval: Tauri feature not enabled."
             ));
         }
 
         #[cfg(feature = "tauri")]
         {
-            let mut pending_map = self.0.pending_confirmations.lock().await;
+            let mut pending_map = self.0.pending_approvals.lock().await;
             if let Some(pending) = pending_map.get_mut(&request_id) {
-                let _ = pending.responder.take().context("Confirmation responder was already consumed")?.send(accepted);
-                
+                let _ = pending
+                    .responder
+                    .take()
+                    .context("Approval responder was already consumed")?
+                    .send(accepted);
+
                 Ok(())
             } else {
-                Err(anyhow!("Confirmation not found or already handled"))
+                Err(anyhow!("Approval not found or already handled"))
             }
         }
     }
 }
 
 pub trait TauriEmitter {
-    fn request_confirmation<'life0, 'async_trait>(
+    fn request_approval<'life0, 'async_trait>(
         &'life0 self,
-        request_type: ConfirmationRequestType,
+        request_type: ApprovalRequestType,
         timeout_secs: u64,
     ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
     where
@@ -281,16 +285,16 @@ pub trait TauriEmitter {
 }
 
 impl TauriEmitter for TauriHandle {
-    fn request_confirmation<'life0, 'async_trait>(
+    fn request_approval<'life0, 'async_trait>(
         &'life0 self,
-        request_type: ConfirmationRequestType,
+        request_type: ApprovalRequestType,
         timeout_secs: u64,
     ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
     where
         'life0: 'async_trait,
         Self: 'async_trait,
     {
-        Box::pin(self.request_confirmation(request_type, timeout_secs))
+        Box::pin(self.request_approval(request_type, timeout_secs))
     }
 
     fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()> {
@@ -308,9 +312,9 @@ impl TauriEmitter for Option<TauriHandle> {
         }
     }
 
-    fn request_confirmation<'life0, 'async_trait>(
+    fn request_approval<'life0, 'async_trait>(
         &'life0 self,
-        request_type: ConfirmationRequestType,
+        request_type: ApprovalRequestType,
         timeout_secs: u64,
     ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
     where
@@ -319,7 +323,7 @@ impl TauriEmitter for Option<TauriHandle> {
     {
         Box::pin(async move {
             match self {
-                Some(tauri) => tauri.request_confirmation(request_type, timeout_secs).await,
+                Some(tauri) => tauri.request_approval(request_type, timeout_secs).await,
                 None => Ok(true),
             }
         })
