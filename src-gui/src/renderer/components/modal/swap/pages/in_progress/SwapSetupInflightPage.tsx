@@ -12,7 +12,7 @@ import {
   Divider,
 } from '@material-ui/core';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
-import { useActiveSwapId, useAppSelector } from 'store/hooks';
+import { useActiveSwapId, useAppSelector, usePendingPreBtcLockConfirmation } from 'store/hooks';
 import PromiseInvokeButton from 'renderer/components/PromiseInvokeButton';
 import InfoBox from 'renderer/components/modal/swap/InfoBox';
 import CircularProgressWithSubtitle from '../../CircularProgressWithSubtitle';
@@ -20,34 +20,20 @@ import CheckIcon from '@material-ui/icons/Check';
 
 const useStyles = makeStyles((theme: Theme) =>
   createStyles({
-    paper: {
-      width: '100%',
-      padding: theme.spacing(3),
-      borderRadius: theme.shape.borderRadius,
-    },
     detailGrid: {
       display: 'grid',
       gridTemplateColumns: 'auto 1fr',
       rowGap: theme.spacing(1),
       columnGap: theme.spacing(2),
       alignItems: 'center',
-      marginTop: theme.spacing(2),
-      marginBottom: theme.spacing(2),
+      marginBlock: theme.spacing(2),
     },
     label: {
       color: theme.palette.text.secondary,
     },
-    value: {
-      fontWeight: theme.typography.fontWeightBold as unknown as any,
-    },
     receiveValue: {
-      fontWeight: theme.typography.fontWeightBold as unknown as any,
+      fontWeight: 'bold',
       color: theme.palette.success.main,
-    },
-    progressBar: {
-      marginTop: theme.spacing(1),
-      height: 6,
-      borderRadius: 3,
     },
     actions: {
       marginTop: theme.spacing(2),
@@ -61,13 +47,14 @@ const useStyles = makeStyles((theme: Theme) =>
   })
 );
 
-// Find the PreBtcLock confirmation
+/// A hook that returns the PreBtcLock confirmation request for the active swap
+/// Returns null if no confirmation request is found
 function usePreBtcLockRequest(): PendingPreBtcLockConfirmationEvent | null {
-  const confirmations = useAppSelector(state => state.rpc.state.pendingConfirmations);
+  const confirmations = usePendingPreBtcLockConfirmation();
   const activeSwapId = useActiveSwapId();
 
-  return Object.values(confirmations)
-    .find(r => isPendingPreBtcLockConfirmationEvent(r) && r.content.details.content.swap_id === activeSwapId) as PendingPreBtcLockConfirmationEvent | null;
+  return confirmations
+    ?.find(r => r.content.details.content.swap_id === activeSwapId) || null;
 }
 
 export default function SwapSetupInflightPage({
@@ -109,12 +96,12 @@ export default function SwapSetupInflightPage({
           <Divider />
           <Box className={classes.detailGrid}>
             <Typography className={classes.label}>You send</Typography>
-            <Typography className={classes.value}>
+            <Typography>
               <SatsAmount amount={btc_lock_amount} />
             </Typography>
 
             <Typography className={classes.label}>You pay (Bitcoin network fees)</Typography>
-            <Typography className={classes.value}>
+            <Typography>
               <SatsAmount amount={btc_network_fee} />
             </Typography>
 
@@ -124,7 +111,7 @@ export default function SwapSetupInflightPage({
             </Typography>
 
             <Typography className={classes.label}>Exchange rate</Typography>
-            <Typography className={classes.value}>
+            <Typography>
               <MoneroBitcoinExchangeRateFromAmounts
                 satsAmount={btc_lock_amount}
                 piconeroAmount={xmr_receive_amount}

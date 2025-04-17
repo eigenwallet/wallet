@@ -33,7 +33,7 @@ interface State {
     swapId: string;
     state: BackgroundRefundState;
   } | null;
-  pendingConfirmations: {
+  confirmationRequests: {
     // Store the full event, keyed by request_id
     [requestId: string]: ConfirmationEvent;
   };
@@ -57,7 +57,7 @@ const initialState: RPCSlice = {
       updateState: false,
     },
     backgroundRefund: null,
-    pendingConfirmations: {},
+    confirmationRequests: {},
   },
   logs: [],
 };
@@ -147,8 +147,7 @@ export const rpcSlice = createSlice({
     confirmationEventReceived(slice, action: PayloadAction<ConfirmationEvent>) {
       const event = action.payload;
       const requestId = event.content.request_id;
-      slice.state.pendingConfirmations[requestId] = event;
-      logger.info("Updating confirmation state for", requestId, event.state);
+      slice.state.confirmationRequests[requestId] = event;
     },
   },
 });

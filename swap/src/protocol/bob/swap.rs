@@ -199,9 +199,10 @@ async fn next_state(
 
                     BobState::SafelyAborted
                 }
-                Err(e) => {
-                    tracing::error!("Error during confirmation request: {}", e);
-                    return Err(e.context("Failed to get user confirmation for swap details"));
+                Err(err) => {
+                    tracing::warn!(%err, "Failed to get user confirmation for swap details. Assuming swap was aborted.");
+
+                    BobState::SafelyAborted
                 }
             }
         }

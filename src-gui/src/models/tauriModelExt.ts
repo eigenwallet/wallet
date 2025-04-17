@@ -211,7 +211,7 @@ export function isGetSwapInfoResponseWithTimelock(
   return response.timelock !== null;
 }
 
-type PendingConfirmationEvent = Extract<ConfirmationEvent, { state: "Pending" }>;
+export type PendingConfirmationEvent = Extract<ConfirmationEvent, { state: "Pending" }>;
 
 export type PendingPreBtcLockConfirmationEvent = PendingConfirmationEvent & {
   content: {

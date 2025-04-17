@@ -11,6 +11,8 @@ use tokio::sync::{oneshot, Mutex as TokioMutex};
 use typeshare::typeshare;
 use url::Url;
 use uuid::Uuid;
+use std::pin::Pin;
+use std::future::Future;
 
 use super::request::BalanceResponse;
 
@@ -70,6 +72,7 @@ pub enum ConfirmationEvent {
 struct PendingConfirmation {
     responder: oneshot::Sender<bool>,
     details: ConfirmationRequestType,
+    #[allow(dead_code)]
     expiration_ts: u64,
 }
 
@@ -79,12 +82,10 @@ struct TauriHandleInner {
     pending_confirmations: TokioMutex<HashMap<Uuid, PendingConfirmation>>,
 }
 
-// Keep TauriHandle deriving Clone
 #[derive(Clone)]
 pub struct TauriHandle(
     #[cfg(feature = "tauri")]
     #[cfg_attr(feature = "tauri", allow(unused))]
-    // Wrap the inner state management struct in Arc
     Arc<TauriHandleInner>,
 );
 
@@ -142,17 +143,21 @@ impl TauriHandle {
                 expiration_ts,
                 details: details.clone(),
             };
+            
             self.emit_confirmation(pending_event.clone())?;
-            tracing::info!(%request_id, "Emitted confirmation request event");
+
+            tracing::debug!(%request_id, request=?pending_event, "Emitted confirmation request event");
 
             let (tx, rx) = oneshot::channel();
             let timeout_duration = Duration::from_secs(timeout_secs);
+
             // Insert pending details
             let pending = PendingConfirmation {
                 responder: tx,
                 details: request_type.clone(),
                 expiration_ts,
             };
+            
             // Lock map and insert
             {
                 let mut pending_map = self.0.pending_confirmations.lock().await;
@@ -167,7 +172,6 @@ impl TauriHandle {
                 tokio::time::sleep(timeout_duration).await;
                 let mut map = inner_clone.pending_confirmations.lock().await;
                 if let Some(pending) = map.remove(&request_id) {
-                    tracing::warn!(%request_id, "Confirmation timed out.");
                     let _ = pending.responder.send(false);
                     let event = ConfirmationEvent::Rejected {
                         request_id: request_id.to_string(),
@@ -178,6 +182,8 @@ impl TauriHandle {
                         CONFIRMATION_EVENT_NAME,
                         event,
                     );
+
+                    tracing::debug!(%request_id, "Confirmation request timed out and was therefore rejected");
                 }
             });
 
@@ -199,7 +205,6 @@ impl TauriHandle {
             let mut pending_map = self.0.pending_confirmations.lock().await;
             if let Some(pending) = pending_map.remove(&request_id) {
                 let _ = pending.responder.send(accepted);
-                tracing::info!(%request_id, %accepted, "Resolved confirmation from frontend.");
                 let event = if accepted {
                     ConfirmationEvent::Resolved {
                         request_id: request_id.to_string(),
@@ -212,6 +217,9 @@ impl TauriHandle {
                     }
                 };
                 self.emit_confirmation(event)?;
+
+                tracing::debug!(%request_id, %accepted, "Processed confirmation request from frontend");
+
                 Ok(())
             } else {
                 Err(anyhow!("Confirmation not found or already handled"))
@@ -221,11 +229,14 @@ impl TauriHandle {
 }
 
 pub trait TauriEmitter {
-    async fn request_confirmation(
-        &self,
+    fn request_confirmation<'life0, 'async_trait>(
+        &'life0 self,
         request_type: ConfirmationRequestType,
         timeout_secs: u64,
-    ) -> Result<bool>;
+    ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait;
 
     fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()>;
 
@@ -278,12 +289,16 @@ pub trait TauriEmitter {
 }
 
 impl TauriEmitter for TauriHandle {
-    async fn request_confirmation(
-        &self,
+    fn request_confirmation<'life0, 'async_trait>(
+        &'life0 self,
         request_type: ConfirmationRequestType,
         timeout_secs: u64,
-    ) -> Result<bool> {
-        self.request_confirmation(request_type, timeout_secs).await
+    ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(self.request_confirmation(request_type, timeout_secs))
     }
 
     fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()> {
@@ -301,17 +316,21 @@ impl TauriEmitter for Option<TauriHandle> {
         }
     }
 
-    async fn request_confirmation(
-        &self,
+    fn request_confirmation<'life0, 'async_trait>(
+        &'life0 self,
         request_type: ConfirmationRequestType,
         timeout_secs: u64,
-    ) -> Result<bool> {
-        match self {
-            Some(tauri) => tauri.request_confirmation(request_type, timeout_secs).await,
-
-            // We want the CLI to be non-interactive. Therefore, we accept by default if no TauriHandle is available
-            None => Ok(true),
-        }
+    ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async move {
+            match self {
+                Some(tauri) => tauri.request_confirmation(request_type, timeout_secs).await,
+                None => Ok(true),
+            }
+        })
     }
 }
 
