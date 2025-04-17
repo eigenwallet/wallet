@@ -133,7 +133,7 @@ impl TauriHandle {
             let request_id = Uuid::new_v4();
             let now_secs = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .expect("Time should always be after UNIX epoch")
                 .as_secs();
             let expiration_ts = now_secs + timeout_secs;
 
