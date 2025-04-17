@@ -1,5 +1,6 @@
 //! Run an XMR/BTC swap in the role of Alice.
 //! Alice holds XMR and wishes receive BTC.
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::asb::{EventLoopHandle, LatestRate};
@@ -10,6 +11,7 @@ use crate::{bitcoin, monero};
 use ::bitcoin::consensus::encode::serialize_hex;
 use anyhow::{bail, Context, Result};
 use tokio::select;
+use tokio::sync::Mutex;
 use tokio::time::timeout;
 use uuid::Uuid;
 
@@ -56,7 +58,7 @@ async fn next_state<LR>(
     state: AliceState,
     event_loop_handle: &mut EventLoopHandle,
     bitcoin_wallet: &bitcoin::Wallet,
-    monero_wallet: &monero::Wallet,
+    monero_wallet: Arc<Mutex<monero::Wallet>>,
     env_config: &Config,
     mut rate_service: LR,
 ) -> Result<AliceState>

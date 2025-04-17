@@ -10,7 +10,9 @@ use std::future::Future;
 use std::ops::Div;
 use std::pin::Pin;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
 use tokio::time::Interval;
 use url::Url;
 
@@ -186,53 +188,6 @@ impl Wallet {
         ))
     }
 
-    /// Wait until the specified transfer has been completed or failed.
-    pub async fn watch_for_transfer(&self, request: WatchRequest) -> Result<(), InsufficientFunds> {
-        self.watch_for_transfer_with(request, None).await
-    }
-
-    /// Wait until the specified transfer has been completed or failed and listen to each new confirmation.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn watch_for_transfer_with(
-        &self,
-        request: WatchRequest,
-        listener: Option<ConfirmationListener>,
-    ) -> Result<(), InsufficientFunds> {
-        let WatchRequest {
-            conf_target,
-            public_view_key,
-            public_spend_key,
-            transfer_proof,
-            expected,
-        } = request;
-
-        let txid = transfer_proof.tx_hash();
-
-        tracing::info!(
-            %txid,
-            target_confirmations = %conf_target,
-            "Waiting for Monero transaction finality"
-        );
-
-        let address = Address::standard(self.network, public_spend_key, public_view_key.into());
-
-        let check_interval = tokio::time::interval(self.sync_interval.div(10));
-
-        wait_for_confirmations_with(
-            &self.inner,
-            transfer_proof,
-            address,
-            expected,
-            conf_target,
-            check_interval,
-            self.name.clone(),
-            listener,
-        )
-        .await?;
-
-        Ok(())
-    }
-
     pub async fn sweep_all(&self, address: Address) -> Result<Vec<TxHash>> {
         let sweep_all = self.inner.sweep_all(address.to_string()).await?;
 
@@ -294,6 +249,69 @@ impl Wallet {
     }
 }
 
+/// Wait until the specified transfer has been completed or failed.
+pub async fn watch_for_transfer(
+    wallet: Arc<Mutex<Wallet>>,
+    request: WatchRequest,
+) -> Result<(), InsufficientFunds> {
+    watch_for_transfer_with(wallet, request, None).await
+}
+
+/// Wait until the specified transfer has been completed or failed and listen to each new confirmation.
+#[allow(clippy::too_many_arguments)]
+pub async fn watch_for_transfer_with(
+    wallet: Arc<Mutex<Wallet>>,
+    request: WatchRequest,
+    listener: Option<ConfirmationListener>,
+) -> Result<(), InsufficientFunds> {
+    let WatchRequest {
+        conf_target,
+        public_view_key,
+        public_spend_key,
+        transfer_proof,
+        expected,
+    } = request;
+
+    let txid = transfer_proof.tx_hash();
+
+    tracing::info!(
+        %txid,
+        target_confirmations = %conf_target,
+        "Waiting for Monero transaction finality"
+    );
+
+    let wallet_lock = wallet.lock().await;
+
+    let address = Address::standard(
+        wallet_lock.network,
+        public_spend_key,
+        public_view_key.into(),
+    );
+
+    let check_interval = tokio::time::interval(wallet_lock.sync_interval.div(10));
+
+    let wallet_name = wallet_lock.name.clone();
+
+    let mutexed_client = Arc::new(Mutex::new(&wallet_lock.inner));
+
+    // Make sure to release the lock before we start waiting for confimations
+    let _ = wallet_lock;
+
+    wait_for_confirmations_with(
+        &wallet_lock.inner,
+        transfer_proof,
+        address,
+        expected,
+        conf_target,
+        check_interval,
+        wallet_name,
+        listener,
+    )
+    .await?;
+
+    Ok(())
+}
+
 #[derive(Debug)]
 pub struct TransferRequest {
     pub public_spend_key: PublicKey,
@@ -313,6 +331,10 @@ pub struct WatchRequest {
 /// This is a shorthand for the dynamic type we use to pass listeners to
 /// i.e. the `wait_for_confirmations` function. It is basically
 /// an `async fn` which takes a `u64` and returns nothing, but in dynamic.
+///
+/// We use this to pass a listener that sends events to the tauri
+/// frontend to show upates to the number of confirmations that
+/// a tx has.
 type ConfirmationListener =
     Box<dyn Fn(u64) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + 'static>;
 
@@ -320,7 +342,7 @@ type ConfirmationListener =
 async fn wait_for_confirmations_with<
     C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
 >(
-    client: &C,
+    client: Arc<Mutex<&C>>,
     transfer_proof: TransferProof,
     to_address: Address,
     expected: Amount,
@@ -336,7 +358,12 @@ async fn wait_for_confirmations_with<
 
         let txid = transfer_proof.tx_hash().to_string();
 
-        let tx = match client
+        // Acquire a lock to the client only after awaiting the next tick.
+        // This way we don't starve other tasks.
+        // The lock is dropped at the end of each iteration.
+        let client_lock = client.lock().await;
+
+        let tx = match client_lock
             .check_tx_key(
                 txid.clone(),
                 transfer_proof.tx_key.to_string(),
@@ -362,7 +389,7 @@ async fn wait_for_confirmations_with<
                     txid
                 );
 
-                if let Err(err) = client.open_wallet(wallet_name.clone()).await {
+                if let Err(err) = client_lock.open_wallet(wallet_name.clone()).await {
                     tracing::warn!(
                         %err,
                         "Failed to open wallet `{}` to continue monitoring of Monero transaction {}",
@@ -424,7 +451,7 @@ mod tests {
     async fn wait_for_confirmations<
         C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
     >(
-        client: &C,
+        client: Arc<Mutex<C>>,
         transfer_proof: TransferProof,
         to_address: Address,
         expected: Amount,

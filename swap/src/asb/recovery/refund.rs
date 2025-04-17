@@ -74,7 +74,7 @@ pub async fn refund(
 
     state3
         .refund_xmr(
-            &*monero_wallet.lock().await,
+            monero_wallet.clone(),
             monero_wallet_restore_blockheight,
             swap_id.to_string(),
             spend_key,
