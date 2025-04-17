@@ -100,7 +100,7 @@ export default function SwapSetupInflightPage({
               <SatsAmount amount={btc_lock_amount} />
             </Typography>
 
-            <Typography className={classes.label}>You pay (Bitcoin network fees)</Typography>
+            <Typography className={classes.label}>Bitcoin network fees</Typography>
             <Typography>
               <SatsAmount amount={btc_network_fee} />
             </Typography>

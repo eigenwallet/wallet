@@ -222,10 +222,11 @@ export type PendingPreBtcLockConfirmationEvent = PendingConfirmationEvent & {
 export function isPendingPreBtcLockConfirmationEvent(
   event: ConfirmationEvent,
 ): event is PendingPreBtcLockConfirmationEvent {
-  // Check state first
+  // Check if the request is pending
   if (event.state !== "Pending") {
     return false;
   }
-  // Now check content.details.type safely
+
+  // Check if the request is a PreBtcLock request
   return event.content.details.type === "PreBtcLock";
 }

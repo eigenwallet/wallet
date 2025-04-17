@@ -15,6 +15,8 @@ use std::sync::Arc;
 use tokio::select;
 use uuid::Uuid;
 
+const PRE_BTC_LOCK_CONFIRMATION_TIMEOUT_SECS: u64 = 120;
+
 pub fn is_complete(state: &BobState) -> bool {
     matches!(
         state,
@@ -167,8 +169,6 @@ async fn next_state(
                     .value,
             );
 
-            const CONFIRMATION_TIMEOUT_SECS: u64 = 120;
-
             let request = ConfirmationRequestType::PreBtcLock(PreBtcLockDetails {
                 btc_lock_amount,
                 btc_network_fee,
@@ -179,12 +179,12 @@ async fn next_state(
             // We request confirmation before locking the Bitcoin, as the exchange rate determined at this step might be different from the
             // we previously received from Alice.
             let confirmation_result = event_emitter
-                .request_confirmation(request, CONFIRMATION_TIMEOUT_SECS)
+                .request_confirmation(request, PRE_BTC_LOCK_CONFIRMATION_TIMEOUT_SECS)
                 .await;
 
             match confirmation_result {
                 Ok(true) => {
-                    tracing::debug!("User accepted swap details");
+                    tracing::debug!("User accepted swap offer");
 
                     // Publish the signed Bitcoin lock transaction
                     let (..) = bitcoin_wallet.broadcast(signed_tx, "lock").await?;
@@ -195,12 +195,12 @@ async fn next_state(
                     }
                 }
                 Ok(false) => {
-                    tracing::warn!("User denied or timed out on swap details confirmation");
+                    tracing::warn!("User denied or timed out on swap offer confirmation");
 
                     BobState::SafelyAborted
                 }
                 Err(err) => {
-                    tracing::warn!(%err, "Failed to get user confirmation for swap details. Assuming swap was aborted.");
+                    tracing::warn!(%err, "Failed to get user confirmation for swap offer. Assuming swap was aborted.");
 
                     BobState::SafelyAborted
                 }

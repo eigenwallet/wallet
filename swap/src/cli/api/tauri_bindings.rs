@@ -4,6 +4,8 @@ use anyhow::{anyhow, Result};
 use bitcoin::Txid;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use strum::Display;
@@ -11,8 +13,6 @@ use tokio::sync::{oneshot, Mutex as TokioMutex};
 use typeshare::typeshare;
 use url::Url;
 use uuid::Uuid;
-use std::pin::Pin;
-use std::future::Future;
 
 use super::request::BalanceResponse;
 
@@ -143,7 +143,7 @@ impl TauriHandle {
                 expiration_ts,
                 details: details.clone(),
             };
-            
+
             self.emit_confirmation(pending_event.clone())?;
 
             tracing::debug!(%request_id, request=?pending_event, "Emitted confirmation request event");
@@ -157,7 +157,7 @@ impl TauriHandle {
                 details: request_type.clone(),
                 expiration_ts,
             };
-            
+
             // Lock map and insert
             {
                 let mut pending_map = self.0.pending_confirmations.lock().await;
