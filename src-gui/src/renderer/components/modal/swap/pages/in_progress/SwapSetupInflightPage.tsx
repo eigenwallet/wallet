@@ -88,7 +88,7 @@ export default function SwapSetupInflightPage({
 
   return (
     <InfoBox
-      title="Approve Details"
+      title="Approve Swap"
       icon={<></>}
       loading={false}
       mainContent={
