@@ -49,7 +49,7 @@ const useStyles = makeStyles((theme: Theme) =>
 
 /// A hook that returns the LockBitcoin confirmation request for the active swap
 /// Returns null if no confirmation request is found
-function useLockBitcoinRequest(): PendingLockBitcoinApprovalRequest | null {
+function useActiveLockBitcoinApprovalRequest(): PendingLockBitcoinApprovalRequest | null {
   const approvals = usePendingLockBitcoinApproval();
   const activeSwapId = useActiveSwapId();
 
@@ -61,7 +61,7 @@ export default function SwapSetupInflightPage({
   btc_lock_amount,
 }: TauriSwapProgressEventContent<'SwapSetupInflight'>) {
   const classes = useStyles();
-  const request = useLockBitcoinRequest();
+  const request = useActiveLockBitcoinApprovalRequest();
 
   const [timeLeft, setTimeLeft] = useState<number>(0);
 
@@ -78,7 +78,7 @@ export default function SwapSetupInflightPage({
     return () => clearInterval(id);
   }, [expiresAtMs]);
 
-  // If we do not have a confirmation request yet, we haven't received the offer yet from Alice
+  // If we do not have an approval request yet for the Bitcoin lock transaction, we haven't received the offer from Alice yet
   // Display a loading spinner to the user for as long as the swap_setup request is in flight
   if (!request) {
     return <CircularProgressWithSubtitle description={<>Negotiating offer for <SatsAmount amount={btc_lock_amount} /></>} />;
@@ -88,7 +88,7 @@ export default function SwapSetupInflightPage({
 
   return (
     <InfoBox
-      title="Confirm Details"
+      title="Approve Details"
       icon={<></>}
       loading={false}
       mainContent={
