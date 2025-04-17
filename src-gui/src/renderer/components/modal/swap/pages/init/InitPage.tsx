@@ -109,7 +109,7 @@ export default function InitPage() {
           onInvoke={init}
           displayErrorSnackbar
         >
-          Request quote and start swap
+          Request offer
         </PromiseInvokeButton>
       </Box>
     </Box>

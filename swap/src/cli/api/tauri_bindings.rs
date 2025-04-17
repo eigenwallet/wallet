@@ -1,8 +1,13 @@
+use crate::bitcoin;
 use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use bitcoin::Txid;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use strum::Display;
+use tokio::sync::{oneshot, Mutex as TokioMutex};
 use typeshare::typeshare;
 use url::Url;
 use uuid::Uuid;
@@ -16,12 +21,71 @@ const TIMELOCK_CHANGE_EVENT_NAME: &str = "timelock-change";
 const CONTEXT_INIT_PROGRESS_EVENT_NAME: &str = "context-init-progress-update";
 const BALANCE_CHANGE_EVENT_NAME: &str = "balance-change";
 const BACKGROUND_REFUND_EVENT_NAME: &str = "background-refund";
+const CONFIRMATION_EVENT_NAME: &str = "confirmation_event";
 
-#[derive(Debug, Clone)]
+#[typeshare]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PreBtcLockDetails {
+    #[typeshare(serialized_as = "number")]
+    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    pub btc_lock_amount: bitcoin::Amount,
+    #[typeshare(serialized_as = "number")]
+    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    pub btc_network_fee: bitcoin::Amount,
+    #[typeshare(serialized_as = "number")]
+    pub xmr_receive_amount: monero::Amount,
+    #[typeshare(serialized_as = "string")]
+    pub swap_id: Uuid,
+}
+
+#[typeshare]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "content")]
+pub enum ConfirmationRequestType {
+    /// Request confirmation before locking Bitcoin.
+    /// Contains specific details for review.
+    PreBtcLock(PreBtcLockDetails),
+}
+
+#[typeshare]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "state", content = "content")]
+pub enum ConfirmationEvent {
+    Pending {
+        request_id: String,
+        #[typeshare(serialized_as = "number")]
+        expiration_ts: u64,
+        details: ConfirmationRequestType,
+    },
+    Resolved {
+        request_id: String,
+        details: ConfirmationRequestType,
+    },
+    Rejected {
+        request_id: String,
+        details: ConfirmationRequestType,
+    },
+}
+
+struct PendingConfirmation {
+    responder: oneshot::Sender<bool>,
+    details: ConfirmationRequestType,
+    expiration_ts: u64,
+}
+
+#[cfg(feature = "tauri")]
+struct TauriHandleInner {
+    app_handle: tauri::AppHandle,
+    pending_confirmations: TokioMutex<HashMap<Uuid, PendingConfirmation>>,
+}
+
+// Keep TauriHandle deriving Clone
+#[derive(Clone)]
 pub struct TauriHandle(
     #[cfg(feature = "tauri")]
     #[cfg_attr(feature = "tauri", allow(unused))]
-    std::sync::Arc<tauri::AppHandle>,
+    // Wrap the inner state management struct in Arc
+    Arc<TauriHandleInner>,
 );
 
 impl TauriHandle {
@@ -29,20 +93,140 @@ impl TauriHandle {
     pub fn new(tauri_handle: tauri::AppHandle) -> Self {
         Self(
             #[cfg(feature = "tauri")]
-            std::sync::Arc::new(tauri_handle),
+            Arc::new(TauriHandleInner {
+                app_handle: tauri_handle,
+                pending_confirmations: TokioMutex::new(HashMap::new()),
+            }),
         )
     }
 
     #[allow(unused_variables)]
     pub fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()> {
         #[cfg(feature = "tauri")]
-        tauri::Emitter::emit(self.0.as_ref(), event, payload).map_err(anyhow::Error::from)?;
+        {
+            let inner = self.0.as_ref();
+            tauri::Emitter::emit(&inner.app_handle, event, payload).map_err(anyhow::Error::from)?;
+        }
 
         Ok(())
+    }
+
+    /// Helper to emit a confirmation event via the unified event name
+    fn emit_confirmation(&self, event: ConfirmationEvent) -> Result<()> {
+        self.emit_tauri_event(CONFIRMATION_EVENT_NAME, event)
+    }
+
+    pub async fn request_confirmation(
+        &self,
+        request_type: ConfirmationRequestType,
+        timeout_secs: u64,
+    ) -> Result<bool> {
+        #[cfg(not(feature = "tauri"))]
+        {
+            return Ok(true);
+        }
+
+        #[cfg(feature = "tauri")]
+        {
+            let request_id = Uuid::new_v4();
+            let now_secs = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            let expiration_ts = now_secs + timeout_secs;
+
+            // Build and emit the pending confirmation event
+            let details = request_type.clone();
+            let pending_event = ConfirmationEvent::Pending {
+                request_id: request_id.to_string(),
+                expiration_ts,
+                details: details.clone(),
+            };
+            self.emit_confirmation(pending_event.clone())?;
+            tracing::info!(%request_id, "Emitted confirmation request event");
+
+            let (tx, rx) = oneshot::channel();
+            let timeout_duration = Duration::from_secs(timeout_secs);
+            // Insert pending details
+            let pending = PendingConfirmation {
+                responder: tx,
+                details: request_type.clone(),
+                expiration_ts,
+            };
+            // Lock map and insert
+            {
+                let mut pending_map = self.0.pending_confirmations.lock().await;
+                pending_map.insert(request_id, pending);
+            }
+
+            // Clone Arc for the timeout task
+            let inner_clone = Arc::clone(&self.0);
+
+            // Spawn timeout to auto-reject
+            tokio::spawn(async move {
+                tokio::time::sleep(timeout_duration).await;
+                let mut map = inner_clone.pending_confirmations.lock().await;
+                if let Some(pending) = map.remove(&request_id) {
+                    tracing::warn!(%request_id, "Confirmation timed out.");
+                    let _ = pending.responder.send(false);
+                    let event = ConfirmationEvent::Rejected {
+                        request_id: request_id.to_string(),
+                        details: pending.details,
+                    };
+                    let _ = tauri::Emitter::emit(
+                        &inner_clone.app_handle,
+                        CONFIRMATION_EVENT_NAME,
+                        event,
+                    );
+                }
+            });
+
+            rx.await
+                .map_err(|_| anyhow!("Confirmation responder dropped"))
+        }
+    }
+
+    pub async fn resolve_confirmation(&self, request_id: Uuid, accepted: bool) -> Result<()> {
+        #[cfg(not(feature = "tauri"))]
+        {
+            return Err(anyhow!(
+                "Cannot resolve confirmation: Tauri feature not enabled."
+            ));
+        }
+
+        #[cfg(feature = "tauri")]
+        {
+            let mut pending_map = self.0.pending_confirmations.lock().await;
+            if let Some(pending) = pending_map.remove(&request_id) {
+                let _ = pending.responder.send(accepted);
+                tracing::info!(%request_id, %accepted, "Resolved confirmation from frontend.");
+                let event = if accepted {
+                    ConfirmationEvent::Resolved {
+                        request_id: request_id.to_string(),
+                        details: pending.details,
+                    }
+                } else {
+                    ConfirmationEvent::Rejected {
+                        request_id: request_id.to_string(),
+                        details: pending.details,
+                    }
+                };
+                self.emit_confirmation(event)?;
+                Ok(())
+            } else {
+                Err(anyhow!("Confirmation not found or already handled"))
+            }
+        }
     }
 }
 
 pub trait TauriEmitter {
+    async fn request_confirmation(
+        &self,
+        request_type: ConfirmationRequestType,
+        timeout_secs: u64,
+    ) -> Result<bool>;
+
     fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()>;
 
     fn emit_swap_progress_event(&self, swap_id: Uuid, event: TauriSwapProgressEvent) {
@@ -94,6 +278,14 @@ pub trait TauriEmitter {
 }
 
 impl TauriEmitter for TauriHandle {
+    async fn request_confirmation(
+        &self,
+        request_type: ConfirmationRequestType,
+        timeout_secs: u64,
+    ) -> Result<bool> {
+        self.request_confirmation(request_type, timeout_secs).await
+    }
+
     fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()> {
         self.emit_tauri_event(event, payload)
     }
@@ -103,7 +295,22 @@ impl TauriEmitter for Option<TauriHandle> {
     fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()> {
         match self {
             Some(tauri) => tauri.emit_tauri_event(event, payload),
+
+            // If no TauriHandle is available, we just ignore the event and pretend as if it was emitted
             None => Ok(()),
+        }
+    }
+
+    async fn request_confirmation(
+        &self,
+        request_type: ConfirmationRequestType,
+        timeout_secs: u64,
+    ) -> Result<bool> {
+        match self {
+            Some(tauri) => tauri.request_confirmation(request_type, timeout_secs).await,
+
+            // We want the CLI to be non-interactive. Therefore, we accept by default if no TauriHandle is available
+            None => Ok(true),
         }
     }
 }

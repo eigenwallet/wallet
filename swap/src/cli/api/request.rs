@@ -1375,3 +1375,32 @@ impl CheckElectrumNodeArgs {
         })
     }
 }
+
+#[typeshare]
+#[derive(Deserialize, Serialize)]
+pub struct ResolveConfirmationArgs {
+    pub request_id: String,
+    pub accept: bool,
+}
+
+#[typeshare]
+#[derive(Deserialize, Serialize)]
+pub struct ResolveConfirmationResponse {
+    pub success: bool,
+}
+
+impl Request for ResolveConfirmationArgs {
+    type Response = ResolveConfirmationResponse;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        let request_id = Uuid::parse_str(&self.request_id).context("Invalid request ID")?;
+
+        if let Some(handle) = ctx.tauri_handle.clone() {
+            handle.resolve_confirmation(request_id, self.accept).await?;
+        } else {
+            bail!("Cannot resolve confirmation without a Tauri handle");
+        }
+
+        Ok(ResolveConfirmationResponse { success: true })
+    }
+}

@@ -26,9 +26,13 @@ export function useResumeableSwapsCount(
 }
 
 
-export function useResumeableSwapsCountExcludingPunished() {
+/**
+ * Counts the number of resumeable swaps excluding punished swaps and swaps where the setup was completed but no BTC was locked yet
+ * These are ones where the user rejected the offer
+ */
+export function useResumeableSwapsCountExcludingPunishedAndSetup() {
   return useResumeableSwapsCount(
-    (s) => s.state_name !== BobStateName.BtcPunished,
+    (s) => s.state_name !== BobStateName.BtcPunished && s.state_name !== BobStateName.SwapSetupCompleted,
   );
 }
 
