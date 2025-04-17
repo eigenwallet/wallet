@@ -211,22 +211,22 @@ export function isGetSwapInfoResponseWithTimelock(
   return response.timelock !== null;
 }
 
-export type PendingApprovalEvent = Extract<ApprovalRequest, { state: "Pending" }>;
+export type PendingApprovalRequest = Extract<ApprovalRequest, { state: "Pending" }>;
 
-export type PendingPreBtcLockApprovalEvent = PendingApprovalEvent & {
+export type PendingLockBitcoinApprovalRequest = PendingApprovalRequest & {
   content: {
-    details: { type: "PreBtcLock" };
+    details: { type: "LockBitcoin" };
   };
 };
 
-export function isPendingPreBtcLockApprovalEvent(
+export function isPendingLockBitcoinApprovalEvent(
   event: ApprovalRequest,
-): event is PendingPreBtcLockApprovalEvent {
+): event is PendingLockBitcoinApprovalRequest {
   // Check if the request is pending
   if (event.state !== "Pending") {
     return false;
   }
 
-  // Check if the request is a PreBtcLock request
-  return event.content.details.type === "PreBtcLock";
+  // Check if the request is a LockBitcoin request
+  return event.content.details.type === "LockBitcoin";
 }

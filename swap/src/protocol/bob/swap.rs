@@ -2,7 +2,7 @@ use crate::bitcoin::wallet::ScriptStatus;
 use crate::bitcoin::{ExpiredTimelocks, TxCancel, TxRefund};
 use crate::cli::api::tauri_bindings::ApprovalRequestDetails;
 use crate::cli::api::tauri_bindings::{
-    PreBtcLockDetails, TauriEmitter, TauriHandle, TauriSwapProgressEvent,
+    LockBitcoinDetails, TauriEmitter, TauriHandle, TauriSwapProgressEvent,
 };
 use crate::cli::EventLoopHandle;
 use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, Rejected};
@@ -169,7 +169,7 @@ async fn next_state(
                     .value,
             );
 
-            let request = ApprovalRequestDetails::PreBtcLock(PreBtcLockDetails {
+            let request = ApprovalRequestDetails::LockBitcoin(LockBitcoinDetails {
                 btc_lock_amount,
                 btc_network_fee,
                 xmr_receive_amount,

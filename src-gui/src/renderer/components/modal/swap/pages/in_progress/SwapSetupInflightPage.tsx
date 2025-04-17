@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { resolveApproval } from 'renderer/rpc';
-import { PendingPreBtcLockApprovalEvent, TauriSwapProgressEventContent } from 'models/tauriModelExt';
+import { PendingLockBitcoinApprovalRequest, TauriSwapProgressEventContent } from 'models/tauriModelExt';
 import {
   SatsAmount,
   PiconeroAmount,
@@ -12,7 +12,7 @@ import {
   Divider,
 } from '@material-ui/core';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
-import { useActiveSwapId, usePendingPreBtcLockApproval } from 'store/hooks';
+import { useActiveSwapId, usePendingLockBitcoinApproval } from 'store/hooks';
 import PromiseInvokeButton from 'renderer/components/PromiseInvokeButton';
 import InfoBox from 'renderer/components/modal/swap/InfoBox';
 import CircularProgressWithSubtitle from '../../CircularProgressWithSubtitle';
@@ -47,10 +47,10 @@ const useStyles = makeStyles((theme: Theme) =>
   })
 );
 
-/// A hook that returns the PreBtcLock confirmation request for the active swap
+/// A hook that returns the LockBitcoin confirmation request for the active swap
 /// Returns null if no confirmation request is found
-function usePreBtcLockRequest(): PendingPreBtcLockApprovalEvent | null {
-  const approvals = usePendingPreBtcLockApproval();
+function useLockBitcoinRequest(): PendingLockBitcoinApprovalRequest | null {
+  const approvals = usePendingLockBitcoinApproval();
   const activeSwapId = useActiveSwapId();
 
   return approvals
@@ -61,7 +61,7 @@ export default function SwapSetupInflightPage({
   btc_lock_amount,
 }: TauriSwapProgressEventContent<'SwapSetupInflight'>) {
   const classes = useStyles();
-  const request = usePreBtcLockRequest();
+  const request = useLockBitcoinRequest();
 
   const [timeLeft, setTimeLeft] = useState<number>(0);
 

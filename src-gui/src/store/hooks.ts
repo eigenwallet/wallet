@@ -1,5 +1,5 @@
 import { sortBy } from "lodash";
-import { BobStateName, GetSwapInfoResponseExt, PendingApprovalEvent, PendingPreBtcLockApprovalEvent } from "models/tauriModelExt";
+import { BobStateName, GetSwapInfoResponseExt, PendingApprovalRequest, PendingLockBitcoinApprovalRequest } from "models/tauriModelExt";
 import { TypedUseSelectorHook, useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "renderer/store/storeRenderer";
 import { parseDateString } from "utils/parseUtils";
@@ -138,12 +138,12 @@ export function useNodes<T>(selector: (nodes: NodesSlice) => T): T {
   return selector(nodes);
 }
 
-export function usePendingApprovals(): PendingApprovalEvent[] {
+export function usePendingApprovals(): PendingApprovalRequest[] {
   const approvals = useAppSelector((state) => state.rpc.state.approvalRequests);
   return Object.values(approvals).filter((c) => c.state === "Pending");
 }
 
-export function usePendingPreBtcLockApproval(): PendingPreBtcLockApprovalEvent[] {
+export function usePendingLockBitcoinApproval(): PendingLockBitcoinApprovalRequest[] {
   const approvals = usePendingApprovals();
-  return approvals.filter((c) => c.content.details.type === "PreBtcLock");
+  return approvals.filter((c) => c.content.details.type === "LockBitcoin");
 }

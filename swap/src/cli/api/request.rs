@@ -1396,9 +1396,9 @@ impl Request for ResolveApprovalArgs {
         let request_id = Uuid::parse_str(&self.request_id).context("Invalid request ID")?;
 
         if let Some(handle) = ctx.tauri_handle.clone() {
-            handle.resolve_approval_request(request_id, self.accept).await?;
+            handle.resolve_approval(request_id, self.accept).await?;
         } else {
-            bail!("Cannot resolve confirmation without a Tauri handle");
+            bail!("Cannot resolve approval without a Tauri handle");
         }
 
         Ok(ResolveApprovalResponse { success: true })

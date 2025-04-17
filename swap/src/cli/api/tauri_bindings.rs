@@ -27,7 +27,7 @@ const APPROVAL_EVENT_NAME: &str = "approval_event";
 
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PreBtcLockDetails {
+pub struct LockBitcoinDetails {
     #[typeshare(serialized_as = "number")]
     #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
     pub btc_lock_amount: bitcoin::Amount,
@@ -46,7 +46,7 @@ pub struct PreBtcLockDetails {
 pub enum ApprovalRequestDetails {
     /// Request approval before locking Bitcoin.
     /// Contains specific details for review.
-    PreBtcLock(PreBtcLockDetails),
+    LockBitcoin(LockBitcoinDetails),
 }
 
 #[typeshare]
