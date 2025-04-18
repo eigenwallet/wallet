@@ -46,6 +46,7 @@ Because the GUI is running in an embedded browser, we can't use the usual Browse
 ### React DevTools
 
 Run this command to start the React DevTools server. The frontend will connect to this server automatically:
+
 ```bash
 npx react-devtools
 ```
