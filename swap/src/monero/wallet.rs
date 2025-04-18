@@ -17,8 +17,8 @@ use tokio::time::Interval;
 use url::Url;
 
 #[derive(Debug)]
-pub struct Wallet {
-    inner: wallet::Client,
+pub struct Wallet<C = wallet::Client> {
+    inner: C,
     network: Network,
     name: String,
     main_address: monero::Address,
@@ -57,6 +57,27 @@ impl Wallet {
             main_address,
             sync_interval: env_config.monero_sync_interval(),
         })
+    }
+
+    #[cfg(test)]
+    fn from_dummy<T: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
+        client: T,
+        network: Network,
+    ) -> Wallet<T> {
+        // Here we make up some values just so we can use the wallet in tests
+        // Todo: verify this works
+        use curve25519_dalek::scalar::Scalar;
+
+        let privkey = PrivateKey::from_scalar(Scalar::one());
+        let pubkey = PublicKey::from_private_key(&privkey);
+
+        Wallet {
+            inner: client,
+            network,
+            sync_interval: Duration::from_secs(100),
+            name: "foo".into(),
+            main_address: Address::standard(network, pubkey, pubkey),
+        }
     }
 
     /// Re-open the wallet using the internally stored name.
@@ -289,16 +310,13 @@ pub async fn watch_for_transfer_with(
     );
 
     let check_interval = tokio::time::interval(wallet_lock.sync_interval.div(10));
-
     let wallet_name = wallet_lock.name.clone();
-
-    let mutexed_client = Arc::new(Mutex::new(&wallet_lock.inner));
 
     // Make sure to release the lock before we start waiting for confimations
     let _ = wallet_lock;
 
     wait_for_confirmations_with(
-        &wallet_lock.inner,
+        wallet.clone(),
         transfer_proof,
         address,
         expected,
@@ -342,7 +360,7 @@ type ConfirmationListener =
 async fn wait_for_confirmations_with<
     C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
 >(
-    client: Arc<Mutex<&C>>,
+    client: Arc<Mutex<Wallet<C>>>,
     transfer_proof: TransferProof,
     to_address: Address,
     expected: Amount,
@@ -364,6 +382,7 @@ async fn wait_for_confirmations_with<
         let client_lock = client.lock().await;
 
         let tx = match client_lock
+            .inner
             .check_tx_key(
                 txid.clone(),
                 transfer_proof.tx_key.to_string(),
@@ -389,7 +408,7 @@ async fn wait_for_confirmations_with<
                     txid
                 );
 
-                if let Err(err) = client_lock.open_wallet(wallet_name.clone()).await {
+                if let Err(err) = client_lock.inner.open_wallet(wallet_name.clone()).await {
                     tracing::warn!(
                         %err,
                         "Failed to open wallet `{}` to continue monitoring of Monero transaction {}",
@@ -451,7 +470,7 @@ mod tests {
     async fn wait_for_confirmations<
         C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
     >(
-        client: Arc<Mutex<C>>,
+        client: Arc<Mutex<Wallet<C>>>,
         transfer_proof: TransferProof,
         to_address: Address,
         expected: Amount,
@@ -474,13 +493,16 @@ mod tests {
 
     #[tokio::test]
     async fn given_exact_confirmations_does_not_fetch_tx_again() {
-        let client = Mutex::new(DummyClient::new(vec![Ok(CheckTxKey {
-            confirmations: 10,
-            received: 100,
-        })]));
+        let wallet = Arc::new(Mutex::new(Wallet::from_dummy(
+            DummyClient::new(vec![Ok(CheckTxKey {
+                confirmations: 10,
+                received: 100,
+            })]),
+            Network::Testnet,
+        )));
 
         let result = wait_for_confirmations(
-            &*client.lock().await,
+            wallet.clone(),
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
             }),
@@ -494,9 +516,10 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(
-            client
+            wallet
                 .lock()
                 .await
+                .inner
                 .check_tx_key_invocations
                 .load(Ordering::SeqCst),
             1
@@ -507,31 +530,34 @@ mod tests {
     async fn visual_log_check() {
         let writer = capture_logs(LevelFilter::INFO);
 
-        let client = Mutex::new(DummyClient::new(vec![
-            Ok(CheckTxKey {
-                confirmations: 1,
-                received: 100,
-            }),
-            Ok(CheckTxKey {
-                confirmations: 1,
-                received: 100,
-            }),
-            Ok(CheckTxKey {
-                confirmations: 1,
-                received: 100,
-            }),
-            Ok(CheckTxKey {
-                confirmations: 3,
-                received: 100,
-            }),
-            Ok(CheckTxKey {
-                confirmations: 5,
-                received: 100,
-            }),
-        ]));
+        let client = Arc::new(Mutex::new(Wallet::from_dummy(
+            DummyClient::new(vec![
+                Ok(CheckTxKey {
+                    confirmations: 1,
+                    received: 100,
+                }),
+                Ok(CheckTxKey {
+                    confirmations: 1,
+                    received: 100,
+                }),
+                Ok(CheckTxKey {
+                    confirmations: 1,
+                    received: 100,
+                }),
+                Ok(CheckTxKey {
+                    confirmations: 3,
+                    received: 100,
+                }),
+                Ok(CheckTxKey {
+                    confirmations: 5,
+                    received: 100,
+                }),
+            ]),
+            Network::Testnet,
+        )));
 
         wait_for_confirmations(
-            &*client.lock().await,
+            client.clone(),
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
             }),
@@ -557,28 +583,31 @@ mod tests {
     async fn reopens_wallet_in_case_not_available() {
         let writer = capture_logs(LevelFilter::DEBUG);
 
-        let client = Mutex::new(DummyClient::new(vec![
-            Ok(CheckTxKey {
-                confirmations: 1,
-                received: 100,
-            }),
-            Ok(CheckTxKey {
-                confirmations: 1,
-                received: 100,
-            }),
-            Err((-13, "No wallet file".to_owned())),
-            Ok(CheckTxKey {
-                confirmations: 3,
-                received: 100,
-            }),
-            Ok(CheckTxKey {
-                confirmations: 5,
-                received: 100,
-            }),
-        ]));
+        let client = Arc::new(Mutex::new(Wallet::from_dummy(
+            DummyClient::new(vec![
+                Ok(CheckTxKey {
+                    confirmations: 1,
+                    received: 100,
+                }),
+                Ok(CheckTxKey {
+                    confirmations: 1,
+                    received: 100,
+                }),
+                Err((-13, "No wallet file".to_owned())),
+                Ok(CheckTxKey {
+                    confirmations: 3,
+                    received: 100,
+                }),
+                Ok(CheckTxKey {
+                    confirmations: 5,
+                    received: 100,
+                }),
+            ]),
+            Network::Testnet,
+        )));
 
         wait_for_confirmations(
-            &*client.lock().await,
+            client.clone(),
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
             }),
@@ -603,6 +632,7 @@ DEBUG swap::monero::wallet: No wallet loaded. Opening wallet `foo-wallet` to con
             client
                 .lock()
                 .await
+                .inner
                 .open_wallet_invocations
                 .load(Ordering::SeqCst),
             1
