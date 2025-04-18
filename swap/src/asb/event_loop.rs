@@ -24,6 +24,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::time::timeout;
 use uuid::Uuid;
 
 /// The time-to-live for quotes in the cache
@@ -516,6 +517,11 @@ where
         min_buy: bitcoin::Amount,
         max_buy: bitcoin::Amount,
     ) -> Result<Arc<BidQuote>, Arc<anyhow::Error>> {
+        /// This is how long we maximally wait for the wallet lock
+        /// - else the quote will be out of date and we will return
+        /// an error.
+        const MAX_WAIT_DURATION: Duration = Duration::from_secs(60);
+
         let ask_price = self
             .latest_rate
             .latest_rate()
@@ -523,10 +529,9 @@ where
             .ask()
             .map_err(|e| Arc::new(e.context("Failed to compute asking price")))?;
 
-        let balance = self
-            .monero_wallet
-            .lock()
+        let balance = timeout(MAX_WAIT_DURATION, self.monero_wallet.lock())
             .await
+            .context("Timeout while waiting for lock on monero wallet while making quote")?
             .get_balance()
             .await
             .map_err(|e| Arc::new(e.context("Failed to get Monero balance")))?;
