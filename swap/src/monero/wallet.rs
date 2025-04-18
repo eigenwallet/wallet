@@ -59,6 +59,9 @@ impl Wallet {
         })
     }
 
+    /// This can be used to create dummy wallet for testing purposes.
+    /// Warning: filled with non-sense values, don't use for anything
+    /// but as a wrapper around your dummy client.
     #[cfg(test)]
     fn from_dummy<T: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync>(
         client: T,
