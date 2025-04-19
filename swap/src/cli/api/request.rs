@@ -60,6 +60,8 @@ pub struct BuyXmrArgs {
     pub bitcoin_change_address: Option<bitcoin::Address>,
     #[typeshare(serialized_as = "string")]
     pub monero_receive_address: monero::Address,
+    #[typeshare(serialized_as = "Option<string>")]
+    pub watchtower: Option<Multiaddr>,
 }
 
 #[typeshare]
@@ -581,6 +583,7 @@ pub async fn buy_xmr(
         seller,
         bitcoin_change_address,
         monero_receive_address,
+        watchtower,
     } = buy_xmr;
 
     let bitcoin_wallet = Arc::clone(
@@ -623,6 +626,22 @@ pub async fn buy_xmr(
         .insert_address(seller_peer_id, seller.clone())
         .await?;
 
+    let watchtower_peer_id = match watchtower {
+        Some(watchtower_multiaddr) => {
+            let watchtower_peer_id = watchtower_multiaddr
+                .extract_peer_id()
+                .context("Watchtower address must contain peer ID")?;
+
+            context
+                .db
+                .insert_address(watchtower_peer_id, watchtower_multiaddr)
+                .await?;
+
+            Some(watchtower_peer_id)
+        }
+        None => None,
+    };
+
     let behaviour = cli::Behaviour::new(
         seller_peer_id,
         env_config,
@@ -664,7 +683,7 @@ pub async fn buy_xmr(
         },
         result = async {
             let (event_loop, mut event_loop_handle) =
-                EventLoop::new(swap_id, swarm, seller_peer_id, context.db.clone())?;
+                EventLoop::new(swap_id, swarm, seller_peer_id, watchtower_peer_id, context.db.clone())?;
             let event_loop = tokio::spawn(event_loop.run().in_current_span());
 
             let bid_quote = event_loop_handle.request_quote().await?;
@@ -800,6 +819,7 @@ pub async fn resume_swap(
     let ResumeSwapArgs { swap_id } = resume;
 
     let seller_peer_id = context.db.get_peer_id(swap_id).await?;
+    let watchtower_peer_id = context.db.get_watchtower_peer_id(swap_id).await?;
     let seller_addresses = context.db.get_addresses(seller_peer_id).await?;
 
     let seed = context
@@ -830,8 +850,22 @@ pub async fn resume_swap(
         swarm.add_peer_address(seller_peer_id, seller_address);
     }
 
-    let (event_loop, event_loop_handle) =
-        EventLoop::new(swap_id, swarm, seller_peer_id, context.db.clone())?;
+    // Fetch the watchtower's addresses from the database and add them to the swarm
+    if let Some(watchtower_peer_id) = watchtower_peer_id {
+        let watchtower_addresses = context.db.get_addresses(watchtower_peer_id).await?;
+
+        for watchtower_address in watchtower_addresses {
+            swarm.add_peer_address(watchtower_peer_id, watchtower_address);
+        }
+    }
+
+    let (event_loop, event_loop_handle) = EventLoop::new(
+        swap_id,
+        swarm,
+        seller_peer_id,
+        watchtower_peer_id,
+        context.db.clone(),
+    )?;
 
     let monero_receive_address = context.db.get_monero_address(swap_id).await?;
 

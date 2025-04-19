@@ -2,13 +2,16 @@ use crate::bitcoin::EncryptedSignature;
 use crate::cli::behaviour::{Behaviour, OutEvent};
 use crate::monero;
 use crate::network::cooperative_xmr_redeem_after_punish::{self, Request, Response};
-use crate::network::encrypted_signature;
 use crate::network::quote::BidQuote;
 use crate::network::swap_setup::bob::NewSwap;
+use crate::network::watchtower::WatchtowerRequest;
+use crate::network::{encrypted_signature, watchtower};
 use crate::protocol::bob::swap::has_already_processed_transfer_proof;
 use crate::protocol::bob::{BobState, State2};
 use crate::protocol::Database;
 use anyhow::{anyhow, Context, Result};
+use bitcoin::consensus::encode::serialize_hex;
+use bitcoin::Transaction;
 use futures::future::{BoxFuture, OptionFuture};
 use futures::{FutureExt, StreamExt};
 use libp2p::request_response::{OutboundFailure, OutboundRequestId, ResponseChannel};
@@ -28,6 +31,7 @@ pub struct EventLoop {
     swap_id: Uuid,
     swarm: libp2p::Swarm<Behaviour>,
     alice_peer_id: PeerId,
+    watchtower_peer_id: Option<PeerId>,
     db: Arc<dyn Database + Send + Sync>,
 
     // These streams represents outgoing requests that we have to make
@@ -40,6 +44,10 @@ pub struct EventLoop {
     encrypted_signatures_requests:
         bmrng::RequestReceiverStream<EncryptedSignature, Result<(), OutboundFailure>>,
     execution_setup_requests: bmrng::RequestReceiverStream<NewSwap, Result<State2>>,
+    watchtower_requests: bmrng::RequestReceiverStream<
+        String,
+        Result<watchtower::WatchtowerResponse, OutboundFailure>,
+    >,
 
     // These represents requests that are currently in-flight.
     // Meaning that we have sent them to Alice, but we have not yet received a response.
@@ -53,6 +61,10 @@ pub struct EventLoop {
     inflight_cooperative_xmr_redeem_requests: HashMap<
         OutboundRequestId,
         bmrng::Responder<Result<cooperative_xmr_redeem_after_punish::Response, OutboundFailure>>,
+    >,
+    inflight_watchtower_requests: HashMap<
+        OutboundRequestId,
+        bmrng::Responder<Result<watchtower::WatchtowerResponse, OutboundFailure>>,
     >,
 
     /// The sender we will use to relay incoming transfer proofs to the EventLoopHandle
@@ -74,6 +86,7 @@ impl EventLoop {
         swap_id: Uuid,
         swarm: Swarm<Behaviour>,
         alice_peer_id: PeerId,
+        watchtower_peer_id: Option<PeerId>,
         db: Arc<dyn Database + Send + Sync>,
     ) -> Result<(Self, EventLoopHandle)> {
         // We still use a timeout here, because this protocol does not dial Alice itself
@@ -86,20 +99,24 @@ impl EventLoop {
         let (encrypted_signature_sender, encrypted_signature_receiver) = bmrng::channel(1);
         let (quote_sender, quote_receiver) = bmrng::channel(1);
         let (cooperative_xmr_redeem_sender, cooperative_xmr_redeem_receiver) = bmrng::channel(1);
+        let (watchtower_sender, watchtower_receiver) = bmrng::channel(1);
 
         let event_loop = EventLoop {
             swap_id,
             swarm,
             alice_peer_id,
+            watchtower_peer_id,
             execution_setup_requests: execution_setup_receiver.into(),
             transfer_proof_sender,
             encrypted_signatures_requests: encrypted_signature_receiver.into(),
             cooperative_xmr_redeem_requests: cooperative_xmr_redeem_receiver.into(),
+            watchtower_requests: watchtower_receiver.into(),
             quote_requests: quote_receiver.into(),
             inflight_quote_requests: HashMap::default(),
             inflight_swap_setup: None,
             inflight_encrypted_signature_requests: HashMap::default(),
             inflight_cooperative_xmr_redeem_requests: HashMap::default(),
+            inflight_watchtower_requests: HashMap::default(),
             pending_transfer_proof: OptionFuture::from(None),
             db,
         };
@@ -110,6 +127,7 @@ impl EventLoop {
             encrypted_signature_sender,
             cooperative_xmr_redeem_sender,
             quote_sender,
+            watchtower_sender,
         };
 
         Ok((event_loop, handle))
@@ -137,6 +155,11 @@ impl EventLoop {
                         SwarmEvent::Behaviour(OutEvent::SwapSetupCompleted(response)) => {
                             if let Some(responder) = self.inflight_swap_setup.take() {
                                 let _ = responder.respond(*response);
+                            }
+                        }
+                        SwarmEvent::Behaviour(OutEvent::WatchtowerResponse { id, response }) => {
+                            if let Some(responder) = self.inflight_watchtower_requests.remove(&id) {
+                                let _ = responder.respond(Ok(response));
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::TransferProofReceived { msg, channel, peer }) => {
@@ -242,6 +265,9 @@ impl EventLoop {
                         SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } if peer_id == self.alice_peer_id => {
                             tracing::info!(peer_id = %endpoint.get_remote_address(), "Connected to Alice");
                         }
+                        SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } if Some(peer_id) == self.watchtower_peer_id => {
+                            tracing::info!(peer_id = %endpoint.get_remote_address(), "Connected to Watchtower");
+                        }
                         SwarmEvent::Dialing { peer_id: Some(alice_peer_id), connection_id } if alice_peer_id == self.alice_peer_id => {
                             tracing::debug!(%alice_peer_id, %connection_id, "Dialing Alice");
                         }
@@ -252,9 +278,17 @@ impl EventLoop {
                                 tracing::info!(seconds_until_next_redial = %duration.as_secs(), "Waiting for next redial attempt");
                             }
                         }
+                        SwarmEvent::ConnectionClosed { peer_id, endpoint, num_established, cause: Some(error), connection_id } if Some(peer_id) == self.watchtower_peer_id && num_established == 0 => {
+                            tracing::warn!(peer_id = %endpoint.get_remote_address(), cause = %error, %connection_id, "Lost connection to Watchtower");
+                        }
                         SwarmEvent::ConnectionClosed { peer_id, num_established, cause: None, .. } if peer_id == self.alice_peer_id && num_established == 0 => {
                             // no error means the disconnection was requested
                             tracing::info!("Successfully closed connection to Alice");
+                            return;
+                        }
+                        SwarmEvent::ConnectionClosed { peer_id, num_established, cause: None, .. } if Some(peer_id) == self.watchtower_peer_id && num_established == 0 => {
+                            // no error means the disconnection was requested
+                            tracing::info!("Successfully closed connection to Watchtower");
                             return;
                         }
                         SwarmEvent::OutgoingConnectionError { peer_id: Some(alice_peer_id),  error, connection_id } if alice_peer_id == self.alice_peer_id => {
@@ -292,6 +326,12 @@ impl EventLoop {
                                 let _ = responder.respond(Err(error));
                                 continue;
                             }
+
+                            // Check for watchtower requests
+                            if let Some(responder) = self.inflight_watchtower_requests.remove(&request_id) {
+                                let _ = responder.respond(Err(error));
+                                continue;
+                            }
                         }
                         SwarmEvent::Behaviour(OutEvent::InboundRequestResponseFailure {peer, error, request_id, protocol}) => {
                             tracing::error!(
@@ -325,6 +365,15 @@ impl EventLoop {
                     });
                     self.inflight_cooperative_xmr_redeem_requests.insert(id, responder);
                 },
+                Some((raw_tx, responder)) = self.watchtower_requests.next().fuse() => {
+                    if let Some(watchtower_peer_id) = self.watchtower_peer_id {
+                        let id = self.swarm.behaviour_mut().watchtower.send_request(&watchtower_peer_id, WatchtowerRequest { raw_tx });
+                        self.inflight_watchtower_requests.insert(id, responder);
+                    } else {
+                        // TODO: Better way to handle this?
+                        tracing::warn!("Received watchtower request but we have no watchtower to send it to. Ignoring request");
+                    }
+                },
 
                 // We use `self.is_connected_to_alice` as a guard to "buffer" requests until we are connected.
                 // because the protocol does not dial Alice itself
@@ -353,6 +402,14 @@ impl EventLoop {
 
     fn is_connected_to_alice(&self) -> bool {
         self.swarm.is_connected(&self.alice_peer_id)
+    }
+
+    fn is_connected_to_watchtower(&self) -> bool {
+        if let Some(peer_id) = self.watchtower_peer_id {
+            self.swarm.is_connected(&peer_id)
+        } else {
+            false
+        }
     }
 }
 
@@ -391,6 +448,13 @@ pub struct EventLoopHandle {
         (),
         Result<cooperative_xmr_redeem_after_punish::Response, OutboundFailure>,
     >,
+
+    /// When a String is sent into this channel, the EventLoop will:
+    /// 1. Send the watchtower request to the watchtower peer over the network
+    /// 2. Return the watchtower response if successful
+    /// 3. Return an OutboundFailure error if the request fails
+    watchtower_sender:
+        bmrng::RequestSender<String, Result<watchtower::WatchtowerResponse, OutboundFailure>>,
 }
 
 impl EventLoopHandle {
@@ -531,5 +595,36 @@ impl EventLoopHandle {
         })
         .await
         .context("Failed to send encrypted signature after retries")
+    }
+
+    pub async fn send_watchtower_request(
+        &mut self,
+        tx: Transaction,
+    ) -> Result<watchtower::WatchtowerResponse> {
+        tracing::debug!("Sending watchtower request");
+
+        let backoff = Self::create_retry_config(REQUEST_RESPONSE_PROTOCOL_TIMEOUT);
+
+        let raw_tx = serialize_hex(&tx);
+
+        backoff::future::retry_notify(backoff, || async {
+            match self.watchtower_sender.send_receive(raw_tx.clone()).await {
+                Ok(Ok(response)) => Ok(response),
+                Ok(Err(err)) => {
+                    Err(backoff::Error::transient(anyhow!(err).context("A network error occurred while sending the watchtower request")))
+                },
+                Err(_) => {
+                    unreachable!("We initiate the watchtower channel without a timeout and store both the sender and receiver in the same struct, so this should never happen");
+                }
+            }
+        }, |err, wait_time: Duration| {
+            tracing::warn!(
+                error = ?err,
+                "Failed to send watchtower request. We will retry in {} seconds",
+                wait_time.as_secs()
+            )
+        })
+        .await
+        .context("Failed to send watchtower request after retries")
     }
 }

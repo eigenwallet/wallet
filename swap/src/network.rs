@@ -9,6 +9,7 @@ pub mod swap_setup;
 pub mod swarm;
 pub mod transfer_proof;
 pub mod transport;
+pub mod watchtower;
 
 #[cfg(test)]
 pub mod test;

@@ -423,6 +423,48 @@ impl Database for SqliteDatabase {
 
         Ok(Some(proof))
     }
+
+    async fn insert_watchtower_peer_id(&self, swap_id: Uuid, peer_id: PeerId) -> Result<()> {
+        let swap_id = swap_id.to_string();
+        let peer_id = peer_id.to_string();
+
+        sqlx::query!(
+            r#"
+            INSERT INTO watchtower_peer_ids (
+                swap_id,
+                peer_id
+            ) VALUES (?, ?);
+        "#,
+            swap_id,
+            peer_id
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn get_watchtower_peer_id(&self, swap_id: Uuid) -> Result<Option<PeerId>> {
+        let swap_id = swap_id.to_string();
+
+        let row = sqlx::query!(
+            r#"
+            SELECT peer_id
+            FROM watchtower_peer_ids
+            WHERE swap_id = ?
+            "#,
+            swap_id
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        if row.peer_id.is_empty() {
+            Ok(None)
+        } else {
+            let peer_id = PeerId::from_str(&row.peer_id)?;
+            Ok(Some(peer_id))
+        }
+    }
 }
 
 #[cfg(test)]

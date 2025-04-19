@@ -46,9 +46,11 @@ export const PRESET_RENDEZVOUS_POINTS = [
   "/dnsaddr/xxmr.cheap/p2p/12D3KooWMk3QyPS8D1d1vpHZoY7y2MnXdPE5yV6iyPvyuj4zcdxT",
 ];
 
+const DEFAULT_WATCHTOWER = "/dnsaddr/xxmr.cheap/p2p/12D3KooWMk3QyPS8D1d1vpHZoY7y2MnXdPE5yV6iyPvyuj4zcdxT";
+
 export async function fetchSellersAtPresetRendezvousPoints() {
   await Promise.all(PRESET_RENDEZVOUS_POINTS.map(async (rendezvousPoint) => {
-    const response = await listSellersAtRendezvousPoint(rendezvousPoint);
+    const response = await listSellersAtRendezvousPoint([rendezvousPoint]);
     store.dispatch(discoveredMakersByRendezvous(response.sellers));
 
     logger.info(`Discovered ${response.sellers.length} sellers at rendezvous point ${rendezvousPoint} during startup fetch`);
@@ -120,11 +122,13 @@ export async function buyXmr(
       ? {
         seller: providerToConcatenatedMultiAddr(seller),
         monero_receive_address,
+        watchtower: DEFAULT_WATCHTOWER,
       }
       : {
         seller: providerToConcatenatedMultiAddr(seller),
         monero_receive_address,
         bitcoin_change_address,
+        watchtower: DEFAULT_WATCHTOWER,
       },
   );
 }

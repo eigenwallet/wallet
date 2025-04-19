@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO watchtower_peer_ids (\n                swap_id,\n                peer_id\n            ) VALUES (?, ?);\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "038d6f5d8434eb8be974e0c2cf655e84afc5d95859cf4c04770e629697782816"
+}

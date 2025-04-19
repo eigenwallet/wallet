@@ -155,4 +155,6 @@ pub trait Database {
         &self,
         swap_id: Uuid,
     ) -> Result<Option<monero::TransferProof>>;
+    async fn insert_watchtower_peer_id(&self, swap_id: Uuid, peer_id: PeerId) -> Result<()>;
+    async fn get_watchtower_peer_id(&self, swap_id: Uuid) -> Result<Option<PeerId>>;
 }

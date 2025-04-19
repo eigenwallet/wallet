@@ -68,6 +68,7 @@ where
             monero,
             monero_receive_address,
             tor,
+            watchtower,
         } => {
             let monero_receive_address =
                 monero_address::validate_is_testnet(monero_receive_address, is_testnet)?;
@@ -92,6 +93,7 @@ where
                 seller,
                 bitcoin_change_address,
                 monero_receive_address,
+                watchtower,
             }
             .request(context.clone())
             .await?;
@@ -361,6 +363,12 @@ enum CliCommand {
     BuyXmr {
         #[structopt(flatten)]
         seller: Seller,
+
+        #[structopt(
+            long,
+            help = "The watchtower's address. Must include a peer ID part, i.e. `/p2p/`"
+        )]
+        watchtower: Option<Multiaddr>,
 
         #[structopt(flatten)]
         bitcoin: Bitcoin,

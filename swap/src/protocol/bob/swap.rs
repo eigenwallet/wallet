@@ -186,6 +186,17 @@ async fn next_state(
                 Ok(true) => {
                     tracing::debug!("User approved swap offer");
 
+                    // Before we publish the Bitcoin lock transaction, we need to submit the cancel and refund transactions to the watchtower
+                    let cancel_tx = state3
+                        .cancel(monero_wallet_restore_blockheight)
+                        .signed_cancel_transaction()?;
+                    let refund_tx = state3
+                        .cancel(monero_wallet_restore_blockheight)
+                        .signed_refund_transaction()?;
+
+                    event_loop_handle.send_watchtower_request(cancel_tx).await?;
+                    event_loop_handle.send_watchtower_request(refund_tx).await?;
+
                     // Publish the signed Bitcoin lock transaction
                     let (..) = bitcoin_wallet.broadcast(signed_tx, "lock").await?;
 

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT peer_id\n            FROM watchtower_peer_ids\n            WHERE swap_id = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "peer_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1ab9808882dc835b4456e566e49d22d3c8d8262efc6c51abbca29e4368e4f0d5"
+}

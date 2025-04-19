@@ -5,6 +5,7 @@ use crate::network::rendezvous::XmrBtcNamespace;
 use crate::network::swap_setup::bob;
 use crate::network::{
     cooperative_xmr_redeem_after_punish, encrypted_signature, quote, redial, transfer_proof,
+    watchtower,
 };
 use crate::protocol::bob::State2;
 use crate::{bitcoin, env};
@@ -58,6 +59,10 @@ pub enum OutEvent {
         request_id: InboundRequestId,
         protocol: String,
     },
+    WatchtowerResponse {
+        id: OutboundRequestId,
+        response: watchtower::WatchtowerResponse,
+    },
     /// "Fallback" variant that allows the event mapping code to swallow certain
     /// events that we don't want the caller to deal with.
     Other,
@@ -91,6 +96,7 @@ pub struct Behaviour {
     pub encrypted_signature: encrypted_signature::Behaviour,
     pub redial: redial::Behaviour,
     pub identify: identify::Behaviour,
+    pub watchtower: watchtower::WatchtowerBehaviour,
 
     /// Ping behaviour that ensures that the underlying network connection is
     /// still alive. If the ping fails a connection close event will be
@@ -126,6 +132,7 @@ impl Behaviour {
             ),
             ping: ping::Behaviour::new(pingConfig),
             identify: identify::Behaviour::new(identifyConfig),
+            watchtower: watchtower::slave(),
         }
     }
 }
@@ -138,6 +145,12 @@ impl From<ping::Event> for OutEvent {
 
 impl From<identify::Event> for OutEvent {
     fn from(_: identify::Event) -> Self {
+        OutEvent::Other
+    }
+}
+
+impl From<watchtower::WatchtowerEvent> for OutEvent {
+    fn from(_: watchtower::WatchtowerEvent) -> Self {
         OutEvent::Other
     }
 }

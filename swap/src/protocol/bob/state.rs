@@ -736,6 +736,7 @@ impl State6 {
             tx_cancel_status,
         ))
     }
+
     pub fn construct_tx_cancel(&self) -> Result<bitcoin::TxCancel> {
         bitcoin::TxCancel::new(
             &self.tx_lock,
@@ -745,6 +746,13 @@ impl State6 {
             self.tx_cancel_fee,
         )
     }
+
+    pub fn signed_cancel_transaction(self) -> Result<Transaction> {
+        self.construct_tx_cancel()?
+            .complete_as_bob(self.A, self.b.clone(), self.tx_cancel_sig_a.clone())
+            .context("Failed to complete Bitcoin cancel transaction")
+    }
+
     pub async fn check_for_tx_cancel(
         &self,
         bitcoin_wallet: &bitcoin::Wallet,
@@ -760,10 +768,7 @@ impl State6 {
         &self,
         bitcoin_wallet: &bitcoin::Wallet,
     ) -> Result<(Txid, Subscription)> {
-        let transaction = self
-            .construct_tx_cancel()?
-            .complete_as_bob(self.A, self.b.clone(), self.tx_cancel_sig_a.clone())
-            .context("Failed to complete Bitcoin cancel transaction")?;
+        let transaction = self.clone().signed_cancel_transaction()?;
 
         let (tx_id, subscription) = bitcoin_wallet.broadcast(transaction, "cancel").await?;
 
@@ -800,6 +805,7 @@ impl State6 {
     pub fn tx_lock_id(&self) -> bitcoin::Txid {
         self.tx_lock.txid()
     }
+
     pub fn attempt_cooperative_redeem(&self, s_a: monero::PrivateKey) -> State5 {
         State5 {
             s_a,
