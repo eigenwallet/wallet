@@ -304,19 +304,14 @@ pub async fn watch_for_transfer_with(
         "Waiting for Monero transaction finality"
     );
 
-    let wallet_lock = wallet.lock().await;
-
     let address = Address::standard(
-        wallet_lock.network,
+        wallet.lock().await.network,
         public_spend_key,
         public_view_key.into(),
     );
 
-    let check_interval = tokio::time::interval(wallet_lock.sync_interval.div(10));
-    let wallet_name = wallet_lock.name.clone();
-
-    // Make sure to release the lock before we start waiting for confimations
-    let _ = wallet_lock;
+    let check_interval = tokio::time::interval(wallet.lock().await.sync_interval.div(10));
+    let wallet_name = wallet.lock().await.name.clone();
 
     wait_for_confirmations_with(
         wallet.clone(),
