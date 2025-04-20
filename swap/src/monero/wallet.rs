@@ -363,7 +363,7 @@ type ConfirmationListener =
 async fn wait_for_confirmations_with<
     C: monero_rpc::wallet::MoneroWalletRpc<reqwest::Client> + Sync,
 >(
-    client: Arc<Mutex<Wallet<C>>>,
+    wallet: Arc<Mutex<Wallet<C>>>,
     transfer_proof: TransferProof,
     to_address: Address,
     expected: Amount,
@@ -379,12 +379,9 @@ async fn wait_for_confirmations_with<
 
         let txid = transfer_proof.tx_hash().to_string();
 
-        // Acquire a lock to the client only after awaiting the next tick.
-        // This way we don't starve other tasks.
-        // The lock is dropped at the end of each iteration.
-        let client_lock = client.lock().await;
-
-        let tx = match client_lock
+        let tx = match wallet
+            .lock()
+            .await
             .inner
             .check_tx_key(
                 txid.clone(),
@@ -411,7 +408,13 @@ async fn wait_for_confirmations_with<
                     txid
                 );
 
-                if let Err(err) = client_lock.inner.open_wallet(wallet_name.clone()).await {
+                if let Err(err) = wallet
+                    .lock()
+                    .await
+                    .inner
+                    .open_wallet(wallet_name.clone())
+                    .await
+                {
                     tracing::warn!(
                         %err,
                         "Failed to open wallet `{}` to continue monitoring of Monero transaction {}",

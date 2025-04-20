@@ -518,7 +518,7 @@ where
         max_buy: bitcoin::Amount,
     ) -> Result<Arc<BidQuote>, Arc<anyhow::Error>> {
         /// This is how long we maximally wait for the wallet lock
-        /// - else the quote will be out of date and we will return
+        /// -- else the quote will be out of date and we will return
         /// an error.
         const MAX_WAIT_DURATION: Duration = Duration::from_secs(60);
 
