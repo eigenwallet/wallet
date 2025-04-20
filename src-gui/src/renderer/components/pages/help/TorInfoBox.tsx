@@ -1,22 +1,14 @@
-import { Box, makeStyles, Typography } from "@material-ui/core";
-import PlayArrowIcon from "@material-ui/icons/PlayArrow";
-import StopIcon from "@material-ui/icons/Stop";
-import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
-import { useAppSelector } from "store/hooks";
+import { Box, Switch, Table, TableCell, TableRow, Typography } from "@material-ui/core";
+import { useSettings } from "store/hooks";
 import InfoBox from "../../modal/swap/InfoBox";
-import CliLogsBox from "../../other/RenderedCliLog";
-
-const useStyles = makeStyles((theme) => ({
-  actionsOuter: {
-    display: "flex",
-    gap: theme.spacing(1),
-  },
-}));
+import { useDispatch } from "react-redux";
+import { setTorEnabled } from "store/features/settingsSlice";
 
 export default function TorInfoBox() {
-  const isTorRunning = useAppSelector((state) => state.tor.processRunning);
-  const torStdOut = useAppSelector((s) => s.tor.stdOut);
-  const classes = useStyles();
+  const dispath = useDispatch();
+  const torEnabled = useSettings((settings) => settings.enableTor)
+  const handleChange = _ => dispath(setTorEnabled(!torEnabled));
+  const labelText = (state: boolean) => state === true ? "Tor enabled" : "Tor disabled";
 
   return (
     <InfoBox
@@ -32,37 +24,25 @@ export default function TorInfoBox() {
         >
           <Typography variant="subtitle2">
             Tor is a network that allows you to anonymously connect to the
-            internet. It is a free and open network that is operated by
-            volunteers. You can start and stop Tor by clicking the buttons
-            below. If Tor is running, all traffic will be routed through it and
+            internet. It is a free and open network operated by
+            volunteers. If Tor is running, all peer-to-peer traffic will be routed through it and
             the maker will not be able to see your IP address.
+
+            Requires a restart to take effect.
           </Typography>
-          <CliLogsBox label="Tor Daemon Logs" logs={torStdOut.split("\n")} />
         </Box>
       }
       additionalContent={
-        <Box className={classes.actionsOuter}>
-          <PromiseInvokeButton
-            variant="contained"
-            disabled={isTorRunning}
-            endIcon={<PlayArrowIcon />}
-            onInvoke={() => {
-              throw new Error("Not implemented");
-            }}
-          >
-            Start Tor
-          </PromiseInvokeButton>
-          <PromiseInvokeButton
-            variant="contained"
-            disabled={!isTorRunning}
-            endIcon={<StopIcon />}
-            onInvoke={() => {
-              throw new Error("Not implemented");
-            }}
-          >
-            Stop Tor
-          </PromiseInvokeButton>
-        </Box>
+        <Table size="small">
+          <TableRow>
+            <TableCell>
+              {labelText(torEnabled)}
+            </TableCell>
+            <TableCell>
+              <Switch checked={torEnabled} onChange={handleChange} color="primary" />
+            </TableCell>
+          </TableRow>
+        </Table>
       }
       icon={null}
       loading={false}

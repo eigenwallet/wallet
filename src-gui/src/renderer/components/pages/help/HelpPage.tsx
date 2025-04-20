@@ -7,6 +7,7 @@ import SettingsBox from "./SettingsBox";
 import ExportDataBox from "./ExportDataBox";
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import TorInfoBox from "./TorInfoBox";
 const useStyles = makeStyles((theme) => ({
   outer: {
     display: "flex",
@@ -18,7 +19,7 @@ const useStyles = makeStyles((theme) => ({
 
 export default function HelpPage() {
   const classes = useStyles();
-  const location = useLocation(); 
+  const location = useLocation();
 
   useEffect(() => {
     if (location.hash) {
@@ -30,6 +31,7 @@ export default function HelpPage() {
   return (
     <Box className={classes.outer}>
       <FeedbackInfoBox />
+      <TorInfoBox />
       <SettingsBox />
       <ExportDataBox />
       <DaemonControlBox />
