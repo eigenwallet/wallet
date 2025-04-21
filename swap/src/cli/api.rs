@@ -396,6 +396,7 @@ impl ContextBuilder {
         let initialize_tor_client = async {
             // Don't init a tor client unless we should use it.
             if !self.tor {
+                tracing::warn!("Internal Tor client not enabled, skipping initialization");
                 return Ok(None);
             }
 
