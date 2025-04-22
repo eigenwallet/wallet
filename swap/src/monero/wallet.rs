@@ -32,7 +32,8 @@ impl Wallet {
 
         match client.open_wallet(name.clone()).await {
             Err(error) => {
-                tracing::debug!(%error, "Open wallet response error");
+                tracing::debug!(%error, "Failed to open wallet, trying to create instead");
+
                 client.create_wallet(name.clone(), "English".to_owned()).await.context(
                     "Unable to create Monero wallet, please ensure that the monero-wallet-rpc is available",
                 )?;
@@ -96,7 +97,9 @@ impl Wallet {
 
     /// Close the wallet and open (load) another wallet by generating it from
     /// keys. The generated wallet will remain loaded.
-    pub async fn create_from_and_load(
+    ///
+    /// If the wallet already exists, it will just be loaded instead.
+    pub async fn open_or_create_from_keys(
         &self,
         file_name: String,
         private_spend_key: PrivateKey,
@@ -116,10 +119,10 @@ impl Wallet {
             .await
             .context("Failed to close wallet")?;
 
-        let _ = self
+        let result = self
             .inner
             .generate_from_keys(
-                file_name,
+                file_name.clone(),
                 address.to_string(),
                 private_spend_key.to_string(),
                 PrivateKey::from(private_view_key).to_string(),
@@ -127,10 +130,24 @@ impl Wallet {
                 String::from(""),
                 true,
             )
-            .await
-            .context("Failed to generate new wallet from keys")?;
+            .await;
 
-        Ok(())
+        // If we failed to create the wallet because it already exists,
+        // we just try to open it instead
+        match result {
+            Ok(_) => Ok(()),
+            Err(error) if error.to_string().contains("Wallet already exists") => {
+                tracing::info!(
+                    monero_wallet_name = &file_name,
+                    "Cannot create wallet because it already exists, loading instead"
+                );
+
+                self.open(file_name)
+                    .await
+                    .context("Failed to load wallet which should already exist")
+            }
+            Err(error) => Err(error).context("Failed to create wallet from keys"),
+        }
     }
 
     /// Close the wallet and open (load) another wallet by generating it from
@@ -145,7 +162,7 @@ impl Wallet {
         restore_height: BlockHeight,
     ) -> Result<()> {
         // Close the default wallet, generate the new wallet from the keys and load it
-        self.create_from_and_load(
+        self.open_or_create_from_keys(
             file_name,
             private_spend_key,
             private_view_key,

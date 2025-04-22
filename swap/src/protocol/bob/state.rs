@@ -662,7 +662,7 @@ impl State5 {
 
         tracing::info!(%wallet_file_name, "Generating and opening Monero wallet from the extracted keys to redeem the Monero");
         if let Err(e) = monero_wallet
-            .create_from_and_load(
+            .open_or_create_from_keys(
                 wallet_file_name.clone(),
                 spend_key,
                 view_key,
