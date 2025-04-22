@@ -93,7 +93,8 @@ impl Wallet {
 
     /// Re-open the internally stored wallet from it's file.
     pub async fn re_open(&self) -> Result<()> {
-        self.inner.open_wallet(self.name.clone()).await?;
+        self.open(self.name.clone()).await?;
+
         Ok(())
     }
 
@@ -203,7 +204,7 @@ impl Wallet {
             }
         }
 
-        let _ = self.inner.open_wallet(self.name.clone()).await?;
+        self.open(self.name.clone()).await?;
 
         Ok(())
     }
