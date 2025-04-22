@@ -16,6 +16,13 @@ use tokio::sync::Mutex;
 use tokio::time::Interval;
 use url::Url;
 
+/// This is our connection to the monero blockchain which we use
+/// all over the codebase, mostly as `Arc<Mutex<Wallet>>`.
+///
+/// It represents a connection to a monero-wallet-rpc daemon,
+/// which can load a (single) wallet at a time.
+/// This struct contains methods for opening, closing, creating
+/// wallet and for sending funds from the loaded wallet.
 #[derive(Debug)]
 pub struct Wallet<C = wallet::Client> {
     inner: C,
@@ -84,12 +91,13 @@ impl Wallet {
         }
     }
 
-    /// Re-open the wallet using the internally stored name.
+    /// Re-open the internally stored wallet from it's file.
     pub async fn re_open(&self) -> Result<()> {
         self.inner.open_wallet(self.name.clone()).await?;
         Ok(())
     }
 
+    /// Open a monero wallet from a file.
     pub async fn open(&self, filename: String) -> Result<()> {
         self.inner.open_wallet(filename).await?;
         Ok(())
@@ -152,7 +160,7 @@ impl Wallet {
 
     /// Close the wallet and open (load) another wallet by generating it from
     /// keys. The generated wallet will be opened, all funds sweeped to the
-    /// main_address and then the wallet will be re-loaded using the internally
+    /// main_address and then the original wallet will be re-loaded using the internally
     /// stored name.
     pub async fn create_from_keys_and_sweep(
         &self,
@@ -200,6 +208,7 @@ impl Wallet {
         Ok(())
     }
 
+    /// Transfer a specified amount of monero to a specified address.
     pub async fn transfer(&self, request: TransferRequest) -> Result<TransferProof> {
         let TransferRequest {
             public_spend_key,
@@ -229,6 +238,7 @@ impl Wallet {
         ))
     }
 
+    /// Send all funds from the currently loaded wallet to a specified address.
     pub async fn sweep_all(&self, address: Address) -> Result<Vec<TxHash>> {
         let sweep_all = self.inner.sweep_all(address.to_string()).await?;
 
