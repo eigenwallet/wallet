@@ -2,7 +2,7 @@ import { Box, Divider, IconButton, Paper, Typography } from "@material-ui/core";
 import FileCopyOutlinedIcon from "@material-ui/icons/FileCopyOutlined";
 import KeyboardArrowDownIcon from "@material-ui/icons/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@material-ui/icons/KeyboardArrowUp";
-import { ReactNode, useRef } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { VList, VListHandle } from "virtua";
 import { ExpandableSearchBox } from "./ExpandableSearchBox";
 
@@ -69,11 +69,11 @@ export default function ScrollablePaperTextBox({
         <IconButton onClick={onCopy} size="small">
           <FileCopyOutlinedIcon />
         </IconButton>
-        <IconButton onClick={scrollToBottom} size="small">
-          <KeyboardArrowDownIcon />
-        </IconButton>
         <IconButton onClick={scrollToTop} size="small">
           <KeyboardArrowUpIcon />
+        </IconButton>
+        <IconButton onClick={scrollToBottom} size="small">
+          <KeyboardArrowDownIcon />
         </IconButton>
         {searchQuery !== undefined && setSearchQuery !== undefined && (
           <ExpandableSearchBox query={searchQuery} setQuery={setSearchQuery} />

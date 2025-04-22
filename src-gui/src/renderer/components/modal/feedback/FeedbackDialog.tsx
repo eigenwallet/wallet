@@ -7,7 +7,6 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  FormControl,
   FormControlLabel,
   IconButton,
   MenuItem,
@@ -21,14 +20,15 @@ import { useEffect, useState } from "react";
 import TruncatedText from "renderer/components/other/TruncatedText";
 import { store } from "renderer/store/storeRenderer";
 import { useActiveSwapInfo, useAppSelector } from "store/hooks";
-import { parseDateString } from "utils/parseUtils";
+import { logsToRawString, parseDateString } from "utils/parseUtils";
 import { submitFeedbackViaHttp } from "../../../api";
 import LoadingButton from "../../other/LoadingButton";
 import { PiconeroAmount } from "../../other/Units";
 import { getLogsOfSwap } from "renderer/rpc";
 import logger from "utils/logger";
-import { Edit } from "@material-ui/icons";
-import PaperTextBox from "../PaperTextBox";
+import { Visibility } from "@material-ui/icons";
+import CliLogsBox from "renderer/components/other/RenderedCliLog";
+import { CliLog, parseCliLogString } from "models/cliModel";
 
 async function submitFeedback(body: string, swapId: string | null, swapLogs: string | null, daemonLogs: string | null) {
   let attachedBody = "";
@@ -74,11 +74,12 @@ function SwapSelectDropDown({
       variant="outlined"
       onChange={(e) => setSelectedSwap(e.target.value as string || null)}
       style={{ width: "100%" }}
+      displayEmpty
     >
       <MenuItem value="">Do not attach a swap</MenuItem>
       {swaps.map((swap) => (
         <MenuItem value={swap.swap_id} key={swap.swap_id}>
-          Swap <TruncatedText>{swap.swap_id}</TruncatedText> from{" "}
+          Swap{" "}<TruncatedText>{swap.swap_id}</TruncatedText>{" "}from{" "}
           {new Date(parseDateString(swap.start_date)).toDateString()} (
           <PiconeroAmount amount={swap.xmr_amount} />)
         </MenuItem>
@@ -105,10 +106,10 @@ export default function FeedbackDialog({
   const [selectedSwap, setSelectedSwap] = useState<
     string | null
   >(currentSwapId?.swap_id || null);
-  const [swapLogs, setSwapLogs] = useState<string | null>(null);
+  const [swapLogs, setSwapLogs] = useState<(string | CliLog)[] | null>(null);
   const [attachDaemonLogs, setAttachDaemonLogs] = useState(true);
 
-  const [daemonLogs, setDaemonLogs] = useState<string | null>(null);
+  const [daemonLogs, setDaemonLogs] = useState<(string | CliLog)[] | null>(null);
 
   useEffect(() => {
     // Reset logs if no swap is selected
@@ -118,7 +119,7 @@ export default function FeedbackDialog({
     }
 
     // Fetch the logs from the rust backend and update the state
-    getLogsOfSwap(selectedSwap, false).then((response) => setSwapLogs(response.logs.join("\n")))
+    getLogsOfSwap(selectedSwap, false).then((response) => setSwapLogs(response.logs.map(parseCliLogString)))
   }, [selectedSwap]);
 
   useEffect(() => {
@@ -127,12 +128,7 @@ export default function FeedbackDialog({
       return;
     }
 
-    setDaemonLogs(store.getState().rpc?.logs.map((log) => {
-      if (typeof log === "string")
-        return log;
-      else
-        return JSON.stringify(log)
-    }).join("\n"))
+    setDaemonLogs(store.getState().rpc?.logs)
   }, [attachDaemonLogs]);
 
   // Whether to display the log editor
@@ -141,6 +137,12 @@ export default function FeedbackDialog({
 
   const bodyTooLong = bodyText.length > MAX_FEEDBACK_LENGTH;
 
+  const clearState = () => {
+    setBodyText("");
+    setAttachDaemonLogs(false);
+    setSelectedSwap(null);
+  }
+
   const sendFeedback = async () => {
     if (pending) {
       return;
@@ -148,10 +150,11 @@ export default function FeedbackDialog({
 
     try {
       setPending(true);
-      await submitFeedback(bodyText, selectedSwap, swapLogs, daemonLogs);
+      await submitFeedback(bodyText, selectedSwap, logsToRawString(swapLogs), logsToRawString(daemonLogs));
       enqueueSnackbar("Feedback submitted successfully!", {
         variant: "success",
       });
+      clearState()
     } catch (e) {
       logger.error(`Failed to submit feedback: ${e}`);
       enqueueSnackbar(`Failed to submit feedback (${e})`, {
@@ -167,13 +170,13 @@ export default function FeedbackDialog({
     <Dialog open={open} onClose={onClose}>
       <DialogTitle>Submit Feedback</DialogTitle>
       <DialogContent>
-        <DialogContentText>
-          Got something to say? Drop us a message below. If you had an issue
-          with a specific swap, select it from the dropdown to attach the logs.
-          It will help us figure out what went wrong.
-          <br />
-          We appreciate you taking the time to share your thoughts! Every message is read by a core developer!
-        </DialogContentText>
+        <ul>
+          <li>Got something to say? Drop us a message below. </li>
+          <li>If you had an issue with a specific swap, select it from the dropdown to attach the logs.
+            It will help us figure out what went wrong.
+          </li>
+          <li>We appreciate you taking the time to share your thoughts! Every message is read by a core developer!</li>
+        </ul>
         <Box
           style={{
             display: "flex",
@@ -206,11 +209,11 @@ export default function FeedbackDialog({
               setSelectedSwap={setSelectedSwap}
             />
             {selectedSwap !== null ? <IconButton onClick={() => setSwapLogsEditorOpen(true)}>
-              <Edit />
+              <Visibility />
             </IconButton> : <></>
             }
           </Box>
-          <LogEditor open={swapLogsEditorOpen} setOpen={setSwapLogsEditorOpen} logs={swapLogs} setLogs={setSwapLogs} />
+          <LogViewer open={swapLogsEditorOpen} setOpen={setSwapLogsEditorOpen} logs={swapLogs} />
           <Box style={{
             display: "flex",
             flexDirection: "row",
@@ -228,15 +231,15 @@ export default function FeedbackDialog({
               />
             </Paper>
             {attachDaemonLogs ? <IconButton onClick={() => setDaemonLogsEditorOpen(true)}>
-              <Edit />
+              <Visibility />
             </IconButton> : <></>
             }
           </Box>
-          <LogEditor open={daemonLogsEditorOpen} setOpen={setDaemonLogsEditorOpen} logs={daemonLogs} setLogs={setDaemonLogs} />
+          <LogViewer open={daemonLogsEditorOpen} setOpen={setDaemonLogsEditorOpen} logs={daemonLogs} />
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={() => { clearState(); onClose() }}>Cancel</Button>
         <LoadingButton
           color="primary"
           variant="contained"
@@ -250,41 +253,31 @@ export default function FeedbackDialog({
   );
 }
 
-function LogEditor(
+function LogViewer(
   { open,
     setOpen,
     logs,
-    setLogs
   }: {
     open: boolean,
     setOpen: (boolean) => void,
-    logs: string | null,
-    setLogs: (_: string | null) => void
+    logs: (string | CliLog)[] | null,
   }) {
-  const onChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setLogs(event.target.value.length === 0 ? null : event.target.value);
-  }
-
   return (
     <Dialog open={open} onClose={() => setOpen(false)} fullWidth>
       <DialogContent>
-        <Typography>
-          These are the logs that would be attached to your feedback message.
-          For long logs, it might be advisable to edit them in a real editor
-          and copy-paste them here after that.
-        </Typography>
-        <TextField defaultValue={logs} onChange={onChange} multiline
-          minRows={8}
-          maxRows={8}
-          fullWidth
-          variant="outlined">
-        </TextField>
+        <DialogContentText>
+          <Typography>
+            These are the logs that would be attached to your feedback message and provided to the developers.
+            You can search them to check that no information you don't want to reveal gets submitted.
+          </Typography>
+        </DialogContentText>
+        <CliLogsBox label="Logs" logs={logs} />
       </DialogContent>
       <DialogActions>
         <Button variant="contained" color="primary" onClick={() => setOpen(false)}>
           Close
         </Button>
       </DialogActions>
-    </Dialog>
+    </Dialog >
   )
 }
