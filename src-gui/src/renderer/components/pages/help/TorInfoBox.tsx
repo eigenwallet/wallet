@@ -1,4 +1,4 @@
-import { Box, Switch, Table, TableCell, TableRow, Typography } from "@material-ui/core";
+import { Box, Switch, Table, TableBody, TableCell, TableContainer, TableRow, Typography } from "@material-ui/core";
 import { useSettings } from "store/hooks";
 import InfoBox from "../../modal/swap/InfoBox";
 import { useDispatch } from "react-redux";
@@ -8,7 +8,7 @@ export default function TorInfoBox() {
   const dispath = useDispatch();
   const torEnabled = useSettings((settings) => settings.enableTor)
   const handleChange = _ => dispath(setTorEnabled(!torEnabled));
-  const labelText = (state: boolean) => state === true ? "Tor enabled" : "Tor disabled";
+  const status = (state: boolean) => state === true ? "enabled" : "disabled";
 
   return (
     <InfoBox
@@ -33,16 +33,20 @@ export default function TorInfoBox() {
         </Box>
       }
       additionalContent={
-        <Table size="small">
-          <TableRow>
-            <TableCell>
-              {labelText(torEnabled)}
-            </TableCell>
-            <TableCell>
-              <Switch checked={torEnabled} onChange={handleChange} color="primary" />
-            </TableCell>
-          </TableRow>
-        </Table>
+        <TableContainer>
+          <Table>
+            <TableBody>
+              <TableRow>
+                <TableCell>
+                  Enable Tor <Typography variant="caption">(currently {status(torEnabled)})</Typography>
+                </TableCell>
+                <TableCell>
+                  <Switch checked={torEnabled} onChange={handleChange} color="primary" />
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </TableContainer>
       }
       icon={null}
       loading={false}
