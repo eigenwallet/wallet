@@ -20,11 +20,12 @@ import TruncatedText from "renderer/components/other/TruncatedText";
 import { store } from "renderer/store/storeRenderer";
 import { useActiveSwapInfo, useAppSelector } from "store/hooks";
 import { parseDateString } from "utils/parseUtils";
-import { submitFeedbackViaHttp } from "../../../api";
+import { submitFeedbackViaHttp, Feedback } from "../../../api";
 import LoadingButton from "../../other/LoadingButton";
 import { PiconeroAmount } from "../../other/Units";
 import { getLogsOfSwap } from "renderer/rpc";
 import logger from "utils/logger";
+import { addFeedbackId } from "store/features/conversationsSlice";
 
 async function submitFeedback(body: string, swapId: string | number, submitDaemonLogs: boolean) {
   let attachedBody = "";
@@ -51,7 +52,10 @@ async function submitFeedback(body: string, swapId: string | number, submitDaemo
       .join("\n====\n")}`;
   }
 
-  await submitFeedbackViaHttp(body, attachedBody);
+  const feedbackId = await submitFeedbackViaHttp(body, attachedBody);
+  
+  // Dispatch only the ID
+  store.dispatch(addFeedbackId(feedbackId)); 
 }
 
 /*

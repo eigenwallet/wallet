@@ -26,3 +26,34 @@ export interface Alert {
   body: string;
   severity: "info" | "warning" | "error";
 }
+
+// Corresponds to Rust's PrimitiveDateTime
+export type PrimitiveDateTimeString = [number, number, number, number, number, number]; 
+
+// Corresponds to Rust's Uuid
+export type UuidString = string;
+
+export interface Feedback {
+  id: UuidString;
+  created_at: PrimitiveDateTimeString;
+}
+
+export interface Attachment {
+  id: number; 
+  message_id: number;
+  content: string;
+  created_at: PrimitiveDateTimeString;
+}
+
+export interface Message {
+  id: number;
+  feedback_id: UuidString;
+  is_from_staff: boolean;
+  content: string;
+  created_at: PrimitiveDateTimeString;
+}
+
+export interface MessageWithAttachments {
+  message: Message;
+  attachments: Attachment[];
+}

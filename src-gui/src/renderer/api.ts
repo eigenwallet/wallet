@@ -12,8 +12,42 @@ import { FiatCurrency } from "store/features/settingsSlice";
 import { setAlerts } from "store/features/alertsSlice";
 import { registryConnectionFailed, setRegistryMakers } from "store/features/makersSlice";
 import logger from "utils/logger";
+import { setConversation } from "store/features/conversationsSlice";
 
-const PUBLIC_REGISTRY_API_BASE_URL = "https://api.unstoppableswap.net";
+// Define types based on Rust structs
+
+// Corresponds to Rust's PrimitiveDateTime - Adjusted based on user's manual edit
+export type PrimitiveDateTimeString = [number, number, number, number, number, number]; 
+
+// Corresponds to Rust's Uuid
+export type UuidString = string;
+
+export interface Feedback {
+  id: UuidString;
+  created_at: PrimitiveDateTimeString;
+}
+
+export interface Attachment {
+  id: number; 
+  message_id: number;
+  content: string;
+  created_at: PrimitiveDateTimeString;
+}
+
+export interface Message {
+  id: number;
+  feedback_id: UuidString;
+  is_from_staff: boolean;
+  content: string;
+  created_at: PrimitiveDateTimeString;
+}
+
+export interface MessageWithAttachments {
+  message: Message;
+  attachments: Attachment[];
+}
+
+const PUBLIC_REGISTRY_API_BASE_URL = "http://localhost:3001";
 
 async function fetchMakersViaHttp(): Promise<
   ExtendedMakerStatus[]
@@ -31,9 +65,7 @@ export async function submitFeedbackViaHttp(
   body: string,
   attachedData: string,
 ): Promise<string> {
-  type Response = {
-    feedbackId: string;
-  };
+  type Response = string;
 
   const response = await fetch(`${PUBLIC_REGISTRY_API_BASE_URL}/api/submit-feedback`, {
     method: "POST",
@@ -49,7 +81,15 @@ export async function submitFeedbackViaHttp(
 
   const responseBody = (await response.json()) as Response;
 
-  return responseBody.feedbackId;
+  return responseBody;
+}
+
+export async function fetchFeedbackMessagesViaHttp(feedbackId: string): Promise<Message[]> {
+  const response = await fetch(`${PUBLIC_REGISTRY_API_BASE_URL}/api/feedback/${feedbackId}/messages`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch messages for feedback ${feedbackId}. Status: ${response.status}`);
+  }
+  return (await response.json()) as Message[];
 }
 
 async function fetchCurrencyPrice(currency: string, fiatCurrency: FiatCurrency): Promise<number> {
@@ -73,7 +113,6 @@ async function fetchXmrBtcRate(): Promise<number> {
 
   return lastTradePrice;
 }
-
 
 function fetchBtcPrice(fiatCurrency: FiatCurrency): Promise<number> {
   return fetchCurrencyPrice("bitcoin", fiatCurrency);
@@ -108,7 +147,6 @@ export async function updateRates(): Promise<void> {
   }
 }
 
-
 /**
  * Update public registry
  */
@@ -126,5 +164,21 @@ export async function updatePublicRegistry(): Promise<void> {
     store.dispatch(setAlerts(alerts));
   } catch (error) {
     logger.error(error, "Error fetching alerts");
+  }
+}
+
+/**
+ * Fetch all conversations
+ * Goes through all feedback ids and fetches all the messages for each feedback id
+ */
+export async function fetchAllConversations(): Promise<void> {
+  const feedbackIds = store.getState().conversations.knownFeedbackIds;
+
+  console.log("Fetching all conversations", feedbackIds);
+
+  for (const feedbackId of feedbackIds) {
+    const messages = await fetchFeedbackMessagesViaHttp(feedbackId);
+    console.log("Fetched messages for feedback id", feedbackId, messages);
+    store.dispatch(setConversation({ feedbackId, messages }));
   }
 }

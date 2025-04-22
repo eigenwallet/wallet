@@ -7,6 +7,8 @@ import SettingsBox from "./SettingsBox";
 import ExportDataBox from "./ExportDataBox";
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import ConversationsBox from "./ConversationsBox";
+
 const useStyles = makeStyles((theme) => ({
   outer: {
     display: "flex",
@@ -35,6 +37,7 @@ export default function HelpPage() {
       <DaemonControlBox />
       <ContactInfoBox />
       <DonateInfoBox />
+      <ConversationsBox />
     </Box>
   );
 }
