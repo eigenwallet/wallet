@@ -27,7 +27,9 @@ use url::Url;
 pub struct Wallet<C = wallet::Client> {
     inner: C,
     network: Network,
-    name: String,
+    /// The file name of the main wallet (the first wallet loaded)
+    main_wallet: String,
+    /// The first address of the main wallet
     main_address: monero::Address,
     sync_interval: Duration,
 }
@@ -61,7 +63,7 @@ impl Wallet {
         Ok(Self {
             inner: client,
             network: env_config.monero_network,
-            name,
+            main_wallet: name,
             main_address,
             sync_interval: env_config.monero_sync_interval(),
         })
@@ -86,21 +88,26 @@ impl Wallet {
             inner: client,
             network,
             sync_interval: Duration::from_secs(100),
-            name: "foo".into(),
+            main_wallet: "foo".into(),
             main_address: Address::standard(network, pubkey, pubkey),
         }
     }
 
     /// Re-open the internally stored wallet from it's file.
     pub async fn re_open(&self) -> Result<()> {
-        self.open(self.name.clone()).await?;
+        self.open(self.main_wallet.clone())
+            .await
+            .context("Failed to re-open main wallet")?;
 
         Ok(())
     }
 
     /// Open a monero wallet from a file.
     pub async fn open(&self, filename: String) -> Result<()> {
-        self.inner.open_wallet(filename).await?;
+        self.inner
+            .open_wallet(filename)
+            .await
+            .context("Failed to open ")?;
         Ok(())
     }
 
@@ -146,14 +153,14 @@ impl Wallet {
         match result {
             Ok(_) => Ok(()),
             Err(error) if error.to_string().contains("Wallet already exists") => {
-                tracing::info!(
+                tracing::debug!(
                     monero_wallet_name = &file_name,
                     "Cannot create wallet because it already exists, loading instead"
                 );
 
                 self.open(file_name)
                     .await
-                    .context("Failed to load wallet which should already exist")
+                    .context("Failed to create wallet from keys ('Wallet already exists'), subsequent attempt to open failed, too")
             }
             Err(error) => Err(error).context("Failed to create wallet from keys"),
         }
@@ -223,7 +230,7 @@ impl Wallet {
                 "Monero transferred to destination address");
         }
 
-        self.open(self.name.clone()).await?;
+        self.re_open().await?;
 
         Ok(sweep_result)
     }
@@ -283,13 +290,13 @@ impl Wallet {
         const RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
         for i in 1..=max_attempts {
-            tracing::info!(name = %self.name, attempt=i, "Syncing Monero wallet");
+            tracing::info!(name = %self.main_wallet, attempt=i, "Syncing Monero wallet");
 
             let result = self.inner.refresh().await;
 
             match result {
                 Ok(refreshed) => {
-                    tracing::info!(name = %self.name, "Monero wallet synced");
+                    tracing::info!(name = %self.main_wallet, "Monero wallet synced");
                     return Ok(refreshed);
                 }
                 Err(error) => {
@@ -301,12 +308,12 @@ impl Wallet {
                     let height = match self.inner.get_height().await {
                         Ok(height) => height.to_string(),
                         Err(_) => {
-                            tracing::warn!(name = %self.name, "Failed to fetch Monero wallet height during sync");
+                            tracing::warn!(name = %self.main_wallet, "Failed to fetch Monero wallet height during sync");
                             "unknown".to_string()
                         }
                     };
 
-                    tracing::warn!(attempt=i, %height, %attempts_left, name = %self.name, %error, "Failed to sync Monero wallet");
+                    tracing::warn!(attempt=i, %height, %attempts_left, name = %self.main_wallet, %error, "Failed to sync Monero wallet");
 
                     if attempts_left == 0 {
                         return Err(error.into());
@@ -358,7 +365,7 @@ pub async fn watch_for_transfer_with(
     );
 
     let check_interval = tokio::time::interval(wallet.lock().await.sync_interval.div(10));
-    let wallet_name = wallet.lock().await.name.clone();
+    let wallet_name = wallet.lock().await.main_wallet.clone();
 
     wait_for_confirmations_with(
         wallet.clone(),

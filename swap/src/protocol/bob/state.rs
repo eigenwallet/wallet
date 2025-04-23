@@ -652,6 +652,7 @@ impl State5 {
     pub fn tx_lock_id(&self) -> bitcoin::Txid {
         self.tx_lock.txid()
     }
+
     pub async fn redeem_xmr(
         &self,
         monero_wallet: &monero::Wallet,
