@@ -428,7 +428,9 @@ async fn wait_for_confirmations_with<
 
         let txid = transfer_proof.tx_hash().to_string();
 
-        let tx = match wallet
+        // Make sure to drop the lock before matching on the result
+        // otherwise it will deadlock on the error code -13 case
+        let result = wallet
             .lock()
             .await
             .inner
@@ -437,8 +439,9 @@ async fn wait_for_confirmations_with<
                 transfer_proof.tx_key.to_string(),
                 to_address.to_string(),
             )
-            .await
-        {
+            .await;
+
+        let tx = match result {
             Ok(proof) => proof,
             Err(jsonrpc::Error::JsonRpc(jsonrpc::JsonRpcError {
                 code: -1,
@@ -661,7 +664,7 @@ mod tests {
             Network::Testnet,
         )));
 
-        wait_for_confirmations(
+        tokio::time::timeout(Duration::from_secs(30), wait_for_confirmations(
             client.clone(),
             TransferProof::new(TxHash("<FOO>".to_owned()), PrivateKey {
                 scalar: crate::monero::Scalar::random(&mut rand::thread_rng())
@@ -671,8 +674,9 @@ mod tests {
             5,
             tokio::time::interval(Duration::from_millis(10)),
             "foo-wallet".to_owned(),
-        )
+        ))
         .await
+        .expect("timeout: shouldn't take more than 10 seconds")
         .unwrap();
 
         assert_eq!(
