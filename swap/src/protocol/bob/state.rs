@@ -661,34 +661,17 @@ impl State5 {
         let (spend_key, view_key) = self.xmr_keys();
 
         tracing::info!(%wallet_file_name, "Generating and opening Monero wallet from the extracted keys to redeem the Monero");
-        if let Err(e) = monero_wallet
-            .open_or_create_from_keys(
+
+        let tx_hashes = monero_wallet
+            .create_from_keys_and_sweep_to(
                 wallet_file_name.clone(),
                 spend_key,
                 view_key,
                 self.monero_wallet_restore_blockheight,
+                monero_receive_address,
             )
             .await
-        {
-            // In case we failed to refresh/sweep, when resuming the wallet might already
-            // exist! This is a very unlikely scenario, but if we don't take care of it we
-            // might not be able to ever transfer the Monero.
-            tracing::warn!("Failed to generate monero wallet from keys: {:#}", e);
-            tracing::info!(%wallet_file_name,
-                "Falling back to trying to open the wallet if it already exists",
-            );
-            monero_wallet.open(wallet_file_name).await?;
-        }
-
-        // Ensure that the generated wallet is synced so we have a proper balance
-        monero_wallet.refresh(20).await?;
-
-        // Sweep (transfer all funds) to the Bobs Monero redeem address
-        let tx_hashes = monero_wallet.sweep_all(monero_receive_address).await?;
-
-        for tx_hash in &tx_hashes {
-            tracing::info!(%monero_receive_address, txid=%tx_hash.0, "Successfully transferred XMR to wallet");
-        }
+            .context("Failed to redeem Monero")?;
 
         Ok(tx_hashes)
     }

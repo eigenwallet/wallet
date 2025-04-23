@@ -159,17 +159,43 @@ impl Wallet {
         }
     }
 
-    /// Close the wallet and open (load) another wallet by generating it from
-    /// keys. The generated wallet will be opened, all funds sweeped to the
-    /// main_address and then the original wallet will be re-loaded using the internally
-    /// stored name.
+    /// A wrapper around [`create_from_keys_and_sweep_to`] that sweeps all funds to the
+    /// main address of the wallet.
+    /// For the ASB this is the main wallet.
+    /// For the CLI, I don't know which wallet it is.
+    ///
+    /// Returns the tx hashes of the sweep.
     pub async fn create_from_keys_and_sweep(
         &self,
         file_name: String,
         private_spend_key: PrivateKey,
         private_view_key: PrivateViewKey,
         restore_height: BlockHeight,
-    ) -> Result<()> {
+    ) -> Result<Vec<TxHash>> {
+        self.create_from_keys_and_sweep_to(
+            file_name,
+            private_spend_key,
+            private_view_key,
+            restore_height,
+            self.main_address,
+        )
+        .await
+    }
+
+    /// Close the wallet and open (load) another wallet by generating it from
+    /// keys. The generated wallet will be opened, all funds sweeped to the
+    /// specified destination address and then the original wallet will be re-loaded using the internally
+    /// stored name.
+    ///
+    /// Returns the tx hashes of the sweep.
+    pub async fn create_from_keys_and_sweep_to(
+        &self,
+        file_name: String,
+        private_spend_key: PrivateKey,
+        private_view_key: PrivateViewKey,
+        restore_height: BlockHeight,
+        destination_address: Address,
+    ) -> Result<Vec<TxHash>> {
         // Close the default wallet, generate the new wallet from the keys and load it
         self.open_or_create_from_keys(
             file_name,
@@ -180,33 +206,26 @@ impl Wallet {
         .await?;
 
         // Refresh the generated wallet
-        if let Err(error) = self.refresh(20).await {
-            return Err(anyhow::anyhow!(error)
-                .context("Failed to refresh generated wallet for sweeping to default wallet"));
-        }
+        self.refresh(20)
+            .await
+            .context("Failed to refresh generated wallet for sweeping to destination address")?;
 
-        // Sweep all the funds from the generated wallet to the default wallet
-        let sweep_result = self.inner.sweep_all(self.main_address.to_string()).await;
+        // Sweep all the funds from the generated wallet to the specified destination address
+        let sweep_result = self
+            .sweep_all(destination_address)
+            .await
+            .context("Failed to transfer Monero to destination address")?;
 
-        match sweep_result {
-            Ok(sweep_all) => {
-                for tx in sweep_all.tx_hash_list {
-                    tracing::info!(
-                        %tx,
-                        monero_address = %self.main_address,
-                        "Monero transferred back to default wallet");
-                }
-            }
-            Err(error) => {
-                return Err(
-                    anyhow::anyhow!(error).context("Failed to transfer Monero to default wallet")
-                );
-            }
+        for tx in &sweep_result {
+            tracing::info!(
+                %tx,
+                monero_address = %destination_address,
+                "Monero transferred to destination address");
         }
 
         self.open(self.name.clone()).await?;
 
-        Ok(())
+        Ok(sweep_result)
     }
 
     /// Transfer a specified amount of monero to a specified address.
