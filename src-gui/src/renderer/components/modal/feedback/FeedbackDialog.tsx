@@ -12,7 +12,9 @@ import {
   MenuItem,
   Paper,
   Select,
+  Switch,
   TextField,
+  Tooltip,
   Typography,
 } from "@material-ui/core";
 import { useSnackbar } from "notistack";
@@ -24,9 +26,9 @@ import { logsToRawString, parseDateString } from "utils/parseUtils";
 import { submitFeedbackViaHttp } from "../../../api";
 import LoadingButton from "../../other/LoadingButton";
 import { PiconeroAmount } from "../../other/Units";
-import { getLogsOfSwap } from "renderer/rpc";
+import { getLogsOfSwap, redactLogs } from "renderer/rpc";
 import logger from "utils/logger";
-import { Visibility } from "@material-ui/icons";
+import { Label, Visibility } from "@material-ui/icons";
 import CliLogsBox from "renderer/components/other/RenderedCliLog";
 import { CliLog, parseCliLogString } from "models/cliModel";
 
@@ -166,6 +168,18 @@ export default function FeedbackDialog({
     onClose();
   }
 
+  const setSwapLogsRedacted = async (redact: boolean) => {
+    setSwapLogs((await getLogsOfSwap(selectedSwap, redact)).logs.map(parseCliLogString))
+  }
+
+  const setDaemonLogsRedacted = async (redact: boolean) => {
+    if (!redact)
+      return setDaemonLogs(store.getState().rpc?.logs)
+
+    const redactedLogs = await redactLogs(daemonLogs);
+    setDaemonLogs(redactedLogs)
+  }
+
   return (
     <Dialog open={open} onClose={onClose}>
       <DialogTitle>Submit Feedback</DialogTitle>
@@ -202,21 +216,28 @@ export default function FeedbackDialog({
           <Box style={{
             display: "flex",
             flexDirection: "row",
+            justifyContent: "space-between",
+            gap: "1rem",
           }}>
 
             <SwapSelectDropDown
               selectedSwap={selectedSwap}
               setSelectedSwap={setSelectedSwap}
             />
-            {selectedSwap !== null ? <IconButton onClick={() => setSwapLogsEditorOpen(true)}>
-              <Visibility />
-            </IconButton> : <></>
-            }
+            <Tooltip title="View the logs">
+              <Box style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <IconButton onClick={() => setSwapLogsEditorOpen(true)} disabled={selectedSwap === null}>
+                  <Visibility />
+                </IconButton>
+              </Box>
+            </Tooltip>
           </Box>
-          <LogViewer open={swapLogsEditorOpen} setOpen={setSwapLogsEditorOpen} logs={swapLogs} />
+          <LogViewer open={swapLogsEditorOpen} setOpen={setSwapLogsEditorOpen} logs={swapLogs} redact={setSwapLogsRedacted} />
           <Box style={{
             display: "flex",
             flexDirection: "row",
+            justifyContent: "space-between",
+            gap: "1rem",
           }}>
             <Paper variant="outlined" style={{ padding: "0.5rem", width: "100%" }} >
               <FormControlLabel
@@ -230,12 +251,15 @@ export default function FeedbackDialog({
                 label="Attach logs from the current session"
               />
             </Paper>
-            {attachDaemonLogs ? <IconButton onClick={() => setDaemonLogsEditorOpen(true)}>
-              <Visibility />
-            </IconButton> : <></>
-            }
+            <Tooltip title="View the logs">
+              <Box style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <IconButton onClick={() => setDaemonLogsEditorOpen(true)} disabled={attachDaemonLogs === false}>
+                  <Visibility />
+                </IconButton>
+              </Box>
+            </Tooltip>
           </Box>
-          <LogViewer open={daemonLogsEditorOpen} setOpen={setDaemonLogsEditorOpen} logs={daemonLogs} />
+          <LogViewer open={daemonLogsEditorOpen} setOpen={setDaemonLogsEditorOpen} logs={daemonLogs} redact={setDaemonLogsRedacted} />
         </Box>
       </DialogContent>
       <DialogActions>
@@ -257,21 +281,33 @@ function LogViewer(
   { open,
     setOpen,
     logs,
+    redact
   }: {
     open: boolean,
-    setOpen: (boolean) => void,
+    setOpen: (_: boolean) => void,
     logs: (string | CliLog)[] | null,
+    redact: (_: boolean) => void
   }) {
   return (
     <Dialog open={open} onClose={() => setOpen(false)} fullWidth>
       <DialogContent>
-        <DialogContentText>
-          <Typography>
-            These are the logs that would be attached to your feedback message and provided to the developers.
-            You can search them to check that no information you don't want to reveal gets submitted.
-          </Typography>
-        </DialogContentText>
-        <CliLogsBox label="Logs" logs={logs} />
+        <Box>
+          <DialogContentText>
+            <Box style={{ display: "flex", flexDirection: "row", alignItems: "center" }}>
+              <Typography>
+                These are the logs that would be attached to your feedback message and provided to us developers.
+                They help us narrow down the problem you encountered.
+              </Typography>
+
+
+            </Box>
+          </DialogContentText>
+
+          <CliLogsBox label="Logs" logs={logs} topRightButton={<Paper style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', paddingLeft: "0.5rem" }} variant="outlined">
+            Redact
+            <Switch color="primary" onChange={(_, checked: boolean) => redact(checked)} />
+          </Paper>} />
+        </Box>
       </DialogContent>
       <DialogActions>
         <Button variant="contained" color="primary" onClick={() => setOpen(false)}>
