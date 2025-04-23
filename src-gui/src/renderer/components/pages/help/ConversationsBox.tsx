@@ -18,16 +18,20 @@ import {
   List,
   ListItem,
   ListItemText,
+  Chip,
+  Badge,
 } from "@material-ui/core";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
-import { useState } from "react";
-import { useAppSelector } from "store/hooks";
+import { useState, useEffect } from "react";
+import { useAppSelector, useUnreadMessagesCount, useAppDispatch } from "store/hooks";
 import { PrimitiveDateTimeString } from "renderer/api";
 import logger from "utils/logger";
 import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import { useSnackbar } from "notistack";
 import TruncatedText from "renderer/components/other/TruncatedText";
-
+import { Message } from "renderer/api";
+import { markMessagesAsSeen } from "store/features/conversationsSlice";
+import ChatIcon from '@material-ui/icons/Chat';
 const useStyles = makeStyles((theme) => ({
   content: {
     display: "flex",
@@ -127,17 +131,29 @@ export default function ConversationsBox() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {sortedFeedbackIds.map((feedbackId) => (
-                    <TableRow key={feedbackId}>
-                      {/* <TableCell>{formatDateTime(feedback.created_at)}</TableCell> */}
-                      <TableCell>{feedbackId}</TableCell>
-                      <TableCell align="right">
-                        <IconButton size="small" onClick={() => handleOpenModal(feedbackId)} title="Open Conversation">
-                          <OpenInNewIcon />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {sortedFeedbackIds.map((feedbackId) => {
+                    // Get unread count for this conversation
+                    const unreadCount = useUnreadMessagesCount(feedbackId);
+                    
+                    return (
+                      <TableRow key={feedbackId}>
+                        <TableCell>
+                          {feedbackId}
+                        </TableCell>
+                        <TableCell align="right">
+                          <Badge 
+                            badgeContent={unreadCount} 
+                            color="primary" 
+                            invisible={unreadCount === 0}
+                          >
+                            <IconButton size="small" onClick={() => handleOpenModal(feedbackId)} title="Open Conversation">
+                              <ChatIcon />
+                            </IconButton>
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -168,12 +184,29 @@ function ConversationModal({
   feedbackId: string;
 }) {
   const classes = useStyles();
+  const dispatch = useAppDispatch(); // Get dispatch function
   // Select messages directly from the Redux store
   const messages = useAppSelector((state) => 
     state.conversations.conversations[feedbackId] || [] // Default to empty array if undefined
   );
-  // Removed local messages state
+  const seenMessagesSet = useAppSelector((state) => 
+    new Set(state.conversations.seenMessages)
+  );
   const { enqueueSnackbar } = useSnackbar(); // Keep for potential future use
+
+  // Effect to mark messages as seen when modal opens
+  useEffect(() => {
+    if (open && messages.length > 0) {
+      const unseenMessages = messages.filter(
+        (msg) => !seenMessagesSet.has(msg.id.toString())
+      );
+
+      if (unseenMessages.length > 0) {
+        dispatch(markMessagesAsSeen(unseenMessages));
+      }
+    }
+    // Dependency array includes open and messages array reference
+  }, [open, messages, dispatch, seenMessagesSet]); 
 
   // Sort messages from the store
   const sortedMessages = [...messages].sort((a, b) => { // Apply sort to selected messages

@@ -147,3 +147,24 @@ export function usePendingLockBitcoinApproval(): PendingLockBitcoinApprovalReque
   const approvals = usePendingApprovals();
   return approvals.filter((c) => c.content.details.type === "LockBitcoin");
 }
+
+/**
+ * Calculates the number of unread messages from staff for a specific feedback conversation.
+ * @param feedbackId The ID of the feedback conversation.
+ * @returns The number of unread staff messages.
+ */
+export function useUnreadMessagesCount(feedbackId: string): number {
+  const { conversationsMap, seenMessagesSet } = useAppSelector((state) => ({
+    conversationsMap: state.conversations.conversations,
+    // Convert seenMessages array to a Set for efficient lookup
+    seenMessagesSet: new Set(state.conversations.seenMessages),
+  }));
+
+  const messages = conversationsMap[feedbackId] || [];
+
+  const unreadStaffMessages = messages.filter(
+    (msg) => msg.is_from_staff && !seenMessagesSet.has(msg.id.toString()),
+  );
+
+  return unreadStaffMessages.length;
+}

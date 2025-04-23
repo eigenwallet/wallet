@@ -8,11 +8,14 @@ export interface ConversationsSlice {
   conversations: {
     [key: string]: Message[];
   };
+  // Stores IDs for Messages that have been seen by the user
+  seenMessages: string[];
 }
 
 const initialState: ConversationsSlice = {
   knownFeedbackIds: [],
   conversations: {},
+  seenMessages: [],
 };
 
 const conversationsSlice = createSlice({
@@ -34,8 +37,12 @@ const conversationsSlice = createSlice({
     setConversation(slice, action: PayloadAction<{feedbackId: string, messages: Message[]}>) {
       slice.conversations[action.payload.feedbackId] = action.payload.messages;
     },
+    // Sets the seen messages for a given feedback id
+    markMessagesAsSeen(slice, action: PayloadAction<Message[]>) {
+      slice.seenMessages.push(...action.payload.map((msg) => msg.id.toString()));
+    },
   },
 });
 
-export const { addFeedbackId, removeFeedback, setConversation } = conversationsSlice.actions;
+export const { addFeedbackId, removeFeedback, setConversation, markMessagesAsSeen } = conversationsSlice.actions;
 export default conversationsSlice.reducer;
