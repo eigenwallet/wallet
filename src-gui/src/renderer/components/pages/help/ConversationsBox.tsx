@@ -20,18 +20,22 @@ import {
   ListItemText,
   Chip,
   Badge,
+  TextField,
+  CircularProgress,
 } from "@material-ui/core";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAppSelector, useUnreadMessagesCount, useAppDispatch } from "store/hooks";
 import { PrimitiveDateTimeString } from "renderer/api";
 import logger from "utils/logger";
-import OpenInNewIcon from '@material-ui/icons/OpenInNew';
 import { useSnackbar } from "notistack";
 import TruncatedText from "renderer/components/other/TruncatedText";
 import { Message } from "renderer/api";
 import { markMessagesAsSeen } from "store/features/conversationsSlice";
 import ChatIcon from '@material-ui/icons/Chat';
+import SendIcon from '@material-ui/icons/Send';
+import { appendFeedbackMessageViaHttp, fetchAllConversations } from "renderer/api";
+
 const useStyles = makeStyles((theme) => ({
   content: {
     display: "flex",
@@ -57,7 +61,20 @@ const useStyles = makeStyles((theme) => ({
     backgroundColor: theme.palette.primary.light,
     marginRight: 'auto', // Align staff messages to the left
   },
+  inputArea: {
+    display: 'flex',
+    alignItems: 'center',
+    marginTop: theme.spacing(2),
+    padding: theme.spacing(1),
+  },
+  inputField: {
+    flexGrow: 1,
+    marginRight: theme.spacing(1),
+  },
 }));
+
+// Define break tokens at the file root
+const breakTokens = ["\n\nDaemon Logs:"];
 
 // Helper function to format PrimitiveDateTimeString
 function formatDateTime(dateTime: PrimitiveDateTimeString): string {
@@ -84,6 +101,64 @@ function formatDateTime(dateTime: PrimitiveDateTimeString): string {
   }
 }
 
+// New component for rendering a single row
+function ConversationRow({ feedbackId, onOpenModal }: { feedbackId: string; onOpenModal: (id: string) => void }) {
+  const unreadCount = useUnreadMessagesCount(feedbackId);
+  // Fetch messages for this specific conversation
+  const messages = useAppSelector((state) => 
+    state.conversations.conversations[feedbackId] || []
+  );
+
+  // Sort messages to find the oldest one (first message)
+  const sortedMessages = useMemo(() => [...messages].sort((a, b) => { 
+    try {
+      const dateA = new Date(formatDateTime(a.created_at)).getTime();
+      const dateB = new Date(formatDateTime(b.created_at)).getTime();
+      if (isNaN(dateA)) return 1;
+      if (isNaN(dateB)) return -1;
+      return dateA - dateB; // Ascending order
+    } catch (e) {
+      return 0;
+    }
+  }), [messages]);
+
+  const firstMessageContent = sortedMessages.length > 0 ? sortedMessages[0].content : "No messages yet";
+
+  // Find the earliest break token index
+  let earliestBreakIndex = firstMessageContent.length; // Default to full length
+  for (const token of breakTokens) {
+    const index = firstMessageContent.indexOf(token);
+    if (index !== -1 && index < earliestBreakIndex) {
+      earliestBreakIndex = index;
+    }
+  }
+
+  // Slice the content if a break token was found
+  const previewContent = firstMessageContent.substring(0, earliestBreakIndex);
+
+  return (
+    <TableRow key={feedbackId}>
+      <TableCell>
+        <TruncatedText limit={7}>{feedbackId}</TruncatedText>
+      </TableCell>
+      <TableCell> {/* New cell for preview */}
+        <TruncatedText limit={30}>{previewContent}</TruncatedText> {/* Use pre-sliced content */}
+      </TableCell>
+      <TableCell align="right">
+        <Badge
+          badgeContent={unreadCount}
+          color="primary"
+          overlap="rectangular" // Use "rectangular" as per deprecation warning
+          invisible={unreadCount === 0}
+        >
+          <IconButton size="small" onClick={() => onOpenModal(feedbackId)} title="Open Conversation">
+            <ChatIcon />
+          </IconButton>
+        </Badge>
+      </TableCell>
+    </TableRow>
+  );
+}
 
 export default function ConversationsBox() {
   const classes = useStyles();
@@ -124,36 +199,19 @@ export default function ConversationsBox() {
               <Table stickyHeader size="small">
                 <TableHead>
                   <TableRow>
-                    {/* Removed Submitted column as created_at is not directly available */}
-                    {/* <TableCell>Submitted</TableCell> */}
                     <TableCell>Feedback ID</TableCell>
+                    <TableCell>Preview</TableCell>
                     <TableCell align="right">Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {sortedFeedbackIds.map((feedbackId) => {
-                    // Get unread count for this conversation
-                    const unreadCount = useUnreadMessagesCount(feedbackId);
-                    
-                    return (
-                      <TableRow key={feedbackId}>
-                        <TableCell>
-                          {feedbackId}
-                        </TableCell>
-                        <TableCell align="right">
-                          <Badge 
-                            badgeContent={unreadCount} 
-                            color="primary" 
-                            invisible={unreadCount === 0}
-                          >
-                            <IconButton size="small" onClick={() => handleOpenModal(feedbackId)} title="Open Conversation">
-                              <ChatIcon />
-                            </IconButton>
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {sortedFeedbackIds.map((feedbackId) => (
+                    <ConversationRow
+                      key={feedbackId}
+                      feedbackId={feedbackId}
+                      onOpenModal={handleOpenModal}
+                    />
+                  ))}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -185,6 +243,8 @@ function ConversationModal({
 }) {
   const classes = useStyles();
   const dispatch = useAppDispatch(); // Get dispatch function
+  const [newMessage, setNewMessage] = useState(""); // State for the new message input
+  const [isSending, setIsSending] = useState(false); // State for loading indicator
   // Select messages directly from the Redux store
   const messages = useAppSelector((state) => 
     state.conversations.conversations[feedbackId] || [] // Default to empty array if undefined
@@ -208,35 +268,57 @@ function ConversationModal({
     // Dependency array includes open and messages array reference
   }, [open, messages, dispatch, seenMessagesSet]); 
 
-  // Sort messages from the store
-  const sortedMessages = [...messages].sort((a, b) => { // Apply sort to selected messages
+  // Sort messages from the store (descending for display)
+  const sortedMessagesForDisplay = useMemo(() => [...messages].sort((a, b) => { 
     try {
       const dateA = new Date(formatDateTime(a.created_at)).getTime();
       const dateB = new Date(formatDateTime(b.created_at)).getTime();
-      if (isNaN(dateA)) return 1; // Treat invalid dates as older
+      if (isNaN(dateA)) return 1;
       if (isNaN(dateB)) return -1;
       return dateB - dateA;
     } catch (e) {
       return 0;
     }
-  });
+  }), [messages]);
+
+  // Handle sending the message
+  const handleSendMessage = useCallback(async () => {
+    if (!newMessage.trim()) return; // Don't send empty messages
+
+    setIsSending(true);
+    try {
+      await appendFeedbackMessageViaHttp(feedbackId, newMessage);
+      setNewMessage(""); // Clear input field
+      enqueueSnackbar("Message sent successfully!", { variant: "success" });
+      // Refresh conversations to show the new message
+      // Using fetchAllConversations for simplicity, could optimize later
+      dispatch(fetchAllConversations as any); // Dispatch the thunk
+    } catch (error) {
+      logger.error(error, "Failed to send message", { feedbackId });
+      enqueueSnackbar("Failed to send message. Please try again.", { variant: "error" });
+    } finally {
+      setIsSending(false);
+    }
+  }, [feedbackId, newMessage, dispatch, enqueueSnackbar]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth scroll="paper">
-      <DialogTitle>Conversation <TruncatedText children={feedbackId} /></DialogTitle> {/* Use feedbackId */}
+      <DialogTitle>Conversation <TruncatedText limit={8} truncateMiddle={true}>{feedbackId}</TruncatedText></DialogTitle> {/* Use feedbackId */}
       <DialogContent dividers>
-        {sortedMessages.length === 0 && (
+        {sortedMessagesForDisplay.length === 0 && (
           <Typography variant="body2">No messages loaded for this conversation.</Typography>
         )}
-        {sortedMessages.length > 0 && (
+        {sortedMessagesForDisplay.length > 0 && (
            <List>
-             {sortedMessages.map((msg) => { // Use sortedMessages
+             {sortedMessagesForDisplay.map((msg) => { // Use sortedMessages
                 // Find the index of "Daemon Logs:"
                 const daemonLogsIndex = msg.content.indexOf("\n\nDaemon Logs:");
                 // Truncate the content if "Daemon Logs:" is found
                 const displayContent = daemonLogsIndex !== -1 
                     ? msg.content.substring(0, daemonLogsIndex)
                     : msg.content;
+
+                const isNew = msg.id > 1_000_000; // Check if id is potentially temporary client-side id
 
                 return (
                   <ListItem key={msg.id} disableGutters>
@@ -255,7 +337,27 @@ function ConversationModal({
               })}
            </List>
         )}
-        {/* TODO: Add input field and button to send a new message? */}
+        {/* Add input field and button to send a new message */}
+        <Box className={classes.inputArea}>
+          <TextField
+            className={classes.inputField}
+            variant="outlined"
+            size="small"
+            multiline
+            rowsMax={4}
+            placeholder="Type your message..."
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            disabled={isSending}
+          />
+          <IconButton 
+            color="primary"
+            onClick={handleSendMessage} 
+            disabled={!newMessage.trim() || isSending}
+          >
+            {isSending ? <CircularProgress size={24} /> : <SendIcon />} {/* Show spinner when sending */}
+          </IconButton>
+        </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} color="primary" variant="contained">

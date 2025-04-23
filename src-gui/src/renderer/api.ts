@@ -92,6 +92,26 @@ export async function fetchFeedbackMessagesViaHttp(feedbackId: string): Promise<
   return (await response.json()) as Message[];
 }
 
+export async function appendFeedbackMessageViaHttp(feedbackId: string, content: string): Promise<number> {
+  type Response = number; // Backend returns the new message ID
+
+  const response = await fetch(`${PUBLIC_REGISTRY_API_BASE_URL}/api/append-feedback-message`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ feedback_id: feedbackId, content }), // Match Rust struct
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text(); // Get error details if possible
+    throw new Error(`Failed to append message for feedback ${feedbackId}. Status: ${response.status}. Body: ${errorBody}`);
+  }
+
+  const responseBody = (await response.json()) as Response;
+  return responseBody;
+}
+
 async function fetchCurrencyPrice(currency: string, fiatCurrency: FiatCurrency): Promise<number> {
   const response = await fetch(
     `https://api.coingecko.com/api/v3/simple/price?ids=${currency}&vs_currencies=${fiatCurrency.toLowerCase()}`,
@@ -177,8 +197,13 @@ export async function fetchAllConversations(): Promise<void> {
   console.log("Fetching all conversations", feedbackIds);
 
   for (const feedbackId of feedbackIds) {
-    const messages = await fetchFeedbackMessagesViaHttp(feedbackId);
-    console.log("Fetched messages for feedback id", feedbackId, messages);
-    store.dispatch(setConversation({ feedbackId, messages }));
+    try {
+      console.log("Fetching messages for feedback id", feedbackId);
+      const messages = await fetchFeedbackMessagesViaHttp(feedbackId);
+      console.log("Fetched messages for feedback id", feedbackId, messages);
+      store.dispatch(setConversation({ feedbackId, messages }));
+    } catch (error) {
+      logger.error(error, "Error fetching messages for feedback id", feedbackId);
+    }
   }
 }
