@@ -40,11 +40,8 @@ export type PrimitiveDateTimeString = [
     number  // Offset Second
 ]; 
 
-// Corresponds to Rust's Uuid
-export type UuidString = string;
-
 export interface Feedback {
-  id: UuidString;
+  id: string;
   created_at: PrimitiveDateTimeString;
 }
 
@@ -58,7 +55,7 @@ export interface Attachment {
 
 export interface Message {
   id: number;
-  feedback_id: UuidString;
+  feedback_id: string;
   is_from_staff: boolean;
   content: string;
   created_at: PrimitiveDateTimeString;

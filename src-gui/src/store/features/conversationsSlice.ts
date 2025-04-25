@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { Message } from "../../renderer/api"; // Import the updated Message type
+import { Message } from "../../models/apiModel";
 
 export interface ConversationsSlice {
   // List of feedback IDs we know of

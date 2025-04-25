@@ -37,14 +37,15 @@ import { appendFeedbackMessageViaHttp, fetchAllConversations } from "renderer/ap
 import { useSnackbar } from "notistack";
 import logger from "utils/logger";
 import AttachmentIcon from '@material-ui/icons/Attachment';
-import { PrimitiveDateTimeString } from "renderer/api";
-import { Message } from "models/apiModel";
+import { Message, PrimitiveDateTimeString } from "models/apiModel";
+import { formatDateTime } from "utils/conversionUtils";
 
 // Styles
 const useStyles = makeStyles((theme) => ({
   content: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: theme.spacing(2) },
   tableContainer: { maxHeight: 300 },
-  messagesContainer: { display: 'flex', flexDirection: 'column', gap: theme.spacing(1), maxHeight: 400, overflowY: 'auto', padding: theme.spacing(1) },
+  dialogContent: { display: 'flex', flexDirection: 'column' },
+  messagesContainer: { flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: theme.spacing(1), maxHeight: 400, padding: theme.spacing(1) },
   messageRow: { display: 'flex', marginTop: theme.spacing(1) },
   staffRow: { justifyContent: 'flex-start' },
   userRow: { justifyContent: 'flex-end' },
@@ -52,7 +53,7 @@ const useStyles = makeStyles((theme) => ({
   staffBubble: { border: `1px solid ${theme.palette.divider}`, color: theme.palette.text.primary, borderRadius: theme.spacing(2) },
   userBubble: { backgroundColor: theme.palette.primary.main, color: theme.palette.primary.contrastText, borderRadius: theme.spacing(2) },
   timestamp: { marginTop: theme.spacing(0.5), fontSize: '0.75rem', opacity: 0.7, textAlign: 'right' },
-  inputArea: { marginTop: theme.spacing(2) },
+  inputArea: { flexShrink: 0, marginTop: theme.spacing(2) },
   attachmentList: {
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1),
@@ -63,68 +64,6 @@ const useStyles = makeStyles((theme) => ({
     paddingBottom: theme.spacing(0.5),
   }
 }));
-
-// Utilities
-
-// Updated function to parse 9-element tuple and format it
-function formatDateTime(dateTime: PrimitiveDateTimeString | null | undefined): string {
-  if (!dateTime || !Array.isArray(dateTime) || dateTime.length !== 9) {
-    // Basic validation for null, undefined, or incorrect structure
-    return "Invalid Date Input";
-  }
-  
-  try {
-    const [year, dayOfYear, hour, minute, second, nanoseconds, offsetH, offsetM, offsetS] = dateTime;
-
-    // More robust validation (example)
-    if (year < 1970 || dayOfYear < 1 || dayOfYear > 366 || hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59 || nanoseconds < 0 || nanoseconds > 999999999) {
-        logger.warn("Invalid date components detected in formatDateTime tuple", { dateTime });
-        return "Invalid Date Components";
-    }
-    
-    // Calculate total offset in seconds (handle potential non-zero offsets)
-    const totalOffsetSeconds = (offsetH * 3600) + (offsetM * 60) + offsetS;
-
-    // Calculate milliseconds from nanoseconds
-    const milliseconds = Math.floor(nanoseconds / 1_000_000);
-
-    // Create Date object for the start of the year *in UTC*
-    const date = new Date(Date.UTC(year, 0, 1)); // Month is 0-indexed (January)
-    
-    // Add (dayOfYear - 1) days to get the correct date *in UTC*
-    date.setUTCDate(date.getUTCDate() + dayOfYear - 1);
-
-    // Set the time components *in UTC*
-    date.setUTCHours(hour);
-    date.setUTCMinutes(minute);
-    date.setUTCSeconds(second);
-    date.setUTCMilliseconds(milliseconds);
-
-    // Adjust for the timezone offset to get the correct UTC time
-    // Subtract the offset because Date.UTC assumes UTC, but the components might be for a different offset
-    date.setTime(date.getTime() - totalOffsetSeconds * 1000);
-
-    // Final validation
-    if (isNaN(date.getTime())) {
-        logger.warn("Calculated date is invalid in formatDateTime", { dateTime });
-        return "Invalid Calculated Date";
-    }
-
-    // Format to a readable string (e.g., "YYYY-MM-DD HH:MM:SS UTC")
-    const yyyy = date.getUTCFullYear();
-    const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(date.getUTCDate()).padStart(2, '0');
-    const HH = String(date.getUTCHours()).padStart(2, '0');
-    const MM = String(date.getUTCMinutes()).padStart(2, '0');
-    const SS = String(date.getUTCSeconds()).padStart(2, '0');
-
-    return `${yyyy}-${mm}-${dd} ${HH}:${MM}:${SS} UTC`;
-
-  } catch (e) {
-    logger.error(e, "Error formatting datetime tuple", { dateTime });
-    return "Invalid Date Format";
-  }
-}
 
 // Hook: sorted feedback IDs by latest activity, then unread
 function useSortedFeedbackIds() {
@@ -208,7 +147,6 @@ export default function ConversationsBox() {
 
 // Single row
 function ConversationRow({ feedbackId, onOpen }: { feedbackId: string, onOpen: (id: string) => void }) {
-  const classes = useStyles();
   const msgs = useAppSelector((s) => s.conversations.conversations[feedbackId] || []);
   const unread = useUnreadMessagesCount(feedbackId);
   const sorted = useMemo(
@@ -311,11 +249,11 @@ function ConversationModal({ open, onClose, feedbackId }: { open: boolean, onClo
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth scroll="paper">
       <DialogTitle>Conversation <TruncatedText limit={8} truncateMiddle>{feedbackId}</TruncatedText></DialogTitle>
-      <DialogContent dividers style={{ display: 'flex', flexDirection: 'column' }}>
+      <DialogContent dividers className={classes.dialogContent}>
         {sorted.length === 0 ? (
           <Typography variant="body2">No messages in this conversation.</Typography>
         ) : (
-          <Box className={classes.messagesContainer} style={{ flexGrow: 1, overflowY: 'auto' }}>
+          <Box className={classes.messagesContainer}>
             {sorted.map((m: Message) => {
               const raw = m.content;
               return (
@@ -366,7 +304,7 @@ function ConversationModal({ open, onClose, feedbackId }: { open: boolean, onClo
             })}
           </Box>
         )}
-        <Box className={classes.inputArea} style={{ flexShrink: 0 }}>
+        <Box className={classes.inputArea}>
           <TextField
             variant="outlined"
             fullWidth
@@ -374,6 +312,14 @@ function ConversationModal({ open, onClose, feedbackId }: { open: boolean, onClo
             value={text}
             onChange={(e) => setText(e.target.value)}
             disabled={loading}
+            multiline
+            rowsMax={4}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">

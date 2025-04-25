@@ -5,7 +5,7 @@
 // - and to submit feedback
 // - fetch currency rates from CoinGecko
 
-import { Alert, ExtendedMakerStatus } from "models/apiModel";
+import { Alert, Attachment, ExtendedMakerStatus, Feedback, Message, PrimitiveDateTimeString } from "models/apiModel";
 import { store } from "./store/storeRenderer";
 import { setBtcPrice, setXmrBtcRate, setXmrPrice } from "store/features/ratesSlice";
 import { FiatCurrency } from "store/features/settingsSlice";
@@ -13,38 +13,6 @@ import { setAlerts } from "store/features/alertsSlice";
 import { registryConnectionFailed, setRegistryMakers } from "store/features/makersSlice";
 import logger from "utils/logger";
 import { setConversation } from "store/features/conversationsSlice";
-import { Attachment } from "models/apiModel";
-
-// Define types based on Rust structs
-
-// Define the correct 9-element tuple type for PrimitiveDateTime
-export type PrimitiveDateTimeString = [
-    number, // Year
-    number, // Day of Year
-    number, // Hour
-    number, // Minute
-    number, // Second
-    number, // Nanosecond
-    number, // Offset Hour
-    number, // Offset Minute
-    number  // Offset Second
-]; 
-
-// Corresponds to Rust's Uuid
-export type UuidString = string;
-
-export interface Feedback {
-  id: UuidString;
-  created_at: PrimitiveDateTimeString;
-}
-
-export interface Message {
-  id: number;
-  feedback_id: UuidString;
-  is_from_staff: boolean;
-  content: string;
-  created_at: PrimitiveDateTimeString;
-}
 
 export interface MessageWithAttachments {
   message: Message;
@@ -52,7 +20,6 @@ export interface MessageWithAttachments {
 }
 
 // Define type for Attachment data in request body
-// Export this interface for use in other modules
 export interface AttachmentInput {
   key: string;
   content: string;

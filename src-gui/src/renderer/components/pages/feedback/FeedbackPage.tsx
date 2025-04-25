@@ -1,6 +1,6 @@
 import { Box, makeStyles } from "@material-ui/core";
-import FeedbackInfoBox from "../help/FeedbackInfoBox"; // Adjust path if needed
-import ConversationsBox from "../help/ConversationsBox"; // Adjust path if needed
+import FeedbackInfoBox from "../help/FeedbackInfoBox";
+import ConversationsBox from "../help/ConversationsBox";
 import ContactInfoBox from "../help/ContactInfoBox";
 
 const useStyles = makeStyles((theme) => ({
