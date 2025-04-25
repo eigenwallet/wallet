@@ -1,5 +1,5 @@
 import { combineReducers, configureStore, StoreEnhancer } from "@reduxjs/toolkit";
-import { persistReducer, persistStore, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER } from "redux-persist";
+import { persistReducer, persistStore } from "redux-persist";
 import sessionStorage from "redux-persist/lib/storage/session";
 import { reducers } from "store/combinedReducer";
 import { createMainListeners } from "store/middleware/storeListener";
@@ -98,13 +98,9 @@ export const store = configureStore({
   reducer: persistedReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
-      // Disable serializable to silence warnings about non-serializable actions
-      serializableCheck: {
-        ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
-      },
-    }).prepend(createMainListeners().middleware),
-  devTools: false, // Disable default DevTools
-  enhancers: (getDefaultEnhancers) => { // Add enhancers
+      serializableCheck: false,
+  }).prepend(createMainListeners().middleware),
+  enhancers: (getDefaultEnhancers) => {
     const defaultEnhancers = getDefaultEnhancers();
     return remoteDevToolsEnhancer
       ? defaultEnhancers.concat(remoteDevToolsEnhancer) 
