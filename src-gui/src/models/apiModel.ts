@@ -27,8 +27,18 @@ export interface Alert {
   severity: "info" | "warning" | "error";
 }
 
-// Corresponds to Rust's PrimitiveDateTime
-export type PrimitiveDateTimeString = [number, number, number, number, number, number]; 
+// Define the correct 9-element tuple type for PrimitiveDateTime
+export type PrimitiveDateTimeString = [
+    number, // Year
+    number, // Day of Year
+    number, // Hour
+    number, // Minute
+    number, // Second
+    number, // Nanosecond
+    number, // Offset Hour
+    number, // Offset Minute
+    number  // Offset Second
+]; 
 
 // Corresponds to Rust's Uuid
 export type UuidString = string;
@@ -41,6 +51,7 @@ export interface Feedback {
 export interface Attachment {
   id: number; 
   message_id: number;
+  key: string;
   content: string;
   created_at: PrimitiveDateTimeString;
 }
@@ -51,9 +62,5 @@ export interface Message {
   is_from_staff: boolean;
   content: string;
   created_at: PrimitiveDateTimeString;
-}
-
-export interface MessageWithAttachments {
-  message: Message;
-  attachments: Attachment[];
+  attachments?: Attachment[];
 }

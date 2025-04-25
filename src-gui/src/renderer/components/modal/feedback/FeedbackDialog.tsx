@@ -20,7 +20,7 @@ import TruncatedText from "renderer/components/other/TruncatedText";
 import { store } from "renderer/store/storeRenderer";
 import { useActiveSwapInfo, useAppSelector } from "store/hooks";
 import { parseDateString } from "utils/parseUtils";
-import { submitFeedbackViaHttp, Feedback } from "../../../api";
+import { submitFeedbackViaHttp, Feedback, AttachmentInput } from "../../../api";
 import LoadingButton from "../../other/LoadingButton";
 import { PiconeroAmount } from "../../other/Units";
 import { getLogsOfSwap } from "renderer/rpc";
@@ -28,31 +28,50 @@ import logger from "utils/logger";
 import { addFeedbackId } from "store/features/conversationsSlice";
 
 async function submitFeedback(body: string, swapId: string | number, submitDaemonLogs: boolean) {
-  let attachedBody = "";
+  const attachments: AttachmentInput[] = [];
 
+  // Handle swap logs and info
   if (swapId !== 0 && typeof swapId === "string") {
     const swapInfo = store.getState().rpc.state.swapInfos[swapId];
-
-    if (swapInfo === undefined) {
-      throw new Error(`Swap with id ${swapId} not found`);
+    if (swapInfo) {
+      // Add swap info as an attachment
+      attachments.push({
+        key: `swap_info_${swapId}.json`,
+        content: JSON.stringify(swapInfo, null, 2), // Pretty print JSON
+      });
+      // Retrieve and add logs for the specific swap
+      try {
+          const logs = await getLogsOfSwap(swapId, false);
+          attachments.push({
+            key: `swap_logs_${swapId}.txt`,
+            content: logs.logs.map((l) => JSON.stringify(l)).join("\n"),
+          });
+      } catch (logError) {
+          logger.error(logError, "Failed to get logs for swap", { swapId });
+          // Optionally add an attachment indicating log retrieval failure
+          attachments.push({ key: `swap_logs_${swapId}.error`, content: "Failed to retrieve swap logs." });
+      }
+    } else {
+      logger.warn("Selected swap info not found in state", { swapId });
+      attachments.push({ key: `swap_info_${swapId}.error`, content: "Swap info not found." });
     }
-
-    // Retrieve logs for the specific swap
-    const logs = await getLogsOfSwap(swapId, false);
-
-    attachedBody = `${JSON.stringify(swapInfo, null, 4)} \n\nLogs: ${logs.logs
-      .map((l) => JSON.stringify(l))
-      .join("\n====\n")}`;
   }
 
+  // Handle daemon logs
   if (submitDaemonLogs) {
     const logs = store.getState().rpc?.logs ?? [];
-    attachedBody += `\n\nDaemon Logs: ${logs
-      .map((l) => JSON.stringify(l))
-      .join("\n====\n")}`;
+    if (logs.length > 0) {
+        attachments.push({
+            key: "daemon_logs.txt",
+            content: logs.map((l) => JSON.stringify(l)).join("\n"),
+        });
+    } else {
+        logger.info("Daemon logs requested but none found in state.");
+    }
   }
 
-  const feedbackId = await submitFeedbackViaHttp(body, attachedBody);
+  // Call the updated API function
+  const feedbackId = await submitFeedbackViaHttp(body, attachments);
   
   // Dispatch only the ID
   store.dispatch(addFeedbackId(feedbackId)); 

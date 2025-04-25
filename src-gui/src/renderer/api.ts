@@ -13,24 +13,28 @@ import { setAlerts } from "store/features/alertsSlice";
 import { registryConnectionFailed, setRegistryMakers } from "store/features/makersSlice";
 import logger from "utils/logger";
 import { setConversation } from "store/features/conversationsSlice";
+import { Attachment } from "models/apiModel";
 
 // Define types based on Rust structs
 
-// Corresponds to Rust's PrimitiveDateTime - Adjusted based on user's manual edit
-export type PrimitiveDateTimeString = [number, number, number, number, number, number]; 
+// Define the correct 9-element tuple type for PrimitiveDateTime
+export type PrimitiveDateTimeString = [
+    number, // Year
+    number, // Day of Year
+    number, // Hour
+    number, // Minute
+    number, // Second
+    number, // Nanosecond
+    number, // Offset Hour
+    number, // Offset Minute
+    number  // Offset Second
+]; 
 
 // Corresponds to Rust's Uuid
 export type UuidString = string;
 
 export interface Feedback {
   id: UuidString;
-  created_at: PrimitiveDateTimeString;
-}
-
-export interface Attachment {
-  id: number; 
-  message_id: number;
-  content: string;
   created_at: PrimitiveDateTimeString;
 }
 
@@ -45,6 +49,13 @@ export interface Message {
 export interface MessageWithAttachments {
   message: Message;
   attachments: Attachment[];
+}
+
+// Define type for Attachment data in request body
+// Export this interface for use in other modules
+export interface AttachmentInput {
+  key: string;
+  content: string;
 }
 
 const PUBLIC_REGISTRY_API_BASE_URL = "http://localhost:3001";
@@ -62,49 +73,66 @@ async function fetchAlertsViaHttp(): Promise<Alert[]> {
 }
 
 export async function submitFeedbackViaHttp(
-  body: string,
-  attachedData: string,
-): Promise<string> {
+  content: string,
+  attachments?: AttachmentInput[] // Optional attachments array
+): Promise<string> { // Returns feedback_id (UuidString)
   type Response = string;
+
+  const body = {
+    content,
+    attachments: attachments || [], // Ensure attachments is always an array
+  };
 
   const response = await fetch(`${PUBLIC_REGISTRY_API_BASE_URL}/api/submit-feedback`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ body, attachedData }),
+    body: JSON.stringify(body), // Send new structure
   });
 
   if (!response.ok) {
-    throw new Error(`Status: ${response.status}`);
+    const errorBody = await response.text();
+    throw new Error(`Failed to submit feedback. Status: ${response.status}. Body: ${errorBody}`);
   }
 
   const responseBody = (await response.json()) as Response;
-
   return responseBody;
 }
 
 export async function fetchFeedbackMessagesViaHttp(feedbackId: string): Promise<Message[]> {
   const response = await fetch(`${PUBLIC_REGISTRY_API_BASE_URL}/api/feedback/${feedbackId}/messages`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch messages for feedback ${feedbackId}. Status: ${response.status}`);
+    const errorBody = await response.text();
+    throw new Error(`Failed to fetch messages for feedback ${feedbackId}. Status: ${response.status}. Body: ${errorBody}`);
   }
-  return (await response.json()) as Message[];
+  // Assuming the response is directly the Message[] array including attachments
+  return (await response.json()) as Message[]; 
 }
 
-export async function appendFeedbackMessageViaHttp(feedbackId: string, content: string): Promise<number> {
-  type Response = number; // Backend returns the new message ID
+export async function appendFeedbackMessageViaHttp(
+  feedbackId: string, 
+  content: string,
+  attachments?: AttachmentInput[] // Optional attachments array
+): Promise<number> { // Returns message_id (number)
+  type Response = number; 
+
+  const body = {
+    feedback_id: feedbackId, 
+    content,
+    attachments: attachments || [], // Ensure attachments is always an array
+  };
 
   const response = await fetch(`${PUBLIC_REGISTRY_API_BASE_URL}/api/append-feedback-message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ feedback_id: feedbackId, content }), // Match Rust struct
+    body: JSON.stringify(body), // Send new structure
   });
 
   if (!response.ok) {
-    const errorBody = await response.text(); // Get error details if possible
+    const errorBody = await response.text(); 
     throw new Error(`Failed to append message for feedback ${feedbackId}. Status: ${response.status}. Body: ${errorBody}`);
   }
 
@@ -202,7 +230,7 @@ export async function fetchAllConversations(): Promise<void> {
       const messages = await fetchFeedbackMessagesViaHttp(feedbackId);
       console.log("Fetched messages for feedback id", feedbackId, messages);
       store.dispatch(setConversation({ feedbackId, messages }));
-    } catch (error) {
+    } catch (error) { 
       logger.error(error, "Error fetching messages for feedback id", feedbackId);
     }
   }

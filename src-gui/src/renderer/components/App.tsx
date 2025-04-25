@@ -55,7 +55,7 @@ function InnerContent() {
         <Route path="/swap" element={<SwapPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/wallet" element={<WalletPage />} />
-        <Route path="/help" element={<SettingsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/feedback" element={<FeedbackPage />} />
         <Route path="/" element={<SwapPage />} />
       </Routes>
