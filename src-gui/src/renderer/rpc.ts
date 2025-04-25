@@ -25,6 +25,8 @@ import {
   GetDataDirArgs,
   ResolveApprovalArgs,
   ResolveApprovalResponse,
+  RedactArgs,
+  RedactResponse,
 } from "models/tauriModel";
 import {
   rpcSetBalance,
@@ -40,6 +42,8 @@ import { getNetwork, isTestnet } from "store/config";
 import { Blockchain, Network } from "store/features/settingsSlice";
 import { setStatus } from "store/features/nodesSlice";
 import { discoveredMakersByRendezvous } from "store/features/makersSlice";
+import { CliLog } from "models/cliModel";
+import { logsToRawString, parseLogsFromString } from "utils/parseUtils";
 
 export const PRESET_RENDEZVOUS_POINTS = [
   "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
@@ -164,6 +168,18 @@ export async function getLogsOfSwap(
   });
 }
 
+/// Call the rust backend to redact logs.
+export async function redactLogs(
+  logs: (string | CliLog)[]
+): Promise<(string | CliLog)[]> {
+  const response = await invoke<RedactArgs, RedactResponse>("redact", {
+    text: logsToRawString(logs)
+  })
+
+  console.log(response.text.split("\n").length)
+  return parseLogsFromString(response.text);
+}
+
 export async function listSellersAtRendezvousPoint(
   rendezvousPointAddress: string,
 ): Promise<ListSellersResponse> {
@@ -175,6 +191,7 @@ export async function listSellersAtRendezvousPoint(
 export async function initializeContext() {
   const network = getNetwork();
   const testnet = isTestnet();
+  const useTor = store.getState().settings.enableTor;
 
   // This looks convoluted but it does the following:
   // - Fetch the status of all nodes for each blockchain in parallel
@@ -208,6 +225,7 @@ export async function initializeContext() {
   const tauriSettings: TauriSettings = {
     electrum_rpc_url: bitcoinNode,
     monero_node_url: moneroNode,
+    use_tor: useTor
   };
 
   logger.info("Initializing context with settings", tauriSettings);
