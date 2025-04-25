@@ -74,8 +74,8 @@ async function fetchAlertsViaHttp(): Promise<Alert[]> {
 
 export async function submitFeedbackViaHttp(
   content: string,
-  attachments?: AttachmentInput[] // Optional attachments array
-): Promise<string> { // Returns feedback_id (UuidString)
+  attachments?: AttachmentInput[]
+): Promise<string> {
   type Response = string;
 
   const body = {
@@ -113,8 +113,8 @@ export async function fetchFeedbackMessagesViaHttp(feedbackId: string): Promise<
 export async function appendFeedbackMessageViaHttp(
   feedbackId: string, 
   content: string,
-  attachments?: AttachmentInput[] // Optional attachments array
-): Promise<number> { // Returns message_id (number)
+  attachments?: AttachmentInput[]
+): Promise<number> {
   type Response = number; 
 
   const body = {
