@@ -58,7 +58,7 @@ export interface AttachmentInput {
   content: string;
 }
 
-const PUBLIC_REGISTRY_API_BASE_URL = "http://localhost:3001";
+const PUBLIC_REGISTRY_API_BASE_URL = "https://api.unstoppableswap.net";
 
 async function fetchMakersViaHttp(): Promise<
   ExtendedMakerStatus[]
