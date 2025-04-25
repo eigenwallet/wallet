@@ -1,8 +1,9 @@
-import { Box, Icon, IconButton, Typography } from '@material-ui/core'
+import { Box, Typography } from '@material-ui/core'
 import SlideTemplate from './SlideTemplate'
 import imagePath from '../../../../../assets/groupWithChatbubbles.png' 
 import GitHubIcon from "@material-ui/icons/GitHub"
 import MatrixIcon from 'renderer/components/icons/MatrixIcon'
+import LinkIconButton from 'renderer/components/icons/LinkIconButton'
 
 export default function Slide02_ChooseAMaker(props: slideProps) {
     return (
@@ -12,12 +13,12 @@ export default function Slide02_ChooseAMaker(props: slideProps) {
                 Swap and invite you to join our community.
             </Typography>
             <Box mt={3}>
-                <IconButton >
+                <LinkIconButton url="https://github.com/UnstoppableSwap/core">
                     <GitHubIcon/>
-                </IconButton>
-                <IconButton>
+                </LinkIconButton>
+                <LinkIconButton url="https://matrix.to/#/#unstoppableswap:matrix.org">
                     <MatrixIcon/>
-                </IconButton>
+                </LinkIconButton>
             </Box>
         </SlideTemplate>
     )

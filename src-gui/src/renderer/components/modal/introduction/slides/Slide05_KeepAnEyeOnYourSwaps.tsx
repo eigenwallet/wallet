@@ -12,6 +12,7 @@ import {
 import SlideTemplate from './SlideTemplate'
 import SwapStatusAlert from 'renderer/components/alert/SwapStatusAlert/SwapStatusAlert'
 import { BobStateName, GetSwapInfoResponseExt } from 'models/tauriModelExt'
+import { open } from "@tauri-apps/plugin-shell";
 
 const useStyles = makeStyles({
     paper: {
@@ -89,7 +90,7 @@ export default function Slide05_KeepAnEyeOnYourSwaps({
                     <Typography>
                         Therefore it's important that you regularly check your
                         active swaps in the history tab.{' '}
-                        <Link>Further Information</Link>
+                        <Link onClick={() => open('https://docs.unstoppableswap.net/usage/first_swap')}>Further Information</Link>
                     </Typography>
                     <Typography>
                         Using our Swap History, that's super easy:
