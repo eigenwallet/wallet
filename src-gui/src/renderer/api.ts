@@ -5,7 +5,7 @@
 // - and to submit feedback
 // - fetch currency rates from CoinGecko
 
-import { Alert, Attachment, ExtendedMakerStatus, Feedback, Message, PrimitiveDateTimeString } from "models/apiModel";
+import { Alert, Attachment, AttachmentInput, ExtendedMakerStatus, Feedback, Message, MessageWithAttachments, PrimitiveDateTimeString } from "models/apiModel";
 import { store } from "./store/storeRenderer";
 import { setBtcPrice, setXmrBtcRate, setXmrPrice } from "store/features/ratesSlice";
 import { FiatCurrency } from "store/features/settingsSlice";
@@ -13,17 +13,6 @@ import { setAlerts } from "store/features/alertsSlice";
 import { registryConnectionFailed, setRegistryMakers } from "store/features/makersSlice";
 import logger from "utils/logger";
 import { setConversation } from "store/features/conversationsSlice";
-
-export interface MessageWithAttachments {
-  message: Message;
-  attachments: Attachment[];
-}
-
-// Define type for Attachment data in request body
-export interface AttachmentInput {
-  key: string;
-  content: string;
-}
 
 const PUBLIC_REGISTRY_API_BASE_URL = "https://api.unstoppableswap.net";
 
@@ -45,8 +34,8 @@ export async function submitFeedbackViaHttp(
 ): Promise<string> {
   type Response = string;
 
-  const body = {
-    content,
+  const requestPayload = {
+    body: content,
     attachments: attachments || [], // Ensure attachments is always an array
   };
 
@@ -55,7 +44,7 @@ export async function submitFeedbackViaHttp(
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body), // Send new structure
+    body: JSON.stringify(requestPayload), // Send the corrected structure
   });
 
   if (!response.ok) {

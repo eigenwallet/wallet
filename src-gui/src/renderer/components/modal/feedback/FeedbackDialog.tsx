@@ -184,7 +184,12 @@ export default function FeedbackDialog({
 
     try {
       setPending(true);
-      await submitFeedback(bodyText, selectedSwap, logsToRawString(swapLogs), logsToRawString(daemonLogs));
+      await submitFeedback(
+        bodyText, 
+        selectedSwap, 
+        logsToRawString(swapLogs ?? []), 
+        logsToRawString(daemonLogs ?? [])
+      );
       enqueueSnackbar("Feedback submitted successfully!", {
         variant: "success",
       });

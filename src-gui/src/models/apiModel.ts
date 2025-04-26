@@ -61,3 +61,14 @@ export interface Message {
   created_at: PrimitiveDateTimeString;
   attachments?: Attachment[];
 }
+
+export interface MessageWithAttachments {
+  message: Message;
+  attachments: Attachment[];
+}
+
+// Define type for Attachment data in request body
+export interface AttachmentInput {
+  key: string;
+  content: string;
+}
