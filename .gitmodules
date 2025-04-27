@@ -1,3 +1,3 @@
 [submodule "monero"]
-	path = monero
+	path = monero-sys/monero
 	url = https://github.com/monero-project/monero
