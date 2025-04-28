@@ -54,7 +54,7 @@ export default function SlideTemplate({
                             {stepLabel}
                         </Typography>
                     )}
-                    <Typography variant="h3">{title}</Typography>
+                    <Typography variant="h4">{title}</Typography>
                     {children}
                 </Box>
                 <Box

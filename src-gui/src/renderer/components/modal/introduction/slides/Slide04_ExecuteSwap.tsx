@@ -1,6 +1,6 @@
 import { Typography } from '@material-ui/core'
 import SlideTemplate from './SlideTemplate'
-import imagePath from '../../../../../assets/configureSwap.png'
+import imagePath from '../../../../../assets/simpleSwapFlowDiagram.webp'
 
 export default function Slide02_ChooseAMaker(props: slideProps) {
     return (
@@ -9,7 +9,6 @@ export default function Slide02_ChooseAMaker(props: slideProps) {
             stepLabel="Step 3"
             {...props}
             imagePath={imagePath}
-            imagePadded
         >
             <Typography variant="subtitle1">
                 By confirming, the swap begins:
