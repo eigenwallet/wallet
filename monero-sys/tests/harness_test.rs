@@ -24,7 +24,7 @@ async fn test_monero_wrapper_with_harness() {
         .init();
 
     // Step 1: Create a wallet with monero-wrapper using the global temp directory
-    let wallet_path = get_temp_wallet_path();
+    let wallet_path = temp_path();
     let (address, wallet_seed) = create_wallet(&wallet_path).await;
 
     info!("Created monero-wrapper wallet with address: {}", address);
@@ -70,6 +70,7 @@ async fn test_monero_wrapper_with_harness() {
     info!("Test passed! Wallet successfully received and detected funds");
 }
 
+/// Creates a wallet from a predefined seed and returns the main address and seed.
 async fn create_wallet(wallet_path: &str) -> (monero::Address, String) {
     // Get wallet manager
     let wallet_manager_mutex = WalletManager::get();
@@ -90,7 +91,8 @@ async fn create_wallet(wallet_path: &str) -> (monero::Address, String) {
             None,
             None,
         )
-        .await;
+        .await
+        .expect("Failed to recover wallet");
 
     let wallet = wallet.lock().await;
 
@@ -100,6 +102,7 @@ async fn create_wallet(wallet_path: &str) -> (monero::Address, String) {
     (address, seed.to_string())
 }
 
+/// Funds an address with a given amount of piconero.
 async fn fund_address(
     monero: &Monero,
     address: &monero::Address,
@@ -120,7 +123,8 @@ async fn fund_address(
     Ok(())
 }
 
-fn get_temp_wallet_path() -> String {
+/// Returns a unique path to a temporary wallet file.
+fn temp_path() -> String {
     // Get or initialize the global temp directory
     let temp_dir = GLOBAL_TEMP_DIR.get_or_init(|| {
         // Create a directory that won't be deleted until the program exits
@@ -164,7 +168,7 @@ async fn connect_and_check_balance(seed: String, daemon_address: String) -> mone
     assert!(connected, "Should be connected to daemon");
 
     // Get a unique wallet path from the global temp directory
-    let wallet_path = get_temp_wallet_path();
+    let wallet_path = temp_path();
     tracing::info!("Recovering wallet from seed to {}", wallet_path);
 
     // Recover wallet from seed
@@ -178,12 +182,10 @@ async fn connect_and_check_balance(seed: String, daemon_address: String) -> mone
             Some(KDF_ROUNDS),
             Some(SEED_OFFSET),
         )
-        .await;
+        .await
+        .expect("Failed to recover wallet");
 
     let mut wallet = wallet.lock().await;
-
-    // Initialize wallet
-    wallet.init(Some(&daemon_address), false).await.unwrap();
 
     tracing::info!(
         "Starting testing of wallet with address: {}",

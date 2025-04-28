@@ -58,18 +58,20 @@ impl WalletManager {
         language: Option<&str>,
         network: monero::Network,
         kdf_rounds: Option<u64>,
-    ) -> Arc<Mutex<Wallet>> {
+    ) -> Result<Arc<Mutex<Wallet>>, WalletError> {
         // If we've already loaded this wallet, return it.
         if self.wallets.contains_key(path) {
-            return self.wallets[path].clone();
+            return Ok(self.wallets[path].clone());
         }
 
         // If we haven't loaded the wallet, but it already exists, open it.
         if self.wallet_exists(path).await {
-            return self.open_wallet(path, password, network, kdf_rounds).await;
+            return Ok(self
+                .open_wallet(path, password, network, kdf_rounds)
+                .await?);
         }
 
-        // Otherwise, create a new wallet.
+        // Otherwise, create (and open) a new wallet.
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
         let_cxx_string!(language = language.unwrap_or(""));
@@ -84,31 +86,17 @@ impl WalletManager {
             panic!("Failed to create wallet");
         }
 
-        let wallet = Wallet::new(wallet_pointer);
+        let wallet = Wallet::new(wallet_pointer).await?;
 
         // Todo: error checking
 
         let wallet = Arc::new(Mutex::new(wallet));
         self.wallets.insert(path.to_string(), wallet.clone());
 
-        wallet
+        Ok(wallet)
     }
 
     /// Recover a wallet from a mnemonic seed (electrum seed).
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - Name of wallet file to be created
-    /// * `password` - Password of wallet file
-    /// * `mnemonic` - Mnemonic seed (25 words electrum seed)
-    /// * `network_type` - Network type (MAINNET, TESTNET, STAGENET)
-    /// * `restore_height` - Restore from start height (0 to start from the beginning)
-    /// * `kdf_rounds` - Number of rounds for key derivation function
-    /// * `seed_offset` - Optional passphrase used to derive the seed
-    ///
-    /// # Returns
-    ///
-    /// A new Wallet instance. Call wallet.status() to check if recovered successfully.
     #[allow(clippy::too_many_arguments)]
     pub async fn recover_wallet(
         &mut self,
@@ -119,7 +107,7 @@ impl WalletManager {
         restore_height: u64,
         kdf_rounds: Option<u64>,
         seed_offset: Option<&str>,
-    ) -> Arc<Mutex<Wallet>> {
+    ) -> Result<Arc<Mutex<Wallet>>, WalletError> {
         let_cxx_string!(path = path);
         let_cxx_string!(password = password);
         let_cxx_string!(mnemonic = mnemonic);
@@ -135,14 +123,14 @@ impl WalletManager {
             &seed_offset,
         );
 
-        let wallet = Wallet::new(wallet_pointer);
+        let wallet = Wallet::new(wallet_pointer).await?;
 
         // Todo: error checking
 
         let wallet = Arc::new(Mutex::new(wallet));
         self.wallets.insert(path.to_string(), wallet.clone());
 
-        wallet
+        Ok(wallet)
     }
 
     /// Open a wallet. Only used internally. Use [`WalletManager::open_or_create_wallet`] instead.
@@ -154,7 +142,7 @@ impl WalletManager {
         password: Option<&str>,
         network_type: monero::Network,
         kdf_rounds: Option<u64>,
-    ) -> Arc<Mutex<Wallet>> {
+    ) -> Result<Arc<Mutex<Wallet>>, WalletError> {
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
         let network_type = network_type.into();
@@ -170,19 +158,19 @@ impl WalletManager {
             )
         };
 
-        let wallet = Wallet::new(wallet_pointer);
+        let wallet = Wallet::new(wallet_pointer).await?;
 
         // Todo: error checking
 
         let wallet = Arc::new(Mutex::new(wallet));
         self.wallets.insert(path.to_string(), wallet.clone());
 
-        wallet
+        Ok(wallet)
     }
 
     /// Set the address of the remote node ("daemon").
     pub fn set_daemon_address(&mut self, address: &str) {
-        tracing::debug!(%address, "Connecting wallet manager to remote node");
+        tracing::debug!(%address, "Updating wallet manager's default remote node");
 
         let_cxx_string!(address = address);
 
@@ -231,11 +219,21 @@ pub struct RawWallet(*mut ffi::Wallet);
 unsafe impl Send for RawWallet {}
 
 impl Wallet {
-    /// Create a new wallet from a raw C++ wallet pointer.
-    fn new(inner: *mut ffi::Wallet) -> Self {
-        Self {
-            inner: RawWallet(inner),
+    /// Create and initialize new wallet from a raw C++ wallet pointer.
+    async fn new(inner: *mut ffi::Wallet) -> Result<Self, WalletError> {
+        if inner.is_null() {
+            return Err(WalletError::critical("wallet pointer is null"));
         }
+
+        let mut wallet = Self {
+            inner: RawWallet(inner),
+        };
+
+        wallet.check_error()?;
+
+        wallet.init(false).await?;
+
+        Ok(wallet)
     }
 
     /// Get the address for the given account and address index.
@@ -250,14 +248,10 @@ impl Wallet {
         self.address(0, 0)
     }
 
-    /// Initialize the wallet by connecting to the specified remote node (daemon).
-    /// If left blank, the wallet will connect to the remote node specified in the wallet manager.
-    pub async fn init(
-        &mut self,
-        daemon_address: Option<&str>,
-        ssl: bool,
-    ) -> Result<(), WalletError> {
-        let_cxx_string!(daemon_address = daemon_address.unwrap_or(""));
+    /// Initialize the wallet and download initial values from the remote node.
+    /// Does not actuallyt sync the wallet, use any of the refresh methods to do that.
+    async fn init(&mut self, ssl: bool) -> Result<(), WalletError> {
+        let_cxx_string!(daemon_address = "");
         let_cxx_string!(daemon_username = "");
         let_cxx_string!(daemon_password = "");
         let_cxx_string!(proxy_address = "");
@@ -272,10 +266,9 @@ impl Wallet {
             &proxy_address,
         );
 
-        if success == false {
-            return Err(self
-                .get_error()
-                .expect("wallet to have an error when init failed"));
+        if !success {
+            self.check_error()?;
+            return Err(WalletError::critical("wallet init failed"));
         }
 
         Ok(())
@@ -336,9 +329,8 @@ impl Wallet {
             .setAllowMismatchedDaemonVersion(allow_mismatch);
     }
 
-    /// Get the current error status of the wallet, if there is one.
-    /// Returns None if there is no error and the wallet is ok.
-    pub fn get_error(&mut self) -> Option<WalletError> {
+    /// Return `Ok` when the wallet is ok, otherwise return the error.
+    pub fn check_error(&mut self) -> Result<(), WalletError> {
         let mut status = 0;
         let mut error_string = String::new();
         let_cxx_string!(error_string_ref = &mut error_string);
@@ -348,14 +340,32 @@ impl Wallet {
 
         // If the status is ok, we return None
         if status == 0 {
-            return None;
+            return Ok(());
         }
 
         // Otherwise we return the error
-        Some(WalletError {
+        Err(WalletError {
             code: status,
             message: error_string.to_string(),
         })
+    }
+}
+
+impl WalletError {
+    /// Create a new non-critical wallet error.
+    fn error(message: impl Into<String>) -> Self {
+        Self {
+            code: 1,
+            message: message.into(),
+        }
+    }
+
+    /// Create a new critical wallet error.
+    fn critical(message: impl Into<String>) -> Self {
+        Self {
+            code: 2,
+            message: message.into(),
+        }
     }
 }
 

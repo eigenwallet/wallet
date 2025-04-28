@@ -39,13 +39,10 @@ async fn main() {
             Some(KDF_ROUNDS),
             Some(SEED_OFFSET),
         )
-        .await;
+        .await
+        .expect("Failed to recover wallet");
 
     let mut wallet = wallet.lock().await;
-
-    // TODO: Here we'd need to call status() I believe to check if the creation was successful
-
-    wallet.init(Some(STAGENET_REMOTE_NODE), true).await.unwrap();
 
     tracing::info!("Primary address: {}", wallet.main_address());
 
