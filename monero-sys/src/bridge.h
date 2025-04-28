@@ -30,4 +30,12 @@ namespace Monero
         return std::make_unique<std::string>(addr);
     }
 
+    /**
+     * Same as for [`address`]
+     */
+    inline std::unique_ptr<std::string> walletManagerErrorString(WalletManager &manager)
+    {
+        auto err = manager.errorString();
+        return std::make_unique<std::string>(err);
+    }
 }

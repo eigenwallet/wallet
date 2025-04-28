@@ -14,6 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Rust 2021 edition
 - Use `unsafe` only for FFI interactions with Monero C++ code
 - The cmake build target we need is wallet_api. We need to link libwallet.a and libwallet_api.a.
+- When using `.expect()`, the message should be a short description of the assumed invariant in the format of `.expect("the invariant to be upheld")`.
 
 ## Important Development Guidelines
 - Always verify method signatures in the Monero C++ headers before adding them to the Rust bridge

@@ -166,6 +166,7 @@ fn main() {
     let mut build = cxx_build::bridge("src/bridge.rs");
     build
         .flag_if_supported("-std=c++17")
-        .include("monero/src")
+        .include("src") // Include the bridge.h file
+        .include("monero/src") // Includes the monero headers
         .compile("monero-wallet-sys");
 }

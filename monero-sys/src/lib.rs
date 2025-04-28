@@ -4,6 +4,7 @@ use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
     pin::Pin,
+    str::FromStr,
     sync::{Arc, OnceLock},
 };
 
@@ -51,19 +52,31 @@ impl WalletManager {
             .clone()
     }
 
-    /// Create a new wallet.
-    pub fn create_wallet(
+    /// Create a new wallet, or open if it already exists.
+    pub async fn open_or_create_wallet(
         &mut self,
         path: &str,
-        password: &str,
-        language: &str,
-        network_type: ffi::NetworkType,
-        kdf_rounds: u64,
-    ) -> Wallet {
-        let_cxx_string!(path = path);
-        let_cxx_string!(password = password);
-        let_cxx_string!(language = language);
+        password: Option<&str>,
+        language: Option<&str>,
+        network: monero::Network,
+        kdf_rounds: Option<u64>,
+    ) -> Arc<Mutex<Wallet>> {
+        // If we've already loaded this wallet, return it.
+        if self.wallets.contains_key(path) {
+            return self.wallets[path].clone();
+        }
 
+        // If we haven't loaded the wallet, but it already exists, open it.
+        if self.wallet_exists(path).await {
+            return self.open_wallet(path, password, network, kdf_rounds).await;
+        }
+
+        // Otherwise, create a new wallet.
+        let_cxx_string!(path = path);
+        let_cxx_string!(password = password.unwrap_or(""));
+        let_cxx_string!(language = language.unwrap_or(""));
+        let network_type = network.into();
+        let kdf_rounds = kdf_rounds.unwrap_or(Self::DEFAULT_KDF_ROUNDS);
         let wallet_pointer =
             self.inner
                 .pinned()
@@ -73,7 +86,14 @@ impl WalletManager {
             panic!("Failed to create wallet");
         }
 
-        Wallet::new(wallet_pointer)
+        let wallet = Wallet::new(wallet_pointer);
+
+        // Todo: error checking
+
+        let wallet = Arc::new(Mutex::new(wallet));
+        self.wallets.insert(path.to_string(), wallet.clone());
+
+        wallet
     }
 
     /// Recover a wallet from a mnemonic seed (electrum seed).
@@ -92,7 +112,7 @@ impl WalletManager {
     ///
     /// A new Wallet instance. Call wallet.status() to check if recovered successfully.
     #[allow(clippy::too_many_arguments)]
-    pub fn recover_wallet(
+    async fn recover_wallet(
         &mut self,
         path: &str,
         password: &str,
@@ -101,7 +121,7 @@ impl WalletManager {
         restore_height: u64,
         kdf_rounds: Option<u64>,
         seed_offset: Option<&str>,
-    ) -> Wallet {
+    ) -> Arc<Mutex<Wallet>> {
         let_cxx_string!(path = path);
         let_cxx_string!(password = password);
         let_cxx_string!(mnemonic = mnemonic);
@@ -117,7 +137,49 @@ impl WalletManager {
             &seed_offset,
         );
 
-        Wallet::new(wallet_pointer)
+        let wallet = Wallet::new(wallet_pointer);
+
+        // Todo: error checking
+
+        let wallet = Arc::new(Mutex::new(wallet));
+        self.wallets.insert(path.to_string(), wallet.clone());
+
+        wallet
+    }
+
+    /// Open a wallet. Only used internally. Use [`WalletManager::open_or_create_wallet`] instead.
+    ///
+    /// Todo: add listener support
+    async fn open_wallet(
+        &mut self,
+        path: &str,
+        password: Option<&str>,
+        network_type: monero::Network,
+        kdf_rounds: Option<u64>,
+    ) -> Arc<Mutex<Wallet>> {
+        let_cxx_string!(path = path);
+        let_cxx_string!(password = password.unwrap_or(""));
+        let network_type = network_type.into();
+        let kdf_rounds = kdf_rounds.unwrap_or(Self::DEFAULT_KDF_ROUNDS);
+
+        let wallet_pointer = unsafe {
+            self.inner.pinned().openWallet(
+                &path,
+                &password,
+                network_type,
+                kdf_rounds,
+                std::ptr::null_mut(),
+            )
+        };
+
+        let wallet = Wallet::new(wallet_pointer);
+
+        // Todo: error checking
+
+        let wallet = Arc::new(Mutex::new(wallet));
+        self.wallets.insert(path.to_string(), wallet.clone());
+
+        wallet
     }
 
     /// Set the address of the remote node ("daemon").
@@ -129,30 +191,17 @@ impl WalletManager {
         self.inner.pinned().setDaemonAddress(&address);
     }
 
-    /// Check if the wallet manager is connected to the configured daemon.
-    pub fn connected(&mut self) -> bool {
-        let mut version = 0;
-        unsafe { self.inner.pinned().connected(&mut version) }
+    /// Check if a wallet exists at the given path.
+    pub async fn wallet_exists(&mut self, path: &str) -> bool {
+        let_cxx_string!(path = path);
+
+        self.inner.pinned().walletExists(&path)
     }
 
-    /// Get the error of the wallet, if there is one.
-    pub fn get_error(&mut self) -> Option<WalletError> {
-        let mut status = 0;
-        let_cxx_string!(error_string = "");
-        self.inner
-            .pinned()
-            .statusWithErrorString(&mut status, &mut error_string);
-
-        // If the status is ok, we return None
-        if status == ffi::Status::STATUS_OK as i32 {
-            return None;
-        }
-
-        // Otherwise we return the error
-        Some(WalletError {
-            code: status,
-            message: error_string.to_string(),
-        })
+    /// Check if the wallet manager is connected to the configured daemon.
+    pub async fn connected(&mut self) -> bool {
+        let mut version = 0;
+        unsafe { self.inner.pinned().connected(&mut version) }
     }
 }
 
@@ -177,8 +226,10 @@ pub struct Wallet {
     inner: RawWallet,
 }
 
+/// This is our own wrapper around a raw C++ wallet pointer.
 pub struct RawWallet(*mut ffi::Wallet);
 
+/// # Safety: Todo
 unsafe impl Send for RawWallet {}
 
 impl Wallet {
@@ -191,19 +242,29 @@ impl Wallet {
 
     /// Get the address for the given account and address index.
     /// address(0, 0) is the main address.
-    pub fn address(&self, account_index: u32, address_index: u32) -> String {
+    pub fn address(&self, account_index: u32, address_index: u32) -> monero::Address {
         let address = ffi::address(&self.inner, account_index, address_index);
-        address.to_string()
+        monero::Address::from_str(&address.to_string()).expect("wallet's own address to be valid")
+    }
+
+    /// Get the main address of the walllet (account 0, address 0).
+    pub fn main_address(&self) -> monero::Address {
+        self.address(0, 0)
     }
 
     /// Initialize the wallet by connecting to the specified remote node (daemon).
-    pub fn init(&mut self, daemon_address: &str, ssl: bool) -> bool {
-        let_cxx_string!(daemon_address = daemon_address);
+    /// If left blank, the wallet will connect to the remote node specified in the wallet manager.
+    pub async fn init(
+        &mut self,
+        daemon_address: Option<&str>,
+        ssl: bool,
+    ) -> Result<(), WalletError> {
+        let_cxx_string!(daemon_address = daemon_address.unwrap_or(""));
         let_cxx_string!(daemon_username = "");
         let_cxx_string!(daemon_password = "");
         let_cxx_string!(proxy_address = "");
 
-        self.inner.pinned().init(
+        let success = self.inner.pinned().init(
             &daemon_address,
             0,
             &daemon_username,
@@ -211,7 +272,15 @@ impl Wallet {
             ssl,
             false,
             &proxy_address,
-        )
+        );
+
+        if success == false {
+            return Err(self
+                .get_error()
+                .expect("wallet to have an error when init failed"));
+        }
+
+        Ok(())
     }
 
     /// Start the background refresh thread (refreshes every 10 seconds).
@@ -220,12 +289,12 @@ impl Wallet {
     }
 
     /// Refresh the wallet asynchronously.
-    pub fn refresh_async(&mut self) {
+    pub async fn refresh_async(&mut self) {
         self.inner.pinned().refreshAsync();
     }
 
     /// Refresh the wallet once.
-    pub fn refresh(&mut self) -> bool {
+    pub async fn refresh(&mut self) -> bool {
         self.inner.pinned().refresh()
     }
 
@@ -242,14 +311,16 @@ impl Wallet {
         self.inner.daemonBlockChainHeight()
     }
 
-    /// Get the total balance across all accounts in atomic units.
-    pub fn balance_all(&self) -> u64 {
-        self.inner.balanceAll()
+    /// Get the total balance across all accounts.
+    pub fn balance_all(&self) -> monero::Amount {
+        let balance = self.inner.balanceAll();
+        monero::Amount::from_pico(balance)
     }
 
     /// Get the total unlocked balance across all accounts in atomic units.
-    pub fn unlocked_balance_all(&self) -> u64 {
-        self.inner.unlockedBalanceAll()
+    pub fn unlocked_balance_all(&self) -> monero::Amount {
+        let balance = self.inner.unlockedBalanceAll();
+        monero::Amount::from_pico(balance)
     }
 
     /// Check if wallet was ever synchronized.
@@ -265,6 +336,28 @@ impl Wallet {
         self.inner
             .pinned()
             .setAllowMismatchedDaemonVersion(allow_mismatch);
+    }
+
+    /// Get the current error status of the wallet, if there is one.
+    /// Returns None if there is no error and the wallet is ok.
+    pub fn get_error(&mut self) -> Option<WalletError> {
+        let mut status = 0;
+        let mut error_string = String::new();
+        let_cxx_string!(error_string_ref = &mut error_string);
+
+        self.inner
+            .statusWithErrorString(&mut status, error_string_ref);
+
+        // If the status is ok, we return None
+        if status == 0 {
+            return None;
+        }
+
+        // Otherwise we return the error
+        Some(WalletError {
+            code: status,
+            message: error_string.to_string(),
+        })
     }
 }
 

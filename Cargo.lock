@@ -5708,6 +5708,7 @@ dependencies = [
  "cmake",
  "cxx",
  "cxx-build",
+ "monero",
  "tempfile",
  "testcontainers",
  "tokio",

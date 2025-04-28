@@ -11,8 +11,8 @@ pub mod ffi {
     }
 
     unsafe extern "C++" {
-        include!("monero-wallet-sys/monero/src/wallet/api/wallet2_api.h");
-        include!("monero-wallet-sys/src/bridge.h");
+        include!("wallet/api/wallet2_api.h");
+        include!("bridge.h");
 
         /// A manager for multiple wallets.
         type WalletManager;
@@ -28,6 +28,11 @@ pub mod ffi {
 
         /// A pending transaction.
         type PendingTransaction;
+
+        /// A wallet listener.
+        ///
+        /// Can be attached to a wallet and will get notified upon specific events.
+        type WalletListener;
 
         /// Get the wallet manager.
         fn getWalletManager() -> *mut WalletManager;
@@ -55,8 +60,24 @@ pub mod ffi {
             seed_offset: &CxxString,
         ) -> *mut Wallet;
 
+        ///virtual Wallet * openWallet(const std::string &path, const std::string &password, NetworkType nettype, uint64_t kdf_rounds = 1, WalletListener * listener = nullptr) = 0;
+        unsafe fn openWallet(
+            self: Pin<&mut WalletManager>,
+            path: &CxxString,
+            password: &CxxString,
+            network_type: NetworkType,
+            kdf_rounds: u64,
+            listener: *mut WalletListener,
+        ) -> *mut Wallet;
+
+        /// Check whether a wallet exists at the given path.
+        fn walletExists(self: Pin<&mut WalletManager>, path: &CxxString) -> bool;
+
         /// Get the current blockchain height.
         fn blockchainHeight(self: Pin<&mut WalletManager>) -> u64;
+
+        /// Get the current error string of the wallet manager.
+        fn walletManagerErrorString(manager: Pin<&mut WalletManager>) -> UniquePtr<CxxString>;
 
         /// Set the address of the remote node ("daemon").
         fn setDaemonAddress(self: Pin<&mut WalletManager>, address: &CxxString);
@@ -122,5 +143,30 @@ pub mod ffi {
 
         /// Set whether to allow mismatched daemon versions.
         fn setAllowMismatchedDaemonVersion(self: Pin<&mut Wallet>, allow_mismatch: bool);
+    }
+}
+
+impl From<monero::Network> for ffi::NetworkType {
+    fn from(network: monero::Network) -> Self {
+        match network {
+            monero::Network::Mainnet => ffi::NetworkType::Mainnet,
+            monero::Network::Testnet => ffi::NetworkType::Testnet,
+            monero::Network::Stagenet => ffi::NetworkType::Stagenet,
+        }
+    }
+}
+
+impl From<ffi::NetworkType> for monero::Network {
+    fn from(network: ffi::NetworkType) -> Self {
+        match network {
+            ffi::NetworkType::Mainnet => monero::Network::Mainnet,
+            ffi::NetworkType::Testnet => monero::Network::Testnet,
+            ffi::NetworkType::Stagenet => monero::Network::Stagenet,
+            // We have to include this path due to the way C++ translates the enum.
+            // The enum only has these 3 values.
+            _ => unreachable!(
+                "There should be no other network type besides Mainnet, Testnet, and Stagenet"
+            ),
+        }
     }
 }
