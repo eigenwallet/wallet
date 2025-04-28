@@ -37,7 +37,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2.7.3
 
       - name: install Rust stable
-        uses: dtolnay/rust-toolchain@1.79
+        uses: dtolnay/rust-toolchain@1.80
         with:
           # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
@@ -63,6 +63,11 @@ jobs:
             libjavascriptcoregtk-4.1-dev=2.44.0-2 \
             gir1.2-javascriptcoregtk-4.1=2.44.0-2 \
             gir1.2-webkit2-4.1=2.44.0-2;
+
+      - name: work around spurious network errors in curl 8.0
+        shell: bash
+        run: |
+          echo "CARGO_HTTP_MULTIPLEXING=false" >> $GITHUB_ENV
 
       - name: install frontend dependencies
         working-directory: src-gui

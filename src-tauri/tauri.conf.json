@@ -1,13 +1,13 @@
 {
   "productName": "UnstoppableSwap",
-  "version": "1.0.0-rc.11",
+  "version": "1.0.0-rc.17",
   "identifier": "net.unstoppableswap.gui",
   "build": {
     "devUrl": "http://localhost:1420",
     "frontendDist": "../src-gui/dist",
     "beforeBuildCommand": {
       "cwd": "../src-gui",
-      "script": "yarn run build"
+      "script": "yarn install && yarn run build"
     }
   },
   "app": {

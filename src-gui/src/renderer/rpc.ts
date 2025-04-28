@@ -1,11 +1,9 @@
 import { invoke as invokeUnsafe } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import {
   BalanceArgs,
   BalanceResponse,
   BuyXmrArgs,
   BuyXmrResponse,
-  TauriLogEvent,
   GetLogsArgs,
   GetLogsResponse,
   GetSwapInfoResponse,
@@ -14,12 +12,8 @@ import {
   ResumeSwapArgs,
   ResumeSwapResponse,
   SuspendCurrentSwapResponse,
-  TauriContextStatusEvent,
-  TauriSwapProgressEventWrapper,
   WithdrawBtcArgs,
   WithdrawBtcResponse,
-  TauriDatabaseStateEvent,
-  TauriTimelockChangeEvent,
   GetSwapInfoArgs,
   ExportBitcoinWalletResponse,
   CheckMoneroNodeArgs,
@@ -28,27 +22,28 @@ import {
   CheckElectrumNodeArgs,
   CheckElectrumNodeResponse,
   GetMoneroAddressesResponse,
-  TauriBackgroundRefundEvent,
+  GetDataDirArgs,
+  ResolveApprovalArgs,
+  ResolveApprovalResponse,
+  RedactArgs,
+  RedactResponse,
 } from "models/tauriModel";
 import {
-  contextStatusEventReceived,
-  receivedCliLog,
-  rpcSetBackgroundRefundState,
   rpcSetBalance,
   rpcSetSwapInfo,
-  timelockChangeEventReceived,
 } from "store/features/rpcSlice";
-import { swapProgressEventReceived } from "store/features/swapSlice";
 import { store } from "./store/storeRenderer";
 import { Maker } from "models/apiModel";
 import { providerToConcatenatedMultiAddr } from "utils/multiAddrUtils";
 import { MoneroRecoveryResponse } from "models/rpcModel";
 import { ListSellersResponse } from "../models/tauriModel";
 import logger from "utils/logger";
-import { getNetwork, getNetworkName, isTestnet } from "store/config";
+import { getNetwork, isTestnet } from "store/config";
 import { Blockchain, Network } from "store/features/settingsSlice";
 import { setStatus } from "store/features/nodesSlice";
 import { discoveredMakersByRendezvous } from "store/features/makersSlice";
+import { CliLog } from "models/cliModel";
+import { logsToRawString, parseLogsFromString } from "utils/parseUtils";
 
 export const PRESET_RENDEZVOUS_POINTS = [
   "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
@@ -59,7 +54,7 @@ export async function fetchSellersAtPresetRendezvousPoints() {
     const response = await listSellersAtRendezvousPoint(rendezvousPoint);
     store.dispatch(discoveredMakersByRendezvous(response.sellers));
 
-    logger.log(`Discovered ${response.sellers.length} sellers at rendezvous point ${rendezvousPoint} during startup fetch`);
+    logger.info(`Discovered ${response.sellers.length} sellers at rendezvous point ${rendezvousPoint} during startup fetch`);
   }),
   );
 }
@@ -173,6 +168,18 @@ export async function getLogsOfSwap(
   });
 }
 
+/// Call the rust backend to redact logs.
+export async function redactLogs(
+  logs: (string | CliLog)[]
+): Promise<(string | CliLog)[]> {
+  const response = await invoke<RedactArgs, RedactResponse>("redact", {
+    text: logsToRawString(logs)
+  })
+
+  console.log(response.text.split("\n").length)
+  return parseLogsFromString(response.text);
+}
+
 export async function listSellersAtRendezvousPoint(
   rendezvousPointAddress: string,
 ): Promise<ListSellersResponse> {
@@ -184,6 +191,7 @@ export async function listSellersAtRendezvousPoint(
 export async function initializeContext() {
   const network = getNetwork();
   const testnet = isTestnet();
+  const useTor = store.getState().settings.enableTor;
 
   // This looks convoluted but it does the following:
   // - Fetch the status of all nodes for each blockchain in parallel
@@ -217,6 +225,7 @@ export async function initializeContext() {
   const tauriSettings: TauriSettings = {
     electrum_rpc_url: bitcoinNode,
     monero_node_url: moneroNode,
+    use_tor: useTor
   };
 
   logger.info("Initializing context with settings", tauriSettings);
@@ -276,4 +285,15 @@ export async function updateAllNodeStatuses() {
 
 export async function getMoneroAddresses(): Promise<GetMoneroAddressesResponse> {
   return await invokeNoArgs<GetMoneroAddressesResponse>("get_monero_addresses");
+}
+
+export async function getDataDir(): Promise<string> {
+  const testnet = isTestnet();
+  return await invoke<GetDataDirArgs, string>("get_data_dir", {
+    is_testnet: testnet,
+  });
+}
+
+export async function resolveApproval(requestId: string, accept: boolean): Promise<void> {
+  await invoke<ResolveApprovalArgs, ResolveApprovalResponse>("resolve_approval_request", { request_id: requestId, accept });
 }

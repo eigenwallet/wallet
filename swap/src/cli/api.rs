@@ -188,13 +188,12 @@ pub struct Context {
     pub tasks: Arc<PendingTaskList>,
     tauri_handle: Option<TauriHandle>,
     bitcoin_wallet: Option<Arc<bitcoin::Wallet>>,
-    monero_wallet: Option<Arc<monero::Wallet>>,
+    monero_wallet: Option<Arc<TokioMutex<monero::Wallet>>>,
     monero_rpc_process: Option<Arc<SyncMutex<monero::WalletRpcProcess>>>,
     tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
 }
 
 /// A conveniant builder struct for [`Context`].
-#[derive(Debug)]
 #[must_use = "ContextBuilder must be built to be useful"]
 pub struct ContextBuilder {
     monero: Option<Monero>,
@@ -364,8 +363,6 @@ impl ContextBuilder {
         let initialize_monero_wallet = async {
             match self.monero {
                 Some(monero) => {
-                    let monero_daemon_address = monero.apply_defaults(self.is_testnet);
-
                     self.tauri_handle.emit_context_init_progress_event(
                         TauriContextStatusEvent::Initializing(vec![
                             TauriPartialInitProgress::OpeningMoneroWallet(
@@ -376,7 +373,7 @@ impl ContextBuilder {
 
                     let (wlt, prc) = init_monero_wallet(
                         data_dir.clone(),
-                        monero_daemon_address,
+                        monero.monero_daemon_address,
                         env_config,
                         self.tauri_handle.clone(),
                     )
@@ -390,13 +387,22 @@ impl ContextBuilder {
                         ]),
                     );
 
-                    Ok((Some(Arc::new(wlt)), Some(Arc::new(SyncMutex::new(prc)))))
+                    Ok((
+                        Some(Arc::new(TokioMutex::new(wlt))),
+                        Some(Arc::new(SyncMutex::new(prc))),
+                    ))
                 }
                 None => Ok((None, None)),
             }
         };
 
         let initialize_tor_client = async {
+            // Don't init a tor client unless we should use it.
+            if !self.tor {
+                tracing::warn!("Internal Tor client not enabled, skipping initialization");
+                return Ok(None);
+            }
+
             self.tauri_handle.emit_context_init_progress_event(
                 TauriContextStatusEvent::Initializing(vec![
                     TauriPartialInitProgress::EstablishingTorCircuits(
@@ -479,7 +485,7 @@ impl Context {
         env_config: EnvConfig,
         db_path: PathBuf,
         bob_bitcoin_wallet: Arc<bitcoin::Wallet>,
-        bob_monero_wallet: Arc<monero::Wallet>,
+        bob_monero_wallet: Arc<TokioMutex<monero::Wallet>>,
     ) -> Self {
         let config = Config::for_harness(seed, env_config);
 
@@ -513,6 +519,10 @@ impl Context {
 
     pub fn bitcoin_wallet(&self) -> Option<Arc<bitcoin::Wallet>> {
         self.bitcoin_wallet.clone()
+    }
+
+    pub fn tauri_handle(&self) -> Option<TauriHandle> {
+        self.tauri_handle.clone()
     }
 }
 
@@ -548,7 +558,7 @@ async fn init_bitcoin_wallet(
 
 async fn init_monero_wallet(
     data_dir: PathBuf,
-    monero_daemon_address: String,
+    monero_daemon_address: impl Into<Option<String>> + Clone,
     env_config: EnvConfig,
     tauri_handle: Option<TauriHandle>,
 ) -> Result<(monero::Wallet, monero::WalletRpcProcess)> {
@@ -559,7 +569,7 @@ async fn init_monero_wallet(
     let monero_wallet_rpc = monero::WalletRpc::new(data_dir.join("monero"), tauri_handle).await?;
 
     tracing::debug!(
-        address = monero_daemon_address,
+        override_monero_daemon_address = monero_daemon_address.clone().into(),
         "Attempting to start monero-wallet-rpc process"
     );
 
@@ -579,7 +589,7 @@ async fn init_monero_wallet(
     Ok((monero_wallet, monero_wallet_rpc_process))
 }
 
-mod data {
+pub mod data {
     use super::*;
 
     pub fn data_dir_from(arg_dir: Option<PathBuf>, testnet: bool) -> Result<PathBuf> {
