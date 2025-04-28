@@ -6,10 +6,11 @@ import {
   TauriContextStatusEvent,
   TauriTimelockChangeEvent,
   BackgroundRefundState,
+  ApprovalRequest,
 } from "models/tauriModel";
 import { MoneroRecoveryResponse } from "../../models/rpcModel";
 import { GetSwapInfoResponseExt } from "models/tauriModelExt";
-import { getLogsAndStringsFromRawFileString } from "utils/parseUtils";
+import { parseLogsFromString } from "utils/parseUtils";
 import { CliLog } from "models/cliModel";
 import logger from "utils/logger";
 
@@ -32,6 +33,10 @@ interface State {
     swapId: string;
     state: BackgroundRefundState;
   } | null;
+  approvalRequests: {
+    // Store the full event, keyed by request_id
+    [requestId: string]: ApprovalRequest;
+  };
 }
 
 export interface RPCSlice {
@@ -52,6 +57,7 @@ const initialState: RPCSlice = {
       updateState: false,
     },
     backgroundRefund: null,
+    approvalRequests: {},
   },
   logs: [],
 };
@@ -62,7 +68,7 @@ export const rpcSlice = createSlice({
   reducers: {
     receivedCliLog(slice, action: PayloadAction<TauriLogEvent>) {
       const buffer = action.payload.buffer;
-      const logs = getLogsAndStringsFromRawFileString(buffer);
+      const logs = parseLogsFromString(buffer);
       const logsWithoutExisting = logs.filter(log => !slice.logs.includes(log));
       slice.logs = slice.logs.concat(logsWithoutExisting);
     },
@@ -138,6 +144,11 @@ export const rpcSlice = createSlice({
         state: action.payload.state,
       };
     },
+    approvalEventReceived(slice, action: PayloadAction<ApprovalRequest>) {
+      const event = action.payload;
+      const requestId = event.content.request_id;
+      slice.state.approvalRequests[requestId] = event;
+    },
   },
 });
 
@@ -152,7 +163,8 @@ export const {
   rpcSetMoneroRecoveryKeys,
   rpcResetMoneroRecoveryKeys,
   rpcSetBackgroundRefundState,
-  timelockChangeEventReceived
+  timelockChangeEventReceived,
+  approvalEventReceived,
 } = rpcSlice.actions;
 
 export default rpcSlice.reducer;

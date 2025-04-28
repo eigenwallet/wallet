@@ -1,16 +1,22 @@
 use crate::bitcoin::wallet::ScriptStatus;
 use crate::bitcoin::{ExpiredTimelocks, TxCancel, TxRefund};
-use crate::cli::api::tauri_bindings::{TauriEmitter, TauriHandle, TauriSwapProgressEvent};
+use crate::cli::api::tauri_bindings::ApprovalRequestDetails;
+use crate::cli::api::tauri_bindings::{
+    LockBitcoinDetails, TauriEmitter, TauriHandle, TauriSwapProgressEvent,
+};
 use crate::cli::EventLoopHandle;
 use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, Rejected};
 use crate::network::swap_setup::bob::NewSwap;
 use crate::protocol::bob::state::*;
 use crate::protocol::{bob, Database};
 use crate::{bitcoin, monero};
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context as AnyContext, Result};
 use std::sync::Arc;
 use tokio::select;
+use tokio::sync::Mutex;
 use uuid::Uuid;
+
+const PRE_BTC_LOCK_APPROVAL_TIMEOUT_SECS: u64 = 120;
 
 pub fn is_complete(state: &BobState) -> bool {
     matches!(
@@ -64,7 +70,7 @@ pub async fn run_until(
             &mut swap.event_loop_handle,
             swap.db.clone(),
             swap.bitcoin_wallet.as_ref(),
-            swap.monero_wallet.as_ref(),
+            swap.monero_wallet.clone(),
             swap.monero_receive_address,
             swap.event_emitter.clone(),
         )
@@ -91,7 +97,7 @@ async fn next_state(
     event_loop_handle: &mut EventLoopHandle,
     db: Arc<dyn Database + Send + Sync>,
     bitcoin_wallet: &bitcoin::Wallet,
-    monero_wallet: &monero::Wallet,
+    monero_wallet: Arc<Mutex<monero::Wallet>>,
     monero_receive_address: monero::Address,
     event_emitter: Option<TauriHandle>,
 ) -> Result<BobState> {
@@ -143,7 +149,10 @@ async fn next_state(
             // If the Monero transaction gets confirmed before Bob comes online again then
             // Bob would record a wallet-height that is past the lock transaction height,
             // which can lead to the wallet not detect the transaction.
-            let monero_wallet_restore_blockheight = monero_wallet.block_height().await?;
+            let monero_wallet_restore_blockheight =
+                monero_wallet.lock().await.block_height().await?;
+
+            let xmr_receive_amount = state2.xmr;
 
             // Alice and Bob have exchanged info
             // Sign the Bitcoin lock transaction
@@ -153,12 +162,50 @@ async fn next_state(
                 .await
                 .context("Failed to sign Bitcoin lock transaction")?;
 
-            // Publish the signed Bitcoin lock transaction
-            let (..) = bitcoin_wallet.broadcast(signed_tx, "lock").await?;
+            let btc_network_fee = tx_lock.fee().context("Failed to get fee")?;
+            let btc_lock_amount = bitcoin::Amount::from_sat(
+                signed_tx
+                    .output
+                    .first()
+                    .context("Failed to get lock amount")?
+                    .value,
+            );
 
-            BobState::BtcLocked {
-                state3,
-                monero_wallet_restore_blockheight,
+            let request = ApprovalRequestDetails::LockBitcoin(LockBitcoinDetails {
+                btc_lock_amount,
+                btc_network_fee,
+                xmr_receive_amount,
+                swap_id,
+            });
+
+            // We request approval before publishing the Bitcoin lock transaction, as the exchange rate determined at this step might be different from the
+            // we previously displayed to the user.
+            let approval_result = event_emitter
+                .request_approval(request, PRE_BTC_LOCK_APPROVAL_TIMEOUT_SECS)
+                .await;
+
+            match approval_result {
+                Ok(true) => {
+                    tracing::debug!("User approved swap offer");
+
+                    // Publish the signed Bitcoin lock transaction
+                    let (..) = bitcoin_wallet.broadcast(signed_tx, "lock").await?;
+
+                    BobState::BtcLocked {
+                        state3,
+                        monero_wallet_restore_blockheight,
+                    }
+                }
+                Ok(false) => {
+                    tracing::warn!("User denied or timed out on swap offer approval");
+
+                    BobState::SafelyAborted
+                }
+                Err(err) => {
+                    tracing::warn!(%err, "Failed to get user approval for swap offer. Assuming swap was aborted.");
+
+                    BobState::SafelyAborted
+                }
             }
         }
         // Bob has locked Bitcoin
@@ -279,7 +326,8 @@ async fn next_state(
             let watch_request = state.lock_xmr_watch_request(lock_transfer_proof);
 
             // We pass a listener to the function that get's called everytime a new confirmation is spotted.
-            let watch_future = monero_wallet.watch_for_transfer_with(
+            let watch_future = monero::wallet::watch_for_transfer_with(
+                monero_wallet.clone(),
                 watch_request,
                 Some(Box::new(move |confirmations| {
                     // Clone them again so that we can move them again
@@ -397,7 +445,11 @@ async fn next_state(
             event_emitter.emit_swap_progress_event(swap_id, TauriSwapProgressEvent::BtcRedeemed);
 
             let xmr_redeem_txids = state
-                .redeem_xmr(monero_wallet, swap_id.to_string(), monero_receive_address)
+                .redeem_xmr(
+                    &*monero_wallet.lock().await,
+                    swap_id.to_string(),
+                    monero_receive_address,
+                )
                 .await?;
 
             event_emitter.emit_swap_progress_event(
@@ -416,7 +468,11 @@ async fn next_state(
             event_emitter
                 .emit_swap_progress_event(swap_id, TauriSwapProgressEvent::CancelTimelockExpired);
 
-            if state4.check_for_tx_cancel(bitcoin_wallet).await.is_err() {
+            if let Err(err) = state4.check_for_tx_cancel(bitcoin_wallet).await {
+                tracing::debug!(
+                    %err,
+                    "Couldn't find tx_cancel yet, publishing ourselves"
+                );
                 state4.submit_tx_cancel(bitcoin_wallet).await?;
             }
 
@@ -493,7 +549,11 @@ async fn next_state(
                     let state5 = state.attempt_cooperative_redeem(s_a);
 
                     match state5
-                        .redeem_xmr(monero_wallet, swap_id.to_string(), monero_receive_address)
+                        .redeem_xmr(
+                            &*monero_wallet.lock().await,
+                            swap_id.to_string(),
+                            monero_receive_address,
+                        )
                         .await
                     {
                         Ok(xmr_redeem_txids) => {

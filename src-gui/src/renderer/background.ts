@@ -1,12 +1,11 @@
 import { listen } from "@tauri-apps/api/event";
-import { TauriSwapProgressEventWrapper, TauriContextStatusEvent, TauriLogEvent, BalanceResponse, TauriDatabaseStateEvent, TauriTimelockChangeEvent, TauriBackgroundRefundEvent, TauriTorEvent } from "models/tauriModel";
-import { contextStatusEventReceived, receivedCliLog, rpcSetBalance, timelockChangeEventReceived, rpcSetBackgroundRefundState } from "store/features/rpcSlice";
+import { TauriSwapProgressEventWrapper, TauriContextStatusEvent, TauriLogEvent, BalanceResponse, TauriDatabaseStateEvent, TauriTimelockChangeEvent, TauriBackgroundRefundEvent, ApprovalRequest } from "models/tauriModel";
+import { contextStatusEventReceived, receivedCliLog, rpcSetBalance, timelockChangeEventReceived, rpcSetBackgroundRefundState, approvalEventReceived } from "store/features/rpcSlice";
 import { swapProgressEventReceived } from "store/features/swapSlice";
 import logger from "utils/logger";
-import { updatePublicRegistry, updateRates } from "./api";
+import { fetchAllConversations, updatePublicRegistry, updateRates } from "./api";
 import { checkContextAvailability, getSwapInfo, initializeContext, updateAllNodeStatuses } from "./rpc";
 import { store } from "./store/storeRenderer";
-import { torEventReceived } from "store/features/torSlice";
 
 // Update the public registry every 5 minutes
 const PROVIDER_UPDATE_INTERVAL = 5 * 60 * 1_000;
@@ -16,6 +15,9 @@ const STATUS_UPDATE_INTERVAL = 2 * 60 * 1_000;
 
 // Update the exchange rate every 5 minutes
 const UPDATE_RATE_INTERVAL = 5 * 60 * 1_000;
+
+// Fetch all conversations every 10 minutes
+const FETCH_CONVERSATIONS_INTERVAL = 10 * 60 * 1_000;
 
 function setIntervalImmediate(callback: () => void, interval: number): void {
     callback();
@@ -27,6 +29,7 @@ export async function setupBackgroundTasks(): Promise<void> {
     setIntervalImmediate(updatePublicRegistry, PROVIDER_UPDATE_INTERVAL);
     setIntervalImmediate(updateAllNodeStatuses, STATUS_UPDATE_INTERVAL);
     setIntervalImmediate(updateRates, UPDATE_RATE_INTERVAL);
+    setIntervalImmediate(fetchAllConversations, FETCH_CONVERSATIONS_INTERVAL);
 
     // // Setup Tauri event listeners
 
@@ -84,4 +87,9 @@ export async function setupBackgroundTasks(): Promise<void> {
         logger.info('Received background refund event', event.payload);
         store.dispatch(rpcSetBackgroundRefundState(event.payload));
     })
+
+    listen<ApprovalRequest>("approval_event", (event) => {
+        logger.info("Received approval_event:", event.payload);
+        store.dispatch(approvalEventReceived(event.payload));
+    });
 }
