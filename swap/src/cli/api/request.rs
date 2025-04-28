@@ -3,7 +3,7 @@ use crate::bitcoin::{wallet, CancelTimelock, ExpiredTimelocks, PunishTimelock, T
 use crate::cli::api::tauri_bindings::{TauriEmitter, TauriSwapProgressEvent};
 use crate::cli::api::Context;
 use crate::cli::{list_sellers as list_sellers_impl, EventLoop, Seller, SellerStatus};
-use crate::common::get_logs;
+use crate::common::{get_logs, redact};
 use crate::libp2p_ext::MultiAddrExt;
 use crate::monero::wallet_rpc::MoneroDaemon;
 use crate::network::quote::{BidQuote, ZeroQuoteReceived};
@@ -420,6 +420,29 @@ impl Request for GetLogsArgs {
         }
 
         Ok(GetLogsResponse { logs })
+    }
+}
+
+/// Best effort redaction of logs, e.g. wallet addresses, swap-ids
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RedactArgs {
+    pub text: String,
+}
+
+#[typeshare]
+#[derive(Serialize, Debug)]
+pub struct RedactResponse {
+    pub text: String,
+}
+
+impl Request for RedactArgs {
+    type Response = RedactResponse;
+
+    async fn request(self, _: Arc<Context>) -> Result<Self::Response> {
+        Ok(RedactResponse {
+            text: redact(&self.text),
+        })
     }
 }
 
@@ -1313,6 +1336,12 @@ pub struct CheckMoneroNodeResponse {
     pub available: bool,
 }
 
+#[typeshare]
+#[derive(Deserialize, Serialize)]
+pub struct GetDataDirArgs {
+    pub is_testnet: bool,
+}
+
 #[derive(Error, Debug)]
 #[error("this is not one of the known monero networks")]
 struct UnknownMoneroNetwork(String);
@@ -1372,5 +1401,34 @@ impl CheckElectrumNodeArgs {
         Ok(CheckElectrumNodeResponse {
             available: res.is_ok(),
         })
+    }
+}
+
+#[typeshare]
+#[derive(Deserialize, Serialize)]
+pub struct ResolveApprovalArgs {
+    pub request_id: String,
+    pub accept: bool,
+}
+
+#[typeshare]
+#[derive(Deserialize, Serialize)]
+pub struct ResolveApprovalResponse {
+    pub success: bool,
+}
+
+impl Request for ResolveApprovalArgs {
+    type Response = ResolveApprovalResponse;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        let request_id = Uuid::parse_str(&self.request_id).context("Invalid request ID")?;
+
+        if let Some(handle) = ctx.tauri_handle.clone() {
+            handle.resolve_approval(request_id, self.accept).await?;
+        } else {
+            bail!("Cannot resolve approval without a Tauri handle");
+        }
+
+        Ok(ResolveApprovalResponse { success: true })
     }
 }

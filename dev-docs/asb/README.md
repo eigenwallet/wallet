@@ -29,6 +29,10 @@ Public Electrum mainnet nodes can be found [here](https://1209k.com/bitcoin-eye/
 
 Consider joining the designated [Matrix chat](https://matrix.to/#/%23unstoppableswap-market-makers:matrix.org) to connect with other individuals running asbs. The core developers are active in this chat and always looking for feedback.
 
+### Using Docker
+
+Running the ASB and its required services (Bitcoin node, Monero node, wallet RPC) can be complex to set up manually. We provide a Docker Compose solution that handles all of this automatically. See our [docker-compose repository](https://github.com/UnstoppableSwap/asb-docker-compose) for setup instructions and configuration details.
+
 ## ASB Details
 
 The ASB is a long running daemon that acts as the trading partner to the swap CLI.
@@ -54,7 +58,7 @@ For example:
 [network]
 rendezvous_point = [
    "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
-   "/dns4/eratosthen.es/tcp/7798/p2p/12D3KooWAh7EXXa2ZyegzLGdjvj1W4G3EXrTGrf6trraoT1MEobs",
+   "/dns4/discover2.unstoppableswap.net/tcp/8888/p2p/12D3KooWGRvf7qVQDrNR5nfYD6rKrbgeTi9x8RrbdxbmsPvxL4mw",
 ]
 external_addresses = ["/dns4/example.com/tcp/9939"]
 ```
@@ -207,3 +211,9 @@ Sparrow wallet import works as follows:
 - Profit!
 
 ![image](transactions-tab.png)
+
+If the bitcoin amount in your wallet doesn't match "asb balance" output and you don't see (all) the transactions you need to increase the gap limit:
+
+- go to Settings > Advanced... > Gap limit
+
+![image](gap-limit.png)
