@@ -9,7 +9,7 @@ import Slide03_PrepareSwap from './slides/Slide03_PrepareSwap'
 import Slide04_ExecuteSwap from './slides/Slide04_ExecuteSwap'
 import Slide06_ReachOut from './slides/Slide06_ReachOut'
 import Slide05_KeepAnEyeOnYourSwaps from './slides/Slide05_KeepAnEyeOnYourSwaps'
-import { setUserHasSeenIntroduction } from 'store/features/settingsSlice'
+import { setFetchFiatPrices, setUserHasSeenIntroduction } from 'store/features/settingsSlice'
 import { useAppDispatch, useSettings } from 'store/hooks'
 import Slide00_FiatPricePreference from './slides/Slide00_FiatPricePreference'
 
@@ -33,7 +33,7 @@ export default function IntroductionModal() {
 
     // Handle Display State
     const [open, setOpen] = useState<boolean>(!userHasSeenIntroduction)
-
+    const [showFiat, setShowFiat] = useState<boolean>(true)
     const handleClose = () => {
         setOpen(false)
     }
@@ -45,6 +45,7 @@ export default function IntroductionModal() {
         if (currentSlideIndex == slideComponents.length - 1) {
             handleClose()
             dispatch(setUserHasSeenIntroduction(true))
+            dispatch(setFetchFiatPrices(showFiat))
             return
         }
 
@@ -62,6 +63,9 @@ export default function IntroductionModal() {
     const slideComponents = [
         <Slide00_FiatPricePreference
             handleContinue={handleContinue}
+            handlePrevious={handlePrevious}
+            showFiat={showFiat}
+            onChange={(showFiatSetting: string) => setShowFiat(showFiatSetting === 'show')}
         />,
         <Slide01_GettingStarted
             handleContinue={handleContinue}

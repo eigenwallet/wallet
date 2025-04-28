@@ -1,15 +1,18 @@
 import { Box, Typography, Paper, Button } from '@material-ui/core'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import CardSelectionGroup from 'renderer/components/inputs/CardSelection/CardSelectionGroup'
 import CardSelectionOption from 'renderer/components/inputs/CardSelection/CardSelectionOption'
+import { setFetchFiatPrices } from 'store/features/settingsSlice'
+import { useAppDispatch } from 'store/hooks'
 
 const FiatPricePreferenceSlide = ({
     handleContinue,
-    handlePrevious,
-    hidePreviousButton,
-}: slideProps) => {
-    const [showFiat, setShowFiat] = useState(true)
-
+    showFiat,
+    onChange
+}: slideProps & {
+    showFiat: boolean;
+    onChange: (value: string) => void;
+}) => {
     return (
         <Paper
             style={{
@@ -39,7 +42,7 @@ const FiatPricePreferenceSlide = ({
                 </Typography>
                 <CardSelectionGroup
                     value={showFiat ? 'show' : 'hide'}
-                    onChange={(value) => setShowFiat(value === 'show')}
+                    onChange={onChange}
                 >
                     <CardSelectionOption value="show">
                         <Typography>Show fiat prices</Typography>
