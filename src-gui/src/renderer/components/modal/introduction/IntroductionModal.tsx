@@ -11,6 +11,7 @@ import Slide06_ReachOut from './slides/Slide06_ReachOut'
 import Slide05_KeepAnEyeOnYourSwaps from './slides/Slide05_KeepAnEyeOnYourSwaps'
 import { setUserHasSeenIntroduction } from 'store/features/settingsSlice'
 import { useAppDispatch, useSettings } from 'store/hooks'
+import Slide00_FiatPricePreference from './slides/Slide00_FiatPricePreference'
 
 const useStyles = makeStyles({
     modal: {
@@ -59,10 +60,12 @@ export default function IntroductionModal() {
     }
 
     const slideComponents = [
+        <Slide00_FiatPricePreference
+            handleContinue={handleContinue}
+        />,
         <Slide01_GettingStarted
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
-            hidePreviousButton
         />,
         <Slide02_ChooseAMaker
             handleContinue={handleContinue}

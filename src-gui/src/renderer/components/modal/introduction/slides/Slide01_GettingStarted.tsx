@@ -8,7 +8,6 @@ export default function Slide01_GettingStarted(props: slideProps) {
             title="Getting Started"
             {...props}
             imagePath={imagePath}
-            customContinueButtonText="Start"
         >
             <Typography variant="subtitle1">
                 To make a Atomic Swap with Unstoppable swap you need a
