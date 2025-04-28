@@ -514,9 +514,7 @@ where
     /// Returns the unreserved Monero balance
     /// Meaning the Monero balance that is not reserved for ongoing swaps and can be used for new swaps
     async fn unreserved_monero_balance(&self) -> Result<Amount, Arc<anyhow::Error>> {
-        /// This is how long we maximally wait for the wallet lock
-        /// -- else the quote will be out of date and we will return
-        /// an error.
+        /// This is how long we maximally wait to get access to the wallet
         const MAX_WAIT_DURATION: Duration = Duration::from_secs(60);
 
         let balance = timeout(MAX_WAIT_DURATION, self.monero_wallet.lock())
