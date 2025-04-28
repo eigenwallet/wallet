@@ -112,12 +112,12 @@ impl WalletManager {
     ///
     /// A new Wallet instance. Call wallet.status() to check if recovered successfully.
     #[allow(clippy::too_many_arguments)]
-    async fn recover_wallet(
+    pub async fn recover_wallet(
         &mut self,
         path: &str,
         password: &str,
         mnemonic: &str,
-        network_type: ffi::NetworkType,
+        network: monero::Network,
         restore_height: u64,
         kdf_rounds: Option<u64>,
         seed_offset: Option<&str>,
@@ -126,7 +126,7 @@ impl WalletManager {
         let_cxx_string!(password = password);
         let_cxx_string!(mnemonic = mnemonic);
         let_cxx_string!(seed_offset = seed_offset.unwrap_or(""));
-
+        let network_type = network.into();
         let wallet_pointer = self.inner.pinned().recoveryWallet(
             &path,
             &password,
