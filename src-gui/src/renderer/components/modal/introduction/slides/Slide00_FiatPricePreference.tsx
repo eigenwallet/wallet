@@ -1,17 +1,15 @@
 import { Box, Typography, Paper, Button } from '@material-ui/core'
-import { useState } from 'react'
 import CardSelectionGroup from 'renderer/components/inputs/CardSelection/CardSelectionGroup'
 import CardSelectionOption from 'renderer/components/inputs/CardSelection/CardSelectionOption'
-import { setFetchFiatPrices } from 'store/features/settingsSlice'
-import { useAppDispatch } from 'store/hooks'
+import logo from '../../../../../assets/unstoppableSwapLogo.png'
 
 const FiatPricePreferenceSlide = ({
     handleContinue,
     showFiat,
-    onChange
+    onChange,
 }: slideProps & {
-    showFiat: boolean;
-    onChange: (value: string) => void;
+    showFiat: boolean
+    onChange: (value: string) => void
 }) => {
     return (
         <Paper
@@ -46,12 +44,17 @@ const FiatPricePreferenceSlide = ({
                 >
                     <CardSelectionOption value="show">
                         <Typography>Show fiat prices</Typography>
-                        <Typography variant="caption" color="textSecondary" paragraph>
+                        <Typography
+                            variant="caption"
+                            color="textSecondary"
+                            paragraph
+                        >
                             We connect to CoinGecko to provide realtime currency
                             prices.
                         </Typography>
-                        <Typography variant="caption" color="textSecondary">Tip: Use a VPN to remain completely
-                        anonymous.</Typography>
+                        <Typography variant="caption" color="textSecondary">
+                            Tip: Use a VPN to remain completely anonymous.
+                        </Typography>
                     </CardSelectionOption>
                     <CardSelectionOption value="hide">
                         <Typography>Don't show fiat prices</Typography>
@@ -89,34 +92,18 @@ const FiatPricePreferenceSlide = ({
                 justifyContent="center"
                 bgcolor="#232323"
             >
-                {/* Placeholder for logo */}
-                <Box
-                    width={160}
-                    height={160}
-                    borderRadius={32}
-                    bgcolor="#FF5C1B"
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                    mb={4}
-                >
-                    <Typography
-                        variant="h1"
-                        style={{ color: '#fff', fontWeight: 900, fontSize: 96 }}
-                    >
-                        m
-                    </Typography>
-                </Box>
+                <img src={logo} alt="UnstoppableSwap" style={{ borderRadius: 16, width: 160, height: 160 }} />
                 <Typography
                     variant="h5"
-                    style={{ color: '#fff', fontWeight: 700 }}
+                    style={{ color: '#fff', fontWeight: 700, marginTop: 24 }}
                     gutterBottom
                 >
                     UnstoppableSwap
                 </Typography>
                 <Typography
                     variant="subtitle1"
-                    style={{ color: '#fff', opacity: 0.7 }}
+                    style={{ color: '#fff', opacity: 0.7, lineHeight: 1.5 }}
+                    align="center"
                 >
                     Exchange Bitcoin for Monero.
                     <br />
