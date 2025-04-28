@@ -13,8 +13,6 @@ use tokio::sync::Mutex;
 
 use bridge::ffi;
 
-pub use bridge::ffi::NetworkType;
-
 static WALLET_MANAGER: OnceLock<Arc<Mutex<WalletManager>>> = OnceLock::new();
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

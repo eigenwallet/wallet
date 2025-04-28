@@ -1,4 +1,4 @@
-use monero_wallet_sys::{NetworkType, WalletManager};
+use monero_wallet_sys::WalletManager;
 
 const KDF_ROUNDS: u64 = 1;
 const PASSWORD: &str = "test";
@@ -29,7 +29,7 @@ async fn main() {
     let wallet_path = temp_dir.path().join(wallet_name);
 
     tracing::info!("Recovering wallet from seed");
-    let mut wallet = wallet_manager
+    let wallet = wallet_manager
         .recover_wallet(
             wallet_path.to_str().unwrap(),
             PASSWORD,

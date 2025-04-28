@@ -1,18 +1,17 @@
 use monero_harness::{image::Monerod, Monero};
-use monero_wallet_sys::{NetworkType, WalletManager};
+use monero_wallet_sys::WalletManager;
 use std::{sync::OnceLock, time::Duration};
 use tempfile::{tempdir, TempDir};
 use testcontainers::{clients::Cli, Container};
 use tokio::time::sleep;
 use tracing::info;
-use uuid::Uuid;
 
 const KDF_ROUNDS: u64 = 1;
 const PASSWORD: &str = "test";
 const SEED_OFFSET: &str = "";
 
 // Amount to fund the wallet with (in piconero)
-const FUND_AMOUNT: u64 = 1_000_000_000_000;
+const FUND_AMOUNT: monero::Amount = monero::Amount::ONE_XMR;
 
 // Global temporary directory for all wallet files
 static GLOBAL_TEMP_DIR: OnceLock<TempDir> = OnceLock::new();
@@ -52,7 +51,7 @@ async fn test_monero_wrapper_with_harness() {
 
     // Fund the address created by monero-wrapper
     info!("Funding the test wallet address: {}", address);
-    fund_address(&monero, &address, monero::Amount::from_pico(FUND_AMOUNT))
+    fund_address(&monero, &address, FUND_AMOUNT)
         .await
         .expect("Failed to fund wallet address");
 
@@ -169,7 +168,7 @@ async fn connect_and_check_balance(seed: String, daemon_address: String) -> mone
     tracing::info!("Recovering wallet from seed to {}", wallet_path);
 
     // Recover wallet from seed
-    let mut wallet = wallet_manager
+    let wallet = wallet_manager
         .recover_wallet(
             &wallet_path,
             PASSWORD,
@@ -184,7 +183,7 @@ async fn connect_and_check_balance(seed: String, daemon_address: String) -> mone
     let mut wallet = wallet.lock().await;
 
     // Initialize wallet
-    wallet.init(Some(&daemon_address), false).await;
+    wallet.init(Some(&daemon_address), false).await.unwrap();
 
     tracing::info!(
         "Starting testing of wallet with address: {}",
