@@ -9,7 +9,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use strum::Display;
-use tokio::sync::{oneshot, Mutex as TokioMutex};
+use tokio::sync::{Mutex as TokioMutex, oneshot};
 use typeshare::typeshare;
 use url::Url;
 use uuid::Uuid;
@@ -29,10 +29,10 @@ const APPROVAL_EVENT_NAME: &str = "approval_event";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LockBitcoinDetails {
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub btc_lock_amount: bitcoin::Amount,
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub btc_network_fee: bitcoin::Amount,
     #[typeshare(serialized_as = "number")]
     pub xmr_receive_amount: monero::Amount,
