@@ -30,10 +30,10 @@ pub mod ffi {
         type PendingTransaction;
 
         /// Get the wallet manager.
-        unsafe fn getWalletManager() -> *mut WalletManager;
+        fn getWalletManager() -> *mut WalletManager;
 
         /// Create a new wallet.
-        unsafe fn createWallet(
+        fn createWallet(
             self: Pin<&mut WalletManager>,
             path: &CxxString,
             password: &CxxString,
@@ -43,7 +43,8 @@ pub mod ffi {
         ) -> *mut Wallet;
 
         /// Recover a wallet from a mnemonic seed (electrum seed).
-        unsafe fn recoveryWallet(
+        #[allow(clippy::too_many_arguments)]
+        fn recoveryWallet(
             self: Pin<&mut WalletManager>,
             path: &CxxString,
             password: &CxxString,
@@ -55,16 +56,20 @@ pub mod ffi {
         ) -> *mut Wallet;
 
         /// Get the current blockchain height.
-        unsafe fn blockchainHeight(self: Pin<&mut WalletManager>) -> u64;
+        fn blockchainHeight(self: Pin<&mut WalletManager>) -> u64;
 
         /// Set the address of the remote node ("daemon").
-        unsafe fn setDaemonAddress(self: Pin<&mut WalletManager>, address: &CxxString);
+        fn setDaemonAddress(self: Pin<&mut WalletManager>, address: &CxxString);
 
         /// Check if the wallet manager is connected to the configured daemon.
+        ///
+        /// # Safety
+        ///
+        /// - `version` must be a valid pointer to a `u32` or null.
         unsafe fn connected(self: Pin<&mut WalletManager>, version: *mut u32) -> bool;
 
         /// Get the status of the wallet and an error string if there is one.
-        unsafe fn statusWithErrorString(
+        fn statusWithErrorString(
             self: &Wallet,
             status: &mut i32,
             error_string: Pin<&mut CxxString>,
@@ -72,15 +77,12 @@ pub mod ffi {
 
         /// Address for the given account and address index.
         /// address(0, 0) is the main address.
-        unsafe fn address(
-            wallet: &Wallet,
-            account_index: u32,
-            address_index: u32,
-        ) -> UniquePtr<CxxString>;
+        fn address(wallet: &Wallet, account_index: u32, address_index: u32)
+            -> UniquePtr<CxxString>;
 
         /// Initialize the wallet by connecting to the specified remote node (daemon).
         #[allow(clippy::too_many_arguments)]
-        unsafe fn init(
+        fn init(
             self: Pin<&mut Wallet>,
             daemon_address: &CxxString,
             upper_transaction_size_limit: u64,
@@ -92,32 +94,33 @@ pub mod ffi {
         ) -> bool;
 
         /// Refresh the wallet once.
-        unsafe fn refresh(self: Pin<&mut Wallet>) -> bool;
+        fn refresh(self: Pin<&mut Wallet>) -> bool;
 
         /// Start the background refresh thread (refreshes every 10 seconds).
-        unsafe fn startRefresh(self: Pin<&mut Wallet>);
+        fn startRefresh(self: Pin<&mut Wallet>);
 
         /// Refresh the wallet asynchronously.
-        unsafe fn refreshAsync(self: Pin<&mut Wallet>);
+        fn refreshAsync(self: Pin<&mut Wallet>);
 
         /// Get the current blockchain height.
-        unsafe fn blockChainHeight(self: &Wallet) -> u64;
+        fn blockChainHeight(self: &Wallet) -> u64;
 
         /// Get the daemon's blockchain height.
-        unsafe fn daemonBlockChainHeight(self: &Wallet) -> u64;
+        fn daemonBlockChainHeight(self: &Wallet) -> u64;
 
         /// Check if wallet was ever synchronized.
-        unsafe fn synchronized(self: &Wallet) -> bool;
+        fn synchronized(self: &Wallet) -> bool;
 
         /// Get the status of a pending transaction.
-        unsafe fn status(self: &PendingTransaction) -> i32;
-        
-        /// Get the total balance across all accounts in atomic units.
-        unsafe fn balanceAll(self: &Wallet) -> u64;
+        fn status(self: &PendingTransaction) -> i32;
 
-        /// Get the total unlocked balance across all accounts in atomic units.
-        unsafe fn unlockedBalanceAll(self: &Wallet) -> u64;
+        /// Get the total balance across all accounts in atomic units (piconero).
+        fn balanceAll(self: &Wallet) -> u64;
 
-        unsafe fn setAllowMismatchedDaemonVersion(self: Pin<&mut Wallet>, allow_mismatch: bool);
+        /// Get the total unlocked balance across all accounts in atomic units (piconero).
+        fn unlockedBalanceAll(self: &Wallet) -> u64;
+
+        /// Set whether to allow mismatched daemon versions.
+        fn setAllowMismatchedDaemonVersion(self: Pin<&mut Wallet>, allow_mismatch: bool);
     }
 }

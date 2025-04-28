@@ -5,7 +5,7 @@ const PASSWORD: &str = "test";
 
 // No seed offset for now. This is the default
 // TODO: Let lib.rs take an Option<_> and if None pass in an empty string
-const SEED_OFFSET: &str = ""; 
+const SEED_OFFSET: &str = "";
 
 const STAGENET_REMOTE_NODE: &str = "node.sethforprivacy.com:38089";
 const STAGENET_WALLET_SEED: &str = "echo ourselves ruined oven masterful wives enough addicted future cottage illness adopt lucky movement tiger taboo imbalance antics iceberg hobby oval aloof tuesday uttered oval";
@@ -37,20 +37,20 @@ fn main() {
         STAGENET_WALLET_SEED,
         NetworkType::Stagenet,
         STAGENET_WALLET_RESTORE_HEIGHT,
-        KDF_ROUNDS,
-        SEED_OFFSET,
+        Some(KDF_ROUNDS),
+        Some(SEED_OFFSET),
     );
-    
+
     // TODO: Here we'd need to call status() I believe to check if the creation was successful
 
     wallet.init(STAGENET_REMOTE_NODE, true);
 
     tracing::info!("Primary address: {}", wallet.address(0, 0));
-    
+
     // Start background refresh
     tracing::info!("Starting background refresh");
     wallet.start_refresh();
-    
+
     // Wait for a while to let the wallet sync, checking sync status
     tracing::info!("Waiting for wallet to sync...");
 
@@ -59,24 +59,27 @@ fn main() {
         let wallet_height = wallet.blockchain_height();
         let daemon_height = wallet.daemon_blockchain_height();
         let is_synced = wallet.synchronized();
-        
+
         // Calculate sync percentage if daemon height is available
         let sync_percentage = if daemon_height > 0 && daemon_height >= wallet_height {
             (wallet_height as f64 / daemon_height as f64 * 100.0).round()
         } else {
             0.0
         };
-        
+
         tracing::info!(
-            "Wallet height: {}, Daemon height: {}, Sync: {}%, Synchronized: {} (iteration {})",
-            wallet_height, daemon_height, sync_percentage, is_synced, i
+            "Wallet height: {}, Daemon height: {}, Sync: {}%, Synchronized: {}",
+            wallet_height,
+            daemon_height,
+            sync_percentage,
+            is_synced,
         );
-                
+
         std::thread::sleep(std::time::Duration::from_secs(3));
     }
 
     tracing::info!("Wallet is synchronized!");
-    
+
     // Manual refresh one more time
     tracing::info!(result=%wallet.refresh(), "Manual refresh");
 
