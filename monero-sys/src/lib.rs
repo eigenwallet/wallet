@@ -268,7 +268,7 @@ impl Wallet {
 
         if !success {
             self.check_error()?;
-            return Err(WalletError::critical("wallet init failed"));
+            return Err(WalletError::critical("wallet initialization failed"));
         }
 
         Ok(())
