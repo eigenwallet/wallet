@@ -765,9 +765,9 @@ where
             .start_sync_with_revealed_spks()
             .inspect(|_, progress| {
                 tracing::debug!(
-                    "Syncing wallet with revealed spks. {:?} synced and {:?} remaining",
+                    "Syncing wallet ({:?} / {:?} done)",
                     progress.consumed(),
-                    progress.remaining()
+                    progress.total()
                 );
             })
             .build();
