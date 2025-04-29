@@ -6,6 +6,7 @@ use bdk_electrum::BdkElectrumClient;
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::export::FullyNodedExport;
+use bdk_wallet::miniscript::psbt::PsbtExt;
 use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::template::{Bip84, DescriptorTemplate};
@@ -279,6 +280,7 @@ impl Wallet {
                 .reveal_addresses_to(KeychainKind::External, old_wallet.external_derivation_index);
             let _ = wallet
                 .reveal_addresses_to(KeychainKind::Internal, old_wallet.internal_derivation_index);
+            
             wallet.persist(&mut persister)?;
         }
 
@@ -320,20 +322,20 @@ impl Wallet {
         Persister: WalletPersister + Sized,
         <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
     {
-        let (descriptor, ..) = Bip84(xprivkey, KeychainKind::External)
+        let (_descriptor, external_keymap, _) = Bip84(xprivkey, KeychainKind::External)
             .build(network)
             .context("Failed to build external wallet descriptor")?;
 
-        let (change_descriptor, ..) = Bip84(xprivkey, KeychainKind::Internal)
+        let (_change_descriptor, internal_keymap, _) = Bip84(xprivkey, KeychainKind::Internal)
             .build(network)
             .context("Failed to build change wallet descriptor")?;
 
         tracing::debug!("Loading Bitcoin wallet from database");
 
         let wallet = bdk_wallet::Wallet::load()
+            .keymap(KeychainKind::External, external_keymap)
+            .keymap(KeychainKind::Internal, internal_keymap)
             .extract_keys()
-            .descriptor(KeychainKind::External, Some(descriptor))
-            .descriptor(KeychainKind::Internal, Some(change_descriptor))
             .load_wallet(&mut persister)
             .context("Failed to open database")?
             .context("No wallet found in database")?;
@@ -488,19 +490,92 @@ where
     }
 
     pub async fn sign_and_finalize(&self, mut psbt: bitcoin::psbt::Psbt) -> Result<Transaction> {
-        let finalized = self
-            .wallet
-            .lock()
-            .await
-            .sign(&mut psbt, SignOptions::default())?;
+        // Acquire the wallet lock once here for efficiency within the non-finalized block
+        let wallet_guard = self.wallet.lock().await;
+
+        let finalized = wallet_guard.sign(&mut psbt, SignOptions::default())?;
 
         if !finalized {
-            tracing::error!(outputs = ?psbt.outputs, "PSBT is not finalized");
+            tracing::error!("PSBT failed to finalize. Dumping details:");
+            tracing::warn!(
+                inputs_count = %psbt.unsigned_tx.input.len(),
+                outputs_count = %psbt.unsigned_tx.output.len(),
+                "PSBT structure summary"
+            );
+
+            // Check if the wallet reports having signing keys for the relevant keychains
+            let external_signers_count = wallet_guard
+                .get_signers(KeychainKind::External)   // external descriptor
+                .signers()                             // → Vec<Box<dyn Signer>>
+                .len(); // Get the count of signers
+
+            let internal_signers_count = wallet_guard
+                .get_signers(KeychainKind::Internal)   // change descriptor
+                .signers()
+                .len(); // Get the count of signers
+
+            tracing::warn!(
+                external_signers_count = %external_signers_count,
+                internal_signers_count = %internal_signers_count,
+                "Wallet signer counts"
+            );
+
+            // Prepare to check ownership - list known UTXOs
+            // Note: Listing all UTXOs might be slightly inefficient for large wallets,
+            // but it's effective for debugging. BDK might offer a more direct `is_mine` check.
+            let owned_utxos: std::collections::HashSet<bitcoin::OutPoint> = wallet_guard
+                .list_unspent()
+                .map(|utxo| utxo.outpoint)
+                .collect();
+
+            // Iterate through each input in the PSBT and log its state
+            for (index, psbt_input) in psbt.inputs.iter().enumerate() {
+                let partial_sigs_count = psbt_input.partial_sigs.len();
+                let has_witness_utxo = psbt_input.witness_utxo.is_some();
+                let has_non_witness_utxo = psbt_input.non_witness_utxo.is_some();
+                let has_witness_script = psbt_input.witness_script.is_some();
+                let has_redeem_script = psbt_input.redeem_script.is_some();
+                let has_sighash_type = psbt_input.sighash_type.is_some();
+                let bip32_derivation_count = psbt_input.bip32_derivation.len();
+
+                // Get the OutPoint for this input from the unsigned transaction part
+                let previous_output = psbt.unsigned_tx.input[index].previous_output;
+
+                // *** Check if the wallet lists this input's OutPoint as owned ***
+                let is_owned = owned_utxos.contains(&previous_output);
+
+                tracing::warn!(
+                    input_index = %index,
+                    outpoint = %previous_output,
+                    is_owned_by_wallet = %is_owned,
+                    has_witness_utxo = %has_witness_utxo,
+                    has_non_witness_utxo = %has_non_witness_utxo,
+                    partial_sigs_count = %partial_sigs_count,
+                    has_sighash_type = %has_sighash_type,
+                    has_witness_script = %has_witness_script,
+                    has_redeem_script = %has_redeem_script,
+                    bip32_derivation_count = %bip32_derivation_count,
+                    "Details for input index {}", index
+                );
+
+                // Add specific warning if not owned but signing was expected
+                if !is_owned {
+                    tracing::error!("Input {} (OutPoint: {}) is NOT listed as owned by the wallet!", index, previous_output);
+                } else if partial_sigs_count == 0 {
+                    tracing::warn!("Input {} (OutPoint: {}) IS listed as owned, but has NO partial signatures after signing attempt.", index, previous_output);
+                }
+            }
+
+            // Release the lock before potentially lengthy operations or bailing
+            drop(wallet_guard);
+
             bail!("PSBT is not finalized")
         }
 
-        let tx = psbt.extract_tx();
+        // Release the lock if finalization succeeded
+        drop(wallet_guard);
 
+        let tx = psbt.extract_tx();
         Ok(tx?)
     }
 
@@ -688,6 +763,13 @@ where
             .lock()
             .await
             .start_sync_with_revealed_spks()
+            .inspect(|_, progress| {
+                tracing::debug!(
+                    "Syncing wallet with revealed spks. {:?} synced and {:?} remaining",
+                    progress.consumed(),
+                    progress.remaining()
+                );
+            })
             .build();
 
         let client = self.client.lock().await;
@@ -1702,11 +1784,11 @@ mod tests {
         old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
         old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
         old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(trace_status_change(tx, old, confs(1)));
-        old = Some(trace_status_change(tx, old, confs(2)));
-        old = Some(trace_status_change(tx, old, confs(3)));
-        old = Some(trace_status_change(tx, old, confs(3)));
-        trace_status_change(tx, old, confs(3));
+        old = Some(trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 1 })));
+        old = Some(trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 2 })));
+        old = Some(trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 3 })));
+        old = Some(trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 3 })));
+        trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 3 }));
 
         assert_eq!(
             writer.captured(),
