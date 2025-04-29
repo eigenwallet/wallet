@@ -1,4 +1,4 @@
-use monero_wallet_sys::WalletManager;
+use monero_sys::WalletManager;
 
 const KDF_ROUNDS: u64 = 1;
 const PASSWORD: &str = "test";

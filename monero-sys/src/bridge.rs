@@ -127,7 +127,7 @@ pub mod ffi {
         fn blockChainHeight(self: &Wallet) -> u64;
 
         /// Get the daemon's blockchain height.
-        fn daemonBlockChainHeight(self: &Wallet) -> u64;
+        fn daemonBlockChainTargetHeight(self: &Wallet) -> u64;
 
         /// Check if wallet was ever synchronized.
         fn synchronized(self: &Wallet) -> bool;

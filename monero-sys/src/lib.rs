@@ -1,8 +1,10 @@
+#![doc = include_str!("../README.md")]
+
 mod bridge;
 
 use std::{
     collections::HashMap,
-    ops::{Deref, DerefMut},
+    ops::Deref,
     pin::Pin,
     str::FromStr,
     sync::{Arc, OnceLock},
@@ -29,9 +31,22 @@ pub struct WalletManager {
     wallets: HashMap<String, Arc<Mutex<Wallet>>>,
 }
 
+/// This is our own wrapper around a raw C++ wallet manager pointer.
 pub struct RawWalletManager(*mut ffi::WalletManager);
 
-unsafe impl Send for RawWalletManager {}
+/// A single Monero wallet.
+pub struct Wallet {
+    inner: RawWallet,
+}
+
+/// This is our own wrapper around a raw C++ wallet pointer.
+pub struct RawWallet(*mut ffi::Wallet);
+
+/// The progress of synchronization of a wallet with the remote node.
+pub struct SyncProgress {
+    pub current_block: u64,
+    pub target_block: u64,
+}
 
 impl WalletManager {
     const DEFAULT_KDF_ROUNDS: u64 = 1;
@@ -214,16 +229,8 @@ impl RawWalletManager {
     }
 }
 
-/// A single Monero wallet.
-pub struct Wallet {
-    inner: RawWallet,
-}
-
-/// This is our own wrapper around a raw C++ wallet pointer.
-pub struct RawWallet(*mut ffi::Wallet);
-
-/// # Safety: Todo
-unsafe impl Send for RawWallet {}
+/// Safety: Todo
+unsafe impl Send for RawWalletManager {}
 
 impl Wallet {
     /// Create and initialize new wallet from a raw C++ wallet pointer.
@@ -285,15 +292,27 @@ impl Wallet {
         Ok(())
     }
 
+    /// Get the sync progress of the wallet as a percentage.
+    pub async fn sync_progress(&mut self) -> SyncProgress {
+        let current_block = self.inner.blockChainHeight();
+        let target_block = self.daemon_blockchain_height().unwrap_or(0);
+        SyncProgress::new(current_block, target_block)
+    }
+
     /// Sync the wallet with the remote node.
     /// Returns when the sync is complete.
+    ///
     pub async fn sync(&mut self) -> Result<(), WalletError> {
+        // We wait for 100ms before polling the wallet's sync status again.
+        // This is ok because this doesn't involve any blocking calls.
+        const SLEEP_DURATION_MILLIS: u64 = 100;
+
         // Initiate the sync
         self.refresh_async().await;
 
         // Continue polling until the sync is complete
         while !self.inner.synchronized() {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(SLEEP_DURATION_MILLIS)).await;
         }
 
         Ok(())
@@ -319,7 +338,9 @@ impl Wallet {
     /// Returns the height of the blockchain from the connected daemon.
     /// Returns 0 if there's an error communicating with the daemon.
     pub fn daemon_blockchain_height(&mut self) -> Result<u64, WalletError> {
-        let height = self.inner.daemonBlockChainHeight();
+        // Here we actually use the _target_ height -- incase the remote node is
+        // currently catching up we want to work with the height it ends up at.
+        let height = self.inner.daemonBlockChainTargetHeight();
         if height == 0 {
             self.check_error()?;
             Err(WalletError::critical(
@@ -379,6 +400,22 @@ impl Wallet {
     }
 }
 
+/// # Safety: Todo
+unsafe impl Send for RawWallet {}
+
+impl SyncProgress {
+    fn new(current_block: u64, target_block: u64) -> Self {
+        Self {
+            current_block,
+            target_block,
+        }
+    }
+
+    /// Get the sync progress as a percentage.
+    pub fn percentage(&self) -> f32 {
+        100.0 * (self.current_block as f32 / self.target_block as f32)
+    }
+}
 impl WalletError {
     /// Create a new non-critical wallet error.
     fn error(message: impl Into<String>) -> Self {
@@ -398,22 +435,19 @@ impl WalletError {
 }
 
 impl RawWallet {
-    /// Get a pinned reference to the inner (c++) wallet.
+    /// Convenience method for getting a pinned reference to the inner (c++) wallet.
     pub fn pinned(&mut self) -> Pin<&mut ffi::Wallet> {
         unsafe { Pin::new_unchecked(self.0.as_mut().expect("wallet pointer not to be null")) }
     }
 }
+
+// We implement Deref for RawWallet such that we can use the
+// const c++ methods directly on the RawWallet struct.
 impl Deref for RawWallet {
     type Target = ffi::Wallet;
 
     fn deref(&self) -> &ffi::Wallet {
         unsafe { self.0.as_ref().expect("wallet pointer not to be null") }
-    }
-}
-
-impl DerefMut for RawWallet {
-    fn deref_mut(&mut self) -> &mut ffi::Wallet {
-        unsafe { self.0.as_mut().expect("wallet pointer not to be null") }
     }
 }
 
