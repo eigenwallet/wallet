@@ -518,7 +518,9 @@ where
     pub async fn new_address(&self) -> Result<Address> {
         let mut wallet = self.wallet.lock().await;
 
-        let address = wallet.reveal_next_address(KeychainKind::External).address;
+        // Only reveal a new address if absolutely necessary
+        // We want to avoid revealing more and more addresses
+        let address = wallet.next_unused_address(KeychainKind::External).address;
 
         // Important: persist that we revealed a new address.
         // Otherwise the wallet might reuse it (bad).
