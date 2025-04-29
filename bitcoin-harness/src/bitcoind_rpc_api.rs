@@ -18,7 +18,11 @@ pub trait BitcoindRpcApi {
         avoid_reuse: Option<bool>,
     ) -> LoadWalletResult;
 
-    async fn deriveaddresses(&self, descriptor: &str, range: Option<[u64; 2]>) -> Vec<Address<NetworkUnchecked>>;
+    async fn deriveaddresses(
+        &self,
+        descriptor: &str,
+        range: Option<[u64; 2]>,
+    ) -> Vec<Address<NetworkUnchecked>>;
 
     async fn dumpwallet(&self, filename: &std::path::Path) -> DumpWalletResponse;
 
@@ -43,7 +47,11 @@ pub trait BitcoindRpcApi {
 
     async fn getdescriptorinfo(&self, descriptor: &str) -> GetDescriptorInfoResult;
 
-    async fn getnewaddress(&self, label: Option<String>, address_type: Option<String>) -> Address<NetworkUnchecked>;
+    async fn getnewaddress(
+        &self,
+        label: Option<String>,
+        address_type: Option<String>,
+    ) -> Address<NetworkUnchecked>;
 
     async fn gettransaction(&self, txid: Txid) -> GetTransactionResult;
 

@@ -26,8 +26,7 @@ impl TxLock {
         A: PublicKey,
         B: PublicKey,
         change: bitcoin::Address,
-    ) -> Result<Self>
-    {
+    ) -> Result<Self> {
         let lock_output_descriptor = build_shared_output_descriptor(A.0, B.0)?;
         let address = lock_output_descriptor
             .address(wallet.network())

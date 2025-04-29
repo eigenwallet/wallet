@@ -127,8 +127,7 @@ impl<'c> Bitcoind<'c> {
             .getnewaddress(None, None)
             .await?;
 
-        let reward_address = reward_address
-            .require_network(bitcoind_client.network().await?)?;
+        let reward_address = reward_address.require_network(bitcoind_client.network().await?)?;
 
         bitcoind_client
             .generatetoaddress(101 + spendable_quantity, reward_address.clone())
@@ -152,8 +151,7 @@ impl<'c> Bitcoind<'c> {
             .getnewaddress(None, None)
             .await?;
 
-        let reward_address = reward_address
-            .require_network(bitcoind_client.network().await?)?; 
+        let reward_address = reward_address.require_network(bitcoind_client.network().await?)?;
 
         bitcoind_client.generatetoaddress(1, reward_address).await?;
 

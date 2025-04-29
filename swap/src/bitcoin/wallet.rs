@@ -230,13 +230,15 @@ impl Wallet {
     pub async fn with_sqlite_in_memory(
         seed: &Seed,
         network: Network,
+        electrum_rpc_url: &str,
         finality_confirmations: u32,
         target_block: usize,
+        sync_interval: Duration,
     ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
         Ok(Self::create_new(
             seed.derive_extended_private_key(network)?,
             network,
-            Client::new("", Duration::ZERO).unwrap(),
+            Client::new(electrum_rpc_url, sync_interval).unwrap(),
             bdk_wallet::rusqlite::Connection::open_in_memory()?,
             finality_confirmations,
             target_block,
@@ -280,7 +282,7 @@ impl Wallet {
                 .reveal_addresses_to(KeychainKind::External, old_wallet.external_derivation_index);
             let _ = wallet
                 .reveal_addresses_to(KeychainKind::Internal, old_wallet.internal_derivation_index);
-            
+
             wallet.persist(&mut persister)?;
         }
 
@@ -505,12 +507,12 @@ where
 
             // Check if the wallet reports having signing keys for the relevant keychains
             let external_signers_count = wallet_guard
-                .get_signers(KeychainKind::External)   // external descriptor
-                .signers()                             // → Vec<Box<dyn Signer>>
+                .get_signers(KeychainKind::External) // external descriptor
+                .signers() // → Vec<Box<dyn Signer>>
                 .len(); // Get the count of signers
 
             let internal_signers_count = wallet_guard
-                .get_signers(KeychainKind::Internal)   // change descriptor
+                .get_signers(KeychainKind::Internal) // change descriptor
                 .signers()
                 .len(); // Get the count of signers
 
@@ -560,7 +562,11 @@ where
 
                 // Add specific warning if not owned but signing was expected
                 if !is_owned {
-                    tracing::error!("Input {} (OutPoint: {}) is NOT listed as owned by the wallet!", index, previous_output);
+                    tracing::error!(
+                        "Input {} (OutPoint: {}) is NOT listed as owned by the wallet!",
+                        index,
+                        previous_output
+                    );
                 } else if partial_sigs_count == 0 {
                     tracing::warn!("Input {} (OutPoint: {}) IS listed as owned, but has NO partial signatures after signing attempt.", index, previous_output);
                 }
@@ -1784,10 +1790,26 @@ mod tests {
         old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
         old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
         old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 1 })));
-        old = Some(trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 2 })));
-        old = Some(trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 3 })));
-        old = Some(trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 3 })));
+        old = Some(trace_status_change(
+            tx,
+            old,
+            ScriptStatus::Confirmed(Confirmed { depth: 1 }),
+        ));
+        old = Some(trace_status_change(
+            tx,
+            old,
+            ScriptStatus::Confirmed(Confirmed { depth: 2 }),
+        ));
+        old = Some(trace_status_change(
+            tx,
+            old,
+            ScriptStatus::Confirmed(Confirmed { depth: 3 }),
+        ));
+        old = Some(trace_status_change(
+            tx,
+            old,
+            ScriptStatus::Confirmed(Confirmed { depth: 3 }),
+        ));
         trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 3 }));
 
         assert_eq!(
