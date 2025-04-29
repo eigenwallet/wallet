@@ -38,6 +38,7 @@ async fn main() {
             STAGENET_WALLET_RESTORE_HEIGHT,
             Some(KDF_ROUNDS),
             Some(SEED_OFFSET),
+            true,
         )
         .await
         .expect("Failed to recover wallet");
@@ -48,7 +49,7 @@ async fn main() {
 
     // Start background refresh
     tracing::info!("Starting background refresh");
-    wallet.start_refresh();
+    wallet.sync().await.expect("Failed to sync wallet");
 
     // Wait for a while to let the wallet sync, checking sync status
     tracing::info!("Waiting for wallet to sync...");
@@ -56,7 +57,7 @@ async fn main() {
     // TODO: lib.rs should provide an async method that does this for us
     while !wallet.synchronized() {
         let wallet_height = wallet.blockchain_height();
-        let daemon_height = wallet.daemon_blockchain_height();
+        let daemon_height = wallet.daemon_blockchain_height().unwrap();
         let is_synced = wallet.synchronized();
 
         // Calculate sync percentage if daemon height is available
@@ -80,7 +81,8 @@ async fn main() {
     tracing::info!("Wallet is synchronized!");
 
     // Manual refresh one more time
-    tracing::info!(result=%wallet.refresh().await, "Manual refresh");
+    tracing::info!("Manual refresh");
+    wallet.sync().await.expect("Failed to sync wallet");
 
     let balance = wallet.balance_all();
     tracing::info!("Balance: {}", balance.as_pico());

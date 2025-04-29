@@ -58,16 +58,21 @@ impl WalletManager {
         language: Option<&str>,
         network: monero::Network,
         kdf_rounds: Option<u64>,
+        background_sync: bool,
     ) -> Result<Arc<Mutex<Wallet>>, WalletError> {
         // If we've already loaded this wallet, return it.
         if self.wallets.contains_key(path) {
-            return Ok(self.wallets[path].clone());
+            let wallet = self.wallets[path].clone();
+            if background_sync {
+                wallet.lock().await.start_refresh();
+            }
+            return Ok(wallet);
         }
 
         // If we haven't loaded the wallet, but it already exists, open it.
         if self.wallet_exists(path).await {
             return Ok(self
-                .open_wallet(path, password, network, kdf_rounds)
+                .open_wallet(path, password, network, kdf_rounds, background_sync)
                 .await?);
         }
 
@@ -86,7 +91,7 @@ impl WalletManager {
             panic!("Failed to create wallet");
         }
 
-        let wallet = Wallet::new(wallet_pointer).await?;
+        let wallet = Wallet::new(wallet_pointer, background_sync).await?;
 
         // Todo: error checking
 
@@ -107,6 +112,7 @@ impl WalletManager {
         restore_height: u64,
         kdf_rounds: Option<u64>,
         seed_offset: Option<&str>,
+        background_sync: bool,
     ) -> Result<Arc<Mutex<Wallet>>, WalletError> {
         let_cxx_string!(path = path);
         let_cxx_string!(password = password);
@@ -123,7 +129,7 @@ impl WalletManager {
             &seed_offset,
         );
 
-        let wallet = Wallet::new(wallet_pointer).await?;
+        let wallet = Wallet::new(wallet_pointer, background_sync).await?;
 
         // Todo: error checking
 
@@ -142,6 +148,7 @@ impl WalletManager {
         password: Option<&str>,
         network_type: monero::Network,
         kdf_rounds: Option<u64>,
+        background_sync: bool,
     ) -> Result<Arc<Mutex<Wallet>>, WalletError> {
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
@@ -158,7 +165,7 @@ impl WalletManager {
             )
         };
 
-        let wallet = Wallet::new(wallet_pointer).await?;
+        let wallet = Wallet::new(wallet_pointer, background_sync).await?;
 
         // Todo: error checking
 
@@ -220,7 +227,7 @@ unsafe impl Send for RawWallet {}
 
 impl Wallet {
     /// Create and initialize new wallet from a raw C++ wallet pointer.
-    async fn new(inner: *mut ffi::Wallet) -> Result<Self, WalletError> {
+    async fn new(inner: *mut ffi::Wallet, background_sync: bool) -> Result<Self, WalletError> {
         if inner.is_null() {
             return Err(WalletError::critical("wallet pointer is null"));
         }
@@ -232,6 +239,10 @@ impl Wallet {
         wallet.check_error()?;
 
         wallet.init(false).await?;
+
+        if background_sync {
+            wallet.start_refresh();
+        }
 
         Ok(wallet)
     }
@@ -274,19 +285,28 @@ impl Wallet {
         Ok(())
     }
 
+    /// Sync the wallet with the remote node.
+    /// Returns when the sync is complete.
+    pub async fn sync(&mut self) -> Result<(), WalletError> {
+        // Initiate the sync
+        self.refresh_async().await;
+
+        // Continue polling until the sync is complete
+        while !self.inner.synchronized() {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+
+        Ok(())
+    }
+
     /// Start the background refresh thread (refreshes every 10 seconds).
-    pub fn start_refresh(&mut self) {
+    fn start_refresh(&mut self) {
         self.inner.pinned().startRefresh();
     }
 
     /// Refresh the wallet asynchronously.
-    pub async fn refresh_async(&mut self) {
+    async fn refresh_async(&mut self) {
         self.inner.pinned().refreshAsync();
-    }
-
-    /// Refresh the wallet once.
-    pub async fn refresh(&mut self) -> bool {
-        self.inner.pinned().refresh()
     }
 
     /// Get the current blockchain height.
@@ -298,8 +318,16 @@ impl Wallet {
     ///
     /// Returns the height of the blockchain from the connected daemon.
     /// Returns 0 if there's an error communicating with the daemon.
-    pub fn daemon_blockchain_height(&self) -> u64 {
-        self.inner.daemonBlockChainHeight()
+    pub fn daemon_blockchain_height(&mut self) -> Result<u64, WalletError> {
+        let height = self.inner.daemonBlockChainHeight();
+        if height == 0 {
+            self.check_error()?;
+            Err(WalletError::critical(
+                "failed to get daemon blockchain height",
+            ))
+        } else {
+            Ok(height)
+        }
     }
 
     /// Get the total balance across all accounts.
@@ -375,21 +403,6 @@ impl RawWallet {
         unsafe { Pin::new_unchecked(self.0.as_mut().expect("wallet pointer not to be null")) }
     }
 }
-
-impl Deref for Wallet {
-    type Target = RawWallet;
-
-    fn deref(&self) -> &RawWallet {
-        &self.inner
-    }
-}
-
-impl DerefMut for Wallet {
-    fn deref_mut(&mut self) -> &mut RawWallet {
-        &mut self.inner
-    }
-}
-
 impl Deref for RawWallet {
     type Target = ffi::Wallet;
 

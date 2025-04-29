@@ -90,6 +90,7 @@ async fn create_wallet(wallet_path: &str) -> (monero::Address, String) {
             1,
             None,
             None,
+            true,
         )
         .await
         .expect("Failed to recover wallet");
@@ -181,6 +182,7 @@ async fn connect_and_check_balance(seed: String, daemon_address: String) -> mone
             1,                        // Restore height (start from beginning)
             Some(KDF_ROUNDS),
             Some(SEED_OFFSET),
+            true,
         )
         .await
         .expect("Failed to recover wallet");
@@ -197,13 +199,13 @@ async fn connect_and_check_balance(seed: String, daemon_address: String) -> mone
     wallet.set_allow_mismatched_daemon_version(true);
 
     // Start background refresh
-    wallet.start_refresh();
+    wallet.sync().await.expect("Failed to sync wallet");
 
     // Wait for wallet to sync
     info!("Waiting for wallet to sync...");
     while !wallet.synchronized() {
         let wallet_height = wallet.blockchain_height();
-        let daemon_height = wallet.daemon_blockchain_height();
+        let daemon_height = wallet.daemon_blockchain_height().unwrap();
 
         info!(
             "Wallet height: {}, Daemon height: {}",
@@ -213,10 +215,8 @@ async fn connect_and_check_balance(seed: String, daemon_address: String) -> mone
         sleep(Duration::from_secs(1)).await;
     }
 
-    // Manual refresh to ensure we have the latest state
     info!("Performing final refresh");
-    let refresh_result = wallet.refresh().await;
-    info!("Final refresh result: {}", refresh_result);
+    wallet.sync().await.unwrap();
 
     // Check balance
     let balance = wallet.balance_all();
