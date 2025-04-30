@@ -1,6 +1,7 @@
 import { Link, Typography } from '@material-ui/core'
 import SlideTemplate from './SlideTemplate'
 import imagePath from 'assets/mockHistoryPage.webp'
+import ExternalLink from 'renderer/components/other/ExternalLink'
 
 export default function Slide05_KeepAnEyeOnYourSwaps(props: slideProps) {
     return (
@@ -14,9 +15,9 @@ export default function Slide05_KeepAnEyeOnYourSwaps(props: slideProps) {
                 While the Atomic Swap Protocol is secure, you should monitor active swaps in the history tab to ensure everything proceeds smoothly.
             </Typography>
             <Typography>
-                <Link onClick={() => open('https://docs.unstoppableswap.net/usage/first_swap')}>
+                <ExternalLink href='https://docs.unstoppableswap.net/usage/first_swap'>
                     Learn more about atomic swaps
-                </Link>
+                </ExternalLink>
             </Typography>
         </SlideTemplate>
     )
