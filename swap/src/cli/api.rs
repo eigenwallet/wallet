@@ -328,7 +328,7 @@ impl ContextBuilder {
             ]));
 
         let tauri_handle = &self.tauri_handle.clone();
-        
+
         let initialize_bitcoin_wallet = async {
             match self.bitcoin {
                 Some(bitcoin) => {
@@ -337,19 +337,13 @@ impl ContextBuilder {
                     tauri_handle.emit_context_init_progress_event(
                         TauriContextStatusEvent::Initializing(vec![
                             TauriPartialInitProgress::OpeningBitcoinWallet(
-                                PendingCompleted::Pending(TauriBitcoinSyncProgress::Unknown)
+                                PendingCompleted::Pending(TauriBitcoinSyncProgress::Unknown),
                             ),
                         ]),
                     );
 
-                    let wallet = init_bitcoin_wallet(
-                        url,
-                        seed,
-                        data_dir,
-                        env_config,
-                        target_block,
-                    )
-                    .await?;
+                    let wallet =
+                        init_bitcoin_wallet(url, seed, data_dir, env_config, target_block).await?;
 
                     let callback_tauri_handle = tauri_handle.clone();
 
@@ -358,10 +352,13 @@ impl ContextBuilder {
                             callback_tauri_handle.emit_context_init_progress_event(
                                 TauriContextStatusEvent::Initializing(vec![
                                     TauriPartialInitProgress::OpeningBitcoinWallet(
-                                        PendingCompleted::Pending(TauriBitcoinSyncProgress::Known {
-                                            consumed: consumed as u32,
-                                            total: total as u32,
-                                        }))
+                                        PendingCompleted::Pending(
+                                            TauriBitcoinSyncProgress::Known {
+                                                consumed: consumed as u32,
+                                                total: total as u32,
+                                            },
+                                        ),
+                                    ),
                                 ]),
                             );
                         }))
@@ -426,13 +423,11 @@ impl ContextBuilder {
                 return Ok(None);
             }
 
-            tauri_handle.emit_context_init_progress_event(
-                TauriContextStatusEvent::Initializing(vec![
-                    TauriPartialInitProgress::EstablishingTorCircuits(
-                        PendingCompleted::Pending(()),
-                    ),
-                ]),
-            );
+            tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Initializing(
+                vec![TauriPartialInitProgress::EstablishingTorCircuits(
+                    PendingCompleted::Pending(()),
+                )],
+            ));
 
             let maybe_tor_client = init_tor_client(data_dir)
                 .await
@@ -441,11 +436,11 @@ impl ContextBuilder {
                 })
                 .ok();
 
-            tauri_handle.emit_context_init_progress_event(
-                TauriContextStatusEvent::Initializing(vec![
-                    TauriPartialInitProgress::EstablishingTorCircuits(PendingCompleted::Completed),
-                ]),
-            );
+            tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Initializing(
+                vec![TauriPartialInitProgress::EstablishingTorCircuits(
+                    PendingCompleted::Completed,
+                )],
+            ));
 
             Ok(maybe_tor_client)
         };
@@ -469,8 +464,7 @@ impl ContextBuilder {
             }
         }
 
-        tauri_handle
-            .emit_context_init_progress_event(TauriContextStatusEvent::Available);
+        tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Available);
 
         let context = Context {
             db,
@@ -484,7 +478,7 @@ impl ContextBuilder {
                 debug: self.debug,
                 json: self.json,
                 is_testnet: self.is_testnet,
-                data_dir: data_dir.clone()
+                data_dir: data_dir.clone(),
             },
             swap_lock,
             tasks,
