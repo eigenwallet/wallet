@@ -11894,6 +11894,7 @@ name = "unstoppableswap-gui-rs"
 version = "1.0.0-rc.17"
 dependencies = [
  "anyhow",
+ "rustls 0.23.26",
  "serde",
  "serde_json",
  "swap",

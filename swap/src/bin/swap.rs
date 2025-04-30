@@ -17,6 +17,10 @@ use swap::cli::command::{parse_args_and_apply_defaults, ParseResult};
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to install default rustls provider");
+
     match parse_args_and_apply_defaults(env::args_os()).await? {
         ParseResult::Success(context) => {
             context.tasks.wait_for_tasks().await?;

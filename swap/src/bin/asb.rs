@@ -47,7 +47,7 @@ const DEFAULT_WALLET_NAME: &str = "asb-wallet";
 pub async fn main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
-        .map_err(|e| anyhow::anyhow!("failed to install default rustls provider: {:?}", e))?;
+        .expect("failed to install default rustls provider");
 
     let Arguments {
         testnet,
