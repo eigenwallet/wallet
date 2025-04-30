@@ -10,20 +10,13 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
+use anyhow::{bail, Context};
 use cxx::let_cxx_string;
 use tokio::sync::Mutex;
 
 use bridge::ffi;
 
 static WALLET_MANAGER: OnceLock<Arc<Mutex<WalletManager>>> = OnceLock::new();
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct WalletError {
-    pub code: i32,
-    pub message: String,
-}
-
-impl std::error::Error for WalletError {}
 
 /// A singleton responsible for managing (creating, opening, ...) wallets.
 pub struct WalletManager {
@@ -43,24 +36,43 @@ pub struct Wallet {
 pub struct RawWallet(*mut ffi::Wallet);
 
 /// The progress of synchronization of a wallet with the remote node.
+///
+///
 pub struct SyncProgress {
+    /// The current block height of the wallet.
     pub current_block: u64,
+    /// The target block height of the wallet.
     pub target_block: u64,
+}
+
+/// The status of a transaction.
+pub struct TxStatus {
+    /// The amount received in the transaction.
+    pub received: u64,
+    /// Whether the transaction is in the mempool.
+    pub in_pool: bool,
+    /// The number of confirmations the transaction has.
+    pub confirmations: u64,
 }
 
 impl WalletManager {
     const DEFAULT_KDF_ROUNDS: u64 = 1;
 
     /// Get the wallet manager instance.
-    pub fn get() -> Arc<Mutex<Self>> {
+    pub fn get<'a>(daemon_address: impl Into<Option<&'a str>>) -> Arc<Mutex<Self>> {
         WALLET_MANAGER
             .get_or_init(|| {
                 let manager = ffi::getWalletManager();
-
-                Arc::new(Mutex::new(Self {
+                let mut manager = Self {
                     inner: RawWalletManager(manager),
                     wallets: HashMap::new(),
-                }))
+                };
+
+                if let Some(daemon_address) = daemon_address.into() {
+                    manager.set_daemon_address(daemon_address);
+                }
+
+                Arc::new(Mutex::new(manager))
             })
             .clone()
     }
@@ -74,7 +86,7 @@ impl WalletManager {
         network: monero::Network,
         kdf_rounds: Option<u64>,
         background_sync: bool,
-    ) -> Result<Arc<Mutex<Wallet>>, WalletError> {
+    ) -> anyhow::Result<Arc<Mutex<Wallet>>> {
         // If we've already loaded this wallet, return it.
         if self.wallets.contains_key(path) {
             let wallet = self.wallets[path].clone();
@@ -88,7 +100,8 @@ impl WalletManager {
         if self.wallet_exists(path).await {
             return Ok(self
                 .open_wallet(path, password, network, kdf_rounds, background_sync)
-                .await?);
+                .await
+                .context("Failed to open wallet")?);
         }
 
         // Otherwise, create (and open) a new wallet.
@@ -97,6 +110,7 @@ impl WalletManager {
         let_cxx_string!(language = language.unwrap_or(""));
         let network_type = network.into();
         let kdf_rounds = kdf_rounds.unwrap_or(Self::DEFAULT_KDF_ROUNDS);
+
         let wallet_pointer =
             self.inner
                 .pinned()
@@ -128,7 +142,7 @@ impl WalletManager {
         kdf_rounds: Option<u64>,
         seed_offset: Option<&str>,
         background_sync: bool,
-    ) -> Result<Arc<Mutex<Wallet>>, WalletError> {
+    ) -> anyhow::Result<Arc<Mutex<Wallet>>> {
         let_cxx_string!(path = path);
         let_cxx_string!(password = password);
         let_cxx_string!(mnemonic = mnemonic);
@@ -164,7 +178,7 @@ impl WalletManager {
         network_type: monero::Network,
         kdf_rounds: Option<u64>,
         background_sync: bool,
-    ) -> Result<Arc<Mutex<Wallet>>, WalletError> {
+    ) -> anyhow::Result<Arc<Mutex<Wallet>>> {
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
         let network_type = network_type.into();
@@ -179,6 +193,10 @@ impl WalletManager {
                 std::ptr::null_mut(),
             )
         };
+
+        if wallet_pointer.is_null() {
+            anyhow::bail!("Failed to open wallet: got null pointer")
+        }
 
         let wallet = Wallet::new(wallet_pointer, background_sync).await?;
 
@@ -233,10 +251,12 @@ impl RawWalletManager {
 unsafe impl Send for RawWalletManager {}
 
 impl Wallet {
+    const MAIN_ACCOUNT_INDEX: u64 = 0;
+
     /// Create and initialize new wallet from a raw C++ wallet pointer.
-    async fn new(inner: *mut ffi::Wallet, background_sync: bool) -> Result<Self, WalletError> {
+    async fn new(inner: *mut ffi::Wallet, background_sync: bool) -> anyhow::Result<Self> {
         if inner.is_null() {
-            return Err(WalletError::critical("wallet pointer is null"));
+            anyhow::bail!("Failed to create wallet: got null pointer");
         }
 
         let mut wallet = Self {
@@ -245,7 +265,10 @@ impl Wallet {
 
         wallet.check_error()?;
 
-        wallet.init(false).await?;
+        wallet
+            .init(false)
+            .await
+            .context("Failed to initialize wallet")?;
 
         if background_sync {
             wallet.start_refresh();
@@ -268,7 +291,7 @@ impl Wallet {
 
     /// Initialize the wallet and download initial values from the remote node.
     /// Does not actuallyt sync the wallet, use any of the refresh methods to do that.
-    async fn init(&mut self, ssl: bool) -> Result<(), WalletError> {
+    async fn init(&mut self, ssl: bool) -> anyhow::Result<()> {
         let_cxx_string!(daemon_address = "");
         let_cxx_string!(daemon_username = "");
         let_cxx_string!(daemon_password = "");
@@ -285,8 +308,8 @@ impl Wallet {
         );
 
         if !success {
-            self.check_error()?;
-            return Err(WalletError::critical("wallet initialization failed"));
+            self.check_error().context("Failed to initialize wallet")?;
+            anyhow::bail!("Failed to initialize wallet");
         }
 
         Ok(())
@@ -302,7 +325,7 @@ impl Wallet {
     /// Sync the wallet with the remote node.
     /// Returns when the sync is complete.
     ///
-    pub async fn sync(&mut self) -> Result<(), WalletError> {
+    pub async fn sync(&mut self) -> anyhow::Result<()> {
         // We wait for 100ms before polling the wallet's sync status again.
         // This is ok because this doesn't involve any blocking calls.
         const SLEEP_DURATION_MILLIS: u64 = 100;
@@ -337,15 +360,14 @@ impl Wallet {
     ///
     /// Returns the height of the blockchain from the connected daemon.
     /// Returns 0 if there's an error communicating with the daemon.
-    pub fn daemon_blockchain_height(&mut self) -> Result<u64, WalletError> {
+    pub fn daemon_blockchain_height(&mut self) -> anyhow::Result<u64> {
         // Here we actually use the _target_ height -- incase the remote node is
         // currently catching up we want to work with the height it ends up at.
         let height = self.inner.daemonBlockChainTargetHeight();
         if height == 0 {
-            self.check_error()?;
-            Err(WalletError::critical(
-                "failed to get daemon blockchain height",
-            ))
+            self.check_error()
+                .context("Failed to get daemon blockchain height")?;
+            anyhow::bail!("Failed to get daemon blockchain height");
         } else {
             Ok(height)
         }
@@ -378,8 +400,84 @@ impl Wallet {
             .setAllowMismatchedDaemonVersion(allow_mismatch);
     }
 
+    /// Check if a transaction is in the mempool/confirmed.
+    pub async fn check_tx_key(
+        &mut self,
+        txid: &str,
+        tx_key: &str,
+        address: &str,
+    ) -> anyhow::Result<TxStatus> {
+        let_cxx_string!(txid = txid);
+        let_cxx_string!(tx_key = tx_key);
+        let_cxx_string!(address = address);
+
+        let mut received = 0;
+        let mut in_pool = false;
+        let mut confirmations = 0;
+
+        let success = ffi::checkTxKey(
+            self.inner.pinned(),
+            &txid,
+            &tx_key,
+            &address,
+            &mut received,
+            &mut in_pool,
+            &mut confirmations,
+        );
+
+        if !success {
+            self.check_error().context("Failed to check tx key")?;
+            anyhow::bail!("Failed to check tx key");
+        }
+
+        Ok(TxStatus {
+            received,
+            in_pool,
+            confirmations,
+        })
+    }
+
+    /// Transfer a specified amount of monero to a specified address.
+    pub async fn transfer(
+        &mut self,
+        address: &monero::Address,
+        amount: monero::Amount,
+    ) -> anyhow::Result<()> {
+        let_cxx_string!(address = address.to_string());
+        let amount = amount.as_pico();
+
+        let pending_tx = ffi::createTransaction(self.inner.pinned(), &address, amount);
+
+        let pending_tx = unsafe {
+            Pin::new_unchecked(pending_tx.as_mut().ok_or(anyhow::anyhow!(
+                "failed to create transaction, got null pointer"
+            ))?)
+        };
+
+        // Empty filename means we commit to the blockchain.
+        let_cxx_string!(filename = "");
+        let success = pending_tx.commit(&filename, false);
+
+        if !success {
+            self.check_error()
+                .context("Failed to commit transaction to blockchain")?;
+            anyhow::bail!("Failed to commit transaction to blockchain");
+        }
+
+        Ok(())
+    }
+
+    /// Sweep all funds from the wallet to a specified address.
+    pub async fn sweep_all(&mut self, address: &monero::Address) -> anyhow::Result<()> {
+        let_cxx_string!(address = address.to_string());
+
+        todo!();
+    }
+
     /// Return `Ok` when the wallet is ok, otherwise return the error.
-    pub fn check_error(&mut self) -> Result<(), WalletError> {
+    /// This is a convenience method we use for retrieving errors after
+    /// a method call failed.
+    fn check_error(&mut self) -> anyhow::Result<()> {
         let mut status = 0;
         let mut error_string = String::new();
         let_cxx_string!(error_string_ref = &mut error_string);
@@ -392,11 +490,13 @@ impl Wallet {
             return Ok(());
         }
 
+        let error_type = if status == 2 { "critical" } else { "error" };
+
         // Otherwise we return the error
-        Err(WalletError {
-            code: status,
-            message: error_string.to_string(),
-        })
+        bail!(format!(
+            "Experienced wallet error ({}): {}",
+            error_type, error_string
+        ))
     }
 }
 
@@ -411,32 +511,20 @@ impl SyncProgress {
         }
     }
 
-    /// Get the sync progress as a percentage.
-    pub fn percentage(&self) -> f32 {
-        100.0 * (self.current_block as f32 / self.target_block as f32)
-    }
-}
-impl WalletError {
-    /// Create a new non-critical wallet error.
-    fn error(message: impl Into<String>) -> Self {
-        Self {
-            code: 1,
-            message: message.into(),
-        }
+    /// Get the sync progress as a fraction.
+    pub fn fraction(&self) -> f32 {
+        self.current_block as f32 / self.target_block as f32
     }
 
-    /// Create a new critical wallet error.
-    fn critical(message: impl Into<String>) -> Self {
-        Self {
-            code: 2,
-            message: message.into(),
-        }
+    /// Get the sync progress as a percentage.
+    pub fn percentage(&self) -> f32 {
+        100.0 * self.fraction()
     }
 }
 
 impl RawWallet {
     /// Convenience method for getting a pinned reference to the inner (c++) wallet.
-    pub fn pinned(&mut self) -> Pin<&mut ffi::Wallet> {
+    fn pinned(&mut self) -> Pin<&mut ffi::Wallet> {
         unsafe { Pin::new_unchecked(self.0.as_mut().expect("wallet pointer not to be null")) }
     }
 }
@@ -448,15 +536,5 @@ impl Deref for RawWallet {
 
     fn deref(&self) -> &ffi::Wallet {
         unsafe { self.0.as_ref().expect("wallet pointer not to be null") }
-    }
-}
-
-impl std::fmt::Display for WalletError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Wallet status not ok: `{}` with message `{}`",
-            self.code, self.message
-        )
     }
 }

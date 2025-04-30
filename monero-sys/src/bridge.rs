@@ -23,9 +23,6 @@ pub mod ffi {
         /// The type of the network.
         type NetworkType;
 
-        /// An unsigned transaction.
-        type UnsignedTransaction;
-
         /// A pending transaction.
         type PendingTransaction;
 
@@ -135,6 +132,13 @@ pub mod ffi {
         /// Get the status of a pending transaction.
         fn status(self: &PendingTransaction) -> i32;
 
+        /// Commit a pending transaction to the blockchain.
+        fn commit(
+            self: Pin<&mut PendingTransaction>,
+            filename: &CxxString,
+            overwrite: bool,
+        ) -> bool;
+
         /// Get the total balance across all accounts in atomic units (piconero).
         fn balanceAll(self: &Wallet) -> u64;
 
@@ -143,6 +147,29 @@ pub mod ffi {
 
         /// Set whether to allow mismatched daemon versions.
         fn setAllowMismatchedDaemonVersion(self: Pin<&mut Wallet>, allow_mismatch: bool);
+
+        /// Check whether a transaction is in the mempool / confirmed.
+        fn checkTxKey(
+            wallet: Pin<&mut Wallet>,
+            txid: &CxxString,
+            tx_key: &CxxString,
+            address: &CxxString,
+            received: &mut u64,
+            in_pool: &mut bool,
+            confirmations: &mut u64,
+        ) -> bool;
+
+        /// Create a new transaction.
+        /// virtual PendingTransaction * createTransaction(const std::string &dst_addr, const std::string &payment_id,
+        // optional<uint64_t> amount, uint32_t mixin_count,
+        // PendingTransaction::Priority = PendingTransaction::Priority_Low,
+        // uint32_t subaddr_account = 0,
+        // std::set<uint32_t> subaddr_indices = {}) = 0;
+        fn createTransaction(
+            wallet: Pin<&mut Wallet>,
+            dst_addr: &CxxString,
+            amount: u64,
+        ) -> *mut PendingTransaction;
     }
 }
 

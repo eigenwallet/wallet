@@ -8,6 +8,7 @@ cxx = "1.0.137"
 tracing = "0.1.41"
 tokio = { version = "1.44.2", features = ["sync", "time", "rt"] }
 monero = { version = "0.12", features = ["serde_support"] }
+anyhow = "1.0.98"
 
 [build-dependencies]
 cmake = "0.1.54"

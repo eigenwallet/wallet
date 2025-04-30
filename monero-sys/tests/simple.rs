@@ -15,7 +15,7 @@ const STAGENET_WALLET_RESTORE_HEIGHT: u64 = 1728128;
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let wallet_manager_mutex = WalletManager::get();
+    let wallet_manager_mutex = WalletManager::get(STAGENET_REMOTE_NODE);
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
     tracing::info!("Setting daemon address");

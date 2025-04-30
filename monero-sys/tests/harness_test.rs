@@ -25,7 +25,7 @@ async fn test_monero_wrapper_with_harness() {
 
     // Step 1: Create a wallet with monero-wrapper using the global temp directory
     let wallet_path = temp_path();
-    let (address, wallet_seed) = create_wallet(&wallet_path).await;
+    let (address, wallet_seed) = create_wallet(&wallet_path, None).await;
 
     info!("Created monero-wrapper wallet with address: {}", address);
     info!("Wallet seed: {}", wallet_seed);
@@ -71,9 +71,12 @@ async fn test_monero_wrapper_with_harness() {
 }
 
 /// Creates a wallet from a predefined seed and returns the main address and seed.
-async fn create_wallet(wallet_path: &str) -> (monero::Address, String) {
+async fn create_wallet(
+    wallet_path: &str,
+    daemon_address: impl Into<Option<&str>>,
+) -> (monero::Address, String) {
     // Get wallet manager
-    let wallet_manager_mutex = WalletManager::get();
+    let wallet_manager_mutex = WalletManager::get(daemon_address);
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
     // Define a fixed seed to use for reproducible tests
@@ -157,11 +160,8 @@ fn get_daemon_address(monerod_container: &Container<'_, Monerod>) -> String {
 
 async fn connect_and_check_balance(seed: String, daemon_address: String) -> monero::Amount {
     // Get wallet manager
-    let wallet_manager_mutex = WalletManager::get();
+    let wallet_manager_mutex = WalletManager::get(&*daemon_address);
     let mut wallet_manager = wallet_manager_mutex.lock().await;
-
-    // Set daemon address
-    wallet_manager.set_daemon_address(&daemon_address);
 
     // Check connection
     let connected = wallet_manager.connected().await;

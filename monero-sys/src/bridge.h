@@ -38,4 +38,34 @@ namespace Monero
         auto err = manager.errorString();
         return std::make_unique<std::string>(err);
     }
+
+    /**
+     * Wrapper for Wallet::checkTxKey to accommodate passing std::string by reference.
+     * The original API takes the tx_key parameter by value which is not compatible
+     * with cxx. Taking it by const reference here allows us to expose the function
+     * to Rust safely while still calling the original method internally.
+     */
+    inline bool checkTxKey(
+        Wallet &wallet,
+        const std::string &txid,
+        const std::string &tx_key,
+        const std::string &address,
+        uint64_t &received,
+        bool &in_pool,
+        uint64_t &confirmations)
+    {
+        return wallet.checkTxKey(txid, tx_key, address, received, in_pool, confirmations);
+    }
+
+    /**
+     * A wrapper around Wallet::createTransaction which passes sensible defaults and doesn't
+     * require an optional argument which CXX doesn't support.
+     */
+    inline PendingTransaction *createTransaction(
+        Wallet &wallet,
+        const std::string &dest_address,
+        u_int64_t amount)
+    {
+        return wallet.createTransaction(dest_address, "", Monero::optional<uint64_t>(), 1, PendingTransaction::Priority_Default);
+    }
 }
