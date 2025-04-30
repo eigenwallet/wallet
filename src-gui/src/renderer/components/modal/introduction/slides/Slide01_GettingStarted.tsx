@@ -1,6 +1,6 @@
 import { Typography } from '@material-ui/core'
 import SlideTemplate from './SlideTemplate'
-import imagePath from '../../../../../assets/walletWithBitcoinAndMonero.png'
+import imagePath from 'assets/walletWithBitcoinAndMonero.png'
 
 export default function Slide01_GettingStarted(props: slideProps) {
     return (
@@ -10,12 +10,12 @@ export default function Slide01_GettingStarted(props: slideProps) {
             imagePath={imagePath}
         >
             <Typography variant="subtitle1">
-                To make a Atomic Swap with Unstoppable swap you need a
+                To start swapping, you'll need:
             </Typography>
             <Typography>
                 <ul>
-                    <li><strong>Bitcoin Wallet</strong> with <strong>Funds</strong> for the swap</li>
-                    <li>Monero Wallet to generate a <strong>Monero Redeem Address</strong></li>
+                    <li>A Bitcoin wallet with funds to swap</li>
+                    <li>A Monero wallet to receive your Monero</li>
                 </ul>
             </Typography>
         </SlideTemplate>

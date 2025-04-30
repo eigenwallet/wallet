@@ -1,6 +1,6 @@
 import { Typography } from '@material-ui/core'
 import SlideTemplate from './SlideTemplate'
-import imagePath from '../../../../../assets/simpleSwapFlowDiagram.webp'
+import imagePath from 'assets/simpleSwapFlowDiagram.webp'
 
 export default function Slide02_ChooseAMaker(props: slideProps) {
     return (
@@ -15,12 +15,10 @@ export default function Slide02_ChooseAMaker(props: slideProps) {
             </Typography>
             <Typography>
                 <ol>
-                    <li>Your BTC funds are locked</li>
+                    <li>Your Bitcoin funds are locked</li>
                     <li>The maker locks monero</li>
                     <li>The maker reedems the BTC</li>
-                    <li>
-                        The swaped Monero is redeemed and sent to your address
-                    </li>
+                    <li>The Monero is redeemed to your payout address</li>
                 </ol>
             </Typography>
         </SlideTemplate>

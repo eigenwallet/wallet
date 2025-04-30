@@ -1,7 +1,7 @@
 import { Box, Typography, Paper, Button } from '@material-ui/core'
 import CardSelectionGroup from 'renderer/components/inputs/CardSelection/CardSelectionGroup'
 import CardSelectionOption from 'renderer/components/inputs/CardSelection/CardSelectionOption'
-import logo from '../../../../../assets/unstoppableSwapLogo.png'
+import logo from 'assets/unstoppableSwapLogo.png'
 
 const FiatPricePreferenceSlide = ({
     handleContinue,
@@ -79,7 +79,7 @@ const FiatPricePreferenceSlide = ({
                         variant="contained"
                         color="primary"
                     >
-                        Start
+                        Next
                     </Button>
                 </Box>
             </Box>

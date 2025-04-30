@@ -1,6 +1,6 @@
 import { Typography } from '@material-ui/core'
 import SlideTemplate from './SlideTemplate'
-import imagePath from '../../../../../assets/mockMakerSelection.webp'
+import imagePath from 'assets/mockMakerSelection.webp'
 
 export default function Slide02_ChooseAMaker(props: slideProps) {
     return (
@@ -11,15 +11,16 @@ export default function Slide02_ChooseAMaker(props: slideProps) {
             imagePath={imagePath}
         >
             <Typography variant="subtitle1">
-                Makers provide liquidity in XMR which can be exchanged for
-                BTC. They have varying Min and Max amounts they can swap and
-                charge varying markup fees. Makers can be found with
+                To start a Swap, choose a maker to exchange Bitcoin for Monero.
+                The app automatically shows available makers from the public registry, including their swap limits and uptime.
             </Typography>
-            <Typography>
-                <ul>
-                    <li>the <strong>Public Registry</strong></li>
-                    <li>by connecting to a <strong>Rendezvous Points</strong></li>
-                </ul>
+
+            <Typography
+                variant="caption"
+                color="textSecondary"
+                style={{ marginTop: 8 }}
+            >
+                Additionally, you can find makers through rendezvous points or direct connections.
             </Typography>
         </SlideTemplate>
     )

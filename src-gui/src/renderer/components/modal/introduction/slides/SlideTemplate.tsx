@@ -54,7 +54,7 @@ export default function SlideTemplate({
                             {stepLabel}
                         </Typography>
                     )}
-                    <Typography variant="h4">{title}</Typography>
+                    <Typography variant="h4" style={{ marginBottom: 16 }}>{title}</Typography>
                     {children}
                 </Box>
                 <Box
@@ -67,14 +67,14 @@ export default function SlideTemplate({
                     }
                 >
                     {!hidePreviousButton && (
-                        <Button onClick={handlePrevious}>Previous</Button>
+                        <Button onClick={handlePrevious}>Back</Button>
                     )}
                     <Button
                         onClick={handleContinue}
                         variant="contained"
                         color="primary"
                     >
-                        {customContinueButtonText ? customContinueButtonText : 'Continue' }
+                        {customContinueButtonText ? customContinueButtonText : 'Next' }
                     </Button>
                 </Box>
             </Box>
