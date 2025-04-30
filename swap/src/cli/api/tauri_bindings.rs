@@ -349,11 +349,26 @@ pub struct DownloadProgress {
     pub size: u64,
 }
 
+#[derive(Clone, Serialize)]
+#[typeshare]
+#[serde(tag = "type", content = "content")]
+pub enum TauriBitcoinSyncProgress {
+    Known {
+        // Number of addresses processed
+        #[typeshare(serialized_as = "number")]
+        consumed: u32,
+        // Total number of addresses to process
+        #[typeshare(serialized_as = "number")]
+        total: u32,
+    },
+    Unknown,
+}
+
 #[typeshare]
 #[derive(Display, Clone, Serialize)]
 #[serde(tag = "componentName", content = "progress")]
 pub enum TauriPartialInitProgress {
-    OpeningBitcoinWallet(PendingCompleted<()>),
+    OpeningBitcoinWallet(PendingCompleted<TauriBitcoinSyncProgress>),
     DownloadingMoneroWalletRpc(PendingCompleted<DownloadProgress>),
     OpeningMoneroWallet(PendingCompleted<()>),
     OpeningDatabase(PendingCompleted<()>),

@@ -25,38 +25,48 @@ function PartialInitStatus({ status, classes }: {
 
   switch (status.componentName) {
     case "OpeningBitcoinWallet":
+      const progressValue =
+        status.progress.content.type === "Known" ? (status.progress.content.content.consumed / status.progress.content.content.total) * 100 : 0
+
       return (
-        <LoadingSpinnerAlert severity="warning">
-          Syncing internal Bitcoin wallet
-        </LoadingSpinnerAlert>
+        <Alert severity="info">
+          <Box className={classes.innerAlert}>
+            <Box>Syncing internal Bitcoin wallet</Box>
+            {
+              progressValue > 0 ? 
+                <LinearProgress variant="determinate" value={progressValue} />
+              : <LinearProgress />
+            }
+          </Box>
+        </Alert>
       );
     case "DownloadingMoneroWalletRpc":
       return (
-        <LoadingSpinnerAlert severity="warning">
+        <LoadingSpinnerAlert severity="info">
           <Box className={classes.innerAlert}>
             <Box>
               Downloading and verifying the Monero wallet RPC (
               {bytesToMb(status.progress.content.size).toFixed(2)} MB)
             </Box>
-            <LinearProgress variant="determinate" value={status.progress.content.progress} />
+            <LinearProgress variant="determinate" value={status.progress.content.progress}  />
           </Box>
         </LoadingSpinnerAlert>
       );
     case "OpeningMoneroWallet":
       return (
-        <LoadingSpinnerAlert severity="warning">
+        <LoadingSpinnerAlert severity="info">
           Opening the Monero wallet
         </LoadingSpinnerAlert>
       );
     case "OpeningDatabase":
       return (
-        <LoadingSpinnerAlert severity="warning">
+        <LoadingSpinnerAlert severity="info">
           Opening the local database
         </LoadingSpinnerAlert>
       );
     case "EstablishingTorCircuits":
       return (
-        <LoadingSpinnerAlert severity="warning">
+        <LoadingSpinnerAlert severity="info">
           Establishing Tor circuits
         </LoadingSpinnerAlert>
       )

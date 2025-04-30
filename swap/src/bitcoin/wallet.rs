@@ -6,7 +6,6 @@ use bdk_electrum::BdkElectrumClient;
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::export::FullyNodedExport;
-use bdk_wallet::miniscript::psbt::PsbtExt;
 use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::template::{Bip84, DescriptorTemplate};
@@ -288,6 +287,8 @@ impl Wallet {
 
         tracing::debug!("Starting initial Bitcoin wallet scan");
 
+        // TODO: We are not emitting events here properly, we should though
+
         let full_scan = wallet.start_full_scan();
         let full_scan_result = client.electrum.full_scan(
             full_scan,
@@ -350,8 +351,6 @@ impl Wallet {
             target_block,
             persister: Arc::new(Mutex::new(persister)),
         };
-
-        wallet.sync().await?;
 
         Ok(wallet)
     }
@@ -760,8 +759,11 @@ where
         Ok(tx)
     }
 
-    /// Sync the wallet with the blockchain.
-    pub async fn sync(&self) -> Result<()> {
+    /// Sync the wallet with the blockchain, optionally calling a callback on progress updates.
+    pub async fn sync_with_callback<F>(&self, mut callback: Option<F>) -> Result<()>
+    where
+        F: FnMut(usize, usize) + Send + 'static,
+    {
         const BATCH_SIZE: usize = 64;
 
         let sync_request = self
@@ -769,7 +771,11 @@ where
             .lock()
             .await
             .start_sync_with_revealed_spks()
-            .inspect(|_, progress| {
+            .inspect(move |_, progress| {
+                if let Some(cb) = callback.as_mut() {
+                    cb(progress.consumed(), progress.total());
+                }
+
                 tracing::debug!(
                     "Syncing wallet ({:?} / {:?} done)",
                     progress.consumed(),
@@ -788,6 +794,11 @@ where
         wallet.persist(&mut persister)?;
 
         Ok(())
+    }
+
+    /// Sync the wallet with the blockchain.
+    pub async fn sync(&self) -> Result<()> {
+        self.sync_with_callback::<fn(usize, usize)>(None).await
     }
 }
 
