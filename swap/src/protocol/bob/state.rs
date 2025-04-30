@@ -10,7 +10,6 @@ use crate::monero::{monero_private_key, TransferProof};
 use crate::monero_ext::ScalarExt;
 use crate::protocol::{Message0, Message1, Message2, Message3, Message4, CROSS_CURVE_PROOF_SYSTEM};
 use anyhow::{anyhow, bail, Context, Result};
-use bdk_wallet::WalletPersister;
 use ecdsa_fun::adaptor::{Adaptor, HashTranscript};
 use ecdsa_fun::nonce::Deterministic;
 use ecdsa_fun::Signature;
@@ -198,12 +197,6 @@ impl State0 {
         if !valid {
             bail!("Alice's dleq proof doesn't verify")
         }
-
-        tracing::info!(
-            amount = %self.btc,
-            change = %self.refund_address,
-            "Creating tx lock"
-        );
 
         let tx_lock = bitcoin::TxLock::new(
             wallet,
