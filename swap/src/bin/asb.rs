@@ -288,7 +288,6 @@ pub async fn main() -> Result<()> {
             }
         }
         Command::Config => {
-            tracing::info!(config_path=?config_path.clone(), "Reading config file");
             let config_json = serde_json::to_string_pretty(&config)?;
             println!("{}", config_json);
         }
