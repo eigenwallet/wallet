@@ -1,5 +1,0 @@
-status = [
-    "static_analysis",
-    "build_test (stable, false)",
-    "build_test (beta, false)",
-]
