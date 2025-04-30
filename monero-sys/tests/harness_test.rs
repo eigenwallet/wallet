@@ -1,5 +1,5 @@
 use monero_harness::{image::Monerod, Monero};
-use monero_wallet_sys::WalletManager;
+use monero_sys::WalletManager;
 use std::{sync::OnceLock, time::Duration};
 use tempfile::{tempdir, TempDir};
 use testcontainers::{clients::Cli, Container};
