@@ -340,7 +340,7 @@ impl Wallet {
             &daemon_username,
             &daemon_password,
             ssl,
-            false,
+            true,
             &proxy_address,
         );
 

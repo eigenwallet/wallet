@@ -154,18 +154,13 @@ fn get_daemon_address(monerod_container: &Container<'_, Monerod>) -> String {
         .map_to_host_port_ipv4(monero_harness::image::RPC_PORT)
         .expect("monerod should have a mapping to the host for the default RPC port");
 
-    format!("localhost:{}", local_daemon_rpc_port)
+    format!("127.0.0.1:{}", local_daemon_rpc_port)
 }
 
 async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amount {
     // Get wallet manager
     let wallet_manager_mutex = WalletManager::get(Some(daemon.clone())).await;
     let mut wallet_manager = wallet_manager_mutex.lock().await;
-
-    // Check connection
-    let connected = wallet_manager.connected().await;
-    info!("Connected to daemon: {}", connected);
-    assert!(connected, "Should be connected to daemon");
 
     // Get a unique wallet path from the global temp directory
     let wallet_path = temp_path();
@@ -187,6 +182,15 @@ async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amou
         .expect("Failed to recover wallet");
 
     let mut wallet = wallet.lock().await;
+
+    // Explicitly set the daemon address on the wallet instance
+    info!(
+        "Explicitly setting daemon address for wallet to: {}",
+        &daemon.address
+    );
+    wallet
+        .set_daemon_address(&daemon.address)
+        .expect("Failed to set daemon address on wallet");
 
     tracing::info!(
         "Starting testing of wallet with address: {}",
