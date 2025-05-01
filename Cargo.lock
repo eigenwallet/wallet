@@ -5701,7 +5701,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "monero-wallet-sys"
+name = "monero-sys"
 version = "0.1.0"
 dependencies = [
  "anyhow",
