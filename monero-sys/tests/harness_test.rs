@@ -1,9 +1,8 @@
 use monero_harness::{image::Monerod, Monero};
-use monero_sys::WalletManager;
-use std::{sync::OnceLock, time::Duration};
+use monero_sys::{Daemon, WalletManager};
+use std::sync::OnceLock;
 use tempfile::{tempdir, TempDir};
 use testcontainers::{clients::Cli, Container};
-use tokio::time::sleep;
 use tracing::info;
 
 const KDF_ROUNDS: u64 = 1;
@@ -37,6 +36,10 @@ async fn test_monero_wrapper_with_harness() {
         .expect("Failed to create Monero containers");
 
     let daemon_address = get_daemon_address(&monerod_container);
+    let daemon = Daemon {
+        address: daemon_address,
+        ssl: false,
+    };
 
     // Initialize miner
     info!("Initializing miner wallet");
@@ -56,9 +59,9 @@ async fn test_monero_wrapper_with_harness() {
         .expect("Failed to fund wallet address");
 
     // Step 3: Connect the wrapper wallet to the daemon and check balance
-    info!("Connecting to daemon at: {}", daemon_address);
+    info!("Connecting to daemon at: {}", &daemon.address);
 
-    let wallet_balance = connect_and_check_balance(wallet_seed, daemon_address).await;
+    let wallet_balance = connect_and_check_balance(wallet_seed, daemon).await;
 
     // Step 4: Verify the balance
     info!("Wallet balance: {}", wallet_balance);
@@ -71,12 +74,9 @@ async fn test_monero_wrapper_with_harness() {
 }
 
 /// Creates a wallet from a predefined seed and returns the main address and seed.
-async fn create_wallet(
-    wallet_path: &str,
-    daemon_address: impl Into<Option<&str>>,
-) -> (monero::Address, String) {
+async fn create_wallet(wallet_path: &str, daemon: Option<Daemon>) -> (monero::Address, String) {
     // Get wallet manager
-    let wallet_manager_mutex = WalletManager::get(daemon_address);
+    let wallet_manager_mutex = WalletManager::get(daemon).await;
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
     // Define a fixed seed to use for reproducible tests
@@ -151,16 +151,15 @@ fn temp_path() -> String {
 fn get_daemon_address(monerod_container: &Container<'_, Monerod>) -> String {
     let local_daemon_rpc_port = monerod_container
         .ports()
-        .map_to_host_port_ipv4(monero_harness::image::RPC_PORT);
-    let local_daemon_rpc_port = local_daemon_rpc_port
+        .map_to_host_port_ipv4(monero_harness::image::RPC_PORT)
         .expect("monerod should have a mapping to the host for the default RPC port");
 
     format!("localhost:{}", local_daemon_rpc_port)
 }
 
-async fn connect_and_check_balance(seed: String, daemon_address: String) -> monero::Amount {
+async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amount {
     // Get wallet manager
-    let wallet_manager_mutex = WalletManager::get(&*daemon_address);
+    let wallet_manager_mutex = WalletManager::get(Some(daemon.clone())).await;
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
     // Check connection
@@ -196,30 +195,13 @@ async fn connect_and_check_balance(seed: String, daemon_address: String) -> mone
 
     // We need to allow mismatched daemon versions for the Regtest network
     // to be accepted by wallet2
-    wallet.set_allow_mismatched_daemon_version(true);
+    wallet.allow_mismatched_daemon_version();
 
     // Start background refresh
     wallet.sync().await.expect("Failed to sync wallet");
 
-    // Wait for wallet to sync
-    info!("Waiting for wallet to sync...");
-    while !wallet.synchronized() {
-        let wallet_height = wallet.blockchain_height();
-        let daemon_height = wallet.daemon_blockchain_height().unwrap();
-
-        info!(
-            "Wallet height: {}, Daemon height: {}",
-            wallet_height, daemon_height
-        );
-
-        sleep(Duration::from_secs(1)).await;
-    }
-
-    info!("Performing final refresh");
-    wallet.sync().await.unwrap();
-
     // Check balance
-    let balance = wallet.balance_all();
+    let balance = wallet.total_balance();
     info!("Final balance check: {}", balance);
     balance
 }

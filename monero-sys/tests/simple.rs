@@ -1,4 +1,4 @@
-use monero_sys::WalletManager;
+use monero_sys::{Daemon, WalletManager};
 
 const KDF_ROUNDS: u64 = 1;
 const PASSWORD: &str = "test";
@@ -14,12 +14,12 @@ const STAGENET_WALLET_RESTORE_HEIGHT: u64 = 1728128;
 #[tokio::test]
 async fn main() {
     tracing_subscriber::fmt::init();
-
-    let wallet_manager_mutex = WalletManager::get(STAGENET_REMOTE_NODE);
+    let daemon = Daemon {
+        address: STAGENET_REMOTE_NODE.into(),
+        ssl: true,
+    };
+    let wallet_manager_mutex = WalletManager::get(Some(daemon)).await;
     let mut wallet_manager = wallet_manager_mutex.lock().await;
-
-    tracing::info!("Setting daemon address");
-    wallet_manager.set_daemon_address(STAGENET_REMOTE_NODE);
 
     tracing::info!("Connected: {}", wallet_manager.connected().await);
 
@@ -84,9 +84,9 @@ async fn main() {
     tracing::info!("Manual refresh");
     wallet.sync().await.expect("Failed to sync wallet");
 
-    let balance = wallet.balance_all();
+    let balance = wallet.total_balance();
     tracing::info!("Balance: {}", balance.as_pico());
 
-    let unlocked_balance = wallet.unlocked_balance_all();
+    let unlocked_balance = wallet.unlocked_balance();
     tracing::info!("Unlocked balance: {}", unlocked_balance.as_pico());
 }

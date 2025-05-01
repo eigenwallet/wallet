@@ -67,14 +67,18 @@ pub mod ffi {
             listener: *mut WalletListener,
         ) -> *mut Wallet;
 
+        /// Close a wallet, optionally storing the wallet state.
+        unsafe fn closeWallet(
+            self: Pin<&mut WalletManager>,
+            wallet: *mut Wallet,
+            store: bool,
+        ) -> bool;
+
         /// Check whether a wallet exists at the given path.
         fn walletExists(self: Pin<&mut WalletManager>, path: &CxxString) -> bool;
 
         /// Get the current blockchain height.
         fn blockchainHeight(self: Pin<&mut WalletManager>) -> u64;
-
-        /// Get the current error string of the wallet manager.
-        fn walletManagerErrorString(manager: Pin<&mut WalletManager>) -> UniquePtr<CxxString>;
 
         /// Set the address of the remote node ("daemon").
         fn setDaemonAddress(self: Pin<&mut WalletManager>, address: &CxxString);
@@ -120,6 +124,9 @@ pub mod ffi {
         /// Refresh the wallet asynchronously.
         fn refreshAsync(self: Pin<&mut Wallet>);
 
+        /// Set the daemon address.
+        fn setWalletDaemon(wallet: Pin<&mut Wallet>, daemon_address: &CxxString) -> bool;
+
         /// Get the current blockchain height.
         fn blockChainHeight(self: &Wallet) -> u64;
 
@@ -128,16 +135,6 @@ pub mod ffi {
 
         /// Check if wallet was ever synchronized.
         fn synchronized(self: &Wallet) -> bool;
-
-        /// Get the status of a pending transaction.
-        fn status(self: &PendingTransaction) -> i32;
-
-        /// Commit a pending transaction to the blockchain.
-        fn commit(
-            self: Pin<&mut PendingTransaction>,
-            filename: &CxxString,
-            overwrite: bool,
-        ) -> bool;
 
         /// Get the total balance across all accounts in atomic units (piconero).
         fn balanceAll(self: &Wallet) -> u64;
@@ -160,16 +157,33 @@ pub mod ffi {
         ) -> bool;
 
         /// Create a new transaction.
-        /// virtual PendingTransaction * createTransaction(const std::string &dst_addr, const std::string &payment_id,
-        // optional<uint64_t> amount, uint32_t mixin_count,
-        // PendingTransaction::Priority = PendingTransaction::Priority_Low,
-        // uint32_t subaddr_account = 0,
-        // std::set<uint32_t> subaddr_indices = {}) = 0;
         fn createTransaction(
             wallet: Pin<&mut Wallet>,
-            dst_addr: &CxxString,
+            dest_address: &CxxString,
             amount: u64,
         ) -> *mut PendingTransaction;
+
+        /// Create a sweep transaction.
+        fn createSweepTransaction(
+            wallet: Pin<&mut Wallet>,
+            dest_address: &CxxString,
+        ) -> *mut PendingTransaction;
+
+        /// Get the status of a pending transaction.
+        fn status(self: &PendingTransaction) -> i32;
+
+        /// Get the error string of a pending transaction.
+        fn pendingTransactionErrorString(tx: &PendingTransaction) -> UniquePtr<CxxString>;
+
+        /// Commit a pending transaction to the blockchain.
+        fn commit(
+            self: Pin<&mut PendingTransaction>,
+            filename: &CxxString,
+            overwrite: bool,
+        ) -> bool;
+
+        /// Dispose of a pending transaction object.
+        unsafe fn disposeTransaction(self: Pin<&mut Wallet>, tx: *mut PendingTransaction);
     }
 }
 

@@ -40,6 +40,15 @@ namespace Monero
     }
 
     /**
+     * Get the error string of a pending transaction.
+     */
+    inline std::unique_ptr<std::string> pendingTransactionErrorString(const PendingTransaction &tx)
+    {
+        auto err = tx.errorString();
+        return std::make_unique<std::string>(err);
+    }
+
+    /**
      * Wrapper for Wallet::checkTxKey to accommodate passing std::string by reference.
      * The original API takes the tx_key parameter by value which is not compatible
      * with cxx. Taking it by const reference here allows us to expose the function
@@ -66,6 +75,18 @@ namespace Monero
         const std::string &dest_address,
         u_int64_t amount)
     {
-        return wallet.createTransaction(dest_address, "", Monero::optional<uint64_t>(), 1, PendingTransaction::Priority_Default);
+        return wallet.createTransaction(dest_address, "", Monero::optional<uint64_t>(amount), 0, PendingTransaction::Priority_Default);
+    }
+
+    inline PendingTransaction *createSweepTransaction(
+        Wallet &wallet,
+        const std::string &dest_address)
+    {
+        return wallet.createTransaction(dest_address, "", Monero::optional<uint64_t>(), 0, PendingTransaction::Priority_Default);
+    }
+
+    inline bool setWalletDaemon(Wallet &wallet, const std::string &daemon_address)
+    {
+        return wallet.setDaemon(daemon_address);
     }
 }
