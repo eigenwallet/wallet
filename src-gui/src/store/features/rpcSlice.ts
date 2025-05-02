@@ -7,6 +7,8 @@ import {
   TauriTimelockChangeEvent,
   BackgroundRefundState,
   ApprovalRequest,
+  TauriBackgroundProgressWrapper,
+  TauriBackgroundProgress,
 } from "models/tauriModel";
 import { MoneroRecoveryResponse } from "../../models/rpcModel";
 import { GetSwapInfoResponseExt } from "models/tauriModelExt";
@@ -17,7 +19,7 @@ import logger from "utils/logger";
 interface State {
   balance: number | null;
   withdrawTxId: string | null;
-  rendezvous_discovered_sellers: (ExtendedMakerStatus | MakerStatus)[];
+  rendezvousDiscoveredSellers: (ExtendedMakerStatus | MakerStatus)[];
   swapInfos: {
     [swapId: string]: GetSwapInfoResponseExt;
   };
@@ -25,10 +27,6 @@ interface State {
     swapId: string;
     keys: MoneroRecoveryResponse;
   } | null;
-  moneroWalletRpc: {
-    // TODO: Reimplement this using Tauri
-    updateState: false;
-  };
   backgroundRefund: {
     swapId: string;
     state: BackgroundRefundState;
@@ -37,6 +35,9 @@ interface State {
     // Store the full event, keyed by request_id
     [requestId: string]: ApprovalRequest;
   };
+  background: {
+    [key: string]: TauriBackgroundProgress;
+  }
 }
 
 export interface RPCSlice {
@@ -50,12 +51,10 @@ const initialState: RPCSlice = {
   state: {
     balance: null,
     withdrawTxId: null,
-    rendezvous_discovered_sellers: [],
+    rendezvousDiscoveredSellers: [],
     swapInfos: {},
     moneroRecovery: null,
-    moneroWalletRpc: {
-      updateState: false,
-    },
+    background: {},
     backgroundRefund: null,
     approvalRequests: {},
   },
@@ -114,7 +113,7 @@ export const rpcSlice = createSlice({
       slice,
       action: PayloadAction<(ExtendedMakerStatus | MakerStatus)[]>,
     ) {
-      slice.state.rendezvous_discovered_sellers = action.payload;
+      slice.state.rendezvousDiscoveredSellers = action.payload;
     },
     rpcResetWithdrawTxId(slice) {
       slice.state.withdrawTxId = null;
@@ -149,6 +148,12 @@ export const rpcSlice = createSlice({
       const requestId = event.content.request_id;
       slice.state.approvalRequests[requestId] = event;
     },
+    backgroundProgressEventReceived(slice, action: PayloadAction<TauriBackgroundProgressWrapper>) {
+      slice.state.background[action.payload.id] = action.payload.event;
+    },
+    backgroundProgressEventRemoved(slice, action: PayloadAction<string>) {
+      delete slice.state.background[action.payload];
+    },
   },
 });
 
@@ -165,6 +170,8 @@ export const {
   rpcSetBackgroundRefundState,
   timelockChangeEventReceived,
   approvalEventReceived,
+  backgroundProgressEventReceived,
+  backgroundProgressEventRemoved,
 } = rpcSlice.actions;
 
 export default rpcSlice.reducer;

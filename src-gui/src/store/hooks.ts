@@ -9,6 +9,7 @@ import { SettingsState } from "./features/settingsSlice";
 import { NodesSlice } from "./features/nodesSlice";
 import { RatesState } from "./features/ratesSlice";
 import { sortMakerList } from "utils/sortUtils";
+import { TauriBitcoinSyncProgress } from "models/tauriModel";
 
 export const useAppDispatch = () => useDispatch<AppDispatch>();
 export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
@@ -146,4 +147,36 @@ export function usePendingApprovals(): PendingApprovalRequest[] {
 export function usePendingLockBitcoinApproval(): PendingLockBitcoinApprovalRequest[] {
   const approvals = usePendingApprovals();
   return approvals.filter((c) => c.content.details.type === "LockBitcoin");
+}
+
+export function usePendingBackgroundProcesses() {
+  const background = useAppSelector((state) => state.rpc.state.background);
+  return Object.entries(background).filter(([_, c]) => c.progress.type === "Pending");
+}
+
+/// This function returns the sync progress of the Bitcoin wallet and accounts for multiple simultaneous syncs
+/// It uses the min(...) of the all progress values and the max(...) of the all total values
+/// If all the syncs are unknown, it returns null
+export function useConservativeBitcoinSyncProgress(): TauriBitcoinSyncProgress | null {
+  const pendingProcesses = usePendingBackgroundProcesses();
+  const syncingProcesses = pendingProcesses.filter(([_, c]) => c.componentName === "SyncingBitcoinWallet");
+  const progressValues = syncingProcesses.map(([_, c]) => c.progress.content?.content?.consumed ?? 0);
+  const totalValues = syncingProcesses.map(([_, c]) => c.progress.content?.content?.total ?? 0);
+
+  const progress = Math.min(...progressValues);
+  const total = Math.max(...totalValues);
+
+  if (progress === 0 && total === 0) {
+    return {
+      type: "Unknown",
+    };
+  }
+
+  return {
+    type: "Known",
+    content: {
+      consumed: progress,
+      total: total,
+    },
+  };
 }

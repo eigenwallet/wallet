@@ -1,4 +1,7 @@
 use crate::bitcoin::{Address, Amount, Transaction};
+use crate::cli::api::tauri_bindings::{
+    TauriBackgroundProgress, TauriBitcoinSyncProgress, TauriEmitter, TauriHandle,
+};
 use crate::seed::Seed;
 use anyhow::{anyhow, bail, Context, Result};
 use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
@@ -64,6 +67,8 @@ pub struct Wallet<Persister = Connection> {
     /// We want our transactions to be confirmed after this many blocks
     /// (used for fee estimation).
     target_block: usize,
+    /// The Tauri handle
+    tauri_handle: Option<TauriHandle>,
 }
 
 /// This is our wrapper around a bdk electrum client.
@@ -156,7 +161,8 @@ impl Wallet {
         env_config: crate::env::Config,
     ) -> Result<Option<pre_1_0_0_bdk::Export>> {
         // Construct the directory in which the old (<1.0.0 bdk) wallet was stored
-        let pre_bdk_1_0_0_wallet_dir = data_dir.as_ref().join(pre_1_0_0_bdk::WALLET);
+        let wallet_parent_dir = data_dir.as_ref().join(Self::WALLET_PARENT_DIR_NAME);
+        let pre_bdk_1_0_0_wallet_dir = wallet_parent_dir.join(pre_1_0_0_bdk::WALLET);
         let pre_bdk_1_0_0_wallet_exists = pre_bdk_1_0_0_wallet_dir.exists();
 
         if pre_bdk_1_0_0_wallet_exists {
@@ -172,7 +178,8 @@ impl Wallet {
 
             let xprivkey = seed.derive_extended_private_key_legacy(legacy_network)?;
             let old_wallet =
-                pre_1_0_0_bdk::OldWallet::new(&pre_bdk_1_0_0_wallet_dir, xprivkey, env_config).await?;
+                pre_1_0_0_bdk::OldWallet::new(&pre_bdk_1_0_0_wallet_dir, xprivkey, env_config)
+                    .await?;
 
             let export = old_wallet.export("old-wallet").await?;
 
@@ -198,6 +205,7 @@ impl Wallet {
         target_block: usize,
         sync_interval: Duration,
         env_config: crate::env::Config,
+        tauri_handle: Option<TauriHandle>,
     ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
         // Construct the private key, directory and wallet file for the new (>= 1.0.0) bdk wallet
         let xprivkey = seed.derive_extended_private_key(env_config.bitcoin_network)?;
@@ -225,12 +233,14 @@ impl Wallet {
                 connection,
                 finality_confirmations,
                 target_block,
+                tauri_handle,
             )
             .await
         } else {
             // If the new Bitcoin wallet (> 1.0.0 bdk) does not yet exist:
             // We check if we have an old (< 1.0.0 bdk) wallet. If so, we migrate.
-            let export = Self::get_pre_1_0_0_bdk_wallet_export(data_dir, network, seed, env_config).await?;
+            let export =
+                Self::get_pre_1_0_0_bdk_wallet_export(data_dir, network, seed, env_config).await?;
 
             Self::create_new(
                 xprivkey,
@@ -240,6 +250,7 @@ impl Wallet {
                 finality_confirmations,
                 target_block,
                 export,
+                tauri_handle,
             )
             .await
         }
@@ -254,6 +265,7 @@ impl Wallet {
         finality_confirmations: u32,
         target_block: usize,
         sync_interval: Duration,
+        tauri_handle: Option<TauriHandle>,
     ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
         Self::create_new(
             seed.derive_extended_private_key(network)?,
@@ -263,6 +275,7 @@ impl Wallet {
             finality_confirmations,
             target_block,
             None,
+            tauri_handle,
         )
         .await
     }
@@ -276,20 +289,21 @@ impl Wallet {
         finality_confirmations: u32,
         target_block: usize,
         old_wallet: Option<pre_1_0_0_bdk::Export>,
+        tauri_handle: Option<TauriHandle>,
     ) -> Result<Wallet<Persister>>
     where
         Persister: WalletPersister + Sized,
         <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
     {
-        let (descriptor, ..) = Bip84(xprivkey, KeychainKind::External)
+        let external_descriptor = Bip84(xprivkey, KeychainKind::External)
             .build(network)
             .context("Failed to build external wallet descriptor")?;
 
-        let (change_descriptor, ..) = Bip84(xprivkey, KeychainKind::Internal)
+        let internal_descriptor = Bip84(xprivkey, KeychainKind::Internal)
             .build(network)
             .context("Failed to build change wallet descriptor")?;
 
-        let mut wallet = bdk_wallet::Wallet::create(descriptor, change_descriptor)
+        let mut wallet = bdk_wallet::Wallet::create(external_descriptor, internal_descriptor)
             .network(network)
             .create_wallet(&mut persister)
             .context("Failed to create wallet")?;
@@ -329,10 +343,11 @@ impl Wallet {
             finality_confirmations,
             target_block,
             persister: Arc::new(Mutex::new(persister)),
+            tauri_handle,
         })
     }
 
-    /// Load existing wallet data from the database and perform a sync.
+    /// Load existing wallet data from the database
     async fn create_existing<Persister>(
         xprivkey: Xpriv,
         network: Network,
@@ -340,24 +355,25 @@ impl Wallet {
         mut persister: Persister,
         finality_confirmations: u32,
         target_block: usize,
+        tauri_handle: Option<TauriHandle>,
     ) -> Result<Wallet<Persister>>
     where
         Persister: WalletPersister + Sized,
         <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
     {
-        let (_descriptor, external_keymap, _) = Bip84(xprivkey, KeychainKind::External)
+        let external_descriptor = Bip84(xprivkey, KeychainKind::External)
             .build(network)
             .context("Failed to build external wallet descriptor")?;
 
-        let (_change_descriptor, internal_keymap, _) = Bip84(xprivkey, KeychainKind::Internal)
+        let internal_descriptor = Bip84(xprivkey, KeychainKind::Internal)
             .build(network)
             .context("Failed to build change wallet descriptor")?;
 
         tracing::debug!("Loading Bitcoin wallet from database");
 
         let wallet = bdk_wallet::Wallet::load()
-            .keymap(KeychainKind::External, external_keymap)
-            .keymap(KeychainKind::Internal, internal_keymap)
+            .descriptor(KeychainKind::External, Some(external_descriptor))
+            .descriptor(KeychainKind::Internal, Some(internal_descriptor))
             .extract_keys()
             .load_wallet(&mut persister)
             .context("Failed to open database")?
@@ -370,6 +386,7 @@ impl Wallet {
             finality_confirmations,
             target_block,
             persister: Arc::new(Mutex::new(persister)),
+            tauri_handle,
         };
 
         Ok(wallet)
@@ -632,7 +649,8 @@ where
     /// already accounting for the fees we need to spend to get the
     /// transaction confirmed.
     pub async fn max_giveable(&self, locking_script_size: usize) -> Result<Amount> {
-        tracing::debug!("Calculating max giveable");
+        tracing::debug!(locking_script_size, "Calculating max giveable");
+
         let mut wallet = self.wallet.lock().await;
         let balance = wallet.balance();
         if balance.total() < DUST_AMOUNT {
@@ -696,7 +714,8 @@ where
     }
 
     /// Sync the wallet with the blockchain, optionally calling a callback on progress updates.
-    pub async fn sync_with_callback<F>(&self, mut callback: Option<F>) -> Result<()>
+    /// This will NOT emit progress events to the UI.
+    pub async fn sync_with_custom_callback<F>(&self, mut callback: Option<F>) -> Result<()>
     where
         F: FnMut(usize, usize) + Send + 'static,
     {
@@ -731,10 +750,29 @@ where
 
         Ok(())
     }
-
-    /// Sync the wallet with the blockchain.
+    
+    /// Sync the wallet with the blockchain
+    /// and emit progress events to the UI
     pub async fn sync(&self) -> Result<()> {
-        self.sync_with_callback::<fn(usize, usize)>(None).await
+        let background_process_handle = self.tauri_handle.new_background_process_with_initial_progress(
+            |progress| TauriBackgroundProgress::SyncingBitcoinWallet(progress),
+            TauriBitcoinSyncProgress::Unknown,
+        );
+
+        let background_process_handle_clone = background_process_handle.clone();
+        self.sync_with_custom_callback::<Box<dyn Fn(usize, usize) + Send>>(Some(Box::new(
+            move |consumed, total| {
+                background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
+                    consumed: consumed as u64,
+                    total: total as u64,
+                });
+            },
+        )))
+        .await?;
+
+        background_process_handle.finish();
+
+        Ok(())
     }
 }
 
@@ -1346,6 +1384,7 @@ impl WalletBuilder {
             1,
             1,
             Duration::from_secs(10),
+            None,
         )
         .await
         .unwrap();

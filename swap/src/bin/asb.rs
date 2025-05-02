@@ -165,7 +165,7 @@ pub async fn main() -> Result<()> {
 
             // Initialize Tor client
             let tor_client = if config.tor.register_hidden_service {
-                init_tor_client(&config.data.dir).await?.into()
+                init_tor_client(&config.data.dir, None).await?.into()
             } else {
                 None
             };
