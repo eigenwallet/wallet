@@ -30,6 +30,7 @@ use std::time::Instant;
 use tokio::sync::{watch, Mutex};
 use tracing::{debug_span, Instrument};
 
+use super::bitcoin_address::revalidate_network;
 use super::BlockHeight;
 
 /// Assuming we add a spread of 3% we don't want to pay more than 3% of the
@@ -576,15 +577,11 @@ where
         change_override: Option<Address>,
     ) -> Result<PartiallySignedTransaction> {
         // Check address and change address for network equality.
-        address
-            .as_unchecked()
-            .clone()
-            .require_network(self.network)
-            .context("Address is not on the correct network")?;
+        let address = revalidate_network(address, self.network)?;
 
         change_override
             .as_ref()
-            .map(|a| a.as_unchecked().clone().require_network(self.network))
+            .map(|a| revalidate_network(a.clone(), self.network))
             .transpose()
             .context("Change address is not on the correct network")?;
 
@@ -598,9 +595,6 @@ where
         tx_builder.add_recipient(script.clone(), amount);
         tx_builder.fee_rate(fee_rate);
         let mut psbt = tx_builder.finish()?;
-
-        // Drop the lock on the wallet and client to avoid deadlocks.
-        let (_, _) = (wallet, client);
 
         match psbt.unsigned_tx.output.as_mut_slice() {
             // our primary output is the 2nd one? reverse the vectors
