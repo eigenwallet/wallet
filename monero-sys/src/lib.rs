@@ -393,13 +393,30 @@ impl Wallet {
     ) -> anyhow::Result<()> {
         // We wait for 250ms before polling the wallet's sync status again.
         // This is ok because this doesn't involve any blocking calls.
-        const SLEEP_DURATION_MILLIS: u64 = 250;
+        const POLL_INTERVAL_MILLIS: u64 = 250;
 
         tracing::debug!("Waiting for wallet to sync");
+
         // Initiate the sync (make sure to drop the lock right after)
         {
             let mut wallet = mutex.lock().await;
             wallet.refresh_async().await;
+        }
+
+        // Wait until the wallet is connected to the daemon.
+        loop {
+            let connected = { mutex.lock().await.connected() };
+
+            if connected {
+                break;
+            }
+
+            tracing::trace!(
+                "Wallet not connected to daemon, sleeping for {}ms",
+                POLL_INTERVAL_MILLIS
+            );
+
+            tokio::time::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MILLIS)).await;
         }
 
         // Continue polling until the sync is complete
@@ -420,21 +437,33 @@ impl Wallet {
                 break;
             }
 
+            tracing::trace!(
+                "Wallet sync not complete, sleeping for {}ms",
+                POLL_INTERVAL_MILLIS
+            );
+
             // Otherwise, sleep for a bit and try again.
-            tokio::time::sleep(std::time::Duration::from_millis(SLEEP_DURATION_MILLIS)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MILLIS)).await;
         }
+
+        tracing::debug!("Wallet synced");
 
         Ok(())
     }
 
     fn connected(&self) -> bool {
-        match self.inner.pinned().connected() {
+        match self.inner.connected() {
             ffi::ConnectionStatus::Connected => true,
             ffi::ConnectionStatus::WrongVersion => {
                 tracing::warn!("Version mismatch with daemon");
                 false
             }
             ffi::ConnectionStatus::Disconnected => false,
+            // Fallback since C++ allows any other value.
+            status => {
+                tracing::error!("Unknown connection status: `{}`", status.repr);
+                false
+            }
         }
     }
 
