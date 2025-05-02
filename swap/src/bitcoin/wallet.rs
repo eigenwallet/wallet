@@ -144,6 +144,50 @@ impl Wallet {
     /// The batch size for the full scan.
     const SCAN_BATCH_SIZE: usize = 5;
 
+    const WALLET_PARENT_DIR_NAME: &str = "wallet";
+    const WALLET_DIR_NAME: &str = "wallet-new";
+    const WALLET_FILE_NAME: &str = "walletdb.sqlite";
+
+    async fn get_pre_1_0_0_bdk_wallet_export(
+        data_dir: impl AsRef<Path>,
+        network: Network,
+        seed: &Seed,
+        env_config: crate::env::Config,
+    ) -> Result<Option<pre_1_0_0_bdk::Export>> {
+        // Construct the directory in which the old (<1.0.0 bdk) wallet was stored
+        let pre_bdk_1_0_0_wallet_dir = data_dir.as_ref().join(pre_1_0_0_bdk::WALLET);
+        let pre_bdk_1_0_0_wallet_exists = pre_bdk_1_0_0_wallet_dir.exists();
+
+        if pre_bdk_1_0_0_wallet_exists {
+            tracing::info!("Found old Bitcoin wallet (pre 1.0.0 bdk). Migrating...");
+
+            // We need to support the legacy wallet format for the migration path.
+            // We need to convert the network to the legacy BDK network type.
+            let legacy_network = match network {
+                Network::Bitcoin => bdk::bitcoin::Network::Bitcoin,
+                Network::Testnet => bdk::bitcoin::Network::Testnet,
+                _ => bail!("Unsupported network: {}", network),
+            };
+
+            let xprivkey = seed.derive_extended_private_key_legacy(legacy_network)?;
+            let old_wallet =
+                pre_1_0_0_bdk::OldWallet::new(&pre_bdk_1_0_0_wallet_dir, xprivkey, env_config).await?;
+
+            let export = old_wallet.export("old-wallet").await?;
+
+            tracing::debug!(
+                old_balance=%export.balance,
+                external_index=%export.external_derivation_index,
+                internal_index=%export.internal_derivation_index,
+                "Constructed export of old Bitcoin wallet (pre 1.0.0 bdk) for migration"
+            );
+
+            Ok(Some(export))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Create a new wallet, persisted to a sqlite database.
     pub async fn with_sqlite(
         seed: &Seed,
@@ -155,42 +199,14 @@ impl Wallet {
         sync_interval: Duration,
         env_config: crate::env::Config,
     ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
+        // Construct the private key, directory and wallet file for the new (>= 1.0.0) bdk wallet
         let xprivkey = seed.derive_extended_private_key(env_config.bitcoin_network)?;
-
-        let wallet_dir = data_dir.as_ref().join("wallet").join("wallet-new");
-        let wallet_path = wallet_dir.join("walletdb.sqlite");
+        let wallet_dir = data_dir
+            .as_ref()
+            .join(Self::WALLET_PARENT_DIR_NAME)
+            .join(Self::WALLET_DIR_NAME);
+        let wallet_path = wallet_dir.join(Self::WALLET_FILE_NAME);
         let wallet_exists = wallet_path.exists();
-
-        // Check if the old wallet directory exists and export the data if it does.
-        let old_wallet_dir = data_dir.as_ref().join(old::WALLET);
-        let export = match !wallet_exists && old_wallet_dir.exists() {
-            false => None,
-            true => {
-                tracing::info!("Found old wallet directory, fetching data for migration");
-
-                // We need to support the legacy wallet format for the migration path.
-                // We need to convert the network to the legacy BDK network type.
-                let legacy_network = match network {
-                    Network::Bitcoin => bdk::bitcoin::Network::Bitcoin,
-                    Network::Testnet => bdk::bitcoin::Network::Testnet,
-                    _ => bail!("Unsupported network: {}", network),
-                };
-
-                let xprivkey = seed.derive_extended_private_key_legacy(legacy_network)?;
-                let old_wallet = old::OldWallet::new(&old_wallet_dir, xprivkey, env_config).await?;
-
-                let export = old_wallet.export("old-wallet").await?;
-
-                tracing::debug!(
-                    old_balance=%export.balance,
-                    external_index=%export.external_derivation_index,
-                    internal_index=%export.internal_derivation_index,
-                    "Fetched data from old wallet for migration"
-                );
-
-                Some(export)
-            }
-        };
 
         // Connect to the electrum server.
         let client = Client::new(electrum_rpc_url, sync_interval)?;
@@ -200,6 +216,7 @@ impl Wallet {
 
         let connection = Connection::open(&wallet_path)?;
 
+        // If the new Bitcoin wallet (> 1.0.0 bdk) already exists, we open it
         if wallet_exists {
             Self::create_existing(
                 xprivkey,
@@ -211,6 +228,10 @@ impl Wallet {
             )
             .await
         } else {
+            // If the new Bitcoin wallet (> 1.0.0 bdk) does not yet exist:
+            // We check if we have an old (< 1.0.0 bdk) wallet. If so, we migrate.
+            let export = Self::get_pre_1_0_0_bdk_wallet_export(data_dir, network, seed, env_config).await?;
+
             Self::create_new(
                 xprivkey,
                 network,
@@ -234,7 +255,7 @@ impl Wallet {
         target_block: usize,
         sync_interval: Duration,
     ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
-        Ok(Self::create_new(
+        Self::create_new(
             seed.derive_extended_private_key(network)?,
             network,
             Client::new(electrum_rpc_url, sync_interval).unwrap(),
@@ -243,7 +264,7 @@ impl Wallet {
             target_block,
             None,
         )
-        .await?)
+        .await
     }
 
     /// Create a new wallet in the database and perform a full scan.
@@ -254,7 +275,7 @@ impl Wallet {
         mut persister: Persister,
         finality_confirmations: u32,
         target_block: usize,
-        old_wallet: Option<old::Export>,
+        old_wallet: Option<pre_1_0_0_bdk::Export>,
     ) -> Result<Wallet<Persister>>
     where
         Persister: WalletPersister + Sized,
@@ -276,7 +297,8 @@ impl Wallet {
         // If we have an old wallet, we need to reveal the addresses that were used before
         // to speed up the initial sync.
         if let Some(old_wallet) = old_wallet {
-            tracing::info!("Migrating from old Bitcoin wallet, revealing addresses");
+            tracing::info!("Migrating from old Bitcoin wallet (< 1.0.0 bdk)");
+
             let _ = wallet
                 .reveal_addresses_to(KeychainKind::External, old_wallet.external_derivation_index);
             let _ = wallet
@@ -286,8 +308,6 @@ impl Wallet {
         }
 
         tracing::debug!("Starting initial Bitcoin wallet scan");
-
-        // TODO: We are not emitting events here properly, we should though
 
         let full_scan = wallet.start_full_scan();
         let full_scan_result = client.electrum.full_scan(
@@ -958,7 +978,7 @@ impl Subscription {
     }
 }
 
-pub mod old {
+pub mod pre_1_0_0_bdk {
     //! This module contains some code for creating a bdk wallet from before the update.
     //! We need to keep this around to be able to migrate the wallet.
 
