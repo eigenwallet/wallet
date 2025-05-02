@@ -5,6 +5,7 @@ mod bridge;
 use std::{
     collections::HashMap,
     ops::Deref,
+    path::PathBuf,
     pin::Pin,
     str::FromStr,
     sync::{Arc, OnceLock},
@@ -37,8 +38,6 @@ pub struct Wallet {
 struct RawWallet(*mut ffi::Wallet);
 
 /// The progress of synchronization of a wallet with the remote node.
-///
-///
 pub struct SyncProgress {
     /// The current block height of the wallet.
     pub current_block: u64,
@@ -64,16 +63,19 @@ pub struct Daemon {
 }
 
 impl WalletManager {
+    /// For now we don't support custom difficulty
     const DEFAULT_KDF_ROUNDS: u64 = 1;
 
     /// Get the wallet manager instance.
+    /// You can optionally pass a daemon with which the wallet manager and
+    /// all wallets opened by the manager will connect.
     pub async fn get<'a>(daemon: Option<Daemon>) -> Arc<Mutex<Self>> {
         let manager = WALLET_MANAGER.get_or_init(|| {
             let manager = ffi::getWalletManager();
             let manager = Self {
                 inner: RawWalletManager(manager),
                 wallets: HashMap::new(),
-                daemon,
+                daemon: daemon.clone(),
             };
 
             Arc::new(Mutex::new(manager))
@@ -82,7 +84,7 @@ impl WalletManager {
         {
             let mut lock = manager.lock().await;
 
-            if let Some(daemon) = lock.daemon.clone() {
+            if let Some(daemon) = daemon {
                 lock.set_daemon_address(&daemon.address);
             }
         }
@@ -95,24 +97,26 @@ impl WalletManager {
         &mut self,
         path: &str,
         password: Option<&str>,
-        language: Option<&str>,
         network: monero::Network,
-        kdf_rounds: Option<u64>,
-        background_sync: bool,
     ) -> anyhow::Result<Arc<Mutex<Wallet>>> {
+        tracing::info!(
+            "Opening or creating wallet: {}. Currently opened {} wallets.",
+            path,
+            self.wallets.len()
+        );
+
         // If we've already loaded this wallet, return it.
         if self.wallets.contains_key(path) {
             let wallet = self.wallets[path].clone();
-            if background_sync {
-                wallet.lock().await.start_refresh();
-            }
             return Ok(wallet);
         }
+
+        let kdf_rounds = Self::DEFAULT_KDF_ROUNDS;
 
         // If we haven't loaded the wallet, but it already exists, open it.
         if self.wallet_exists(path).await {
             return Ok(self
-                .open_wallet(path, password, network, kdf_rounds, background_sync)
+                .open_wallet(path, password, network)
                 .await
                 .context("Failed to open wallet")?);
         }
@@ -120,9 +124,8 @@ impl WalletManager {
         // Otherwise, create (and open) a new wallet.
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
-        let_cxx_string!(language = language.unwrap_or(""));
+        let_cxx_string!(language = "");
         let network_type = network.into();
-        let kdf_rounds = kdf_rounds.unwrap_or(Self::DEFAULT_KDF_ROUNDS);
 
         let wallet_pointer =
             self.inner
@@ -133,7 +136,7 @@ impl WalletManager {
             panic!("Failed to create wallet");
         }
 
-        let wallet = Wallet::new(wallet_pointer, background_sync, self.daemon.clone()).await?;
+        let wallet = Wallet::new(wallet_pointer, self.daemon.clone()).await?;
 
         let wallet = Arc::new(Mutex::new(wallet));
         self.wallets.insert(path.to_string(), wallet.clone());
@@ -150,14 +153,12 @@ impl WalletManager {
         mnemonic: &str,
         network: monero::Network,
         restore_height: u64,
-        kdf_rounds: Option<u64>,
-        seed_offset: Option<&str>,
-        background_sync: bool,
     ) -> anyhow::Result<Arc<Mutex<Wallet>>> {
         let_cxx_string!(path = path);
         let_cxx_string!(password = password);
         let_cxx_string!(mnemonic = mnemonic);
-        let_cxx_string!(seed_offset = seed_offset.unwrap_or(""));
+        let_cxx_string!(seed_offset = "");
+
         let network_type = network.into();
         let wallet_pointer = self.inner.pinned().recoveryWallet(
             &path,
@@ -165,11 +166,11 @@ impl WalletManager {
             &mnemonic,
             network_type,
             restore_height,
-            kdf_rounds.unwrap_or(Self::DEFAULT_KDF_ROUNDS),
+            Self::DEFAULT_KDF_ROUNDS,
             &seed_offset,
         );
 
-        let wallet = Wallet::new(wallet_pointer, background_sync, self.daemon.clone()).await?;
+        let wallet = Wallet::new(wallet_pointer, self.daemon.clone()).await?;
 
         let wallet = Arc::new(Mutex::new(wallet));
         self.wallets.insert(path.to_string(), wallet.clone());
@@ -178,11 +179,24 @@ impl WalletManager {
     }
 
     /// Close a wallet, optionally storing the wallet state.
-    async fn close_wallet(&mut self, wallet: &mut Wallet) -> anyhow::Result<()> {
-        let success = unsafe { self.inner.pinned().closeWallet(wallet.inner.0, true) };
+    async fn close_wallet(&mut self, wallet: Arc<Mutex<Wallet>>) -> anyhow::Result<()> {
+        let path = wallet.lock().await.path();
+
+        tracing::debug!(wallet_path = %path, "Closing wallet");
+
+        let success = unsafe {
+            self.inner
+                .pinned()
+                .closeWallet(wallet.lock().await.inner.0, true)
+        };
+
         if !success {
             anyhow::bail!("Failed to close wallet");
         }
+
+        //
+        self.wallets.remove(&path);
+
         Ok(())
     }
 
@@ -194,13 +208,11 @@ impl WalletManager {
         path: &str,
         password: Option<&str>,
         network_type: monero::Network,
-        kdf_rounds: Option<u64>,
-        background_sync: bool,
     ) -> anyhow::Result<Arc<Mutex<Wallet>>> {
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
         let network_type = network_type.into();
-        let kdf_rounds = kdf_rounds.unwrap_or(Self::DEFAULT_KDF_ROUNDS);
+        let kdf_rounds = Self::DEFAULT_KDF_ROUNDS;
 
         let wallet_pointer = unsafe {
             self.inner.pinned().openWallet(
@@ -216,7 +228,7 @@ impl WalletManager {
             anyhow::bail!("Failed to open wallet: got null pointer")
         }
 
-        let wallet = Wallet::new(wallet_pointer, background_sync, self.daemon.clone()).await?;
+        let wallet = Wallet::new(wallet_pointer, self.daemon.clone()).await?;
 
         // Todo: error checking
 
@@ -227,7 +239,7 @@ impl WalletManager {
     }
 
     /// Set the address of the remote node ("daemon").
-    pub fn set_daemon_address(&mut self, address: &str) {
+    fn set_daemon_address(&mut self, address: &str) {
         tracing::debug!(%address, "Updating wallet manager's default remote node");
 
         let_cxx_string!(address = address);
@@ -243,9 +255,22 @@ impl WalletManager {
     }
 
     /// Check if the wallet manager is connected to the configured daemon.
+    ///
+    /// The manager might takes a few seconds to connect to the daemon after startup,
+    /// so
     pub async fn connected(&mut self) -> bool {
         let mut version = 0;
         unsafe { self.inner.pinned().connected(&mut version) }
+    }
+
+    /// Get the current blockchain height, if the manager is connected to a daemon.
+    ///
+    /// Returns None if the manager is not connected to a daemon.
+    pub async fn blockchain_height(&mut self) -> Option<u64> {
+        match self.inner.pinned().blockchainHeight() {
+            0 => None,
+            height => Some(height),
+        }
     }
 }
 
@@ -269,14 +294,10 @@ impl RawWalletManager {
 unsafe impl Send for RawWalletManager {}
 
 impl Wallet {
-    const MAIN_ACCOUNT_INDEX: u64 = 0;
+    const MAIN_ACCOUNT_INDEX: u32 = 0;
 
     /// Create and initialize new wallet from a raw C++ wallet pointer.
-    async fn new(
-        inner: *mut ffi::Wallet,
-        background_sync: bool,
-        daemon: Option<Daemon>,
-    ) -> anyhow::Result<Self> {
+    async fn new(inner: *mut ffi::Wallet, daemon: Option<Daemon>) -> anyhow::Result<Self> {
         if inner.is_null() {
             anyhow::bail!("Failed to create wallet: got null pointer");
         }
@@ -294,11 +315,14 @@ impl Wallet {
             .await
             .context("Failed to initialize wallet")?;
 
-        if background_sync {
-            wallet.start_refresh();
-        }
+        wallet.start_refresh();
 
         Ok(wallet)
+    }
+
+    /// Get the path to the wallet file.
+    pub fn path(&self) -> String {
+        ffi::walletPath(&self.inner).to_string()
     }
 
     /// Get the address for the given account and address index.
@@ -323,7 +347,7 @@ impl Wallet {
 
     /// Get the main address of the walllet (account 0, address 0).
     pub fn main_address(&self) -> monero::Address {
-        self.address(0, 0)
+        self.address(Self::MAIN_ACCOUNT_INDEX, 0)
     }
 
     /// Initialize the wallet and download initial values from the remote node.
@@ -360,22 +384,58 @@ impl Wallet {
     }
 
     /// Sync the wallet with the remote node.
-    /// Returns when the sync is complete.
     ///
-    pub async fn sync(&mut self) -> anyhow::Result<()> {
-        // We wait for 100ms before polling the wallet's sync status again.
+    /// This may take some time. To avoid starving other tasks, this function
+    /// takes a mutex and releases the lock in between polls.
+    pub async fn wait_until_synced(
+        mutex: Arc<Mutex<Self>>,
+        listener: Option<impl Fn(SyncProgress) -> ()>,
+    ) -> anyhow::Result<()> {
+        // We wait for 250ms before polling the wallet's sync status again.
         // This is ok because this doesn't involve any blocking calls.
-        const SLEEP_DURATION_MILLIS: u64 = 100;
+        const SLEEP_DURATION_MILLIS: u64 = 250;
 
-        // Initiate the sync
-        self.refresh_async().await;
+        tracing::debug!("Waiting for wallet to sync");
+        // Initiate the sync (make sure to drop the lock right after)
+        {
+            let mut wallet = mutex.lock().await;
+            wallet.refresh_async().await;
+        }
 
         // Continue polling until the sync is complete
-        while !self.inner.synchronized() {
+        loop {
+            // Get the current sync status (releasing the lock immediately afterwords)
+            let (synced, sync_progress) = {
+                let mut wallet = mutex.lock().await;
+                (wallet.synchronized(), wallet.sync_progress().await)
+            };
+
+            // Notify the listener (if it exists)
+            if let Some(listener) = &listener {
+                listener(sync_progress);
+            }
+
+            // If the wallet is synced, break out of the loop.
+            if synced {
+                break;
+            }
+
+            // Otherwise, sleep for a bit and try again.
             tokio::time::sleep(std::time::Duration::from_millis(SLEEP_DURATION_MILLIS)).await;
         }
 
         Ok(())
+    }
+
+    fn connected(&self) -> bool {
+        match self.inner.pinned().connected() {
+            ffi::ConnectionStatus::Connected => true,
+            ffi::ConnectionStatus::WrongVersion => {
+                tracing::warn!("Version mismatch with daemon");
+                false
+            }
+            ffi::ConnectionStatus::Disconnected => false,
+        }
     }
 
     /// Start the background refresh thread (refreshes every 10 seconds).
@@ -384,6 +444,8 @@ impl Wallet {
     }
 
     /// Refresh the wallet asynchronously.
+    /// Same as start_refresh except that the background thread only
+    /// refreshes once. Maybe?
     async fn refresh_async(&mut self) {
         self.inner.pinned().refreshAsync();
     }
@@ -395,18 +457,14 @@ impl Wallet {
 
     /// Get the daemon's blockchain height.
     ///
-    /// Returns the height of the blockchain from the connected daemon.
-    /// Returns 0 if there's an error communicating with the daemon.
-    pub fn daemon_blockchain_height(&mut self) -> anyhow::Result<u64> {
+    /// Returns the height of the blockchain, if connected.
+    /// Returns None if not connected.
+    pub fn daemon_blockchain_height(&mut self) -> Option<u64> {
         // Here we actually use the _target_ height -- incase the remote node is
         // currently catching up we want to work with the height it ends up at.
-        let height = self.inner.daemonBlockChainTargetHeight();
-        if height == 0 {
-            self.check_error()
-                .context("Failed to get daemon blockchain height")?;
-            anyhow::bail!("Failed to get daemon blockchain height");
-        } else {
-            Ok(height)
+        match self.inner.daemonBlockChainTargetHeight() {
+            0 => None,
+            height => Some(height),
         }
     }
 
@@ -422,10 +480,7 @@ impl Wallet {
         monero::Amount::from_pico(balance)
     }
 
-    /// Check if wallet was ever synchronized.
-    ///
-    /// Returns true if the wallet has been synchronized at least once,
-    /// false otherwise.
+    /// Check if the wallet is synced with the daemon.
     pub fn synchronized(&self) -> bool {
         self.inner.synchronized()
     }
@@ -439,8 +494,8 @@ impl Wallet {
         self.inner.pinned().setAllowMismatchedDaemonVersion(true);
     }
 
-    /// Check if a transaction is in the mempool/confirmed.
-    pub async fn check_tx_key(
+    /// Check the status of a transaction.
+    pub async fn check_tx_status(
         &mut self,
         txid: &str,
         tx_key: &str,
@@ -616,10 +671,19 @@ impl ffi::PendingTransaction {
 }
 
 impl SyncProgress {
+    /// Create a new sync progress object.
     fn new(current_block: u64, target_block: u64) -> Self {
         Self {
             current_block,
             target_block,
+        }
+    }
+
+    /// Create a new sync progress object with zero progess.
+    fn zero() -> Self {
+        Self {
+            current_block: 0,
+            target_block: 1,
         }
     }
 

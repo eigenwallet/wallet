@@ -6,6 +6,8 @@
 
 namespace Monero
 {
+    using ConnectionStatus = Wallet::ConnectionStatus;
+
     /**
      * CXX doesn't support static methods as yet, so we define free functions here that simply
      * call the appropriate static methods.
@@ -15,7 +17,7 @@ namespace Monero
         // This causes the wallet to print some logging to stdout
         // This is useful for debugging
         // TODO: Only enable in debug releases or expose setLogLevel as a FFI function
-        WalletManagerFactory::setLogLevel(2);
+        // WalletManagerFactory::setLogLevel(2);
 
         return WalletManagerFactory::getWalletManager();
     }
@@ -64,6 +66,14 @@ namespace Monero
         uint64_t &confirmations)
     {
         return wallet.checkTxKey(txid, tx_key, address, received, in_pool, confirmations);
+    }
+
+    /**
+     * Get the path of the wallet.
+     */
+    inline std::unique_ptr<std::string> walletPath(const Wallet &wallet)
+    {
+        return std::make_unique<std::string>(wallet.path());
     }
 
     /**

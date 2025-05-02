@@ -1,11 +1,8 @@
-use monero_sys::{Daemon, WalletManager};
+use core::sync;
 
-const KDF_ROUNDS: u64 = 1;
+use monero_sys::{Daemon, SyncProgress, Wallet, WalletManager};
+
 const PASSWORD: &str = "test";
-
-// No seed offset for now. This is the default
-// TODO: Let lib.rs take an Option<_> and if None pass in an empty string
-const SEED_OFFSET: &str = "";
 
 const STAGENET_REMOTE_NODE: &str = "node.sethforprivacy.com:38089";
 const STAGENET_WALLET_SEED: &str = "echo ourselves ruined oven masterful wives enough addicted future cottage illness adopt lucky movement tiger taboo imbalance antics iceberg hobby oval aloof tuesday uttered oval";
@@ -13,7 +10,11 @@ const STAGENET_WALLET_RESTORE_HEIGHT: u64 = 1728128;
 
 #[tokio::test]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter("warn,test=debug,monero_harness=debug,monero_rpc=debug,simple=debug")
+        .with_test_writer()
+        .init();
+
     let daemon = Daemon {
         address: STAGENET_REMOTE_NODE.into(),
         ssl: true,
@@ -21,7 +22,15 @@ async fn main() {
     let wallet_manager_mutex = WalletManager::get(Some(daemon)).await;
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
-    tracing::info!("Connected: {}", wallet_manager.connected().await);
+    while !wallet_manager.connected().await {
+        tracing::info!("Waiting to connect to daemon...");
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+    tracing::info!("Connected to daemon");
+    tracing::info!(
+        "Daemon height: {}",
+        wallet_manager.blockchain_height().await.unwrap()
+    );
 
     let temp_dir = tempfile::tempdir().unwrap();
 
@@ -29,64 +38,39 @@ async fn main() {
     let wallet_path = temp_dir.path().join(wallet_name);
 
     tracing::info!("Recovering wallet from seed");
-    let wallet = wallet_manager
+    let wallet_mutex = wallet_manager
         .recover_wallet(
             wallet_path.to_str().unwrap(),
             PASSWORD,
             STAGENET_WALLET_SEED,
             monero::Network::Stagenet,
             STAGENET_WALLET_RESTORE_HEIGHT,
-            Some(KDF_ROUNDS),
-            Some(SEED_OFFSET),
-            true,
         )
         .await
         .expect("Failed to recover wallet");
 
-    let mut wallet = wallet.lock().await;
-
-    tracing::info!("Primary address: {}", wallet.main_address());
-
-    // Start background refresh
-    tracing::info!("Starting background refresh");
-    wallet.sync().await.expect("Failed to sync wallet");
+    tracing::info!(
+        "Primary address: {}",
+        wallet_mutex.lock().await.main_address()
+    );
 
     // Wait for a while to let the wallet sync, checking sync status
     tracing::info!("Waiting for wallet to sync...");
 
-    // TODO: lib.rs should provide an async method that does this for us
-    while !wallet.synchronized() {
-        let wallet_height = wallet.blockchain_height();
-        let daemon_height = wallet.daemon_blockchain_height().unwrap();
-        let is_synced = wallet.synchronized();
-
-        // Calculate sync percentage if daemon height is available
-        let sync_percentage = if daemon_height > 0 && daemon_height >= wallet_height {
-            (wallet_height as f64 / daemon_height as f64 * 100.0).round()
-        } else {
-            0.0
-        };
-
-        tracing::info!(
-            "Wallet height: {}, Daemon height: {}, Sync: {}%, Synchronized: {}",
-            wallet_height,
-            daemon_height,
-            sync_percentage,
-            is_synced,
-        );
-
-        std::thread::sleep(std::time::Duration::from_secs(3));
-    }
+    Wallet::wait_until_synced(
+        wallet_mutex.clone(),
+        Some(|sync_progress: SyncProgress| {
+            tracing::info!("Sync progress: {}%", sync_progress.percentage());
+        }),
+    )
+    .await
+    .expect("Failed to sync wallet");
 
     tracing::info!("Wallet is synchronized!");
 
-    // Manual refresh one more time
-    tracing::info!("Manual refresh");
-    wallet.sync().await.expect("Failed to sync wallet");
-
-    let balance = wallet.total_balance();
+    let balance = wallet_mutex.lock().await.total_balance();
     tracing::info!("Balance: {}", balance.as_pico());
 
-    let unlocked_balance = wallet.unlocked_balance();
+    let unlocked_balance = wallet_mutex.lock().await.unlocked_balance();
     tracing::info!("Unlocked balance: {}", unlocked_balance.as_pico());
 }

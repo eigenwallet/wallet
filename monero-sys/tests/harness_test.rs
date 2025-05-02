@@ -1,13 +1,11 @@
 use monero_harness::{image::Monerod, Monero};
-use monero_sys::{Daemon, WalletManager};
+use monero_sys::{Daemon, SyncProgress, Wallet, WalletManager};
 use std::sync::OnceLock;
 use tempfile::{tempdir, TempDir};
 use testcontainers::{clients::Cli, Container};
 use tracing::info;
 
-const KDF_ROUNDS: u64 = 1;
 const PASSWORD: &str = "test";
-const SEED_OFFSET: &str = "";
 
 // Amount to fund the wallet with (in piconero)
 const FUND_AMOUNT: monero::Amount = monero::Amount::ONE_XMR;
@@ -91,9 +89,6 @@ async fn create_wallet(wallet_path: &str, daemon: Option<Daemon>) -> (monero::Ad
             // Regtest uses Mainnet addresses
             monero::Network::Mainnet,
             1,
-            None,
-            None,
-            true,
         )
         .await
         .expect("Failed to recover wallet");
@@ -167,21 +162,18 @@ async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amou
     tracing::info!("Recovering wallet from seed to {}", wallet_path);
 
     // Recover wallet from seed
-    let wallet = wallet_manager
+    let wallet_mutex = wallet_manager
         .recover_wallet(
             &wallet_path,
             PASSWORD,
             &seed,
             monero::Network::Mainnet, // Regtest uses Mainnet addresses
             1,                        // Restore height (start from beginning)
-            Some(KDF_ROUNDS),
-            Some(SEED_OFFSET),
-            true,
         )
         .await
         .expect("Failed to recover wallet");
 
-    let mut wallet = wallet.lock().await;
+    let mut wallet = wallet_mutex.lock().await;
 
     // Explicitly set the daemon address on the wallet instance
     info!(
@@ -202,7 +194,18 @@ async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amou
     wallet.allow_mismatched_daemon_version();
 
     // Start background refresh
-    wallet.sync().await.expect("Failed to sync wallet");
+    let _ = wallet;
+
+    Wallet::wait_until_synced(
+        wallet_mutex.clone(),
+        Some(|sync_progress: SyncProgress| {
+            tracing::info!("Sync progress: {}%", sync_progress.percentage());
+        }),
+    )
+    .await
+    .expect("Failed to sync wallet");
+
+    let wallet = wallet_mutex.lock().await;
 
     // Check balance
     let balance = wallet.total_balance();

@@ -10,6 +10,17 @@ pub mod ffi {
         STAGENET,
     }
 
+    /// The status of the connection to the daemon.
+    #[repr(u32)]
+    enum ConnectionStatus {
+        #[rust_name = "Disconnected"]
+        ConnectionStatus_Disconnected = 0,
+        #[rust_name = "Connected"]
+        ConnectionStatus_Connected = 1,
+        #[rust_name = "WrongVersion"]
+        ConnectionStatus_WrongVersion = 2,
+    }
+
     unsafe extern "C++" {
         include!("wallet/api/wallet2_api.h");
         include!("bridge.h");
@@ -22,6 +33,9 @@ pub mod ffi {
 
         /// The type of the network.
         type NetworkType;
+
+        /// The status of the connection to the daemon.
+        type ConnectionStatus;
 
         /// A pending transaction.
         type PendingTransaction;
@@ -90,6 +104,9 @@ pub mod ffi {
         /// - `version` must be a valid pointer to a `u32` or null.
         unsafe fn connected(self: Pin<&mut WalletManager>, version: *mut u32) -> bool;
 
+        /// Get the path of the wallet.
+        fn walletPath(wallet: &Wallet) -> UniquePtr<CxxString>;
+
         /// Get the status of the wallet and an error string if there is one.
         fn statusWithErrorString(
             self: &Wallet,
@@ -115,8 +132,8 @@ pub mod ffi {
             proxy_address: &CxxString,
         ) -> bool;
 
-        /// Refresh the wallet once.
-        fn refresh(self: Pin<&mut Wallet>) -> bool;
+        /// Check whether the wallet is connected to the daemon.
+        fn connected(self: &Wallet) -> ConnectionStatus;
 
         /// Start the background refresh thread (refreshes every 10 seconds).
         fn startRefresh(self: Pin<&mut Wallet>);
