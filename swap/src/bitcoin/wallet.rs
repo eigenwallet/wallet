@@ -176,7 +176,6 @@ impl Wallet {
             let export = old_wallet.export("old-wallet").await?;
 
             tracing::debug!(
-                old_balance=%export.balance,
                 external_index=%export.external_derivation_index,
                 internal_index=%export.internal_derivation_index,
                 "Constructed export of old Bitcoin wallet (pre 1.0.0 bdk) for migration"
@@ -989,14 +988,11 @@ pub mod pre_1_0_0_bdk {
     use bdk::bitcoin::{util::bip32::ExtendedPrivKey, Network};
     use bdk::sled::Tree;
     use bdk::KeychainKind;
-    use bitcoin::Amount;
     use tokio::sync::Mutex;
 
     use crate::env;
 
     pub const WALLET: &str = "wallet";
-    const WALLET_OLD: &str = "wallet-old";
-
     const SLED_TREE_NAME: &str = "default_tree";
 
     /// The is the old bdk wallet before the migration.
@@ -1015,14 +1011,6 @@ pub mod pre_1_0_0_bdk {
         pub external_derivation_index: u32,
         /// Index of the last internal address that was revealed.
         pub internal_derivation_index: u32,
-
-        // The following we include to check whether the migration was successful
-        /// The balance of the wallet.
-        pub balance: Amount,
-        /// The last internal address that was revealed.
-        pub last_revealed_internal: String,
-        /// The last external address that was revealed.
-        pub last_revealed_external: String,
     }
 
     impl OldWallet {
@@ -1046,20 +1034,12 @@ pub mod pre_1_0_0_bdk {
                 _ => bail!("Unsupported network"),
             };
 
-            let wallet = match bdk::Wallet::new(
+            let wallet = bdk::Wallet::new(
                 bdk::template::Bip84(xprivkey, KeychainKind::External),
                 Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
                 network,
                 database,
-            ) {
-                Ok(w) => w,
-                Err(bdk::Error::ChecksumMismatch) => {
-                    Self::old_migrate(data_dir, xprivkey, network)?
-                }
-                err => err?,
-            };
-
-            let network = wallet.network();
+            )?;
 
             Ok(Self {
                 wallet: Arc::new(Mutex::new(wallet)),
@@ -1078,8 +1058,6 @@ pub mod pre_1_0_0_bdk {
             )
             .map_err(|_| anyhow!("Failed to export old wallet descriptor"))?;
 
-            let balance = wallet.get_balance()?;
-
             // Because we upgraded bdk, the type id changed.
             // Thus, we serialize to json and then deserialize to the new type.
             let json = serde_json::to_string(&export)?;
@@ -1087,49 +1065,16 @@ pub mod pre_1_0_0_bdk {
 
             let external_info = wallet.get_address(bdk::wallet::AddressIndex::LastUnused)?;
             let external_derivation_index = external_info.index;
-            let last_revealed_external = external_info.address.to_string();
 
             let internal_info =
                 wallet.get_internal_address(bdk::wallet::AddressIndex::LastUnused)?;
             let internal_derivation_index = internal_info.index;
-            let last_revealed_internal = internal_info.address.to_string();
 
             Ok(Export {
                 export,
                 internal_derivation_index,
                 external_derivation_index,
-                balance: Amount::from_sat(balance.get_total()),
-                last_revealed_internal,
-                last_revealed_external,
             })
-        }
-
-        /// Create a new old database for the wallet and rename the old old one.
-        ///
-        /// Create a new database for the wallet and rename the old one.
-        /// This is necessary when getting a ChecksumMismatch from a wallet
-        /// created with an older version of BDK. Only affected Testnet wallets.
-        // https://github.com/comit-network/xmr-btc-swap/issues/1182
-        fn old_migrate(
-            data_dir: &Path,
-            xprivkey: ExtendedPrivKey,
-            network: bdk::bitcoin::Network,
-        ) -> Result<bdk::Wallet<Tree>> {
-            let from = data_dir.join(WALLET);
-            let to = data_dir.join(WALLET_OLD);
-            std::fs::rename(from, to)?;
-
-            let wallet_dir = data_dir.join(WALLET);
-            let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
-
-            let wallet = bdk::Wallet::new(
-                bdk::template::Bip84(xprivkey, KeychainKind::External),
-                Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
-                network,
-                database,
-            )?;
-
-            Ok(wallet)
         }
     }
 }
@@ -1392,17 +1337,13 @@ impl WalletBuilder {
     pub async fn build(self) -> Wallet<bdk_wallet::rusqlite::Connection> {
         let mut database = Connection::open_in_memory().expect("sqlite in memory to work");
 
-        panic!("TODO: find a way to populate the database that works with the new bdk version");
-
-        // for index in 0..self.num_utxos {
-        //     bdk::populate_test_db!(
-        //         &mut database,
-        //         testutils! {
-        //             @tx ( (@external descriptors, index as u32) => self.utxo_amount ) (@confirmations 1)
-        //         },
-        //         Some(100)
-        //     );
-        // }
+        bdk::populate_test_db!(
+            &mut database,
+            testutils! {
+                @tx ( (@external descriptors, index as u32) => self.utxo_amount ) (@confirmations 1)
+            },
+            Some(100)
+        );
 
         let mut wallet = super::Wallet::with_sqlite_in_memory(
             self.key,
