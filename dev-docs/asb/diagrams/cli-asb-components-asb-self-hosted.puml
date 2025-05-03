@@ -1,71 +1,41 @@
 @startuml
 
-package "Taker (Buyer / User)" {
-    component [Monero Wallet RPC\n(auto installed)] as CliMonRpc
-    () RPC as MonRpcCli
-    component "swap" {
-        component "<img:gui.png{scale=0.2}>" as CLI
-        component [Bitcoin Wallet] as CliBitWal
-    }
-    CliMonRpc - MonRpcCli
-    CLI - CliBitWal
-    MonRpcCli - CLI
+!define BITCOIN_ICON_URL bitcoin.png
+!define MONERO_ICON_URL monero.png
+!define TOR_ICON_URL tor.svg
+
+component "Taker (Buyer / User)" as Taker {
+    component "<img:gui.png{scale=0.1}>" as CLI
+    component [Bitcoin Wallet] as CliBitWal
+    component [Monero Wallet] as CliMonWal
+    component "<img:BITCOIN_ICON_URL{scale=0.01}> Bitcoin" as TakerBitcoinBC
+    component "<img:MONERO_ICON_URL{scale=0.01}> Monero" as TakerMoneroBC
 }
 
-package "Monero Blockchain" {
-    component "monerod" as Monerod
+cloud "<img:TOR_ICON_URL{scale=0.05}> Tor Network" as TorNetwork {
+    component "Taker" as TakerTor
+    component "Maker\n(Onion Service)" as MakerTor
+    component "Rendezvous Point" as RendezvousPoint
+    TakerTor <--> MakerTor: Custom Trade Protocol\n(Signaturen, etc.)
+    TakerTor <--> RendezvousPoint: Discover Makers
+    RendezvousPoint <--> MakerTor: Announce Self
 }
 
-package "Bitcoin Blockchain" {
-    component "Electrum Server" as Electrum
-    component "bitcoind" as Bitcoind
-    () "RPC" as BitRPC
-    BitRPC -- Electrum
-    Electrum - Bitcoind
+component "Maker (Seller)" as Maker {
+    component [ASB] as ASB
+    component [Bitcoin Wallet] as AsbBitWal
+    component [Monero Wallet] as AsbMonWal
+    component "<img:BITCOIN_ICON_URL{scale=0.01}> Bitcoin" as MakerBitcoinBC
+    component "<img:MONERO_ICON_URL{scale=0.01}> Monero" as MakerMoneroBC
 }
 
-package "Maker (Seller)" {
-    component [Monero Wallet RPC] as AsbMonRpc
-    () RPC as MonRpcAsb
-    component "asb" {
-        component [ASB] as ASB
-        component [Bitcoin Wallet] as AsbBitWal
-    }
-    AsbMonRpc - MonRpcAsb
 
-    component "monerod" as AsbMonerod
-    component "Electrum Server" as AsbElectrum
-    component "bitcoind" as AsbBitcoind
+CliBitWal -- TakerBitcoinBC
+CliMonWal -- TakerMoneroBC
+AsbBitWal -- MakerBitcoinBC
+AsbMonWal -- MakerMoneroBC
 
-    AsbMonRpc -- AsbMonerod
+Taker .. TorNetwork
+TorNetwork .. Maker
 
-    () "RPC" as AsbBitRPC
-
-    AsbBitWal -- AsbBitRPC
-    AsbBitRPC -- AsbElectrum
-    AsbElectrum - AsbBitcoind
-
-    ASB - AsbBitWal
-    ASB -- MonRpcAsb
-}
-
-package "Public Price Server" {
-    component [CEX Price Ticker] as CEX
-    () "websocket" as Ticker
-    Ticker - CEX
-    Ticker -- ASB
-}
-
-CliBitWal -- BitRPC
-CliMonRpc -- Monerod
-
-!define ICONURL https://www.torproject.org/static/images/tor-logo/onion.svg
-
-cloud "<size:20>The Onion Network (Tor)</size>" as TorNetwork #7D4698 {
-    () "Custom Network Protocol" as Libp2p
-}
-CLI -- Libp2p
-ASB -- Libp2p
-
-footer XMR<>BTC swap CLI & ASB overview\nRendered with PlantUML version %version()
 @enduml

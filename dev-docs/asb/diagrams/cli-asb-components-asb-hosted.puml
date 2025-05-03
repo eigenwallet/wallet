@@ -1,0 +1,20 @@
+@startuml
+
+component "Taker (Buyer / User)" as Taker {
+// ... existing code ...
+}
+
+component "Maker (Seller)" as Maker {
+    component [Monero Wallet] as AsbMonWal
+// ... existing code ...
+}
+
+
+CliMonWal -d-> MoneroBC
+// ... existing code ...
+ASB -l-> Libp2p
+
+Taker ... TorNetwork
+TorNetwork ... Maker
+
+@enduml 
