@@ -1,10 +1,10 @@
 @startuml
 
-package "User Host" {
+package "Taker (Buyer / User)" {
     component [Monero Wallet RPC\n(auto installed)] as CliMonRpc
     () RPC as MonRpcCli
     component "swap" {
-        component [CLI] as CLI
+        component "<img:gui.png{scale=0.2}>" as CLI
         component [Bitcoin Wallet] as CliBitWal
     }
     CliMonRpc - MonRpcCli
@@ -12,11 +12,11 @@ package "User Host" {
     MonRpcCli - CLI
 }
 
-package "Public Monero Server" {
+package "Monero Blockchain" {
     component "monerod" as Monerod
 }
 
-package "Public Bitcoin Server" {
+package "Bitcoin Blockchain" {
     component "Electrum Server" as Electrum
     component "bitcoind" as Bitcoind
     () "RPC" as BitRPC
@@ -24,7 +24,7 @@ package "Public Bitcoin Server" {
     Electrum - Bitcoind
 }
 
-package "Service Provider Host" {
+package "Maker (Seller)" {
     component [Monero Wallet RPC] as AsbMonRpc
     () RPC as MonRpcAsb
     component "asb" {
@@ -59,8 +59,12 @@ package "Public Price Server" {
 CliBitWal -- BitRPC
 CliMonRpc -- Monerod
 
-() "libp2p" as Libp2p
-Libp2p -- CLI
+!define ICONURL https://www.torproject.org/static/images/tor-logo/onion.svg
+
+cloud "<size:20>The Onion Network (Tor)</size>" as TorNetwork #7D4698 {
+    () "Custom Network Protocol" as Libp2p
+}
+CLI -- Libp2p
 ASB -- Libp2p
 
 footer XMR<>BTC swap CLI & ASB overview\nRendered with PlantUML version %version()
