@@ -78,7 +78,7 @@ async fn create_wallet(
     wallet_dir: &str,
 ) -> (monero::Address, String) {
     // Get wallet manager
-    let wallet_manager_mutex = WalletManager::get(daemon, wallet_dir).await;
+    let wallet_manager_mutex = WalletManager::get(daemon, wallet_dir, None).await.unwrap();
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
     // Define a fixed seed to use for reproducible tests
@@ -163,7 +163,9 @@ fn get_daemon_address(monerod_container: &Container<'_, Monerod>) -> String {
 async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amount {
     // Get wallet manager
     let (wallet_dir, wallet_filename) = temp_path();
-    let wallet_manager_mutex = WalletManager::get(Some(daemon.clone()), &wallet_dir).await;
+    let wallet_manager_mutex = WalletManager::get(Some(daemon.clone()), &wallet_dir, None)
+        .await
+        .unwrap();
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
     // Get a unique wallet path from the global temp directory

@@ -626,7 +626,7 @@ pub async fn buy_xmr(
 
     let monero_wallet = Arc::clone(
         context
-            .monero_wallet
+            .monero_manager
             .as_ref()
             .context("Could not get Monero wallet")?,
     );
@@ -866,7 +866,7 @@ pub async fn resume_swap(
         ),
         Arc::clone(
             context
-                .monero_wallet
+                .monero_manager
                 .as_ref()
                 .context("Could not get Monero wallet")?,
         ),

@@ -188,7 +188,7 @@ pub struct Context {
     pub tasks: Arc<PendingTaskList>,
     tauri_handle: Option<TauriHandle>,
     bitcoin_wallet: Option<Arc<bitcoin::Wallet>>,
-    monero_wallet: Option<Arc<TokioMutex<monero::Wallet>>>,
+    monero_manager: Option<Arc<TokioMutex<monero::WalletManager>>>,
     tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
 }
 
@@ -360,41 +360,33 @@ impl ContextBuilder {
         };
 
         let initialize_monero_wallet = async {
-            match self.monero {
-                Some(monero) => {
-                    self.tauri_handle.emit_context_init_progress_event(
-                        TauriContextStatusEvent::Initializing(vec![
-                            TauriPartialInitProgress::OpeningMoneroWallet(
-                                PendingCompleted::Pending(()),
-                            ),
-                        ]),
-                    );
+            let Some(monero) = self.monero else {
+                return Ok(None);
+            };
 
-                    let daemon = match monero.monero_daemon_address {
-                        Some(address) => Some(monero::Daemon {
-                            address: address.into(),
-                            ssl: false, // Todo
-                        }),
-                        None => None,
-                    };
+            self.tauri_handle.emit_context_init_progress_event(
+                TauriContextStatusEvent::Initializing(vec![
+                    TauriPartialInitProgress::OpeningMoneroWallet(PendingCompleted::Pending(())),
+                ]),
+            );
 
-                    let manager = init_monero_wallet(data_dir.clone(), daemon).await?;
+            let daemon = match monero.monero_daemon_address {
+                Some(address) => Some(monero::Daemon {
+                    address: address.into(),
+                    ssl: false, // Todo
+                }),
+                None => None,
+            };
 
-                    self.tauri_handle.emit_context_init_progress_event(
-                        TauriContextStatusEvent::Initializing(vec![
-                            TauriPartialInitProgress::OpeningMoneroWallet(
-                                PendingCompleted::Completed,
-                            ),
-                        ]),
-                    );
+            let manager = init_monero_wallet(data_dir.clone(), daemon).await?;
 
-                    Ok((
-                        Some(Arc::new(TokioMutex::new(wlt))),
-                        Some(Arc::new(SyncMutex::new(prc))),
-                    ))
-                }
-                None => Ok((None, None)),
-            }
+            self.tauri_handle.emit_context_init_progress_event(
+                TauriContextStatusEvent::Initializing(vec![
+                    TauriPartialInitProgress::OpeningMoneroWallet(PendingCompleted::Completed),
+                ]),
+            );
+
+            Ok(Some(manager))
         };
 
         let initialize_tor_client = async {
@@ -453,7 +445,7 @@ impl ContextBuilder {
         let context = Context {
             db,
             bitcoin_wallet,
-            monero_wallet,
+            monero_manager,
             config: Config {
                 namespace: XmrBtcNamespace::from_is_testnet(self.is_testnet),
                 env_config,
@@ -485,18 +477,17 @@ impl Context {
         env_config: EnvConfig,
         db_path: PathBuf,
         bob_bitcoin_wallet: Arc<bitcoin::Wallet>,
-        bob_monero_wallet: Arc<TokioMutex<monero::Wallet>>,
+        bob_monero_wallet: Arc<TokioMutex<monero::WalletManager>>,
     ) -> Self {
         let config = Config::for_harness(seed, env_config);
 
         Self {
             bitcoin_wallet: bob_bitcoin_wallet.into(),
-            monero_wallet: bob_monero_wallet.into(),
+            monero_manager: bob_monero_wallet.into(),
             config,
             db: open_db(db_path, AccessMode::ReadWrite, None)
                 .await
                 .expect("Could not open sqlite database"),
-            monero_rpc_process: None,
             swap_lock: SwapLock::new().into(),
             tasks: PendingTaskList::default().into(),
             tauri_handle: None,
@@ -505,14 +496,7 @@ impl Context {
     }
 
     pub fn cleanup(&self) -> Result<()> {
-        if let Some(ref monero_rpc_process) = self.monero_rpc_process {
-            let mut process = monero_rpc_process
-                .lock()
-                .map_err(|_| anyhow!("Failed to lock monero_rpc_process for cleanup"))?;
-
-            process.kill()?;
-            println!("Killed monero-wallet-rpc process");
-        }
+        // TODO: close all monero wallets
 
         Ok(())
     }
@@ -563,8 +547,12 @@ async fn init_monero_wallet(
     // Use the ./monero/monero-data directory for backwards compatibility
     let wallet_dir = data_dir.join("monero").join("monero-data");
 
-    let manager_mutex =
-        monero::WalletManager::get(monero_daemon.clone(), wallet_dir.display().to_string()).await;
+    let manager_mutex = monero::WalletManager::get(
+        monero_daemon.clone(),
+        wallet_dir.display().to_string(),
+        None,
+    )
+    .await?;
 
     // If there is a daemon, wait until the wallet manager is connected
     if let Some(daemon) = monero_daemon {

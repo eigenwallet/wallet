@@ -21,7 +21,9 @@ async fn main() {
         ssl: true,
     };
     let wallet_manager_mutex =
-        WalletManager::get(Some(daemon), temp_dir.path().to_str().unwrap()).await;
+        WalletManager::get(Some(daemon), temp_dir.path().to_str().unwrap(), None)
+            .await
+            .unwrap();
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
     while !wallet_manager.connected().await {

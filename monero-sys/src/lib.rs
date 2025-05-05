@@ -32,6 +32,8 @@ pub struct WalletManager {
     daemon: Option<Daemon>,
     /// The directory we store all wallets in.
     wallet_dir: String,
+    /// Filename of the main wallet. This is mostly relevant for the ASB.
+    main_wallet: Option<(String, monero::Network)>,
 }
 
 /// This is our own wrapper around a raw C++ wallet manager pointer.
@@ -80,7 +82,8 @@ impl WalletManager {
     pub async fn get<'a>(
         daemon: Option<Daemon>,
         wallet_dir: impl Into<String>,
-    ) -> Arc<Mutex<Self>> {
+        main_wallet: Option<(String, monero::Network)>,
+    ) -> anyhow::Result<Arc<Mutex<Self>>> {
         let manager = WALLET_MANAGER.get_or_init(|| {
             let manager = ffi::getWalletManager();
             let manager = Self {
@@ -88,6 +91,7 @@ impl WalletManager {
                 wallets: HashMap::new(),
                 daemon: daemon.clone(),
                 wallet_dir: wallet_dir.into(),
+                main_wallet: main_wallet.clone(),
             };
 
             Arc::new(Mutex::new(manager))
@@ -96,12 +100,25 @@ impl WalletManager {
         {
             let mut lock = manager.lock().await;
 
+            // If a remote node is provided, set it as the default remote node.
             if let Some(daemon) = daemon {
                 lock.set_daemon_address(&daemon.address);
             }
+
+            // If a main wallet is provided, open/create it.
+            if let Some((filename, network)) = main_wallet.clone() {
+                lock.main_wallet = Some((filename.clone(), network));
+
+                lock.open_or_create_wallet(&filename, None, network)
+                    .await
+                    .context(format!(
+                        "Failed to open or create main wallet `{}`",
+                        filename
+                    ))?;
+            }
         }
 
-        manager.clone()
+        Ok(manager.clone())
     }
 
     /// Create a new wallet, or open if it already exists.
