@@ -4,11 +4,13 @@ pub mod wallet_rpc;
 pub use ::monero::network::Network;
 pub use ::monero::{Address, PrivateKey, PublicKey};
 pub use curve25519_dalek::scalar::Scalar;
-use typeshare::typeshare;
-pub use wallet::Wallet;
+pub use wallet::{Daemon, Wallet, WalletManager};
 pub use wallet_rpc::{WalletRpc, WalletRpcProcess};
 
 use crate::bitcoin;
+
+use typeshare::typeshare;
+
 use anyhow::Result;
 use rand::{CryptoRng, RngCore};
 use rust_decimal::prelude::*;

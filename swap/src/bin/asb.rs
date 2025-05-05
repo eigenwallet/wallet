@@ -15,6 +15,7 @@
 use anyhow::{bail, Context, Result};
 use comfy_table::Table;
 use libp2p::Swarm;
+use monero_sys::{Daemon, WalletManager};
 use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
 use std::convert::TryInto;
@@ -419,16 +420,27 @@ async fn init_bitcoin_wallet(
 async fn init_monero_wallet(
     config: &Config,
     env_config: swap::env::Config,
-) -> Result<tokio::sync::Mutex<monero::Wallet>> {
-    tracing::debug!("Opening Monero wallet");
-    let wallet = monero::Wallet::open_or_create(
-        config.monero.wallet_rpc_url.clone(),
-        DEFAULT_WALLET_NAME.to_string(),
-        env_config,
-    )
-    .await?;
+) -> Result<Arc<tokio::sync::Mutex<monero::WalletManager>>> {
+    tracing::debug!("Initializing Monero wallet manager");
 
-    Ok(tokio::sync::Mutex::new(wallet))
+    let daemon = Daemon {
+        address: config.monero.wallet_rpc_url.to_string(),
+        ssl: config.monero.wallet_rpc_url.as_str().contains("https"),
+    };
+
+    let manager = WalletManager::get(Some(daemon), config.data.dir.join("monero/wallets")).await;
+
+    tracing::debug!("Opening Monero wallet");
+
+    {
+        manager
+            .lock()
+            .await
+            .open_or_create_wallet(DEFAULT_WALLET_NAME, None, config.monero.network)
+            .await?;
+    }
+
+    Ok(manager)
 }
 
 /// This struct is used to extract swap details from the database and print them in a table format

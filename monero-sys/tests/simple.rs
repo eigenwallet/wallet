@@ -1,5 +1,3 @@
-use core::sync;
-
 use monero_sys::{Daemon, SyncProgress, Wallet, WalletManager};
 
 const PASSWORD: &str = "test";
@@ -17,11 +15,13 @@ async fn main() {
         .with_test_writer()
         .init();
 
+    let temp_dir = tempfile::tempdir().unwrap();
     let daemon = Daemon {
         address: STAGENET_REMOTE_NODE.into(),
         ssl: true,
     };
-    let wallet_manager_mutex = WalletManager::get(Some(daemon)).await;
+    let wallet_manager_mutex =
+        WalletManager::get(Some(daemon), temp_dir.path().to_str().unwrap()).await;
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
     while !wallet_manager.connected().await {
@@ -34,15 +34,12 @@ async fn main() {
         wallet_manager.blockchain_height().await.unwrap()
     );
 
-    let temp_dir = tempfile::tempdir().unwrap();
-
     let wallet_name = "recovered_wallet";
-    let wallet_path = temp_dir.path().join(wallet_name);
 
     tracing::info!("Recovering wallet from seed");
     let wallet_mutex = wallet_manager
         .recover_wallet(
-            wallet_path.to_str().unwrap(),
+            wallet_name,
             PASSWORD,
             STAGENET_WALLET_SEED,
             monero::Network::Stagenet,

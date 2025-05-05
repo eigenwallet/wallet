@@ -21,8 +21,8 @@ async fn test_monero_wrapper_with_harness() {
         .init();
 
     // Step 1: Create a wallet with monero-wrapper using the global temp directory
-    let wallet_path = temp_path();
-    let (address, wallet_seed) = create_wallet(&wallet_path, None).await;
+    let (wallet_dir, wallet_filename) = temp_path();
+    let (address, wallet_seed) = create_wallet(&wallet_filename, None, &wallet_dir).await;
 
     info!("Created monero-wrapper wallet with address: {}", address);
     info!("Wallet seed: {}", wallet_seed);
@@ -72,9 +72,13 @@ async fn test_monero_wrapper_with_harness() {
 }
 
 /// Creates a wallet from a predefined seed and returns the main address and seed.
-async fn create_wallet(wallet_path: &str, daemon: Option<Daemon>) -> (monero::Address, String) {
+async fn create_wallet(
+    wallet_name: &str,
+    daemon: Option<Daemon>,
+    wallet_dir: &str,
+) -> (monero::Address, String) {
     // Get wallet manager
-    let wallet_manager_mutex = WalletManager::get(daemon).await;
+    let wallet_manager_mutex = WalletManager::get(daemon, wallet_dir).await;
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
     // Define a fixed seed to use for reproducible tests
@@ -83,7 +87,7 @@ async fn create_wallet(wallet_path: &str, daemon: Option<Daemon>) -> (monero::Ad
     // Create wallet from the seed - we'll use 'recover' since we have a seed
     let wallet = wallet_manager
         .recover_wallet(
-            wallet_path,
+            wallet_name,
             PASSWORD,
             seed,
             // Regtest uses Mainnet addresses
@@ -122,8 +126,8 @@ async fn fund_address(
     Ok(())
 }
 
-/// Returns a unique path to a temporary wallet file.
-fn temp_path() -> String {
+/// Returns a unique path to a temporary wallet dir and wallet file.
+fn temp_path() -> (String, String) {
     // Get or initialize the global temp directory
     let temp_dir = GLOBAL_TEMP_DIR.get_or_init(|| {
         // Create a directory that won't be deleted until the program exits
@@ -134,10 +138,14 @@ fn temp_path() -> String {
     // Generate a unique wallet filename using UUID
     let uuid = uuid::Uuid::new_v4(); // This is the correct method to generate a random UUID
     let wallet_filename = format!("wallet_{}", uuid);
-    let wallet_path = temp_dir.path().join(wallet_filename);
 
-    info!("Generated wallet path: {}", wallet_path.display());
-    wallet_path.to_str().unwrap().to_string()
+    info!("Generated wallet dir: {}", temp_dir.path().display());
+    info!("Generated wallet filename: {}", wallet_filename);
+
+    (
+        temp_dir.path().to_str().unwrap().to_string(),
+        wallet_filename,
+    )
 }
 
 /// As we are not running the monero-wrapper inside the Docker network, we need to connect to the locally exposed port
@@ -154,17 +162,21 @@ fn get_daemon_address(monerod_container: &Container<'_, Monerod>) -> String {
 
 async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amount {
     // Get wallet manager
-    let wallet_manager_mutex = WalletManager::get(Some(daemon.clone())).await;
+    let (wallet_dir, wallet_filename) = temp_path();
+    let wallet_manager_mutex = WalletManager::get(Some(daemon.clone()), &wallet_dir).await;
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
     // Get a unique wallet path from the global temp directory
-    let wallet_path = temp_path();
-    tracing::info!("Recovering wallet from seed to {}", wallet_path);
+    tracing::info!(
+        "Recovering wallet from seed to {}/{}",
+        &wallet_dir,
+        wallet_filename
+    );
 
     // Recover wallet from seed
     let wallet_mutex = wallet_manager
         .recover_wallet(
-            &wallet_path,
+            &wallet_filename,
             PASSWORD,
             &seed,
             monero::Network::Mainnet, // Regtest uses Mainnet addresses

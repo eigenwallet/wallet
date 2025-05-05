@@ -17,7 +17,7 @@ pub struct Swap {
     pub state: AliceState,
     pub event_loop_handle: asb::EventLoopHandle,
     pub bitcoin_wallet: Arc<bitcoin::Wallet>,
-    pub monero_wallet: Arc<Mutex<monero::Wallet>>,
+    pub monero_wallet: Arc<Mutex<monero::WalletManager>>,
     pub env_config: Config,
     pub swap_id: Uuid,
     pub db: Arc<dyn Database + Send + Sync>,

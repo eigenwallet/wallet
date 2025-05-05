@@ -10,7 +10,7 @@ use crate::network::swap_setup::bob::NewSwap;
 use crate::protocol::bob::state::*;
 use crate::protocol::{bob, Database};
 use crate::{bitcoin, monero};
-use anyhow::{bail, Context as AnyContext, Result};
+use anyhow::{anyhow, bail, Context as AnyContext, Result};
 use std::sync::Arc;
 use tokio::select;
 use tokio::sync::Mutex;
@@ -149,8 +149,11 @@ async fn next_state(
             // If the Monero transaction gets confirmed before Bob comes online again then
             // Bob would record a wallet-height that is past the lock transaction height,
             // which can lead to the wallet not detect the transaction.
-            let monero_wallet_restore_blockheight =
-                monero_wallet.lock().await.block_height().await?;
+            let monero_wallet_restore_blockheight = monero_wallet
+                .lock()
+                .await
+                .daemon_blockchain_height()
+                .ok_or(anyhow!("Failed to fetch current Monero blockheight"))?;
 
             let xmr_receive_amount = state2.xmr;
 
@@ -193,7 +196,7 @@ async fn next_state(
 
                     BobState::BtcLocked {
                         state3,
-                        monero_wallet_restore_blockheight,
+                        monero_wallet_restore_blockheight: monero_wallet_restore_blockheight,
                     }
                 }
                 Ok(false) => {

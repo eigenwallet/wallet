@@ -17,13 +17,21 @@ use tokio::sync::Mutex;
 
 use bridge::ffi;
 
+/// A thread-safe wrapper around the C++ wallet manager, which is a singleton.
+/// Initialized via [`WalletManager::get`].
 static WALLET_MANAGER: OnceLock<Arc<Mutex<WalletManager>>> = OnceLock::new();
 
 /// A singleton responsible for managing (creating, opening, ...) wallets.
 pub struct WalletManager {
+    /// A wrapper around the raw C++ wallet manager pointer.
     inner: RawWalletManager,
+    /// A map of opened wallets, indexed by their path.
     wallets: HashMap<String, Arc<Mutex<Wallet>>>,
+    /// The daemon to connect to. All wallets opened
+    /// by the manager will connect to this daemon, too.
     daemon: Option<Daemon>,
+    /// The directory we store all wallets in.
+    wallet_dir: String,
 }
 
 /// This is our own wrapper around a raw C++ wallet manager pointer.
@@ -69,13 +77,17 @@ impl WalletManager {
     /// Get the wallet manager instance.
     /// You can optionally pass a daemon with which the wallet manager and
     /// all wallets opened by the manager will connect.
-    pub async fn get<'a>(daemon: Option<Daemon>) -> Arc<Mutex<Self>> {
+    pub async fn get<'a>(
+        daemon: Option<Daemon>,
+        wallet_dir: impl Into<String>,
+    ) -> Arc<Mutex<Self>> {
         let manager = WALLET_MANAGER.get_or_init(|| {
             let manager = ffi::getWalletManager();
             let manager = Self {
                 inner: RawWalletManager(manager),
                 wallets: HashMap::new(),
                 daemon: daemon.clone(),
+                wallet_dir: wallet_dir.into(),
             };
 
             Arc::new(Mutex::new(manager))
@@ -95,34 +107,37 @@ impl WalletManager {
     /// Create a new wallet, or open if it already exists.
     pub async fn open_or_create_wallet(
         &mut self,
-        path: &str,
+        filename: &str,
         password: Option<&str>,
         network: monero::Network,
     ) -> anyhow::Result<Arc<Mutex<Wallet>>> {
         tracing::info!(
             "Opening or creating wallet: {}. Currently opened {} wallets.",
-            path,
+            filename,
             self.wallets.len()
         );
 
         // If we've already loaded this wallet, return it.
-        if self.wallets.contains_key(path) {
-            let wallet = self.wallets[path].clone();
+        if self.wallets.contains_key(filename) {
+            let wallet = self.wallets[filename].clone();
             return Ok(wallet);
         }
 
         let kdf_rounds = Self::DEFAULT_KDF_ROUNDS;
+        let path = PathBuf::from(&self.wallet_dir).join(filename);
 
         // If we haven't loaded the wallet, but it already exists, open it.
-        if self.wallet_exists(path).await {
+        if self.wallet_exists(&path.display().to_string()).await {
+            tracing::debug!(wallet=%filename, "Wallet already exists, opening it");
+
             return Ok(self
-                .open_wallet(path, password, network)
+                .open_wallet(&path.display().to_string(), password, network)
                 .await
                 .context("Failed to open wallet")?);
         }
 
         // Otherwise, create (and open) a new wallet.
-        let_cxx_string!(path = path);
+        let_cxx_string!(path = path.display().to_string().as_str());
         let_cxx_string!(password = password.unwrap_or(""));
         let_cxx_string!(language = "");
         let network_type = network.into();
@@ -133,13 +148,15 @@ impl WalletManager {
                 .createWallet(&path, &password, &language, network_type, kdf_rounds);
 
         if wallet_pointer.is_null() {
-            panic!("Failed to create wallet");
+            anyhow::bail!("Failed to create wallet, got null pointer");
         }
 
-        let wallet = Wallet::new(wallet_pointer, self.daemon.clone()).await?;
+        let wallet = Wallet::new(wallet_pointer, self.daemon.clone())
+            .await
+            .context(format!("Failed to initialize wallet `{}`", &filename))?;
 
         let wallet = Arc::new(Mutex::new(wallet));
-        self.wallets.insert(path.to_string(), wallet.clone());
+        self.wallets.insert(filename.to_string(), wallet.clone());
 
         Ok(wallet)
     }
@@ -194,7 +211,7 @@ impl WalletManager {
             anyhow::bail!("Failed to close wallet");
         }
 
-        //
+        // Remove the wallet from the map
         self.wallets.remove(&path);
 
         Ok(())

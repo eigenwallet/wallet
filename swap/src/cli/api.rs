@@ -189,7 +189,6 @@ pub struct Context {
     tauri_handle: Option<TauriHandle>,
     bitcoin_wallet: Option<Arc<bitcoin::Wallet>>,
     monero_wallet: Option<Arc<TokioMutex<monero::Wallet>>>,
-    monero_rpc_process: Option<Arc<SyncMutex<monero::WalletRpcProcess>>>,
     tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
 }
 
@@ -371,13 +370,15 @@ impl ContextBuilder {
                         ]),
                     );
 
-                    let (wlt, prc) = init_monero_wallet(
-                        data_dir.clone(),
-                        monero.monero_daemon_address,
-                        env_config,
-                        self.tauri_handle.clone(),
-                    )
-                    .await?;
+                    let daemon = match monero.monero_daemon_address {
+                        Some(address) => Some(monero::Daemon {
+                            address: address.into(),
+                            ssl: false, // Todo
+                        }),
+                        None => None,
+                    };
+
+                    let manager = init_monero_wallet(data_dir.clone(), daemon).await?;
 
                     self.tauri_handle.emit_context_init_progress_event(
                         TauriContextStatusEvent::Initializing(vec![
@@ -427,7 +428,7 @@ impl ContextBuilder {
             Ok(maybe_tor_client)
         };
 
-        let (bitcoin_wallet, (monero_wallet, monero_rpc_process), tor) = tokio::try_join!(
+        let (bitcoin_wallet, monero_manager, tor) = tokio::try_join!(
             initialize_bitcoin_wallet,
             initialize_monero_wallet,
             initialize_tor_client,
@@ -453,7 +454,6 @@ impl ContextBuilder {
             db,
             bitcoin_wallet,
             monero_wallet,
-            monero_rpc_process,
             config: Config {
                 namespace: XmrBtcNamespace::from_is_testnet(self.is_testnet),
                 env_config,
@@ -558,35 +558,33 @@ async fn init_bitcoin_wallet(
 
 async fn init_monero_wallet(
     data_dir: PathBuf,
-    monero_daemon_address: impl Into<Option<String>> + Clone,
-    env_config: EnvConfig,
-    tauri_handle: Option<TauriHandle>,
-) -> Result<(monero::Wallet, monero::WalletRpcProcess)> {
-    let network = env_config.monero_network;
+    monero_daemon: Option<monero::Daemon>,
+) -> Result<Arc<TokioMutex<monero::WalletManager>>> {
+    // Use the ./monero/monero-data directory for backwards compatibility
+    let wallet_dir = data_dir.join("monero").join("monero-data");
 
-    const MONERO_BLOCKCHAIN_MONITORING_WALLET_NAME: &str = "swap-tool-blockchain-monitoring-wallet";
+    let manager_mutex =
+        monero::WalletManager::get(monero_daemon.clone(), wallet_dir.display().to_string()).await;
 
-    let monero_wallet_rpc = monero::WalletRpc::new(data_dir.join("monero"), tauri_handle).await?;
+    // If there is a daemon, wait until the wallet manager is connected
+    if let Some(daemon) = monero_daemon {
+        loop {
+            let mut manager = manager_mutex.lock().await;
 
-    tracing::debug!(
-        override_monero_daemon_address = monero_daemon_address.clone().into(),
-        "Attempting to start monero-wallet-rpc process"
-    );
+            if manager.connected().await {
+                break;
+            }
 
-    let monero_wallet_rpc_process = monero_wallet_rpc
-        .run(network, monero_daemon_address.into())
-        .await
-        .context("Failed to start monero-wallet-rpc process")?;
+            tracing::trace!(
+                daemon = %daemon.address,
+                using_ssl = %daemon.ssl,
+                "Monero wallet manager not yet connected to daemon, waiting..."
+            );
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+    }
 
-    let monero_wallet = monero::Wallet::open_or_create(
-        monero_wallet_rpc_process.endpoint(),
-        MONERO_BLOCKCHAIN_MONITORING_WALLET_NAME.to_string(),
-        env_config,
-    )
-    .await
-    .context("Failed to open or create Monero wallet")?;
-
-    Ok((monero_wallet, monero_wallet_rpc_process))
+    Ok(manager_mutex)
 }
 
 pub mod data {

@@ -225,7 +225,7 @@ async fn start_alice(
     listen_address: Multiaddr,
     env_config: Config,
     bitcoin_wallet: Arc<bitcoin::Wallet>,
-    monero_wallet: Arc<Mutex<monero::Wallet>>,
+    monero_wallet: Arc<Mutex<monero::WalletManager>>,
 ) -> (AliceApplicationHandle, Receiver<alice::Swap>) {
     if let Some(parent_dir) = db_path.parent() {
         ensure_directory_exists(parent_dir).unwrap();
