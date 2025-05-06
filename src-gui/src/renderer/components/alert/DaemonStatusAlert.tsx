@@ -6,6 +6,7 @@ import { exhaustiveGuard } from "utils/typescriptUtils";
 import { LoadingSpinnerAlert } from "./LoadingSpinnerAlert";
 import { bytesToMb } from "utils/conversionUtils";
 import { TauriBackgroundProgress, TauriContextStatusEvent } from "models/tauriModel";
+import { useEffect, useRef, useState } from "react";
 
 const useStyles = makeStyles((theme) => ({
   innerAlert: {
@@ -19,56 +20,66 @@ function AlertWithLinearProgress({ title, progress }: {
   title: string,
   progress: number | null,
 }) {
-  const isEssentiallyOne = progress !== null && Math.abs(progress - 1) < 0.01;
+  const [bufferProgressAddition, setBufferProgressAddition] = useState(Math.random() * 20);
 
+  useEffect(() => {
+    setBufferProgressAddition(Math.random() * 20);
+  }, [progress]);
+
+  // If the progress is already at 100%, but not finished yet we show an indeterminate progress bar
+  // as it'd be confusing to show a 100% progress bar for longer than a second or so.
   return <Alert severity="info">
     <Box style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
       {title}
-      {(progress == null || progress === 0 || isEssentiallyOne) ? (
+      {(progress === null || progress === 0 || progress === 100) ? (
         <LinearProgress variant="indeterminate" />
       ) : (
-        <LinearProgress variant="determinate" value={progress} />
+        <LinearProgress variant="buffer" value={progress} valueBuffer={Math.min(progress + bufferProgressAddition, 100)} />
       )}
     </Box>
   </Alert>
 }
 
-function PartialInitStatus({ status }: {
+function PartialInitStatus({ status, currentNumOfType, totalOfType, classes }: {
   status: TauriBackgroundProgress,
+  currentNumOfType: number,
+  totalOfType: number,
   classes: ReturnType<typeof useStyles>
 }) {
   if (status.progress.type === "Completed") {
     return null;
   }
 
+  const titleSuffix = totalOfType > 1 ? ` (${currentNumOfType}/${totalOfType})` : "";
+
   switch (status.componentName) {
     case "EstablishingTorCircuits":
       console.log("EstablishingTorCircuits", status.progress.content);
-      return <AlertWithLinearProgress title="Establishing Tor circuits" progress={status.progress.content.frac * 100} />
+      return <AlertWithLinearProgress title={`Establishing Tor circuits${titleSuffix}`} progress={status.progress.content.frac * 100} />
     case "SyncingBitcoinWallet":
       const progressValue =
         status.progress.content?.type === "Known" ? 
         (status.progress.content?.content?.consumed / status.progress.content?.content?.total) * 100 : null;
 
-      return <AlertWithLinearProgress title="Syncing internal Bitcoin wallet" progress={progressValue} />
+      return <AlertWithLinearProgress title={`Syncing Bitcoin wallet${titleSuffix}`} progress={progressValue} />
     case "OpeningBitcoinWallet":
       return (
         <LoadingSpinnerAlert severity="info">
-          Opening Bitcoin wallet
+          {`Opening Bitcoin wallet${titleSuffix}`}
         </LoadingSpinnerAlert>
       );
     case "DownloadingMoneroWalletRpc":
-      return <AlertWithLinearProgress title={`Downloading and verifying the Monero wallet RPC (${bytesToMb(status.progress.content.size).toFixed(2)} MB)`} progress={status.progress.content.progress} />
+      return <AlertWithLinearProgress title={`Downloading and verifying the Monero wallet RPC (${bytesToMb(status.progress.content.size).toFixed(2)} MB)${titleSuffix}`} progress={status.progress.content.progress} />
     case "OpeningMoneroWallet":
       return (
         <LoadingSpinnerAlert severity="info">
-          Opening the Monero wallet
+          {`Opening the Monero wallet${titleSuffix}`}
         </LoadingSpinnerAlert>
       );
     case "OpeningDatabase":
       return (
         <LoadingSpinnerAlert severity="info">
-          Opening the local database
+          {`Opening the local database${titleSuffix}`}
         </LoadingSpinnerAlert>
       );
     default:
@@ -77,7 +88,6 @@ function PartialInitStatus({ status }: {
 }
 
 export default function DaemonStatusAlert() {
-  const classes = useStyles();
   const contextStatus = useAppSelector((s) => s.rpc.status);
   const navigate = useNavigate();
 
@@ -87,7 +97,7 @@ export default function DaemonStatusAlert() {
 
   switch (contextStatus) {
     case TauriContextStatusEvent.Initializing:
-      return <LoadingSpinnerAlert severity="warning">Initializing the daemon</LoadingSpinnerAlert>;
+      return <LoadingSpinnerAlert severity="warning">Some parts of the application are still loading</LoadingSpinnerAlert>;
     case TauriContextStatusEvent.Available:
       return <Alert severity="success">The daemon is running</Alert>;
     case TauriContextStatusEvent.Failed:
@@ -98,7 +108,7 @@ export default function DaemonStatusAlert() {
             <Button
               size="small"
               variant="outlined"
-              onClick={() => navigate("/help#daemon-control-box")}
+              onClick={() => navigate("/settings#daemon-control-box")}
             >
               View Logs
             </Button>
@@ -120,7 +130,27 @@ export function BackgroundProgressAlerts() {
     return null;
   }
 
-  return backgroundProgress.map(([id, status]) => (
-    <PartialInitStatus key={id} status={status} classes={classes} />
+  const componentCounts: Record<string, number> = {};
+  backgroundProgress.forEach(([, status]) => {
+    componentCounts[status.componentName] = (componentCounts[status.componentName] || 0) + 1;
+  });
+
+  const renderedComponentNames = new Set<string>();
+  const uniqueBackgroundProcesses = backgroundProgress.filter(([, status]) => {
+    if (!renderedComponentNames.has(status.componentName)) {
+      renderedComponentNames.add(status.componentName);
+      return true;
+    }
+    return false;
+  });
+
+  return uniqueBackgroundProcesses.map(([id, status]) => (
+    <PartialInitStatus
+      key={id}
+      status={status}
+      classes={classes}
+      currentNumOfType={1} // Since we only show the first one
+      totalOfType={componentCounts[status.componentName]}
+    />
   ));
 }
