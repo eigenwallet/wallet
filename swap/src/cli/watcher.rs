@@ -125,29 +125,20 @@ impl Watcher {
                     continue;
                 }
 
-                self.tauri
-                    .emit_background_refund_event(swap_id, BackgroundRefundState::Started);
+                let background_process_handle = self.tauri.new_background_process_with_initial_progress(TauriBackgroundProgress::BackgroundRefund(PendingCompleted::Pending), BackgroundRefundState::Started);
 
                 match cancel_and_refund(swap_id, self.wallet.clone(), self.database.clone()).await {
                     Err(e) => {
                         tracing::error!(%e, %swap_id, "Watcher failed to refund a swap in the background");
 
-                        self.tauri.emit_background_refund_event(
-                            swap_id,
-                            BackgroundRefundState::Failed {
-                                error: format!("{:?}", e),
-                            },
-                        );
+                        // TODO: Emit snackbar error here
                     }
                     Ok(_) => {
                         tracing::info!(%swap_id, "Watcher has refunded a swap in the background");
-
-                        self.tauri.emit_background_refund_event(
-                            swap_id,
-                            BackgroundRefundState::Completed,
-                        );
                     }
                 }
+
+                background_process_handle.finish();
 
                 // We have to release the swap lock when we are done
                 self.swap_lock.release_swap_lock().await?;

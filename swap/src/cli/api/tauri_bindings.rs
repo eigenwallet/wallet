@@ -515,6 +515,7 @@ pub enum TauriBackgroundProgress {
     OpeningDatabase(PendingCompleted<()>),
     EstablishingTorCircuits(PendingCompleted<TorBootstrapStatus>),
     SyncingBitcoinWallet(PendingCompleted<TauriBitcoinSyncProgress>),
+    BackgroundRefund(PendingCompleted<BackgroundRefundState>),
 }
 
 #[typeshare]
