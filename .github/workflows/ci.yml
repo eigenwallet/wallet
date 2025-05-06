@@ -6,40 +6,15 @@ on:
     branches:
       - "master" # Always build head of master for the badge in the README
 
-env:
-  DEPS_MONERO_LINUX: 'build-essential cmake libboost-all-dev miniupnpc libunbound-dev graphviz doxygen libunwind8-dev pkg-config libssl-dev libzmq3-dev libsodium-dev libhidapi-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler ccache git'
-  DEPS_TAURI_LINUX: 'libwebkit2gtk-4.1-dev curl wget file libxdo-dev libayatana-appindicator3-dev librsvg2-dev' # build-essential & libssl-dev are in DEPS_MONERO_LINUX
-  DEPS_MONERO_MACOS: 'cmake boost hidapi openssl zmq libpgm miniupnpc expat libunwind-headers protobuf ccache'
-  DEPS_MONERO_WINDOWS_MSYS2: >-
-    mingw-w64-x86_64-toolchain
-    make
-    mingw-w64-x86_64-cmake
-    mingw-w64-x86_64-ccache
-    mingw-w64-x86_64-boost
-    mingw-w64-x86_64-openssl
-    mingw-w64-x86_64-zeromq
-    mingw-w64-x86_64-libsodium
-    mingw-w64-x86_64-hidapi
-    mingw-w64-x86_64-protobuf-c
-    mingw-w64-x86_64-libusb
-    mingw-w64-x86_64-unbound
-    git
-  APT_SET_CONF_COMMAND: |
-    sudo tee -a /etc/apt/apt.conf.d/80-custom << EOF
-    Acquire::Retries "3";
-    Acquire::http::Timeout "120";
-    Acquire::ftp::Timeout "120";
-    EOF
-  CCACHE_SETTINGS_COMMAND: |
-    ccache --max-size=150M
-    ccache --set-config=compression=true
-
 jobs:
   static_analysis:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        
+      - name: Set up environment variables
+        uses: ./.github/actions/set-monero-env
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -75,6 +50,9 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        
+      - name: Set up environment variables
+        uses: ./.github/actions/set-monero-env
 
       - uses: Swatinem/rust-cache@v2.7.3
 
@@ -100,6 +78,9 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        
+      - name: Set up environment variables
+        uses: ./.github/actions/set-monero-env
 
       - uses: Swatinem/rust-cache@v2.7.3
 
@@ -140,6 +121,9 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        
+      - name: Set up environment variables
+        uses: ./.github/actions/set-monero-env
 
       - uses: Swatinem/rust-cache@v2.7.3
 
@@ -223,42 +207,24 @@ jobs:
           swap-storage: false
           tool-cache: false
 
+      - name: Checkout sources
+        uses: actions/checkout@v4.1.7
+        
+      - name: Set up environment variables
+        uses: ./.github/actions/set-monero-env
+
       - name: Configure apt for retries
         if: matrix.os == 'ubuntu-latest'
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
       - name: Install dependencies (ubuntu-latest)
-        if: matrix.os == 'ubuntu-latest' # This must match the platform value defined above.
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
 
-      - name: Install Monero build dependencies (ubuntu-latest)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt update
-          sudo apt install -y \
-            build-essential \
-            cmake \
-            libboost-all-dev \
-            miniupnpc \
-            libunbound-dev \
-            graphviz \
-            doxygen \
-            libunwind8-dev \
-            pkg-config \
-            libssl-dev \
-            libzmq3-dev \
-            libsodium-dev \
-            libhidapi-dev \
-            libusb-1.0-0-dev \
-            libprotobuf-dev \
-            protobuf-compiler \
-            ccache \
-            git
-
       - name: Install Monero build dependencies (macOS)
-        if: matrix.os == 'macos-latest' # Corrected to macos-latest
+        if: matrix.os == 'macos-latest'
         run: |
           brew update
           brew install ${{ env.DEPS_MONERO_MACOS }}
@@ -266,9 +232,6 @@ jobs:
       - name: Setup ccache (Linux/macOS)
         if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
-
-      - name: Checkout sources
-        uses: actions/checkout@v4.1.7
 
       - uses: Swatinem/rust-cache@v2.7.3
 
@@ -285,30 +248,50 @@ jobs:
   docker_tests:
     strategy:
       matrix:
-        test_name:
-          [
-            happy_path,
-            happy_path_restart_bob_after_xmr_locked,
-            happy_path_restart_bob_before_xmr_locked,
-            happy_path_restart_alice_after_xmr_locked,
-            alice_and_bob_refund_using_cancel_and_refund_command,
-            alice_and_bob_refund_using_cancel_then_refund_command,
-            alice_and_bob_refund_using_cancel_and_refund_command_timelock_not_expired,
-            alice_manually_punishes_after_bob_dead_and_bob_cancels,
-            punish,
-            alice_punishes_after_restart_bob_dead,
-            alice_manually_punishes_after_bob_dead,
-            alice_refunds_after_restart_bob_refunded,
-            ensure_same_swap_id,
-            concurrent_bobs_before_xmr_lock_proof_sent,
-            concurrent_bobs_after_xmr_lock_proof_sent,
-            alice_manually_redeems_after_enc_sig_learned,
-            happy_path_bob_offline_while_alice_redeems_btc,
-          ]
+        include:
+          - package: swap
+            test_name: happy_path
+          - package: swap
+            test_name: happy_path_restart_bob_after_xmr_locked
+          - package: swap
+            test_name: happy_path_restart_bob_before_xmr_locked
+          - package: swap
+            test_name: happy_path_restart_alice_after_xmr_locked
+          - package: swap
+            test_name: alice_and_bob_refund_using_cancel_and_refund_command
+          - package: swap
+            test_name: alice_and_bob_refund_using_cancel_then_refund_command
+          - package: swap
+            test_name: alice_and_bob_refund_using_cancel_and_refund_command_timelock_not_expired
+          - package: swap
+            test_name: alice_manually_punishes_after_bob_dead_and_bob_cancels
+          - package: swap
+            test_name: punish
+          - package: swap
+            test_name: alice_punishes_after_restart_bob_dead
+          - package: swap
+            test_name: alice_manually_punishes_after_bob_dead
+          - package: swap
+            test_name: alice_refunds_after_restart_bob_refunded
+          - package: swap
+            test_name: ensure_same_swap_id
+          - package: swap
+            test_name: concurrent_bobs_before_xmr_lock_proof_sent
+          - package: swap
+            test_name: concurrent_bobs_after_xmr_lock_proof_sent
+          - package: swap
+            test_name: alice_manually_redeems_after_enc_sig_learned
+          - package: swap
+            test_name: happy_path_bob_offline_while_alice_redeems_btc
+          - package: monero-sys
+            test_name: harness_test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        
+      - name: Set up environment variables
+        uses: ./.github/actions/set-monero-env
 
       - uses: Swatinem/rust-cache@v2.7.3
 
@@ -324,13 +307,16 @@ jobs:
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
 
       - name: Run test ${{ matrix.test_name }}
-        run: cargo test --package swap --test ${{ matrix.test_name }} -- --nocapture
+        run: cargo test --package ${{ matrix.package }} --test ${{ matrix.test_name }} -- --nocapture
 
   rpc_tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        
+      - name: Set up environment variables
+        uses: ./.github/actions/set-monero-env
 
       - uses: Swatinem/rust-cache@v2.7.3
 
@@ -353,6 +339,9 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        
+      - name: Set up environment variables
+        uses: ./.github/actions/set-monero-env
 
       - uses: dtolnay/rust-toolchain@stable
 
