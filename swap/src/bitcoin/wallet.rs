@@ -8,6 +8,7 @@ use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
 use bdk_electrum::BdkElectrumClient;
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::bitcoin::Network;
+use bdk_wallet::chain::spk_client::SyncRequest;
 use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite::Connection;
@@ -881,8 +882,14 @@ where
             })
             .build();
 
-        let client = self.client.lock().await;
-        let res = client.electrum.sync(sync_request, BATCH_SIZE, true)?;
+        // We spawn a blocking task to sync the wallet
+        // because the sync method is blocking.
+        let client_mutex = self.client.clone();
+        let res = tokio::task::spawn_blocking(move || {
+            let client = client_mutex.blocking_lock();
+            client.electrum.sync(sync_request, BATCH_SIZE, true)
+        })
+        .await??;
 
         let mut wallet = self.wallet.lock().await;
         wallet.apply_update(res)?;
