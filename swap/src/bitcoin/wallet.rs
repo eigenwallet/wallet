@@ -47,7 +47,9 @@ const DUST_AMOUNT: Amount = Amount::from_sat(546);
 /// Configuration for how the wallet should be persisted.
 #[derive(Debug, Clone)]
 pub enum PersisterConfig {
-    SqliteFile { data_dir: PathBuf },
+    SqliteFile {
+        data_dir: PathBuf,
+    },
     #[cfg(test)]
     InMemorySqlite,
 }
@@ -59,23 +61,21 @@ pub enum PersisterConfig {
     name = "WalletBuilder",
     pattern = "owned",
     setter(into, strip_option),
-    build_fn(name = "validate_config", private, error = "derive_builder::UninitializedFieldError"),
+    build_fn(
+        name = "validate_config",
+        private,
+        error = "derive_builder::UninitializedFieldError"
+    ),
     derive(Clone)
 )]
 pub struct WalletConfig {
     seed: Seed,
     network: Network,
     electrum_rpc_url: String,
-    persister_config: PersisterConfig,
-
-    #[builder(default)]
+    persister: PersisterConfig,
     env_config: Option<crate::env::Config>,
-
-    #[builder(default = "1")]
     finality_confirmations: u32,
-    #[builder(default = "1")]
     target_block: usize,
-    #[builder(default = "Duration::from_secs(60)")]
     sync_interval: Duration,
     #[builder(default)]
     tauri_handle: Option<TauriHandle>,
@@ -86,18 +86,24 @@ impl WalletBuilder {
     /// This method contains the core logic for wallet initialization, including
     /// database setup, key derivation, and potential migration from older wallet formats.
     pub async fn build_wallet(self) -> Result<Wallet<Connection>> {
-        let config = self.validate_config().map_err(|e| anyhow!("Builder validation failed: {e}"))?;
+        let config = self
+            .validate_config()
+            .map_err(|e| anyhow!("Builder validation failed: {e}"))?;
 
         let client = Client::new(&config.electrum_rpc_url, config.sync_interval)
             .context("Failed to create Electrum client")?;
 
-        match &config.persister_config {
+        match &config.persister {
             PersisterConfig::SqliteFile { data_dir } => {
-                let env_config = config.env_config.clone()
+                let env_config = config
+                    .env_config
+                    .clone()
                     .context("env_config is required for file-based SQLite wallet")?;
 
                 let xpriv_derivation_network = env_config.bitcoin_network;
-                let xprivkey = config.seed.derive_extended_private_key(xpriv_derivation_network)
+                let xprivkey = config
+                    .seed
+                    .derive_extended_private_key(xpriv_derivation_network)
                     .context("Failed to derive extended private key for file wallet")?;
 
                 let wallet_parent_dir = data_dir.join(Wallet::<Connection>::WALLET_PARENT_DIR_NAME);
@@ -108,9 +114,11 @@ impl WalletBuilder {
                 tokio::fs::create_dir_all(&wallet_dir)
                     .await
                     .context("Failed to create wallet directory")?;
-                
-                let connection = Connection::open(&wallet_path)
-                    .context(format!("Failed to open SQLite database at {:?}", wallet_path))?;
+
+                let connection = Connection::open(&wallet_path).context(format!(
+                    "Failed to open SQLite database at {:?}",
+                    wallet_path
+                ))?;
 
                 if wallet_exists {
                     Wallet::create_existing(
@@ -150,12 +158,14 @@ impl WalletBuilder {
             }
             #[cfg(test)]
             PersisterConfig::InMemorySqlite => {
-                let xprivkey = config.seed.derive_extended_private_key(config.network)
+                let xprivkey = config
+                    .seed
+                    .derive_extended_private_key(config.network)
                     .context("Failed to derive extended private key for in-memory wallet")?;
-                
+
                 let persister = Connection::open_in_memory()
                     .context("Failed to open in-memory SQLite database")?;
-                
+
                 Wallet::create_new(
                     xprivkey,
                     config.network,

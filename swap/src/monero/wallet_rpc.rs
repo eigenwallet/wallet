@@ -22,8 +22,7 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 use tokio_util::io::StreamReader;
 
 use crate::cli::api::tauri_bindings::{
-    DownloadProgress, TauriBackgroundProgress,
-    TauriEmitter, TauriHandle,
+    DownloadProgress, TauriBackgroundProgress, TauriEmitter, TauriHandle,
 };
 
 // See: https://www.moneroworld.com/#nodes, https://monero.fail

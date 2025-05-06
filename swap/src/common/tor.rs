@@ -39,8 +39,8 @@ pub async fn init_tor_client(
 
     // Create a background progress handle for the Tor bootstrap process
     // The handle manages the TauriHandle internally, so we don't need to worry about it anymore
-    let progress_handle = tauri_handle
-        .new_background_process(TauriBackgroundProgress::EstablishingTorCircuits);
+    let progress_handle =
+        tauri_handle.new_background_process(TauriBackgroundProgress::EstablishingTorCircuits);
 
     // Clone the handle for the task
     let progress_handle_clone = progress_handle.clone();

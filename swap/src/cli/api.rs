@@ -520,7 +520,9 @@ async fn init_bitcoin_wallet(
         .seed(seed.clone())
         .network(env_config.bitcoin_network)
         .electrum_rpc_url(electrum_rpc_url.as_str().to_string())
-        .persister_config(bitcoin::wallet::PersisterConfig::SqliteFile { data_dir: data_dir.clone() })
+        .persister(bitcoin::wallet::PersisterConfig::SqliteFile {
+            data_dir: data_dir.clone(),
+        })
         .finality_confirmations(env_config.bitcoin_finality_confirmations)
         .target_block(bitcoin_target_block as usize)
         .sync_interval(env_config.bitcoin_sync_interval())
@@ -530,7 +532,8 @@ async fn init_bitcoin_wallet(
         builder = builder.tauri_handle(handle.clone());
     }
 
-    let wallet = builder.build_wallet()
+    let wallet = builder
+        .build_wallet()
         .await
         .context("Failed to initialize Bitcoin wallet")?;
 

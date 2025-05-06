@@ -412,7 +412,9 @@ async fn init_bitcoin_wallet(
         .seed(seed.clone())
         .network(env_config.bitcoin_network)
         .electrum_rpc_url(config.bitcoin.electrum_rpc_url.as_str().to_string())
-        .persister_config(bitcoin::wallet::PersisterConfig::SqliteFile { data_dir: config.data.dir.clone() })
+        .persister(bitcoin::wallet::PersisterConfig::SqliteFile {
+            data_dir: config.data.dir.clone(),
+        })
         .finality_confirmations(env_config.bitcoin_finality_confirmations)
         .target_block(config.bitcoin.target_block as usize)
         .sync_interval(env_config.bitcoin_sync_interval())

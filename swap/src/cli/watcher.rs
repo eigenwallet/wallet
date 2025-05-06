@@ -1,4 +1,4 @@
-use super::api::tauri_bindings::{BackgroundRefundState, TauriEmitter};
+use super::api::tauri_bindings::{BackgroundRefundState, TauriBackgroundProgress, TauriEmitter};
 use super::api::SwapLock;
 use super::cancel_and_refund;
 use crate::bitcoin::{ExpiredTimelocks, Wallet};
@@ -125,7 +125,11 @@ impl Watcher {
                     continue;
                 }
 
-                let background_process_handle = self.tauri.new_background_process_with_initial_progress(TauriBackgroundProgress::BackgroundRefund(PendingCompleted::Pending), BackgroundRefundState::Started);
+                let background_process_handle =
+                    self.tauri.new_background_process_with_initial_progress(
+                        TauriBackgroundProgress::BackgroundRefund,
+                        BackgroundRefundState::Started,
+                    );
 
                 match cancel_and_refund(swap_id, self.wallet.clone(), self.database.clone()).await {
                     Err(e) => {
