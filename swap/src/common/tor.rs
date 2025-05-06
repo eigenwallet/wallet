@@ -62,7 +62,6 @@ pub async fn init_tor_client(
     tokio::select! {
         _ = progress_task => unreachable!("Tor bootstrap progress handle should never exit"),
         res = tor_client.bootstrap() => {
-            println!("Tor bootstrap completed!!!!");
             progress_handle.finish();
             res
         },
