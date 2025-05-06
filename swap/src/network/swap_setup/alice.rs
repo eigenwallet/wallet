@@ -56,7 +56,7 @@ pub struct WalletSnapshot {
 impl WalletSnapshot {
     pub async fn capture(
         bitcoin_wallet: &bitcoin::Wallet,
-        monero_wallet: &monero::Wallet,
+        monero_wallet: &monero::WalletManager,
         external_redeem_address: &Option<bitcoin::Address>,
         transfer_amount: bitcoin::Amount,
     ) -> Result<Self> {

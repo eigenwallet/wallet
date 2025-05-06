@@ -58,7 +58,7 @@ pub struct SyncProgress {
 /// The status of a transaction.
 pub struct TxStatus {
     /// The amount received in the transaction.
-    pub received: u64,
+    pub received: monero::Amount,
     /// Whether the transaction is in the mempool.
     pub in_pool: bool,
     /// The number of confirmations the transaction has.
@@ -70,6 +70,15 @@ pub struct TxStatus {
 pub struct Daemon {
     pub address: String,
     pub ssl: bool,
+}
+
+/// A request to watch for a transfer.
+pub struct WatchRequest {
+    pub public_spend_key: monero::PublicKey,
+    pub public_view_key: monero::PublicKey,
+    // pub transfer_proof: monero::TransferProof,
+    pub conf_target: u64,
+    pub expected: monero::Amount,
 }
 
 impl WalletManager {
@@ -98,6 +107,7 @@ impl WalletManager {
         });
 
         {
+            // We do this in a block to ensure that the lock is released as soon as possible.
             let mut lock = manager.lock().await;
 
             // If a remote node is provided, set it as the default remote node.
@@ -236,7 +246,7 @@ impl WalletManager {
 
     /// Open a wallet. Only used internally. Use [`WalletManager::open_or_create_wallet`] instead.
     ///
-    /// Todo: add listener support
+    /// Todo: add listener support?
     async fn open_wallet(
         &mut self,
         path: &str,
@@ -262,9 +272,9 @@ impl WalletManager {
             anyhow::bail!("Failed to open wallet: got null pointer")
         }
 
-        let wallet = Wallet::new(wallet_pointer, self.daemon.clone()).await?;
-
-        // Todo: error checking
+        let wallet = Wallet::new(wallet_pointer, self.daemon.clone())
+            .await
+            .context("Failed to initialize wallet")?;
 
         let wallet = Arc::new(Mutex::new(wallet));
         self.wallets.insert(path.to_string(), wallet.clone());
@@ -274,7 +284,7 @@ impl WalletManager {
 
     /// Set the address of the remote node ("daemon").
     fn set_daemon_address(&mut self, address: &str) {
-        tracing::debug!(%address, "Updating wallet manager's default remote node");
+        tracing::debug!(%address, "Updating wallet manager's remote node");
 
         let_cxx_string!(address = address);
 
@@ -290,8 +300,7 @@ impl WalletManager {
 
     /// Check if the wallet manager is connected to the configured daemon.
     ///
-    /// The manager might takes a few seconds to connect to the daemon after startup,
-    /// so
+    /// The manager might takes a few seconds to connect to the daemon after startup.
     pub async fn connected(&mut self) -> bool {
         let mut version = 0;
         unsafe { self.inner.pinned().connected(&mut version) }
@@ -513,6 +522,80 @@ impl Wallet {
         self.inner.pinned().refreshAsync();
     }
 
+    /// Poll the daemon repeatedly until a transaction has a specified number of confirmations.
+    /// Optionally accepts a listener that is called every time there is a new confirmation
+    /// with the current number of confirmations.
+    ///
+    /// The default check interval is 15 seconds.
+    ///
+    /// Returns an error if the transaction is not found or the amount is incorrect.
+    pub async fn wait_for_confirmations(
+        wallet: Arc<Mutex<Wallet>>,
+        txid: &str,
+        tx_key: monero::PrivateKey,
+        destination_address: &monero::Address,
+        expected_amount: monero::Amount,
+        confirmations: u64,
+        poll_interval: Option<tokio::time::Interval>,
+        listener: Option<impl Fn(u64)>,
+    ) -> anyhow::Result<()> {
+        const DEFAULT_CHECK_INTERVAL_SECS: u64 = 15;
+
+        let mut poll_interval = poll_interval.unwrap_or(tokio::time::interval(
+            tokio::time::Duration::from_secs(DEFAULT_CHECK_INTERVAL_SECS),
+        ));
+        let tx_key = tx_key.to_string();
+        let destination_address: String = destination_address.to_string();
+
+        loop {
+            poll_interval.tick().await;
+
+            let tx_status = match wallet
+                .lock()
+                .await
+                .check_tx_status(txid, &tx_key, &destination_address)
+                .await
+            {
+                Ok(tx_status) => tx_status,
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to check tx status: {}, rechecking in {}s",
+                        e,
+                        DEFAULT_CHECK_INTERVAL_SECS
+                    );
+                    continue;
+                }
+            };
+
+            // Make sure the amount is correct
+            if tx_status.received != expected_amount {
+                tracing::error!(
+                    "Transaction received amount mismatch: expected {}, got {}",
+                    expected_amount,
+                    tx_status.received
+                );
+                return Err(anyhow::anyhow!(
+                    "Transaction received amount mismatch: expected {}, got {}",
+                    expected_amount,
+                    tx_status.received
+                ));
+            }
+
+            // If the listener exists, notify it of the result
+            if let Some(listener) = &listener {
+                listener(tx_status.confirmations);
+            }
+
+            // Stop when we have the required number of confirmations
+            if tx_status.confirmations >= confirmations {
+                break;
+            }
+        }
+
+        // Signal success
+        Ok(())
+    }
+
     /// Get the current blockchain height.
     pub fn blockchain_height(&self) -> u64 {
         self.inner.blockChainHeight()
@@ -588,7 +671,7 @@ impl Wallet {
         }
 
         Ok(TxStatus {
-            received,
+            received: monero::Amount::from_pico(received),
             in_pool,
             confirmations,
         })

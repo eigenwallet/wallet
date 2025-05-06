@@ -58,7 +58,7 @@ async fn next_state<LR>(
     state: AliceState,
     event_loop_handle: &mut EventLoopHandle,
     bitcoin_wallet: &bitcoin::Wallet,
-    monero_wallet: Arc<Mutex<monero::Wallet>>,
+    monero_wallet: Arc<Mutex<monero::WalletManager>>,
     env_config: &Config,
     mut rate_service: LR,
 ) -> Result<AliceState>
