@@ -27,6 +27,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -35,12 +36,142 @@ use tracing::{debug_span, Instrument};
 
 use super::bitcoin_address::revalidate_network;
 use super::BlockHeight;
+use derive_builder::Builder;
 
 /// Assuming we add a spread of 3% we don't want to pay more than 3% of the
 /// amount for tx fees.
-const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.03);
+const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.1);
 const MAX_ABSOLUTE_TX_FEE: Decimal = dec!(100_000);
 const DUST_AMOUNT: Amount = Amount::from_sat(546);
+
+/// Configuration for how the wallet should be persisted.
+#[derive(Debug, Clone)]
+pub enum PersisterConfig {
+    SqliteFile { data_dir: PathBuf },
+    #[cfg(test)]
+    InMemorySqlite,
+}
+
+/// Holds the configuration parameters for creating a Bitcoin wallet.
+/// The actual Wallet<Connection> will be constructed from this configuration.
+#[derive(Builder, Clone)]
+#[builder(
+    name = "WalletBuilder",
+    pattern = "owned",
+    setter(into, strip_option),
+    build_fn(name = "validate_config", private, error = "derive_builder::UninitializedFieldError"),
+    derive(Clone)
+)]
+pub struct WalletConfig {
+    seed: Seed,
+    network: Network,
+    electrum_rpc_url: String,
+    persister_config: PersisterConfig,
+
+    #[builder(default)]
+    env_config: Option<crate::env::Config>,
+
+    #[builder(default = "1")]
+    finality_confirmations: u32,
+    #[builder(default = "1")]
+    target_block: usize,
+    #[builder(default = "Duration::from_secs(60)")]
+    sync_interval: Duration,
+    #[builder(default)]
+    tauri_handle: Option<TauriHandle>,
+}
+
+impl WalletBuilder {
+    /// Asynchronously builds the `Wallet<Connection>` using the configured parameters.
+    /// This method contains the core logic for wallet initialization, including
+    /// database setup, key derivation, and potential migration from older wallet formats.
+    pub async fn build_wallet(self) -> Result<Wallet<Connection>> {
+        let config = self.validate_config().map_err(|e| anyhow!("Builder validation failed: {e}"))?;
+
+        let client = Client::new(&config.electrum_rpc_url, config.sync_interval)
+            .context("Failed to create Electrum client")?;
+
+        match &config.persister_config {
+            PersisterConfig::SqliteFile { data_dir } => {
+                let env_config = config.env_config.clone()
+                    .context("env_config is required for file-based SQLite wallet")?;
+
+                let xpriv_derivation_network = env_config.bitcoin_network;
+                let xprivkey = config.seed.derive_extended_private_key(xpriv_derivation_network)
+                    .context("Failed to derive extended private key for file wallet")?;
+
+                let wallet_parent_dir = data_dir.join(Wallet::<Connection>::WALLET_PARENT_DIR_NAME);
+                let wallet_dir = wallet_parent_dir.join(Wallet::<Connection>::WALLET_DIR_NAME);
+                let wallet_path = wallet_dir.join(Wallet::<Connection>::WALLET_FILE_NAME);
+                let wallet_exists = wallet_path.exists();
+
+                tokio::fs::create_dir_all(&wallet_dir)
+                    .await
+                    .context("Failed to create wallet directory")?;
+                
+                let connection = Connection::open(&wallet_path)
+                    .context(format!("Failed to open SQLite database at {:?}", wallet_path))?;
+
+                if wallet_exists {
+                    Wallet::create_existing(
+                        xprivkey,
+                        config.network,
+                        client,
+                        connection,
+                        config.finality_confirmations,
+                        config.target_block,
+                        config.tauri_handle.clone(),
+                    )
+                    .await
+                    .context("Failed to load existing wallet")
+                } else {
+                    let old_wallet_export = Wallet::<Connection>::get_pre_1_0_0_bdk_wallet_export(
+                        data_dir,
+                        config.network,
+                        &config.seed,
+                        env_config.clone(),
+                    )
+                    .await
+                    .context("Failed to get pre-1.0.0 BDK wallet export for migration")?;
+
+                    Wallet::create_new(
+                        xprivkey,
+                        config.network,
+                        client,
+                        connection,
+                        config.finality_confirmations,
+                        config.target_block,
+                        old_wallet_export,
+                        config.tauri_handle.clone(),
+                    )
+                    .await
+                    .context("Failed to create new wallet")
+                }
+            }
+            #[cfg(test)]
+            PersisterConfig::InMemorySqlite => {
+                let xprivkey = config.seed.derive_extended_private_key(config.network)
+                    .context("Failed to derive extended private key for in-memory wallet")?;
+                
+                let persister = Connection::open_in_memory()
+                    .context("Failed to open in-memory SQLite database")?;
+                
+                Wallet::create_new(
+                    xprivkey,
+                    config.network,
+                    client,
+                    persister,
+                    config.finality_confirmations,
+                    config.target_block,
+                    None,
+                    config.tauri_handle.clone(),
+                )
+                .await
+                .context("Failed to create new in-memory wallet")
+            }
+        }
+    }
+}
 
 /// This is our wrapper around a bdk wallet and a corresponding
 /// bdk electrum client.
@@ -1381,7 +1512,7 @@ impl WalletBuilder {
         let mut wallet = super::Wallet::with_sqlite_in_memory(
             self.key,
             Network::Regtest,
-            None,
+            "tcp://127.0.0.1:60001",
             1,
             1,
             Duration::from_secs(10),

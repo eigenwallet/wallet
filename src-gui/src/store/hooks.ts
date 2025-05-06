@@ -166,7 +166,7 @@ export function useConservativeBitcoinSyncProgress(): TauriBitcoinSyncProgress |
   const progress = Math.min(...progressValues);
   const total = Math.max(...totalValues);
 
-  if (progress === 0 && total === 0) {
+  if (progress === 0 || total === 0) {
     return {
       type: "Unknown",
     };

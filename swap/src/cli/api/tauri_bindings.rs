@@ -544,8 +544,8 @@ pub struct TauriSwapProgressEventWrapper {
 }
 
 #[derive(Serialize, Clone)]
-#[serde(tag = "type", content = "content")]
 #[typeshare]
+#[serde(tag = "type", content = "content")]
 pub enum TauriSwapProgressEvent {
     RequestingQuote,
     Resuming,

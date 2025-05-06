@@ -312,16 +312,17 @@ async fn init_test_wallets(
         Url::parse(&input).unwrap()
     };
 
-    let btc_wallet = swap::bitcoin::Wallet::with_sqlite_in_memory(
-        seed,
-        env_config.bitcoin_network,
-        electrum_rpc_url.as_str(),
-        1,
-        1,
-        Duration::from_secs(60),
-    )
-    .await
-    .expect("could not init btc wallet");
+    let btc_wallet = swap::bitcoin::wallet::WalletBuilder::default()
+        .seed(seed.clone())
+        .network(env_config.bitcoin_network)
+        .electrum_rpc_url(electrum_rpc_url.as_str().to_string())
+        .persister_config(swap::bitcoin::wallet::PersisterConfig::InMemorySqlite)
+        .finality_confirmations(1)
+        .target_block(1)
+        .sync_interval(Duration::from_secs(60))
+        .build_wallet()
+        .await
+        .expect("could not init btc wallet");
 
     if starting_balances.btc != bitcoin::Amount::ZERO {
         mint(

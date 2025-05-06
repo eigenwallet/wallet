@@ -408,19 +408,18 @@ async fn init_bitcoin_wallet(
     env_config: swap::env::Config,
 ) -> Result<bitcoin::Wallet> {
     tracing::debug!("Opening Bitcoin wallet");
-    let wallet = bitcoin::Wallet::with_sqlite(
-        seed,
-        env_config.bitcoin_network,
-        config.bitcoin.electrum_rpc_url.as_str(),
-        &config.data.dir,
-        env_config.bitcoin_finality_confirmations,
-        config.bitcoin.target_block as usize,
-        env_config.bitcoin_sync_interval(),
-        env_config,
-        None,
-    )
-    .await
-    .context("Failed to initialize Bitcoin wallet")?;
+    let wallet = bitcoin::wallet::WalletBuilder::default()
+        .seed(seed.clone())
+        .network(env_config.bitcoin_network)
+        .electrum_rpc_url(config.bitcoin.electrum_rpc_url.as_str().to_string())
+        .persister_config(bitcoin::wallet::PersisterConfig::SqliteFile { data_dir: config.data.dir.clone() })
+        .finality_confirmations(env_config.bitcoin_finality_confirmations)
+        .target_block(config.bitcoin.target_block as usize)
+        .sync_interval(env_config.bitcoin_sync_interval())
+        .env_config(env_config.clone())
+        .build_wallet()
+        .await
+        .context("Failed to initialize Bitcoin wallet")?;
 
     wallet.sync().await?;
 

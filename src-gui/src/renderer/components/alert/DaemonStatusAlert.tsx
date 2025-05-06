@@ -19,10 +19,12 @@ function AlertWithLinearProgress({ title, progress }: {
   title: string,
   progress: number | null,
 }) {
+  const isEssentiallyOne = progress !== null && Math.abs(progress - 1) < 0.01;
+
   return <Alert severity="info">
     <Box style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
       {title}
-      {(progress === null || progress === 0) ? (
+      {(progress == null || progress === 0 || isEssentiallyOne) ? (
         <LinearProgress variant="indeterminate" />
       ) : (
         <LinearProgress variant="determinate" value={progress} />
