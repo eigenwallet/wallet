@@ -22,7 +22,7 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 use tokio_util::io::StreamReader;
 
 use crate::cli::api::tauri_bindings::{
-    DownloadProgress, PendingCompleted, TauriBackgroundProgress, TauriContextStatusEvent,
+    DownloadProgress, TauriBackgroundProgress,
     TauriEmitter, TauriHandle,
 };
 
@@ -262,7 +262,7 @@ impl WalletRpc {
 
             let background_process_handle = tauri_handle
                 .new_background_process_with_initial_progress(
-                    |progress| TauriBackgroundProgress::DownloadingMoneroWalletRpc(progress),
+                    TauriBackgroundProgress::DownloadingMoneroWalletRpc,
                     DownloadProgress {
                         progress: 0,
                         size: content_length,

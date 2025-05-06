@@ -17,7 +17,7 @@ use arti_client::TorClient;
 use futures::future::try_join_all;
 use std::fmt;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as SyncMutex, Once};
 use tauri_bindings::{
     TauriBackgroundProgress, TauriBitcoinSyncProgress, TauriContextStatusEvent, TauriEmitter,
@@ -313,7 +313,7 @@ impl ContextBuilder {
         let database_progress_handle = self
             .tauri_handle
             .new_background_process_with_initial_progress(
-                |progress| TauriBackgroundProgress::OpeningDatabase(progress),
+                TauriBackgroundProgress::OpeningDatabase,
                 (),
             );
 
@@ -335,7 +335,7 @@ impl ContextBuilder {
 
                     let bitcoin_progress_handle = tauri_handle
                         .new_background_process_with_initial_progress(
-                            |progress| TauriBackgroundProgress::SyncingBitcoinWallet(progress),
+                            TauriBackgroundProgress::SyncingBitcoinWallet,
                             TauriBitcoinSyncProgress::Unknown,
                         );
 
@@ -364,12 +364,12 @@ impl ContextBuilder {
                 Some(monero) => {
                     let monero_progress_handle = tauri_handle
                         .new_background_process_with_initial_progress(
-                            |progress| TauriBackgroundProgress::OpeningMoneroWallet(progress),
+                            TauriBackgroundProgress::OpeningMoneroWallet,
                             (),
                         );
 
                     let (wlt, prc) = init_monero_wallet(
-                        data_dir,
+                        data_dir.as_path(),
                         monero.monero_daemon_address,
                         env_config,
                         tauri_handle.clone(),
@@ -519,7 +519,7 @@ async fn init_bitcoin_wallet(
     let wallet = bitcoin::Wallet::with_sqlite(
         seed,
         env_config.bitcoin_network,
-        &electrum_rpc_url.as_str(),
+        electrum_rpc_url.as_str(),
         &data_dir,
         env_config.bitcoin_finality_confirmations,
         bitcoin_target_block as usize,
@@ -534,7 +534,7 @@ async fn init_bitcoin_wallet(
 }
 
 async fn init_monero_wallet(
-    data_dir: &PathBuf,
+    data_dir: &Path,
     monero_daemon_address: impl Into<Option<String>> + Clone,
     env_config: EnvConfig,
     tauri_handle: Option<TauriHandle>,

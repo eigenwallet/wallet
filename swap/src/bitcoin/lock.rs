@@ -97,11 +97,10 @@ impl TxLock {
     }
 
     pub fn fee(&self) -> Result<Amount> {
-        Ok(self
-            .inner
+        self.inner
             .clone()
             .fee_amount()
-            .context("The PSBT is missing a TxOut for an input")?)
+            .context("The PSBT is missing a TxOut for an input")
     }
 
     pub fn txid(&self) -> Txid {

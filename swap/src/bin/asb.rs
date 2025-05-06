@@ -395,7 +395,7 @@ pub async fn main() -> Result<()> {
         Command::ExportBitcoinWallet => {
             let bitcoin_wallet = init_bitcoin_wallet(&config, &seed, env_config).await?;
             let wallet_export = bitcoin_wallet.wallet_export("asb").await?;
-            println!("{}", wallet_export.to_string())
+            println!("{}", wallet_export)
         }
     }
 
@@ -411,12 +411,13 @@ async fn init_bitcoin_wallet(
     let wallet = bitcoin::Wallet::with_sqlite(
         seed,
         env_config.bitcoin_network,
-        &config.bitcoin.electrum_rpc_url.as_str(),
+        config.bitcoin.electrum_rpc_url.as_str(),
         &config.data.dir,
         env_config.bitcoin_finality_confirmations,
         config.bitcoin.target_block as usize,
         env_config.bitcoin_sync_interval(),
         env_config,
+        None,
     )
     .await
     .context("Failed to initialize Bitcoin wallet")?;

@@ -390,9 +390,9 @@ pub mod bitcoin_address {
         address: Address<NetworkUnchecked>,
         expected_network: bitcoin::Network,
     ) -> Result<Address<NetworkChecked>> {
-        Ok(address
+        address
             .require_network(expected_network)
-            .context("Bitcoin address network mismatch")?)
+            .context("Bitcoin address network mismatch")
     }
 
     /// Validate the address network even though the address is already checked.

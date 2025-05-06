@@ -258,6 +258,7 @@ impl Wallet {
 
     /// Create a new wallet, persisted to an in-memory sqlite database.
     /// Should only be used for testing.
+    #[cfg(test)]
     pub async fn with_sqlite_in_memory(
         seed: &Seed,
         network: Network,
@@ -270,7 +271,7 @@ impl Wallet {
         Self::create_new(
             seed.derive_extended_private_key(network)?,
             network,
-            Client::new(electrum_rpc_url, sync_interval).unwrap(),
+            Client::new(electrum_rpc_url, sync_interval).expect("Failed to create electrum client"),
             bdk_wallet::rusqlite::Connection::open_in_memory()?,
             finality_confirmations,
             target_block,
@@ -518,7 +519,7 @@ where
     pub async fn wallet_export(&self, role: &str) -> Result<FullyNodedExport> {
         let wallet = self.wallet.lock().await;
         match bdk_wallet::export::FullyNodedExport::export_wallet(
-            &*wallet,
+            &wallet,
             &format!("{}-{}", role, self.network),
             true,
         ) {
@@ -683,7 +684,7 @@ where
             .map(|o| o.value)
             .sum::<Amount>();
 
-        tracing::debug!(fee=%psbt.fee_amount().unwrap().to_sat(), "Calculated max giveable");
+        tracing::debug!(fee=?psbt.fee_amount().map(|a| a.to_sat()), "Calculated max giveable");
 
         Ok(max_giveable)
     }
@@ -750,14 +751,16 @@ where
 
         Ok(())
     }
-    
+
     /// Sync the wallet with the blockchain
     /// and emit progress events to the UI
     pub async fn sync(&self) -> Result<()> {
-        let background_process_handle = self.tauri_handle.new_background_process_with_initial_progress(
-            |progress| TauriBackgroundProgress::SyncingBitcoinWallet(progress),
-            TauriBitcoinSyncProgress::Unknown,
-        );
+        let background_process_handle = self
+            .tauri_handle
+            .new_background_process_with_initial_progress(
+                TauriBackgroundProgress::SyncingBitcoinWallet,
+                TauriBitcoinSyncProgress::Unknown,
+            );
 
         let background_process_handle_clone = background_process_handle.clone();
         self.sync_with_custom_callback::<Box<dyn Fn(usize, usize) + Send>>(Some(Box::new(
@@ -1121,9 +1124,7 @@ fn estimate_fee(
         bail!("Amounts needs to be greater than Bitcoin dust amount.")
     }
     let fee_rate_svb = fee_rate.to_sat_per_vb_ceil();
-    if fee_rate_svb <= 0 {
-        bail!("Fee rate needs to be > 0")
-    }
+
     if fee_rate_svb > 100_000_000 || min_relay_fee.to_sat() > 100_000_000 {
         bail!("A fee_rate or min_relay_fee of > 1BTC does not make sense")
     }

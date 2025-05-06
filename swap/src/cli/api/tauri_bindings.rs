@@ -129,7 +129,7 @@ impl TauriHandle {
     }
 
     /// Helper to emit a approval event via the unified event name
-    fn emit_approval(&self, event: ApprovalRequest) -> () {
+    fn emit_approval(&self, event: ApprovalRequest) {
         self.emit_unified_event(TauriEvent::Approval(event))
     }
 
@@ -252,54 +252,54 @@ pub trait TauriEmitter {
 
     fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()>;
 
-    fn emit_unified_event(&self, event: TauriEvent) -> () {
+    fn emit_unified_event(&self, event: TauriEvent) {
         let _ = self.emit_tauri_event(TAURI_UNIFIED_EVENT_NAME, event);
     }
 
     // Restore default implementations below
     fn emit_swap_progress_event(&self, swap_id: Uuid, event: TauriSwapProgressEvent) {
-        let _ = self.emit_unified_event(TauriEvent::SwapProgress(TauriSwapProgressEventWrapper {
+        self.emit_unified_event(TauriEvent::SwapProgress(TauriSwapProgressEventWrapper {
             swap_id,
             event,
         }));
     }
 
     fn emit_context_init_progress_event(&self, event: TauriContextStatusEvent) {
-        let _ = self.emit_unified_event(TauriEvent::ContextInitProgress(event));
+        self.emit_unified_event(TauriEvent::ContextInitProgress(event));
     }
 
     fn emit_cli_log_event(&self, event: TauriLogEvent) {
-        let _ = self.emit_unified_event(TauriEvent::CliLog(event));
+        self.emit_unified_event(TauriEvent::CliLog(event));
     }
 
     fn emit_swap_state_change_event(&self, swap_id: Uuid) {
-        let _ = self.emit_unified_event(TauriEvent::SwapDatabaseStateUpdate(
+        self.emit_unified_event(TauriEvent::SwapDatabaseStateUpdate(
             TauriDatabaseStateEvent { swap_id },
         ));
     }
 
     fn emit_timelock_change_event(&self, swap_id: Uuid, timelock: Option<ExpiredTimelocks>) {
-        let _ = self.emit_unified_event(TauriEvent::TimelockChange(TauriTimelockChangeEvent {
+        self.emit_unified_event(TauriEvent::TimelockChange(TauriTimelockChangeEvent {
             swap_id,
             timelock,
         }));
     }
 
     fn emit_balance_update_event(&self, new_balance: bitcoin::Amount) {
-        let _ = self.emit_unified_event(TauriEvent::BalanceChange(BalanceResponse {
+        self.emit_unified_event(TauriEvent::BalanceChange(BalanceResponse {
             balance: new_balance,
         }));
     }
 
     fn emit_background_refund_event(&self, swap_id: Uuid, state: BackgroundRefundState) {
-        let _ = self.emit_unified_event(TauriEvent::BackgroundRefund(TauriBackgroundRefundEvent {
+        self.emit_unified_event(TauriEvent::BackgroundRefund(TauriBackgroundRefundEvent {
             swap_id,
             state,
         }));
     }
 
-    fn emit_background_progress(&self, id: Uuid, event: TauriBackgroundProgress) -> () {
-        let _ = self.emit_unified_event(TauriEvent::BackgroundProgress(
+    fn emit_background_progress(&self, id: Uuid, event: TauriBackgroundProgress) {
+        self.emit_unified_event(TauriEvent::BackgroundProgress(
             TauriBackgroundProgressWrapper { id, event },
         ));
     }
@@ -307,7 +307,6 @@ pub trait TauriEmitter {
     fn gen_background_progress_id(&self) -> Uuid {
         Uuid::new_v4()
     }
-    // End of restored default implementations
 
     /// Create a new background progress handle for tracking a specific type of progress
     fn new_background_process<T: Clone>(

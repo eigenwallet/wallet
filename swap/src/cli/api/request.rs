@@ -1396,7 +1396,7 @@ impl CheckElectrumNodeArgs {
         };
 
         // Check if the node is available
-        let res = wallet::Client::new(&url.as_str(), Duration::from_secs(60));
+        let res = wallet::Client::new(url.as_str(), Duration::from_secs(60));
 
         Ok(CheckElectrumNodeResponse {
             available: res.is_ok(),
