@@ -5,7 +5,7 @@ import { useAppSelector, usePendingBackgroundProcesses } from "store/hooks";
 import { exhaustiveGuard } from "utils/typescriptUtils";
 import { LoadingSpinnerAlert } from "./LoadingSpinnerAlert";
 import { bytesToMb } from "utils/conversionUtils";
-import { TauriBackgroundProgress } from "models/tauriModel";
+import { TauriBackgroundProgress, TauriContextStatusEvent } from "models/tauriModel";
 
 const useStyles = makeStyles((theme) => ({
   innerAlert: {
@@ -79,16 +79,16 @@ export default function DaemonStatusAlert() {
   const contextStatus = useAppSelector((s) => s.rpc.status);
   const navigate = useNavigate();
 
-  if (contextStatus === null || contextStatus?.type === "NotInitialized") {
+  if (contextStatus === null || contextStatus === TauriContextStatusEvent.NotInitialized) {
     return <LoadingSpinnerAlert severity="warning">Checking for available remote nodes</LoadingSpinnerAlert>;
   }
 
-  switch (contextStatus?.type) {
-    case "Initializing":
+  switch (contextStatus) {
+    case TauriContextStatusEvent.Initializing:
       return <LoadingSpinnerAlert severity="warning">Initializing the daemon</LoadingSpinnerAlert>;
-    case "Available":
+    case TauriContextStatusEvent.Available:
       return <Alert severity="success">The daemon is running</Alert>;
-    case "Failed":
+    case TauriContextStatusEvent.Failed:
       return (
         <Alert
           severity="error"

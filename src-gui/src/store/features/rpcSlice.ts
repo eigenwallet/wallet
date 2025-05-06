@@ -75,23 +75,7 @@ export const rpcSlice = createSlice({
       slice,
       action: PayloadAction<TauriContextStatusEvent>,
     ) {
-      // If we are already initializing, and we receive a new partial status, we update the existing status
-      if (slice.status?.type === "Initializing" && action.payload.type === "Initializing") {
-        for (const partialStatus of action.payload.content) {
-          // We find the existing status with the same type
-          const existingStatus = slice.status.content.find(s => s.componentName === partialStatus.componentName);
-          if (existingStatus) {
-            // If we find it, we update the content
-            existingStatus.progress = partialStatus.progress;
-          } else {
-            // Otherwise, we add the new partial status
-            slice.status.content.push(partialStatus);
-          }
-        }
-      } else {
-        // Otherwise, we replace the whole status
-        slice.status = action.payload;
-      }
+      slice.status = action.payload;
     },
     timelockChangeEventReceived(
       slice: RPCSlice,

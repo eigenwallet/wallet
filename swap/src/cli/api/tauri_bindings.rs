@@ -527,7 +527,6 @@ pub struct TauriBackgroundProgressWrapper {
 
 #[typeshare]
 #[derive(Display, Clone, Serialize)]
-#[serde(tag = "type", content = "content")]
 pub enum TauriContextStatusEvent {
     NotInitialized,
     Initializing,

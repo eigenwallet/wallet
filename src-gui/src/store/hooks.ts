@@ -9,7 +9,7 @@ import { SettingsState } from "./features/settingsSlice";
 import { NodesSlice } from "./features/nodesSlice";
 import { RatesState } from "./features/ratesSlice";
 import { sortMakerList } from "utils/sortUtils";
-import { TauriBitcoinSyncProgress } from "models/tauriModel";
+import { TauriBackgroundProgress, TauriBitcoinSyncProgress, TauriContextStatusEvent } from "models/tauriModel";
 
 export const useAppDispatch = () => useDispatch<AppDispatch>();
 export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
@@ -48,7 +48,7 @@ export function useIsSwapRunning() {
 }
 
 export function useIsContextAvailable() {
-  return useAppSelector((state) => state.rpc.status?.type === "Available");
+  return useAppSelector((state) => state.rpc.status === TauriContextStatusEvent.Available);
 }
 
 /// We do not use a sanity check here, as opposed to the other useSwapInfo hooks,
@@ -159,9 +159,9 @@ export function usePendingBackgroundProcesses() {
 /// If all the syncs are unknown, it returns null
 export function useConservativeBitcoinSyncProgress(): TauriBitcoinSyncProgress | null {
   const pendingProcesses = usePendingBackgroundProcesses();
-  const syncingProcesses = pendingProcesses.filter(([_, c]) => c.componentName === "SyncingBitcoinWallet");
-  const progressValues = syncingProcesses.map(([_, c]) => c.progress.content?.content?.consumed ?? 0);
-  const totalValues = syncingProcesses.map(([_, c]) => c.progress.content?.content?.total ?? 0);
+  const syncingProcesses = pendingProcesses.map(([_, c]) => c).filter((c): c is TauriBackgroundProgress & { componentName: "SyncingBitcoinWallet" } => c.componentName === "SyncingBitcoinWallet");
+  const progressValues = syncingProcesses.map((c) => c.progress.content?.content?.consumed ?? 0);
+  const totalValues = syncingProcesses.map((c) => c.progress.content?.content?.total ?? 0);
 
   const progress = Math.min(...progressValues);
   const total = Math.max(...totalValues);
