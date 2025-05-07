@@ -7,6 +7,7 @@ import { LoadingSpinnerAlert } from "./LoadingSpinnerAlert";
 import { bytesToMb } from "utils/conversionUtils";
 import { TauriBackgroundProgress, TauriContextStatusEvent } from "models/tauriModel";
 import { useEffect, useRef, useState } from "react";
+import TruncatedText from "../other/TruncatedText";
 
 const useStyles = makeStyles((theme) => ({
   innerAlert: {
@@ -20,10 +21,12 @@ function AlertWithLinearProgress({ title, progress }: {
   title: string,
   progress: number | null,
 }) {
-  const [bufferProgressAddition, setBufferProgressAddition] = useState(Math.random() * 20);
+  const BUFFER_PROGRESS_ADDITION_MAX = 20;
+
+  const [bufferProgressAddition, setBufferProgressAddition] = useState(Math.random() * BUFFER_PROGRESS_ADDITION_MAX);
 
   useEffect(() => {
-    setBufferProgressAddition(Math.random() * 20);
+    setBufferProgressAddition(Math.random() * BUFFER_PROGRESS_ADDITION_MAX);
   }, [progress]);
 
   // If the progress is already at 100%, but not finished yet we show an indeterminate progress bar
@@ -157,3 +160,4 @@ export function BackgroundProgressAlerts() {
       totalOfType={componentCounts[status.componentName]}
     />
   ));
+}
