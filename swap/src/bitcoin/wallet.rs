@@ -51,7 +51,6 @@ pub enum PersisterConfig {
     SqliteFile {
         data_dir: PathBuf,
     },
-    #[cfg(test)]
     InMemorySqlite,
 }
 
@@ -1464,7 +1463,7 @@ impl EstimateFeeRate for StaticFeeRate {
 
 #[cfg(test)]
 #[derive(Debug)]
-pub struct WalletBuilder {
+pub struct TestWalletBuilder {
     utxo_amount: u64,
     sats_per_vb: u64,
     min_relay_fee_sats: u64,
@@ -1473,13 +1472,13 @@ pub struct WalletBuilder {
 }
 
 #[cfg(test)]
-impl WalletBuilder {
+impl TestWalletBuilder {
     /// Creates a new, funded wallet with sane default fees.
     ///
     /// Unless you are testing things related to fees, this is likely what you
     /// want.
     pub fn new(amount: u64) -> Self {
-        WalletBuilder {
+        TestWalletBuilder {
             utxo_amount: amount,
             sats_per_vb: 1,
             min_relay_fee_sats: 1000,
@@ -1525,6 +1524,8 @@ impl WalletBuilder {
             },
             Some(100)
         );
+
+        let mut wallet = WalletBuilder::
 
         let mut wallet = super::Wallet::with_sqlite_in_memory(
             self.key,
@@ -1767,7 +1768,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_no_balance_returns_amount_0() {
-        let wallet = WalletBuilder::new(0).with_fees(1, 1).build().await;
+        let wallet = TestWalletBuilder::new(0).with_fees(1, 1).build().await;
         let amount = wallet.max_giveable(TxLock::script_size()).await.unwrap();
 
         assert_eq!(amount, Amount::ZERO);
@@ -1775,7 +1776,10 @@ mod tests {
 
     #[tokio::test]
     async fn given_balance_below_min_relay_fee_returns_amount_0() {
-        let wallet = WalletBuilder::new(1000).with_fees(1, 1001).build().await;
+        let wallet = TestWalletBuilder::new(1000)
+            .with_fees(1, 1001)
+            .build()
+            .await;
         let amount = wallet.max_giveable(TxLock::script_size()).await.unwrap();
 
         assert_eq!(amount, Amount::ZERO);
@@ -1783,7 +1787,7 @@ mod tests {
 
     #[tokio::test]
     async fn given_balance_above_relay_fee_returns_amount_greater_0() {
-        let wallet = WalletBuilder::new(10_000).build().await;
+        let wallet = TestWalletBuilder::new(10_000).build().await;
         let amount = wallet.max_giveable(TxLock::script_size()).await.unwrap();
 
         assert!(amount.to_sat() > 0);
@@ -1803,7 +1807,10 @@ mod tests {
         let balance = 2000;
 
         // We don't care about fees in this test, thus use a zero fee rate
-        let wallet = WalletBuilder::new(balance).with_zero_fees().build().await;
+        let wallet = TestWalletBuilder::new(balance)
+            .with_zero_fees()
+            .build()
+            .await;
 
         // sorting is only relevant for amounts that have a change output
         // if the change output is below dust it will be dropped by the BDK
@@ -1828,7 +1835,7 @@ mod tests {
 
     #[tokio::test]
     async fn can_override_change_address() {
-        let wallet = WalletBuilder::new(50_000).build().await;
+        let wallet = TestWalletBuilder::new(50_000).build().await;
         let custom_change = "bcrt1q08pfqpsyrt7acllzyjm8q5qsz5capvyahm49rw"
             .parse::<Address<NetworkUnchecked>>()
             .unwrap()
@@ -1910,7 +1917,7 @@ DEBUG swap::bitcoin::wallet: Bitcoin transaction status changed txid=00000000000
             proptest::prop_assume!(alice != bob);
 
             tokio::runtime::Runtime::new().unwrap().block_on(async move {
-                let wallet = WalletBuilder::new(funding_amount as u64)
+                let wallet = TestWalletBuilder::new(funding_amount as u64)
                     .with_key(key)
                     .with_num_utxos(num_utxos)
                     .with_fees(sats_per_vb, 1000)

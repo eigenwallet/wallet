@@ -196,12 +196,12 @@ impl Watchable for TxLock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bitcoin::WalletBuilder;
+    use crate::bitcoin::TestWalletBuilder;
 
     #[tokio::test]
     async fn given_bob_sends_good_psbt_when_reconstructing_then_succeeeds() {
         let (A, B) = alice_and_bob();
-        let wallet = WalletBuilder::new(50_000).build().await;
+        let wallet = TestWalletBuilder::new(50_000).build().await;
         let agreed_amount = Amount::from_sat(10000);
 
         let psbt = bob_make_psbt(A, B, &wallet, agreed_amount).await;
@@ -216,7 +216,7 @@ mod tests {
         let fees = 300;
         let agreed_amount = Amount::from_sat(10000);
         let amount = agreed_amount.to_sat() + fees;
-        let wallet = WalletBuilder::new(amount).build().await;
+        let wallet = TestWalletBuilder::new(amount).build().await;
 
         let psbt = bob_make_psbt(A, B, &wallet, agreed_amount).await;
         assert_eq!(
@@ -232,7 +232,7 @@ mod tests {
     #[tokio::test]
     async fn given_bob_is_sending_less_than_agreed_when_reconstructing_txlock_then_fails() {
         let (A, B) = alice_and_bob();
-        let wallet = WalletBuilder::new(50_000).build().await;
+        let wallet = TestWalletBuilder::new(50_000).build().await;
         let agreed_amount = Amount::from_sat(10000);
 
         let bad_amount = Amount::from_sat(5000);
@@ -245,7 +245,7 @@ mod tests {
     #[tokio::test]
     async fn given_bob_is_sending_to_a_bad_output_reconstructing_txlock_then_fails() {
         let (A, B) = alice_and_bob();
-        let wallet = WalletBuilder::new(50_000).build().await;
+        let wallet = TestWalletBuilder::new(50_000).build().await;
         let agreed_amount = Amount::from_sat(10000);
 
         let E = eve();

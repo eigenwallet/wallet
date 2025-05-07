@@ -22,7 +22,7 @@ pub use ecdsa_fun::Signature;
 pub use wallet::Wallet;
 
 #[cfg(test)]
-pub use wallet::WalletBuilder;
+pub use wallet::TestWalletBuilder;
 
 use crate::bitcoin::wallet::ScriptStatus;
 use ::bitcoin::hashes::Hash;
@@ -553,8 +553,12 @@ mod tests {
 
     #[tokio::test]
     async fn calculate_transaction_weights() {
-        let alice_wallet = WalletBuilder::new(Amount::ONE_BTC.to_sat()).build().await;
-        let bob_wallet = WalletBuilder::new(Amount::ONE_BTC.to_sat()).build().await;
+        let alice_wallet = TestWalletBuilder::new(Amount::ONE_BTC.to_sat())
+            .build()
+            .await;
+        let bob_wallet = TestWalletBuilder::new(Amount::ONE_BTC.to_sat())
+            .build()
+            .await;
         let spending_fee = Amount::from_sat(1_000);
         let btc_amount = Amount::from_sat(500_000);
         let xmr_amount = crate::monero::Amount::from_piconero(10000);
