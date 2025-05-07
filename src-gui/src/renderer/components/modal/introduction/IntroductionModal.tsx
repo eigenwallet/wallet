@@ -1,17 +1,17 @@
-import {
-    makeStyles,
-    Modal,
-} from '@material-ui/core'
+import { makeStyles, Modal } from '@material-ui/core'
 import { useState } from 'react'
 import Slide01_GettingStarted from './slides/Slide01_GettingStarted'
 import Slide02_ChooseAMaker from './slides/Slide02_ChooseAMaker'
 import Slide03_PrepareSwap from './slides/Slide03_PrepareSwap'
 import Slide04_ExecuteSwap from './slides/Slide04_ExecuteSwap'
-import Slide06_ReachOut from './slides/Slide06_ReachOut'
 import Slide05_KeepAnEyeOnYourSwaps from './slides/Slide05_KeepAnEyeOnYourSwaps'
-import { setFetchFiatPrices, setUserHasSeenIntroduction } from 'store/features/settingsSlice'
+import Slide06_FiatPricePreference from './slides/Slide06_FiatPricePreference'
+import Slide07_ReachOut from './slides/Slide07_ReachOut'
+import {
+    setFetchFiatPrices,
+    setUserHasSeenIntroduction,
+} from 'store/features/settingsSlice'
 import { useAppDispatch, useSettings } from 'store/hooks'
-import Slide00_FiatPricePreference from './slides/Slide00_FiatPricePreference'
 
 const useStyles = makeStyles({
     modal: {
@@ -27,9 +27,11 @@ const useStyles = makeStyles({
 })
 
 export default function IntroductionModal() {
-    const userHasSeenIntroduction = useSettings((s) => s.userHasSeenIntroduction);
+    const userHasSeenIntroduction = useSettings(
+        (s) => s.userHasSeenIntroduction
+    )
 
-    const dispatch = useAppDispatch();
+    const dispatch = useAppDispatch()
 
     // Handle Display State
     const [open, setOpen] = useState<boolean>(!userHasSeenIntroduction)
@@ -61,15 +63,10 @@ export default function IntroductionModal() {
     }
 
     const slideComponents = [
-        <Slide00_FiatPricePreference
-            handleContinue={handleContinue}
-            handlePrevious={handlePrevious}
-            showFiat={showFiat}
-            onChange={(showFiatSetting: string) => setShowFiat(showFiatSetting === 'show')}
-        />,
         <Slide01_GettingStarted
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
+            hidePreviousButton
         />,
         <Slide02_ChooseAMaker
             handleContinue={handleContinue}
@@ -87,7 +84,15 @@ export default function IntroductionModal() {
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
         />,
-        <Slide06_ReachOut
+        <Slide06_FiatPricePreference
+            handleContinue={handleContinue}
+            handlePrevious={handlePrevious}
+            showFiat={showFiat}
+            onChange={(showFiatSetting: string) =>
+                setShowFiat(showFiatSetting === 'show')
+            }
+        />,
+        <Slide07_ReachOut
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
         />,
