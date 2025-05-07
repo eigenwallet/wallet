@@ -8,7 +8,6 @@ use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
 use bdk_electrum::BdkElectrumClient;
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::bitcoin::Network;
-use bdk_wallet::chain::spk_client::SyncRequest;
 use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite::Connection;
@@ -85,7 +84,7 @@ impl WalletBuilder {
     /// Asynchronously builds the `Wallet<Connection>` using the configured parameters.
     /// This method contains the core logic for wallet initialization, including
     /// database setup, key derivation, and potential migration from older wallet formats.
-    pub async fn build_wallet(self) -> Result<Wallet<Connection>> {
+    pub async fn build(self) -> Result<Wallet<Connection>> {
         let config = self
             .validate_config()
             .map_err(|e| anyhow!("Builder validation failed: {e}"))?;
@@ -97,7 +96,6 @@ impl WalletBuilder {
             PersisterConfig::SqliteFile { data_dir } => {
                 let env_config = config
                     .env_config
-                    .clone()
                     .context("env_config is required for file-based SQLite wallet")?;
 
                 let xpriv_derivation_network = env_config.bitcoin_network;
@@ -137,7 +135,7 @@ impl WalletBuilder {
                         data_dir,
                         config.network,
                         &config.seed,
-                        env_config.clone(),
+                        env_config,
                     )
                     .await
                     .context("Failed to get pre-1.0.0 BDK wallet export for migration")?;
@@ -156,7 +154,6 @@ impl WalletBuilder {
                     .context("Failed to create new wallet")
                 }
             }
-            #[cfg(test)]
             PersisterConfig::InMemorySqlite => {
                 let xprivkey = config
                     .seed
@@ -337,6 +334,8 @@ impl Wallet {
     }
 
     /// Create a new wallet, persisted to a sqlite database.
+    /// This is a private API so we allow too many arguments.
+    #[allow(clippy::too_many_arguments)]
     pub async fn with_sqlite(
         seed: &Seed,
         network: Network,
@@ -423,6 +422,8 @@ impl Wallet {
     }
 
     /// Create a new wallet in the database and perform a full scan.
+    /// This is a private API so we allow too many arguments.
+    #[allow(clippy::too_many_arguments)]
     async fn create_new<Persister>(
         xprivkey: Xpriv,
         network: Network,
@@ -1525,19 +1526,17 @@ impl TestWalletBuilder {
             Some(100)
         );
 
-        let mut wallet = WalletBuilder::
-
-        let mut wallet = super::Wallet::with_sqlite_in_memory(
-            self.key,
-            Network::Regtest,
-            "tcp://127.0.0.1:60001",
-            1,
-            1,
-            Duration::from_secs(10),
-            None,
-        )
+        let wallet = super::WalletBuilder::default()
+        .seed(self.key.clone())
+        .network(Network::Regtest)
+        .electrum_rpc_url("tcp://127.0.0.1:60001".to_string())
+        .persister(super::bitcoin::wallet::PersisterConfig::InMemorySqlite)
+        .finality_confirmations(1)
+        .target_block(1)
+        .sync_interval(Duration::from_secs(10))
+        .build_wallet()
         .await
-        .unwrap();
+        .expect("could not init btc wallet");
 
         wallet
     }

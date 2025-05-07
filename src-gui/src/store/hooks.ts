@@ -1,5 +1,5 @@
 import { sortBy, sum } from "lodash";
-import { BobStateName, GetSwapInfoResponseExt, PendingApprovalRequest, PendingLockBitcoinApprovalRequest } from "models/tauriModelExt";
+import { BobStateName, GetSwapInfoResponseExt, isBitcoinSyncProgress, isPendingBackgroundProcess, isPendingLockBitcoinApprovalEvent, PendingApprovalRequest, PendingLockBitcoinApprovalRequest } from "models/tauriModelExt";
 import { TypedUseSelectorHook, useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "renderer/store/storeRenderer";
 import { parseDateString } from "utils/parseUtils";
@@ -146,17 +146,19 @@ export function usePendingApprovals(): PendingApprovalRequest[] {
 
 export function usePendingLockBitcoinApproval(): PendingLockBitcoinApprovalRequest[] {
   const approvals = usePendingApprovals();
-  return approvals.filter((c) => c.content.details.type === "LockBitcoin");
+  return approvals.filter((c) => isPendingLockBitcoinApprovalEvent(c));
 }
 
-export function usePendingBackgroundProcesses() {
+/// Returns all the pending background processes
+/// In the format [id, {componentName, {type: "Pending", content: {consumed, total}}}]
+export function usePendingBackgroundProcesses(): [string, TauriBackgroundProgress][] {
   const background = useAppSelector((state) => state.rpc.state.background);
-  return Object.entries(background).filter(([_, c]) => c.progress.type === "Pending");
+  return Object.entries(background).filter(([_, c]) => isPendingBackgroundProcess(c));
 }
 
 export function useBitcoinSyncProgress(): TauriBitcoinSyncProgress[] {
   const pendingProcesses = usePendingBackgroundProcesses();
-  const syncingProcesses = pendingProcesses.map(([_, c]) => c).filter((c): c is TauriBackgroundProgress & { componentName: "SyncingBitcoinWallet" } => c.componentName === "SyncingBitcoinWallet");
+  const syncingProcesses = pendingProcesses.map(([_, c]) => c).filter(isBitcoinSyncProgress);
   return syncingProcesses.map((c) => c.progress.content);
 }
 
@@ -169,10 +171,9 @@ export function isSyncingBitcoin(): boolean {
 /// It uses the min(...) of the all progress values and the max(...) of the all total values
 /// If all the syncs are unknown, it returns null
 export function useConservativeBitcoinSyncProgress(): TauriBitcoinSyncProgress | null {
-  const pendingProcesses = usePendingBackgroundProcesses();
-  const syncingProcesses = pendingProcesses.map(([_, c]) => c).filter((c): c is TauriBackgroundProgress & { componentName: "SyncingBitcoinWallet" } => c.componentName === "SyncingBitcoinWallet");
-  const progressValues = syncingProcesses.map((c) => c.progress.content?.content?.consumed ?? 0);
-  const totalValues = syncingProcesses.map((c) => c.progress.content?.content?.total ?? 0);
+  const syncingProcesses = useBitcoinSyncProgress();
+  const progressValues = syncingProcesses.map((c) => c.content?.consumed ?? 0);
+  const totalValues = syncingProcesses.map((c) => c.content?.total ?? 0);
 
   const progress = sum(progressValues);
   const total = sum(totalValues);

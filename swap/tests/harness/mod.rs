@@ -11,7 +11,7 @@ use libp2p::PeerId;
 use monero_harness::{image, Monero};
 use std::cmp::Ordering;
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use swap::asb::FixedRate;
@@ -27,7 +27,7 @@ use swap::protocol::bob::BobState;
 use swap::protocol::{alice, bob, Database};
 use swap::seed::Seed;
 use swap::{asb, bitcoin, cli, env, monero};
-use tempfile::{tempdir, NamedTempFile};
+use tempfile::{NamedTempFile};
 use testcontainers::clients::Cli;
 use testcontainers::{Container, RunnableImage};
 use tokio::sync::mpsc;
@@ -320,7 +320,7 @@ async fn init_test_wallets(
         .finality_confirmations(1)
         .target_block(1)
         .sync_interval(Duration::from_secs(60))
-        .build_wallet()
+        .build()
         .await
         .expect("could not init btc wallet");
 

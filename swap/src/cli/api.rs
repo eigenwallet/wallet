@@ -511,7 +511,7 @@ impl fmt::Debug for Context {
 async fn init_bitcoin_wallet(
     electrum_rpc_url: Url,
     seed: &Seed,
-    data_dir: &PathBuf,
+    data_dir: &Path,
     env_config: EnvConfig,
     bitcoin_target_block: u16,
     tauri_handle_option: Option<TauriHandle>,
@@ -521,19 +521,19 @@ async fn init_bitcoin_wallet(
         .network(env_config.bitcoin_network)
         .electrum_rpc_url(electrum_rpc_url.as_str().to_string())
         .persister(bitcoin::wallet::PersisterConfig::SqliteFile {
-            data_dir: data_dir.clone(),
+            data_dir: data_dir.to_path_buf(),
         })
         .finality_confirmations(env_config.bitcoin_finality_confirmations)
         .target_block(bitcoin_target_block as usize)
         .sync_interval(env_config.bitcoin_sync_interval())
-        .env_config(env_config.clone());
+        .env_config(env_config);
 
     if let Some(handle) = tauri_handle_option {
         builder = builder.tauri_handle(handle.clone());
     }
 
     let wallet = builder
-        .build_wallet()
+        .build()
         .await
         .context("Failed to initialize Bitcoin wallet")?;
 

@@ -1,11 +1,14 @@
 import { listen } from "@tauri-apps/api/event";
 import { TauriContextStatusEvent, TauriEvent } from "models/tauriModel";
-import { contextStatusEventReceived, receivedCliLog, rpcSetBalance, timelockChangeEventReceived, rpcSetBackgroundRefundState, approvalEventReceived, backgroundProgressEventReceived } from "store/features/rpcSlice";
+import { contextStatusEventReceived, receivedCliLog, rpcSetBalance, timelockChangeEventReceived, approvalEventReceived, backgroundProgressEventReceived } from "store/features/rpcSlice";
 import { swapProgressEventReceived } from "store/features/swapSlice";
 import logger from "utils/logger";
 import { fetchAllConversations, updatePublicRegistry, updateRates } from "./api";
 import { checkContextAvailability, getSwapInfo, initializeContext, updateAllNodeStatuses } from "./rpc";
 import { store } from "./store/storeRenderer";
+import { exhaustiveGuard } from "utils/typescriptUtils";
+
+const TAURI_UNIFIED_EVENT_CHANNEL_NAME = "tauri-unified-event";
 
 // Update the public registry every 5 minutes
 const PROVIDER_UPDATE_INTERVAL = 5 * 60 * 1_000;
@@ -48,7 +51,7 @@ export async function setupBackgroundTasks(): Promise<void> {
     }
 
     // Listen for the unified event
-    listen<TauriEvent>("tauri-unified-event", (event) => {
+    listen<TauriEvent>(TAURI_UNIFIED_EVENT_CHANNEL_NAME, (event) => {
         const { channelName, event: eventData } = event.payload;
         
         switch (channelName) {
@@ -81,10 +84,6 @@ export async function setupBackgroundTasks(): Promise<void> {
                 store.dispatch(timelockChangeEventReceived(eventData));
                 break;
             
-            case "BackgroundRefund":
-                store.dispatch(rpcSetBackgroundRefundState(eventData));
-                break;
-            
             case "Approval":
                 store.dispatch(approvalEventReceived(eventData));
                 break;
@@ -94,7 +93,7 @@ export async function setupBackgroundTasks(): Promise<void> {
                 break;
             
             default:
-                logger.warn(`Received unknown event type: ${channelName}`, eventData);
+                exhaustiveGuard(channelName);
         }
     });
 }

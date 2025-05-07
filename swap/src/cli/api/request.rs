@@ -360,6 +360,7 @@ pub struct ExportBitcoinWalletArgs;
 #[typeshare]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ExportBitcoinWalletResponse {
+    #[typeshare(serialized_as = "object")]
     pub wallet_descriptor: serde_json::Value,
 }
 
