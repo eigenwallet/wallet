@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { TauriSwapProgressEventWrapper, TauriContextStatusEvent, TauriLogEvent, BalanceResponse, TauriDatabaseStateEvent, TauriTimelockChangeEvent, TauriBackgroundRefundEvent, ApprovalRequest, TauriBackgroundProgressWrapper, TauriEvent } from "models/tauriModel";
+import { TauriContextStatusEvent, TauriEvent } from "models/tauriModel";
 import { contextStatusEventReceived, receivedCliLog, rpcSetBalance, timelockChangeEventReceived, rpcSetBackgroundRefundState, approvalEventReceived, backgroundProgressEventReceived } from "store/features/rpcSlice";
 import { swapProgressEventReceived } from "store/features/swapSlice";
 import logger from "utils/logger";
@@ -33,7 +33,7 @@ export async function setupBackgroundTasks(): Promise<void> {
 
     // Check if the context is already available. This is to prevent unnecessary re-initialization
     if (await checkContextAvailability()) {
-        store.dispatch(contextStatusEventReceived({ type: "Available" }));
+        store.dispatch(contextStatusEventReceived(TauriContextStatusEvent.Available));
     } else {
         // Warning: If we reload the page while the Context is being initialized, this function will throw an error
         initializeContext().catch((e) => {

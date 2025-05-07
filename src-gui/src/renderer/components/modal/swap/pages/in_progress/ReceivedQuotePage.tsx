@@ -12,7 +12,11 @@ export default function ReceivedQuotePage() {
     );
   }
 
-  return (
-    <CircularProgressWithSubtitle description="Syncing Bitcoin wallet" />
-  );
+  if (syncProgress?.type === "Unknown") {
+    return (
+      <CircularProgressWithSubtitle description="Syncing Bitcoin wallet" />
+    );
+  }
+
+  return <CircularProgressWithSubtitle description="Processing offer" />;
 }
