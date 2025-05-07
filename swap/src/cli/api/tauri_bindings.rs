@@ -26,7 +26,6 @@ pub enum TauriEvent {
     BalanceChange(BalanceResponse),
     SwapDatabaseStateUpdate(TauriDatabaseStateEvent),
     TimelockChange(TauriTimelockChangeEvent),
-    BackgroundRefund(TauriBackgroundRefundEvent),
     Approval(ApprovalRequest),
     BackgroundProgress(TauriBackgroundProgressWrapper),
 }
@@ -291,13 +290,6 @@ pub trait TauriEmitter {
         }));
     }
 
-    fn emit_background_refund_event(&self, swap_id: Uuid, state: BackgroundRefundState) {
-        self.emit_unified_event(TauriEvent::BackgroundRefund(TauriBackgroundRefundEvent {
-            swap_id,
-            state,
-        }));
-    }
-
     fn emit_background_progress(&self, id: Uuid, event: TauriBackgroundProgress) {
         self.emit_unified_event(TauriEvent::BackgroundProgress(
             TauriBackgroundProgressWrapper { id, event },
@@ -505,6 +497,13 @@ pub enum TauriBitcoinSyncProgress {
     Unknown,
 }
 
+#[derive(Serialize, Clone)]
+#[typeshare]
+pub struct BackgroundRefundProgress {
+    #[typeshare(serialized_as = "string")]
+    pub swap_id: Uuid,
+}
+
 #[typeshare]
 #[derive(Display, Clone, Serialize)]
 #[serde(tag = "componentName", content = "progress")]
@@ -515,7 +514,7 @@ pub enum TauriBackgroundProgress {
     OpeningDatabase(PendingCompleted<()>),
     EstablishingTorCircuits(PendingCompleted<TorBootstrapStatus>),
     SyncingBitcoinWallet(PendingCompleted<TauriBitcoinSyncProgress>),
-    BackgroundRefund(PendingCompleted<BackgroundRefundState>),
+    BackgroundRefund(PendingCompleted<BackgroundRefundProgress>),
 }
 
 #[typeshare]
@@ -619,7 +618,6 @@ pub enum TauriSwapProgressEvent {
 /// It contains a json serialized object containing the log message and metadata.
 #[typeshare]
 #[derive(Debug, Serialize, Clone)]
-#[typeshare]
 pub struct TauriLogEvent {
     /// The serialized object containing the log message and metadata.
     pub buffer: String,
@@ -647,14 +645,6 @@ pub enum BackgroundRefundState {
     Started,
     Failed { error: String },
     Completed,
-}
-
-#[derive(Serialize, Clone)]
-#[typeshare]
-pub struct TauriBackgroundRefundEvent {
-    #[typeshare(serialized_as = "string")]
-    swap_id: Uuid,
-    state: BackgroundRefundState,
 }
 
 /// This struct contains the settings for the Context

@@ -82,8 +82,12 @@ function PartialInitStatus({ status, currentNumOfType, totalOfType, classes }: {
           {`Opening the local database${titleSuffix}`}
         </LoadingSpinnerAlert>
       );
+    case "BackgroundRefund":
+      return <LoadingSpinnerAlert severity="info">
+        {`Refunding swap `}<TruncatedText limit={10}>{status.progress.content.swap_id}</TruncatedText>
+      </LoadingSpinnerAlert>
     default:
-      return null;
+      return exhaustiveGuard(status);
   }
 }
 
@@ -153,4 +157,3 @@ export function BackgroundProgressAlerts() {
       totalOfType={componentCounts[status.componentName]}
     />
   ));
-}
