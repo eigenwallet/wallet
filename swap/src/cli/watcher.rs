@@ -128,9 +128,7 @@ impl Watcher {
                 let background_process_handle =
                     self.tauri.new_background_process_with_initial_progress(
                         TauriBackgroundProgress::BackgroundRefund,
-                        BackgroundRefundProgress {
-                            swap_id,
-                        },
+                        BackgroundRefundProgress { swap_id },
                     );
 
                 match cancel_and_refund(swap_id, self.wallet.clone(), self.database.clone()).await {

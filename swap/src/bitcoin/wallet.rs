@@ -8,6 +8,7 @@ use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
 use bdk_electrum::BdkElectrumClient;
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::bitcoin::Network;
+use bdk_wallet::chain::spk_client::SyncRequest;
 use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite::Connection;
@@ -47,9 +48,7 @@ const DUST_AMOUNT: Amount = Amount::from_sat(546);
 /// Configuration for how the wallet should be persisted.
 #[derive(Debug, Clone)]
 pub enum PersisterConfig {
-    SqliteFile {
-        data_dir: PathBuf,
-    },
+    SqliteFile { data_dir: PathBuf },
     InMemorySqlite,
 }
 
@@ -1527,16 +1526,16 @@ impl TestWalletBuilder {
         );
 
         let wallet = super::WalletBuilder::default()
-        .seed(self.key.clone())
-        .network(Network::Regtest)
-        .electrum_rpc_url("tcp://127.0.0.1:60001".to_string())
-        .persister(super::bitcoin::wallet::PersisterConfig::InMemorySqlite)
-        .finality_confirmations(1)
-        .target_block(1)
-        .sync_interval(Duration::from_secs(10))
-        .build_wallet()
-        .await
-        .expect("could not init btc wallet");
+            .seed(self.key.clone())
+            .network(Network::Regtest)
+            .electrum_rpc_url("tcp://127.0.0.1:60001".to_string())
+            .persister(super::bitcoin::wallet::PersisterConfig::InMemorySqlite)
+            .finality_confirmations(1)
+            .target_block(1)
+            .sync_interval(Duration::from_secs(10))
+            .build_wallet()
+            .await
+            .expect("could not init btc wallet");
 
         wallet
     }
