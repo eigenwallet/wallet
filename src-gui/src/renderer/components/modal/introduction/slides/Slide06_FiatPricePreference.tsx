@@ -14,7 +14,7 @@ const FiatPricePreferenceSlide = ({
     onChange: (value: string) => void
 }) => {
     return (
-        <SlideTemplate handleContinue={handleContinue} handlePrevious={handlePrevious} title="Fiat Price Preference" imagePath={imagePath}>
+        <SlideTemplate handleContinue={handleContinue} handlePrevious={handlePrevious} title="Fiat Prices" imagePath={imagePath}>
                 <Typography variant="subtitle1" color="textSecondary">
                     Do you want to show fiat prices?
                 </Typography>
@@ -33,21 +33,19 @@ const FiatPricePreferenceSlide = ({
                             We connect to CoinGecko to provide realtime currency
                             prices.
                         </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                            Tip: Use a VPN to remain completely anonymous.
-                        </Typography>
                     </CardSelectionOption>
                     <CardSelectionOption value="hide">
                         <Typography>Don't show fiat prices</Typography>
                     </CardSelectionOption>
                 </CardSelectionGroup>
-                <Typography
-                    variant="caption"
-                    color="textSecondary"
-                    style={{ marginTop: 8 }}
-                >
-                    You can change your preference later in the settings
-                </Typography>
+                <Box style={{ marginTop: "0.5rem" }}>
+                    <Typography
+                        variant="caption"
+                        color="textSecondary"
+                    >
+                        You can change your preference later in the settings
+                    </Typography>
+                </Box>
         </SlideTemplate>
     )
 }

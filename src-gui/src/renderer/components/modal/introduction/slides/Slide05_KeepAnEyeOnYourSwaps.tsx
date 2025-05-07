@@ -12,7 +12,7 @@ export default function Slide05_KeepAnEyeOnYourSwaps(props: slideProps) {
             imagePath={imagePath}
         >
             <Typography>
-                While the Atomic Swap Protocol is secure, you should monitor active swaps in the history tab to ensure everything proceeds smoothly.
+                Monitor active swaps to ensure everything proceeds smoothly.
             </Typography>
             <Typography>
                 <ExternalLink href='https://docs.unstoppableswap.net/usage/first_swap'>

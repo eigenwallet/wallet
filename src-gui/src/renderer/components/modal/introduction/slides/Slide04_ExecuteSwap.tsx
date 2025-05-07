@@ -11,14 +11,14 @@ export default function Slide02_ChooseAMaker(props: slideProps) {
             imagePath={imagePath}
         >
             <Typography variant="subtitle1">
-                By confirming, the swap begins:
+                After confirming:
             </Typography>
             <Typography>
                 <ol>
-                    <li>Your Bitcoin funds are locked</li>
-                    <li>The maker locks monero</li>
-                    <li>The maker reedems the BTC</li>
-                    <li>The Monero is redeemed to your payout address</li>
+                    <li>Your Bitcoin are locked</li>
+                    <li>Maker locks the Monero</li>
+                    <li>Maker reedems the Bitcoin</li>
+                    <li>Monero is sent to your address</li>
                 </ol>
             </Typography>
         </SlideTemplate>

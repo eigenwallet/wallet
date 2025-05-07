@@ -6,8 +6,7 @@ export default function Slide02_ChooseAMaker(props: slideProps) {
     return (
         <SlideTemplate title="Prepare Swap" stepLabel="Step 2" {...props} imagePath={imagePath}>
             <Typography variant="subtitle1">
-            After providing your redeem address and (optionally) providing a refund address,
-            you can initiate the swap by deposit your Bitcoin.
+                To initiate a swap, provide a Monero address and optionally a Bitcoin refund address.
             </Typography>
         </SlideTemplate>
     )

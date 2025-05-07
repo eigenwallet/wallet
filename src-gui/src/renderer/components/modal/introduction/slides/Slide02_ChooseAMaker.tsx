@@ -11,16 +11,7 @@ export default function Slide02_ChooseAMaker(props: slideProps) {
             imagePath={imagePath}
         >
             <Typography variant="subtitle1">
-                To start a Swap, choose a maker to exchange Bitcoin for Monero.
-                The app automatically shows available makers from the public registry, including their swap limits and uptime.
-            </Typography>
-
-            <Typography
-                variant="caption"
-                color="textSecondary"
-                style={{ marginTop: 8 }}
-            >
-                Additionally, you can find makers through rendezvous points or direct connections.
+                To start a swap, choose a maker. Each maker offers different exchange rates and limits.
             </Typography>
         </SlideTemplate>
     )
