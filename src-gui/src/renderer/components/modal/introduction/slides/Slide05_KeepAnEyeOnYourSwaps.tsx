@@ -1,6 +1,6 @@
 import { Link, Typography } from '@material-ui/core'
 import SlideTemplate from './SlideTemplate'
-import imagePath from 'assets/mockHistoryPage.webp'
+import imagePath from 'assets/mockHistoryPage.svg'
 import ExternalLink from 'renderer/components/other/ExternalLink'
 
 export default function Slide05_KeepAnEyeOnYourSwaps(props: slideProps) {

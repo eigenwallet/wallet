@@ -1,6 +1,6 @@
 import { Typography } from '@material-ui/core'
 import SlideTemplate from './SlideTemplate'
-import imagePath from 'assets/simpleSwapFlowDiagram.webp'
+import imagePath from 'assets/simpleSwapFlowDiagram.svg'
 
 export default function Slide02_ChooseAMaker(props: slideProps) {
     return (
