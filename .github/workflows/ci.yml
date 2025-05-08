@@ -158,6 +158,11 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }} git
+          if [[ "${{ matrix.target }}" == "armv7-unknown-linux-gnueabihf" ]]; then
+            sudo dpkg --add-architecture armhf
+            sudo apt update
+            sudo apt install -y libssl-dev:armhf
+          fi
 
       - name: Clone submodules
         run: git submodule update --init --recursive
