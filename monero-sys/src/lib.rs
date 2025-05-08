@@ -131,13 +131,13 @@ impl WalletManager {
 
         let kdf_rounds = Self::DEFAULT_KDF_ROUNDS;
         // If we haven't loaded the wallet, but it already exists, open it.
-        if self.wallet_exists(&filename).await {
+        if self.wallet_exists(filename).await {
             tracing::debug!(wallet=%filename, "Wallet already exists, opening it");
 
-            return Ok(self
-                .open_wallet(&filename, password, network)
+            return self
+                .open_wallet(filename, password, network)
                 .await
-                .context(format!("Failed to open wallet `{}`", &filename))?);
+                .context(format!("Failed to open wallet `{}`", &filename));
         }
 
         // Otherwise, create (and open) a new wallet.
@@ -167,6 +167,7 @@ impl WalletManager {
     }
 
     /// Create a new wallet from keys or open if it already exists.
+    #[allow(clippy::too_many_arguments)]
     pub async fn open_or_create_wallet_from_keys(
         &mut self,
         path: &str,
@@ -484,7 +485,7 @@ impl Wallet {
     /// takes a mutex and releases the lock in between polls.
     pub async fn wait_until_synced(
         mutex: Arc<Mutex<Self>>,
-        listener: Option<impl Fn(SyncProgress) -> ()>,
+        listener: Option<impl Fn(SyncProgress)>,
     ) -> anyhow::Result<()> {
         // We wait for 250ms before polling the wallet's sync status again.
         // This is ok because this doesn't involve any blocking calls.
@@ -747,7 +748,7 @@ impl Wallet {
 
         // Get the txid from the pending transaction before we publish,
         // otherwise it might be null.
-        let txid = ffi::pendingTransactionTxId(&*pending_tx) // UniquePtr<CxxString>
+        let txid = ffi::pendingTransactionTxId(&pending_tx) // UniquePtr<CxxString>
             .to_string();
 
         // Publish the transaction
@@ -790,7 +791,7 @@ impl Wallet {
 
         // Get the txids from the pending transaction before we publish,
         // otherwise it might be null.
-        let txids: Vec<String> = ffi::pendingTransactionTxIds(&*pending_tx)
+        let txids: Vec<String> = ffi::pendingTransactionTxIds(&pending_tx)
             .into_iter()
             .map(|s| s.to_string())
             .collect();

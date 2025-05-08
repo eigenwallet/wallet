@@ -172,7 +172,8 @@ where
                         monero_wallet_restore_blockheight,
                         TransferProof::new(
                             monero::TxHash(receipt.txid),
-                            monero::PrivateKey::from_str(&receipt.tx_key).unwrap(),
+                            monero::PrivateKey::from_str(&receipt.tx_key)
+                                .expect("tx key to be valid private key"),
                         ),
                     )))
                 },

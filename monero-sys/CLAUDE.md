@@ -3,20 +3,24 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Build/Test Commands
+
 - Build: `cargo build`
 - Test all: `cargo test`
 
 ## Development Notes
+
 - In src/bridge.rs we mirror some functions from monero/src/wallet/api/wallet2_api.h. CXX automatically generates the bindings from the header file.
 - When you want to add a new function to the bridge, you need to copy its definition from the monero/src/wallet/api/wallet2_api.h header file into the bridge.rs file, and then add it some wrapping logic in src/lib.rs.
 
 ## Code Conventions
+
 - Rust 2021 edition
 - Use `unsafe` only for FFI interactions with Monero C++ code
 - The cmake build target we need is wallet_api. We need to link libwallet.a and libwallet_api.a.
 - When using `.expect()`, the message should be a short description of the assumed invariant in the format of `.expect("the invariant to be upheld")`.
 
 ## Important Development Guidelines
+
 - Always verify method signatures in the Monero C++ headers before adding them to the Rust bridge
 - Check wallet2_api.h for the correct function names, parameters, and return types
 - When implementing new wrapper functions:
@@ -63,7 +67,7 @@ The bridge between Rust and the Monero C++ code works as follows:
    - The `OnceLock` pattern ensures WalletManager is a singleton
 
 6. **Adding New Functionality**:
-   1. Find the desired function in wallet2_api.h 
+   1. Find the desired function in wallet2_api.h
    2. Add its declaration to the `unsafe extern "C++"` block in bridge.rs
    3. Create a corresponding Rust wrapper method in lib.rs
    4. For functions returning strings or with other CXX limitations, add helper functions in bridge.h

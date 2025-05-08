@@ -59,15 +59,7 @@ pub mod ffi {
         ) -> *mut Wallet;
 
         /// Create a new wallet from keys.
-        /// const std::string &path,
-        // const std::string &password,
-        // const std::string &language,
-        // NetworkType nettype,
-        // uint64_t restoreHeight,
-        // const std::string &addressString,
-        // const std::string &viewKeyString,
-        // const std::string &spendKeyString = "",
-        // uint64_t kdf_rounds =
+        #[allow(clippy::too_many_arguments)]
         fn createWalletFromKeys(
             self: Pin<&mut WalletManager>,
             path: &CxxString,

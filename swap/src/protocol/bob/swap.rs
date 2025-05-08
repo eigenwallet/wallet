@@ -194,7 +194,7 @@ async fn next_state(
 
                     BobState::BtcLocked {
                         state3,
-                        monero_wallet_restore_blockheight: monero_wallet_restore_blockheight,
+                        monero_wallet_restore_blockheight,
                     }
                 }
                 Ok(false) => {

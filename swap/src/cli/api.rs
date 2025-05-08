@@ -370,13 +370,10 @@ impl ContextBuilder {
                 ]),
             );
 
-            let daemon = monero
-                .monero_daemon_address
-                .map(|address| monero::Daemon {
-                    address: address.clone(),
-                    ssl: address.contains("https"),
-                })
-                .unwrap(); // TODO
+            let daemon = monero_sys::Daemon {
+                address: monero.monero_node_address.to_string(),
+                ssl: monero.monero_node_address.to_string().contains("https"),
+            };
 
             let manager =
                 init_monero_wallet(data_dir.clone(), daemon, env_config.monero_network).await?;
