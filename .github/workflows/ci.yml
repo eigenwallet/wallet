@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        with:
+          submodules: recursive
         
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
@@ -53,6 +55,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        with:
+          submodules: recursive
         
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
@@ -67,6 +71,9 @@ jobs:
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
 
+      - name: Clone submodules
+        run: git submodule update --init --recursive
+        
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
 
@@ -81,6 +88,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        with:
+          submodules: recursive
         
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
@@ -94,6 +103,9 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
+
+      - name: Clone submodules
+        run: git submodule update --init --recursive
 
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
@@ -124,6 +136,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        with:
+          submodules: recursive
         
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
@@ -143,7 +157,10 @@ jobs:
         if: matrix.os == 'ubuntu-latest' # This must match the platform value defined above.
         run: |
           sudo apt update
-          sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
+          sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }} git
+
+      - name: Clone submodules
+        run: git submodule update --init --recursive
 
       - name: Install Monero build dependencies (macOS)
         if: startsWith(matrix.os, 'macos-')
@@ -212,6 +229,8 @@ jobs:
 
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        with:
+          submodules: recursive
         
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
@@ -231,6 +250,9 @@ jobs:
         run: |
           brew update
           brew install ${{ env.DEPS_MONERO_MACOS }}
+
+      - name: Clone submodules
+        run: git submodule update --init --recursive
 
       - name: Setup ccache (Linux/macOS)
         if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
@@ -292,6 +314,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        with:
+          submodules: recursive
         
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
@@ -305,6 +329,9 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
+
+      - name: Clone submodules
+        run: git submodule update --init --recursive
 
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
@@ -317,6 +344,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        with:
+          submodules: recursive
         
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
@@ -331,6 +360,9 @@ jobs:
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
 
+      - name: Clone submodules
+        run: git submodule update --init --recursive
+
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
 
@@ -342,6 +374,8 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
+        with:
+          submodules: recursive
         
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
@@ -357,6 +391,9 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
+
+      - name: Clone submodules
+        run: git submodule update --init --recursive
 
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
