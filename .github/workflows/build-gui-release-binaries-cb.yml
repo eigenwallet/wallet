@@ -90,20 +90,23 @@ jobs:
         if: matrix.platform == env.UBUNTU # This must match the platform value defined above.
         run: |
           sudo apt update;
-          sudo apt install -y ${{ env.DEPS_MONERO_LINUX }} ${{ env.DEPS_GUI_UBUNTU_SPECIFIC }}
+          sudo apt install -y ${{ env.DEPS_MONERO_LINUX }} ${{ env.DEPS_GUI_UBUNTU_SPECIFIC }} git
 
       - name: Install Monero build dependencies (macOS)
         if: startsWith(matrix.platform, 'macos')
         run: |
           brew update
-          brew install ${{ env.DEPS_MONERO_MACOS }}
+          brew install ${{ env.DEPS_MONERO_MACOS }} git
 
       - name: Install Monero build dependencies (Windows)
         if: matrix.platform == env.WINDOWS
         uses: msys2/setup-msys2@v2
         with:
           update: true
-          install: ${{ env.DEPS_MONERO_WINDOWS_MSYS2 }}
+          install: ${{ env.DEPS_MONERO_WINDOWS_MSYS2 }} git
+
+      - name: Clone submodules
+        run: git submodule update --init --recursive
 
       - name: Setup ccache (Linux/macOS)
         if: matrix.platform == env.UBUNTU || startsWith(matrix.platform, 'macos')

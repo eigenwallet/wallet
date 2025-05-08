@@ -29,7 +29,10 @@ jobs:
       - name: Install dependencies (ubuntu-latest)
         run: |
           sudo apt update
-          sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
+          sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }} git
+
+      - name: Clone submodules
+        run: git submodule update --init --recursive
 
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
