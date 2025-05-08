@@ -69,5 +69,6 @@
         "unordered_set": "cpp",
         "variant": "cpp",
         "algorithm": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "/Users/me/code/xmr-btc-swap/monero-sys/monero/src/blockchain_db"
 }

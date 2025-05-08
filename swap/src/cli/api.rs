@@ -7,18 +7,18 @@ use crate::common::tracing_util::Format;
 use crate::database::{open_db, AccessMode};
 use crate::env::{Config as EnvConfig, GetConfig, Mainnet, Testnet};
 use crate::fs::system_data_dir;
+use crate::monero::Wallets;
 use crate::network::rendezvous::XmrBtcNamespace;
 use crate::protocol::Database;
 use crate::seed::Seed;
 use crate::{bitcoin, common, monero};
-use anyhow::anyhow;
 use anyhow::{bail, Context as AnyContext, Error, Result};
 use arti_client::TorClient;
 use futures::future::try_join_all;
 use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex as SyncMutex, Once};
+use std::sync::{Arc, Once};
 use tauri_bindings::{
     PendingCompleted, TauriContextStatusEvent, TauriEmitter, TauriHandle, TauriPartialInitProgress,
 };
@@ -188,7 +188,7 @@ pub struct Context {
     pub tasks: Arc<PendingTaskList>,
     tauri_handle: Option<TauriHandle>,
     bitcoin_wallet: Option<Arc<bitcoin::Wallet>>,
-    monero_manager: Option<Arc<TokioMutex<monero::WalletManager>>>,
+    monero_manager: Option<Arc<monero::Wallets>>,
     tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
 }
 
@@ -370,15 +370,16 @@ impl ContextBuilder {
                 ]),
             );
 
-            let daemon = match monero.monero_daemon_address {
-                Some(address) => Some(monero::Daemon {
-                    address: address.into(),
-                    ssl: false, // Todo
-                }),
-                None => None,
-            };
+            let daemon = monero
+                .monero_daemon_address
+                .map(|address| monero::Daemon {
+                    address: address.clone(),
+                    ssl: address.contains("https"),
+                })
+                .unwrap(); // TODO
 
-            let manager = init_monero_wallet(data_dir.clone(), daemon).await?;
+            let manager =
+                init_monero_wallet(data_dir.clone(), daemon, env_config.monero_network).await?;
 
             self.tauri_handle.emit_context_init_progress_event(
                 TauriContextStatusEvent::Initializing(vec![
@@ -477,13 +478,13 @@ impl Context {
         env_config: EnvConfig,
         db_path: PathBuf,
         bob_bitcoin_wallet: Arc<bitcoin::Wallet>,
-        bob_monero_wallet: Arc<TokioMutex<monero::WalletManager>>,
+        bob_monero_wallet: Arc<monero::Wallets>,
     ) -> Self {
         let config = Config::for_harness(seed, env_config);
 
         Self {
-            bitcoin_wallet: bob_bitcoin_wallet.into(),
-            monero_manager: bob_monero_wallet.into(),
+            bitcoin_wallet: Some(bob_bitcoin_wallet),
+            monero_manager: Some(bob_monero_wallet),
             config,
             db: open_db(db_path, AccessMode::ReadWrite, None)
                 .await
@@ -542,37 +543,25 @@ async fn init_bitcoin_wallet(
 
 async fn init_monero_wallet(
     data_dir: PathBuf,
-    monero_daemon: Option<monero::Daemon>,
-) -> Result<Arc<TokioMutex<monero::WalletManager>>> {
+    monero_daemon: monero::Daemon,
+    network: monero::Network,
+) -> Result<Arc<Wallets>> {
+    // This is the name of a wallet we only use for blockchain monitoring
+    const DEFAULT_WALLET: &str = "swap-tool-blockchain-monitoring-wallet";
+
     // Use the ./monero/monero-data directory for backwards compatibility
     let wallet_dir = data_dir.join("monero").join("monero-data");
 
-    let manager_mutex = monero::WalletManager::get(
-        monero_daemon.clone(),
-        wallet_dir.display().to_string(),
-        None,
+    let wallets = monero::Wallets::new(
+        wallet_dir,
+        DEFAULT_WALLET.to_string(),
+        monero_daemon,
+        network,
     )
-    .await?;
+    .await
+    .context("Failed to initialize Monero wallets")?;
 
-    // If there is a daemon, wait until the wallet manager is connected
-    if let Some(daemon) = monero_daemon {
-        loop {
-            let mut manager = manager_mutex.lock().await;
-
-            if manager.connected().await {
-                break;
-            }
-
-            tracing::trace!(
-                daemon = %daemon.address,
-                using_ssl = %daemon.ssl,
-                "Monero wallet manager not yet connected to daemon, waiting..."
-            );
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        }
-    }
-
-    Ok(manager_mutex)
+    Ok(Arc::new(wallets))
 }
 
 pub mod data {

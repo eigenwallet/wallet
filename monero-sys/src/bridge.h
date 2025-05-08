@@ -99,4 +99,26 @@ namespace Monero
     {
         return wallet.setDaemon(daemon_address);
     }
+
+    inline std::unique_ptr<std::string> pendingTransactionTxId(const PendingTransaction &tx)
+    {
+        const auto ids = tx.txid();
+        if (ids.empty())
+            return std::make_unique<std::string>("");
+        return std::make_unique<std::string>(ids.front());
+    }
+
+    /**
+     * Get the transaction key for a given transaction id
+     */
+    inline std::unique_ptr<std::string> walletGetTxKey(const Wallet &wallet, const std::string &txid)
+    {
+        auto key = wallet.getTxKey(txid);
+        return std::make_unique<std::string>(key);
+    }
+
+    inline std::unique_ptr<std::vector<std::string>> pendingTransactionTxIds(const PendingTransaction &tx)
+    {
+        return std::make_unique<std::vector<std::string>>(tx.txid());
+    }
 }

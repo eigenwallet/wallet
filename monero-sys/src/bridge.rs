@@ -58,6 +58,29 @@ pub mod ffi {
             kdf_rounds: u64,
         ) -> *mut Wallet;
 
+        /// Create a new wallet from keys.
+        /// const std::string &path,
+        // const std::string &password,
+        // const std::string &language,
+        // NetworkType nettype,
+        // uint64_t restoreHeight,
+        // const std::string &addressString,
+        // const std::string &viewKeyString,
+        // const std::string &spendKeyString = "",
+        // uint64_t kdf_rounds =
+        fn createWalletFromKeys(
+            self: Pin<&mut WalletManager>,
+            path: &CxxString,
+            password: &CxxString,
+            language: &CxxString,
+            network_type: NetworkType,
+            restore_height: u64,
+            address: &CxxString,
+            view_key: &CxxString,
+            spend_key: &CxxString,
+            kdf_rounds: u64,
+        ) -> *mut Wallet;
+
         /// Recover a wallet from a mnemonic seed (electrum seed).
         #[allow(clippy::too_many_arguments)]
         fn recoveryWallet(
@@ -191,6 +214,15 @@ pub mod ffi {
 
         /// Get the error string of a pending transaction.
         fn pendingTransactionErrorString(tx: &PendingTransaction) -> UniquePtr<CxxString>;
+
+        /// Get the first transaction id of a pending transaction (if any).
+        fn pendingTransactionTxId(tx: &PendingTransaction) -> UniquePtr<CxxString>;
+
+        /// Get all transaction ids of a pending transaction.
+        fn pendingTransactionTxIds(tx: &PendingTransaction) -> UniquePtr<CxxVector<CxxString>>;
+
+        /// Get the transaction key (r) for a given txid.
+        fn walletGetTxKey(wallet: &Wallet, txid: &CxxString) -> UniquePtr<CxxString>;
 
         /// Commit a pending transaction to the blockchain.
         fn commit(

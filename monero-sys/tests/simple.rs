@@ -20,10 +20,7 @@ async fn main() {
         address: STAGENET_REMOTE_NODE.into(),
         ssl: true,
     };
-    let wallet_manager_mutex =
-        WalletManager::get(Some(daemon), temp_dir.path().to_str().unwrap(), None)
-            .await
-            .unwrap();
+    let wallet_manager_mutex = WalletManager::get(Some(daemon)).await.unwrap();
     let mut wallet_manager = wallet_manager_mutex.lock().await;
 
     while !wallet_manager.connected().await {
@@ -37,11 +34,12 @@ async fn main() {
     );
 
     let wallet_name = "recovered_wallet";
+    let wallet_path = temp_dir.path().join(wallet_name).display().to_string();
 
     tracing::info!("Recovering wallet from seed");
     let wallet_mutex = wallet_manager
         .recover_wallet(
-            wallet_name,
+            &wallet_path,
             PASSWORD,
             STAGENET_WALLET_SEED,
             monero::Network::Stagenet,

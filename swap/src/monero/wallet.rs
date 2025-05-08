@@ -1,4 +1,217 @@
-pub use monero_sys::*;
+//! This module contains the [`Wallets`] struct, which we use to manage and access the
+//! Monero blockchain and wallets.
+//!
+//! Mostly we do two things:
+//!  - wait for transactions to be confirmed
+//!  - send money from one wallet to another.
+
+use std::{path::PathBuf, sync::Arc};
+
+use anyhow::{Context, Result};
+use monero::{Address, Network};
+use monero_sys::WalletManager;
+use tokio::sync::Mutex;
+
+pub use monero_sys::{Daemon, Wallet};
+use uuid::Uuid;
+
+use super::{BlockHeight, TransferProof};
+
+/// Entrance point to the Monero blockchain.
+/// You can use this struct to open specific wallets and monitor the blockchain.
+pub struct Wallets {
+    wallet_dir: PathBuf,
+    wallet_manager: Arc<Mutex<WalletManager>>,
+    network: Network,
+    /// Filename of the main wallet.
+    /// Will be used for monitoring.
+    /// Will also be continuously synced in background.
+    main_wallet: String,
+}
+
+/// A request to watch for a transfer.
+pub struct WatchRequest {
+    pub public_view_key: super::PublicViewKey,
+    pub public_spend_key: monero::PublicKey,
+    /// The proof of the transfer.
+    pub transfer_proof: TransferProof,
+    /// The expected amount of the transfer.
+    pub expected_amount: monero::Amount,
+    /// The number of confirmations required for the transfer to be considered confirmed.
+    pub confirmation_target: u64,
+}
+
+/// Transfer a specified amount of money to a specified address.
+pub struct TransferRequest {
+    pub public_spend_key: monero::PublicKey,
+    pub public_view_key: super::PublicViewKey,
+    pub amount: monero::Amount,
+}
+
+/// Pass this to [`Wallet::wait_until_confirmed`] to not receive any confirmation callbacks.
+/// Necessary because just passing `None` leads to a compile error
+/// since rust can't infer what the excact type is because of the `impl Fn(u64)`.
+pub const NO_LISTENER: Option<fn(u64)> = Some(|_| {});
+
+impl Wallets {
+    /// Create a new `Wallets` instance.
+    /// Wallets will be opened on the specified network, connected to the specified daemon
+    /// and stored in the specified directory.
+    pub async fn new(
+        wallet_dir: PathBuf,
+        main_wallet: String,
+        daemon: Daemon,
+        network: Network,
+    ) -> Result<Self> {
+        let wallet_manager = WalletManager::get(Some(daemon))
+            .await
+            .context("Failed to initialize Monero wallet manager")?;
+
+        let wallets = Self {
+            wallet_dir,
+            wallet_manager,
+            network,
+            main_wallet: main_wallet.clone(),
+        };
+
+        // Open the monitoring wallet -- we will use this for monitoring
+        // tasks that don't require a specific wallet.
+        wallets.open(&main_wallet).await?;
+
+        Ok(wallets)
+    }
+
+    /// Try to open a wallet by name (creates if it doesn't exist).
+    async fn open(&self, wallet_name: &str) -> Result<Arc<Mutex<Wallet>>> {
+        let mut manager = self.wallet_manager.lock().await;
+        let wallet_path = self.wallet_dir.join(wallet_name).display().to_string();
+
+        manager
+            .open_or_create_wallet(&wallet_path, None, self.network)
+            .await
+            .context(format!("Failed to open or create wallet `{}`", wallet_name))
+    }
+
+    /// Open the lock wallet of a specific swap.
+    pub async fn open_swap_wallet(
+        &self,
+        swap_id: Uuid,
+        spend_key: monero::PrivateKey,
+        view_key: super::PrivateViewKey,
+        restore_height: super::BlockHeight,
+    ) -> Result<Arc<Mutex<Wallet>>> {
+        // Derive wallet address from the keys
+        let address = {
+            let pubkey = monero::PublicKey::from_private_key(&view_key.into());
+            let view_key = monero::PublicKey::from_private_key(&spend_key);
+
+            monero::Address::standard(self.network, pubkey, view_key)
+        };
+        // The wallet's filename is just the swap's uuid as a string
+        let filename = swap_id.to_string();
+        let wallet_path = self.wallet_dir.join(filename).display().to_string();
+
+        self.wallet_manager
+            .lock()
+            .await
+            .open_or_create_wallet_from_keys(
+                &wallet_path,
+                None,
+                self.network,
+                &address,
+                view_key.into(),
+                spend_key,
+                restore_height.height,
+            )
+            .await
+            .context(format!(
+                "Failed to open or create wallet `{}` from the specified keys",
+                wallet_path
+            ))
+    }
+
+    /// Get the main wallet (specified when initializing the `Wallets` instance).
+    pub async fn open_main_wallet(&self) -> Result<Arc<Mutex<Wallet>>> {
+        self.open(&self.main_wallet)
+            .await
+            .context(format!("Failed to open main wallet `{}`", self.main_wallet))
+    }
+
+    /// Get the current blockchain height.
+    /// May fail if not connected to a daemon.
+    pub async fn blockchain_height(&self) -> Result<BlockHeight> {
+        let mut manager = self.wallet_manager.lock().await;
+
+        Ok(BlockHeight {
+            height: manager.blockchain_height().await.context(
+                "Failed to get blockchain height: wallet manager not connected to daemon",
+            )?,
+        })
+    }
+
+    /// Wait until a transfer is detected and confirmed.
+    ///
+    /// You can pass a listener function that will be called with
+    /// the current number of confirmations every time we check the blockchain.
+    /// This means that it may be called multiple times with the same number of confirmations.
+    pub async fn wait_until_confirmed(
+        &self,
+        watch_request: WatchRequest,
+        listener: Option<impl Fn(u64)>,
+    ) -> Result<()> {
+        let wallet = self.open_main_wallet().await?;
+
+        let address = Address::standard(
+            self.network,
+            watch_request.public_spend_key,
+            watch_request.public_view_key.0,
+        );
+
+        Wallet::wait_until_confirmed(
+            wallet,
+            &watch_request.transfer_proof.tx_hash.0,
+            watch_request.transfer_proof.tx_key,
+            &address,
+            watch_request.expected_amount,
+            watch_request.confirmation_target,
+            listener,
+        )
+        .await
+    }
+
+    /// Close all open wallets.
+    pub async fn close_all_wallets(&self) -> Result<()> {
+        let wallets = self.wallet_manager.lock().await.all_open_wallets();
+
+        let futures = wallets.into_iter().map(|wallet| async move {
+            self.wallet_manager
+                .clone()
+                .lock()
+                .await
+                .close_wallet(wallet)
+                .await
+        });
+
+        for err in futures::future::join_all(futures)
+            .await
+            .into_iter()
+            .filter_map(Result::err)
+        {
+            tracing::error!(%err, "Failed to close wallet");
+        }
+
+        Ok(())
+    }
+}
+
+impl TransferRequest {
+    pub fn address_and_amount(&self, network: Network) -> (Address, monero::Amount) {
+        (
+            Address::standard(network, self.public_spend_key, self.public_view_key.0),
+            self.amount,
+        )
+    }
+}
 
 // use crate::env::Config;
 // use crate::monero::{

@@ -5,13 +5,12 @@ mod bridge;
 use std::{
     collections::HashMap,
     ops::Deref,
-    path::PathBuf,
     pin::Pin,
     str::FromStr,
     sync::{Arc, OnceLock},
 };
 
-use anyhow::{bail, Context};
+use anyhow::{bail, Context, Result};
 use cxx::let_cxx_string;
 use tokio::sync::Mutex;
 
@@ -25,15 +24,11 @@ static WALLET_MANAGER: OnceLock<Arc<Mutex<WalletManager>>> = OnceLock::new();
 pub struct WalletManager {
     /// A wrapper around the raw C++ wallet manager pointer.
     inner: RawWalletManager,
-    /// A map of opened wallets, indexed by their path.
+    /// A map of opened wallets, indexed by their absolute path.
     wallets: HashMap<String, Arc<Mutex<Wallet>>>,
     /// The daemon to connect to. All wallets opened
     /// by the manager will connect to this daemon, too.
     daemon: Option<Daemon>,
-    /// The directory we store all wallets in.
-    wallet_dir: String,
-    /// Filename of the main wallet. This is mostly relevant for the ASB.
-    main_wallet: Option<(String, monero::Network)>,
 }
 
 /// This is our own wrapper around a raw C++ wallet manager pointer.
@@ -65,6 +60,14 @@ pub struct TxStatus {
     pub confirmations: u64,
 }
 
+/// A receipt returned after successfully publishing a transaction.
+/// Contains basic information needed for later verification.
+pub struct TxReceipt {
+    pub txid: String,
+    pub tx_key: String,
+    pub height: u64,
+}
+
 /// A remote node to connect to.
 #[derive(Debug, Clone, Default)]
 pub struct Daemon {
@@ -72,14 +75,8 @@ pub struct Daemon {
     pub ssl: bool,
 }
 
-/// A request to watch for a transfer.
-pub struct WatchRequest {
-    pub public_spend_key: monero::PublicKey,
-    pub public_view_key: monero::PublicKey,
-    // pub transfer_proof: monero::TransferProof,
-    pub conf_target: u64,
-    pub expected: monero::Amount,
-}
+/// A wrapper around a pending transaction.
+pub struct PendingTransaction(*mut ffi::PendingTransaction);
 
 impl WalletManager {
     /// For now we don't support custom difficulty
@@ -88,19 +85,13 @@ impl WalletManager {
     /// Get the wallet manager instance.
     /// You can optionally pass a daemon with which the wallet manager and
     /// all wallets opened by the manager will connect.
-    pub async fn get<'a>(
-        daemon: Option<Daemon>,
-        wallet_dir: impl Into<String>,
-        main_wallet: Option<(String, monero::Network)>,
-    ) -> anyhow::Result<Arc<Mutex<Self>>> {
+    pub async fn get<'a>(daemon: Option<Daemon>) -> anyhow::Result<Arc<Mutex<Self>>> {
         let manager = WALLET_MANAGER.get_or_init(|| {
             let manager = ffi::getWalletManager();
             let manager = Self {
                 inner: RawWalletManager(manager),
                 wallets: HashMap::new(),
                 daemon: daemon.clone(),
-                wallet_dir: wallet_dir.into(),
-                main_wallet: main_wallet.clone(),
             };
 
             Arc::new(Mutex::new(manager))
@@ -113,18 +104,6 @@ impl WalletManager {
             // If a remote node is provided, set it as the default remote node.
             if let Some(daemon) = daemon {
                 lock.set_daemon_address(&daemon.address);
-            }
-
-            // If a main wallet is provided, open/create it.
-            if let Some((filename, network)) = main_wallet.clone() {
-                lock.main_wallet = Some((filename.clone(), network));
-
-                lock.open_or_create_wallet(&filename, None, network)
-                    .await
-                    .context(format!(
-                        "Failed to open or create main wallet `{}`",
-                        filename
-                    ))?;
             }
         }
 
@@ -151,20 +130,18 @@ impl WalletManager {
         }
 
         let kdf_rounds = Self::DEFAULT_KDF_ROUNDS;
-        let path = PathBuf::from(&self.wallet_dir).join(filename);
-
         // If we haven't loaded the wallet, but it already exists, open it.
-        if self.wallet_exists(&path.display().to_string()).await {
+        if self.wallet_exists(&filename).await {
             tracing::debug!(wallet=%filename, "Wallet already exists, opening it");
 
             return Ok(self
-                .open_wallet(&path.display().to_string(), password, network)
+                .open_wallet(&filename, password, network)
                 .await
-                .context("Failed to open wallet")?);
+                .context(format!("Failed to open wallet `{}`", &filename))?);
         }
 
         // Otherwise, create (and open) a new wallet.
-        let_cxx_string!(path = path.display().to_string().as_str());
+        let_cxx_string!(path = filename);
         let_cxx_string!(password = password.unwrap_or(""));
         let_cxx_string!(language = "");
         let network_type = network.into();
@@ -178,12 +155,68 @@ impl WalletManager {
             anyhow::bail!("Failed to create wallet, got null pointer");
         }
 
-        let wallet = Wallet::new(wallet_pointer, self.daemon.clone())
+        let raw_wallet = RawWallet(wallet_pointer);
+        let wallet = Wallet::new(raw_wallet, self.daemon.clone())
             .await
             .context(format!("Failed to initialize wallet `{}`", &filename))?;
 
         let wallet = Arc::new(Mutex::new(wallet));
         self.wallets.insert(filename.to_string(), wallet.clone());
+
+        Ok(wallet)
+    }
+
+    /// Create a new wallet from keys or open if it already exists.
+    pub async fn open_or_create_wallet_from_keys(
+        &mut self,
+        path: &str,
+        password: Option<&str>,
+        network: monero::Network,
+        address: &monero::Address,
+        view_key: monero::PrivateKey,
+        spend_key: monero::PrivateKey,
+        restore_height: u64,
+    ) -> Result<Arc<Mutex<Wallet>>> {
+        if self.wallet_exists(path).await {
+            tracing::info!(wallet=%path, "Wallet already exists, opening it");
+
+            self.open_wallet(path, password, network)
+                .await
+                .context(format!("Failed to open wallet `{}`", &path))?;
+        }
+
+        let_cxx_string!(path = path);
+        let_cxx_string!(password = password.unwrap_or(""));
+        let_cxx_string!(language = "");
+        let network_type = network.into();
+        let_cxx_string!(address = address.to_string());
+        let_cxx_string!(view_key = view_key.to_string());
+        let_cxx_string!(spend_key = spend_key.to_string());
+        let kdf_rounds = Self::DEFAULT_KDF_ROUNDS;
+
+        let wallet_pointer = self.inner.pinned().createWalletFromKeys(
+            &path,
+            &password,
+            &language,
+            network_type,
+            restore_height,
+            &address,
+            &view_key,
+            &spend_key,
+            kdf_rounds,
+        );
+
+        if wallet_pointer.is_null() {
+            anyhow::bail!("Failed to create wallet from keys, got null pointer");
+        }
+
+        let raw_wallet = RawWallet(wallet_pointer);
+        let wallet = Wallet::new(raw_wallet, self.daemon.clone())
+            .await
+            .context(format!("Failed to initialize wallet `{}`", &path))?;
+
+        let wallet = Arc::new(Mutex::new(wallet));
+        self.wallets.insert(path.to_string(), wallet.clone());
 
         Ok(wallet)
     }
@@ -214,7 +247,8 @@ impl WalletManager {
             &seed_offset,
         );
 
-        let wallet = Wallet::new(wallet_pointer, self.daemon.clone()).await?;
+        let raw_wallet = RawWallet(wallet_pointer);
+        let wallet = Wallet::new(raw_wallet, self.daemon.clone()).await?;
 
         let wallet = Arc::new(Mutex::new(wallet));
         self.wallets.insert(path.to_string(), wallet.clone());
@@ -223,7 +257,7 @@ impl WalletManager {
     }
 
     /// Close a wallet, optionally storing the wallet state.
-    async fn close_wallet(&mut self, wallet: Arc<Mutex<Wallet>>) -> anyhow::Result<()> {
+    pub async fn close_wallet(&mut self, wallet: Arc<Mutex<Wallet>>) -> anyhow::Result<()> {
         let path = wallet.lock().await.path();
 
         tracing::debug!(wallet_path = %path, "Closing wallet");
@@ -272,7 +306,9 @@ impl WalletManager {
             anyhow::bail!("Failed to open wallet: got null pointer")
         }
 
-        let wallet = Wallet::new(wallet_pointer, self.daemon.clone())
+        let raw_wallet = RawWallet(wallet_pointer);
+
+        let wallet = Wallet::new(raw_wallet, self.daemon.clone())
             .await
             .context("Failed to initialize wallet")?;
 
@@ -280,6 +316,11 @@ impl WalletManager {
         self.wallets.insert(path.to_string(), wallet.clone());
 
         Ok(wallet)
+    }
+
+    /// Get all open wallets.
+    pub fn all_open_wallets(&self) -> Vec<Arc<Mutex<Wallet>>> {
+        self.wallets.values().cloned().collect()
     }
 
     /// Set the address of the remote node ("daemon").
@@ -335,19 +376,20 @@ impl RawWalletManager {
 
 /// Safety: Todo
 unsafe impl Send for RawWalletManager {}
+unsafe impl Sync for RawWalletManager {}
 
 impl Wallet {
     const MAIN_ACCOUNT_INDEX: u32 = 0;
 
     /// Create and initialize new wallet from a raw C++ wallet pointer.
-    async fn new(inner: *mut ffi::Wallet, daemon: Option<Daemon>) -> anyhow::Result<Self> {
-        if inner.is_null() {
+    async fn new(inner: RawWallet, daemon: Option<Daemon>) -> anyhow::Result<Self> {
+        if inner.0.is_null() {
             anyhow::bail!("Failed to create wallet: got null pointer");
         }
 
-        let mut wallet = Self {
-            inner: RawWallet(inner),
-        };
+        let mut wallet = Self { inner };
+
+        tracing::debug!("Initializing wallet");
 
         wallet.check_error()?;
 
@@ -420,13 +462,23 @@ impl Wallet {
     }
 
     /// Get the sync progress of the wallet as a percentage.
+    ///
+    /// Returns a zeroed sync progress if the daemon is not connected.
     pub async fn sync_progress(&mut self) -> SyncProgress {
         let current_block = self.inner.blockChainHeight();
         let target_block = self.daemon_blockchain_height().unwrap_or(0);
+
+        if target_block == 0 {
+            return SyncProgress::zero();
+        }
+
         SyncProgress::new(current_block, target_block)
     }
 
     /// Sync the wallet with the remote node.
+    ///
+    /// You can optionally provide a listener that is called
+    /// every time there is new sync progress.
     ///
     /// This may take some time. To avoid starving other tasks, this function
     /// takes a mutex and releases the lock in between polls.
@@ -444,6 +496,7 @@ impl Wallet {
         {
             let mut wallet = mutex.lock().await;
             wallet.refresh_async().await;
+            tracing::debug!("Wallet refresh initiated");
         }
 
         // Wait until the wallet is connected to the daemon.
@@ -529,23 +582,20 @@ impl Wallet {
     /// The default check interval is 15 seconds.
     ///
     /// Returns an error if the transaction is not found or the amount is incorrect.
-    pub async fn wait_for_confirmations(
+    pub async fn wait_until_confirmed(
         wallet: Arc<Mutex<Wallet>>,
         txid: &str,
         tx_key: monero::PrivateKey,
         destination_address: &monero::Address,
         expected_amount: monero::Amount,
         confirmations: u64,
-        poll_interval: Option<tokio::time::Interval>,
         listener: Option<impl Fn(u64)>,
     ) -> anyhow::Result<()> {
         const DEFAULT_CHECK_INTERVAL_SECS: u64 = 15;
 
-        let mut poll_interval = poll_interval.unwrap_or(tokio::time::interval(
-            tokio::time::Duration::from_secs(DEFAULT_CHECK_INTERVAL_SECS),
+        let mut poll_interval = tokio::time::interval(tokio::time::Duration::from_secs(
+            DEFAULT_CHECK_INTERVAL_SECS,
         ));
-        let tx_key = tx_key.to_string();
-        let destination_address: String = destination_address.to_string();
 
         loop {
             poll_interval.tick().await;
@@ -553,7 +603,7 @@ impl Wallet {
             let tx_status = match wallet
                 .lock()
                 .await
-                .check_tx_status(txid, &tx_key, &destination_address)
+                .check_tx_status(txid, tx_key, destination_address)
                 .await
             {
                 Ok(tx_status) => tx_status,
@@ -644,12 +694,12 @@ impl Wallet {
     pub async fn check_tx_status(
         &mut self,
         txid: &str,
-        tx_key: &str,
-        address: &str,
+        tx_key: monero::PrivateKey,
+        address: &monero::Address,
     ) -> anyhow::Result<TxStatus> {
         let_cxx_string!(txid = txid);
-        let_cxx_string!(tx_key = tx_key);
-        let_cxx_string!(address = address);
+        let_cxx_string!(tx_key = tx_key.to_string());
+        let_cxx_string!(address = address.to_string());
 
         let mut received = 0;
         let mut in_pool = false;
@@ -677,51 +727,76 @@ impl Wallet {
         })
     }
 
-    /// Transfer a specified amount of monero to a specified address.
+    /// Transfer a specified amount of monero to a specified address and return a receipt containing
+    /// the transaction id, transaction key and current blockchain height. This can be used later
+    /// to prove the transfer or to wait for confirmations.
     pub async fn transfer(
         &mut self,
         address: &monero::Address,
         amount: monero::Amount,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<TxReceipt> {
         let_cxx_string!(address = address.to_string());
         let amount = amount.as_pico();
 
         // First we need to create a pending transaction.
-        let pending_tx = ffi::createTransaction(self.inner.pinned(), &address, amount);
+        let mut pending_tx = PendingTransaction(ffi::createTransaction(
+            self.inner.pinned(),
+            &address,
+            amount,
+        ));
 
-        let pinned_tx = unsafe {
-            Pin::new_unchecked(pending_tx.as_mut().ok_or(anyhow::anyhow!(
-                "failed to create transaction, got null pointer"
-            ))?)
-        };
+        // Get the txid from the pending transaction before we publish,
+        // otherwise it might be null.
+        let txid = ffi::pendingTransactionTxId(&*pending_tx) // UniquePtr<CxxString>
+            .to_string();
 
         // Publish the transaction
-        let result = pinned_tx
+        let result = pending_tx
             .publish()
             .await
             .context("Failed to publish transaction");
 
-        // Dispose of the transaction to avoid leaking memory.
+        // Check for errors (make sure to dispose the transaction)
+        if result.is_err() {
+            self.dispose_transaction(pending_tx).await;
+            bail!("Failed to publish transaction");
+        }
+
+        // Fetch the tx key from the wallet.
+        let_cxx_string!(txid_cxx = txid.clone());
+        let tx_key = ffi::walletGetTxKey(&self.inner, &txid_cxx).to_string();
+
+        // Get current blockchain height (wallet height).
+        let height = self.blockchain_height();
+
+        // Dispose the pending transaction object to avoid memory leak.
         self.dispose_transaction(pending_tx).await;
 
-        result
+        Ok(TxReceipt {
+            txid,
+            tx_key,
+            height,
+        })
     }
 
     /// Sweep all funds from the wallet to a specified address.
-    pub async fn sweep(&mut self, address: &monero::Address) -> anyhow::Result<()> {
+    /// Returns a list of transaction ids of the created transactions.
+    pub async fn sweep(&mut self, address: &monero::Address) -> anyhow::Result<Vec<String>> {
         let_cxx_string!(address = address.to_string());
 
         // Create the sweep transaction
-        let pending_tx = ffi::createSweepTransaction(self.inner.pinned(), &address);
+        let mut pending_tx =
+            PendingTransaction(ffi::createSweepTransaction(self.inner.pinned(), &address));
 
-        let pinned_tx = unsafe {
-            Pin::new_unchecked(pending_tx.as_mut().ok_or(anyhow::anyhow!(
-                "Failed to create sweep transaction, got null pointer"
-            ))?)
-        };
+        // Get the txids from the pending transaction before we publish,
+        // otherwise it might be null.
+        let txids: Vec<String> = ffi::pendingTransactionTxIds(&*pending_tx)
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
 
         // Publish the transaction
-        let result = pinned_tx
+        let result = pending_tx
             .publish()
             .await
             .context("Failed to publish transaction");
@@ -729,14 +804,14 @@ impl Wallet {
         // Dispose of the transaction to avoid leaking memory.
         self.dispose_transaction(pending_tx).await;
 
-        result
+        result.map(|_| txids)
     }
 
     /// Dispose (deallocate) a pending transaction object.
     /// Always call this before dropping a pending transaction object,
     /// otherwise we leak memory.
-    async fn dispose_transaction(&mut self, tx: *mut ffi::PendingTransaction) {
-        unsafe { self.inner.pinned().disposeTransaction(tx) };
+    async fn dispose_transaction(&mut self, tx: PendingTransaction) {
+        unsafe { self.inner.pinned().disposeTransaction(tx.0) };
     }
 
     /// Return `Ok` when the wallet is ok, otherwise return the error.
@@ -767,8 +842,9 @@ impl Wallet {
 
 /// # Safety: Todo
 unsafe impl Send for RawWallet {}
+unsafe impl Sync for RawWallet {}
 
-impl ffi::PendingTransaction {
+impl PendingTransaction {
     /// Return `Ok` when the pending transaction is ok, otherwise return the error.
     /// This is a convenience method we use for retrieving errors after
     /// a method call failed.
@@ -791,21 +867,18 @@ impl ffi::PendingTransaction {
     /// Publish this transaction to the blockchain or return an error.
     ///
     /// **Important**: you still have to dispose the transaction.
-    async fn publish(mut self: Pin<&mut Self>) -> anyhow::Result<()> {
-        self.as_mut()
-            .check_error()
-            .context("Failed to create transaction")?;
+    async fn publish(&mut self) -> anyhow::Result<()> {
+        self.check_error().context("Failed to create transaction")?;
 
         // Then we commit it to the blockchain.
         let_cxx_string!(filename = ""); // Empty filename means we commit to the blockchain
-        let success = self.as_mut().commit(&filename, false);
+        let success = self.pinned().commit(&filename, false);
 
         if success {
             Ok(())
         } else {
             // Get the error from the pending transaction.
             Err(self
-                .as_mut()
                 .check_error()
                 .context("Failed to commit transaction to blockchain")
                 .err()
@@ -860,3 +933,30 @@ impl Deref for RawWallet {
         unsafe { self.0.as_ref().expect("wallet pointer not to be null") }
     }
 }
+
+impl PendingTransaction {
+    fn pinned(&mut self) -> Pin<&mut ffi::PendingTransaction> {
+        unsafe {
+            Pin::new_unchecked(
+                self.0
+                    .as_mut()
+                    .expect("pending transaction pointer not to be null"),
+            )
+        }
+    }
+}
+
+impl Deref for PendingTransaction {
+    type Target = ffi::PendingTransaction;
+
+    fn deref(&self) -> &ffi::PendingTransaction {
+        unsafe {
+            self.0
+                .as_ref()
+                .expect("pending transaction pointer not to be null")
+        }
+    }
+}
+
+unsafe impl Send for PendingTransaction {}
+unsafe impl Sync for PendingTransaction {}
