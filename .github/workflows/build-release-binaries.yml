@@ -110,6 +110,18 @@ jobs:
         shell: msys2 {0}
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
 
+      - name: Build Monero (C++) - Linux/macOS
+        if: matrix.os == 'ubuntu-latest' || startsWith(matrix.os, 'macos')
+        working-directory: monero-sys/monero
+        run: make
+        shell: bash
+
+      - name: Build Monero (C++) - Windows
+        if: matrix.os == 'windows-latest'
+        working-directory: monero-sys/monero
+        run: make
+        shell: msys2 {0}
+
       - name: Cross Build ${{ matrix.target }} ${{ matrix.bin }} binary
         if: matrix.target == 'armv7-unknown-linux-gnueabihf'
         run: |

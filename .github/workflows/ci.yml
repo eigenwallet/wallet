@@ -39,6 +39,11 @@ jobs:
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
 
+      - name: Build Monero (C++)
+        working-directory: monero-sys/monero
+        run: make
+        shell: bash
+
       - name: Check formatting
         uses: dprint/check@v2.2
         with:
@@ -77,6 +82,11 @@ jobs:
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
 
+      - name: Build Monero (C++)
+        working-directory: monero-sys/monero
+        run: make
+        shell: bash
+
       - name: Build swap
         run: cargo build --bin swap
 
@@ -109,6 +119,11 @@ jobs:
 
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
+
+      - name: Build Monero (C++)
+        working-directory: monero-sys/monero
+        run: make
+        shell: bash
 
       - name: Install sqlx-cli
         run: cargo install --locked --version 0.6.3 sqlx-cli
@@ -184,10 +199,22 @@ jobs:
         if: matrix.os == 'ubuntu-latest' || startsWith(matrix.os, 'macos-')
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
 
+      - name: Build Monero (C++)
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+        working-directory: monero-sys/monero
+        run: make
+        shell: bash
+
       - name: Setup ccache (Windows)
         if: matrix.os == 'windows-latest'
         shell: msys2 {0}
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
+
+      - name: Build Monero (C++) - Windows
+        if: matrix.os == 'windows-latest'
+        working-directory: monero-sys/monero
+        run: make
+        shell: msys2 {0}
 
       - name: Build binary
         if: matrix.target != 'armv7-unknown-linux-gnueabihf'
@@ -262,6 +289,12 @@ jobs:
       - name: Setup ccache (Linux/macOS)
         if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
+
+      - name: Build Monero (C++)
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+        working-directory: monero-sys/monero
+        run: make
+        shell: bash
 
       - uses: Swatinem/rust-cache@v2.7.3
 
@@ -341,6 +374,11 @@ jobs:
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
 
+      - name: Build Monero (C++)
+        working-directory: monero-sys/monero
+        run: make
+        shell: bash
+
       - name: Run test ${{ matrix.test_name }}
         run: cargo test --package ${{ matrix.package }} --test ${{ matrix.test_name }} -- --nocapture
 
@@ -370,6 +408,11 @@ jobs:
 
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
+
+      - name: Build Monero (C++)
+        working-directory: monero-sys/monero
+        run: make
+        shell: bash
 
       - name: Run RPC server tests
         run: cargo test --package swap --test rpc -- --nocapture
@@ -402,6 +445,11 @@ jobs:
 
       - name: Setup ccache
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
+
+      - name: Build Monero (C++)
+        working-directory: monero-sys/monero
+        run: make
+        shell: bash
 
       - name: Run cargo check on stable rust
         run: cargo check --all-targets
