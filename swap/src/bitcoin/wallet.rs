@@ -2,6 +2,7 @@ use crate::bitcoin::{Address, Amount, Transaction};
 use crate::cli::api::tauri_bindings::{
     TauriBackgroundProgress, TauriBitcoinSyncProgress, TauriEmitter, TauriHandle,
 };
+use crate::env::{self, GetConfig};
 use crate::seed::Seed;
 use anyhow::{anyhow, bail, Context, Result};
 use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
@@ -1520,12 +1521,16 @@ impl TestWalletBuilder {
         // Use our constructor wrappers
         const ELECTRUM_RPC_URL: &str = "tcp://127.0.0.1:50001";
 
-        // TODO: Use the provided key here. Dont bother for now.
         // TODO: Use a stub EstimateFeeRate here for testing
         let wallet = WalletBuilder::create_empty()
+            .seed(Seed::random().unwrap())         // TODO: Use the provided key here. Dont bother for now. 
             .persister(PersisterConfig::InMemorySqlite)
             .electrum_rpc_url(ELECTRUM_RPC_URL)
             .network(Network::Regtest)
+            .env_config(env::Regtest::get_config())
+            .finality_confirmations(1 as u32)
+            .target_block(1 as usize)
+            .sync_interval(Duration::from_secs(1))
             .build()
             .await
             .unwrap();
