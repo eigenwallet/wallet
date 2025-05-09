@@ -32,7 +32,7 @@ runs:
         
         # Ccache settings
         echo 'CCACHE_SETTINGS_COMMAND<<EOF
-        ccache --max-size=150M
+        ccache --max-size=10G
         ccache --set-config=compression=true
         EOF' >> $GITHUB_ENV
 
