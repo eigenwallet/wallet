@@ -171,15 +171,6 @@ jobs:
       - name: Install dependencies (ubuntu-latest)
         if: matrix.os == 'ubuntu-latest' # This must match the platform value defined above.
         run: |
-          if [[ "${{ matrix.target }}" == "armv7-unknown-linux-gnueabihf" ]]; then
-            sudo dpkg --add-architecture armhf
-            # Add sources for armhf from ports.ubuntu.com
-            echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse" | sudo tee /etc/apt/sources.list.d/armhf-ports.list
-            echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/armhf-ports.list
-            echo "deb [arch=armhf] http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/armhf-ports.list
-            sudo apt update
-            sudo apt install -y libssl-dev:armhf
-          fi
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }} git
 
