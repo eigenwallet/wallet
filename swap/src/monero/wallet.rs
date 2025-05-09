@@ -181,26 +181,11 @@ impl Wallets {
 
     /// Close all open wallets.
     pub async fn close_all_wallets(&self) -> Result<()> {
-        let wallets = self.wallet_manager.lock().await.all_open_wallets();
-
-        let futures = wallets.into_iter().map(|wallet| async move {
-            self.wallet_manager
-                .clone()
-                .lock()
-                .await
-                .close_wallet(wallet)
-                .await
-        });
-
-        for err in futures::future::join_all(futures)
+        let mut manager = self.wallet_manager.lock().await;
+        manager
+            .close_all_wallets()
             .await
-            .into_iter()
-            .filter_map(Result::err)
-        {
-            tracing::error!(%err, "Failed to close wallet");
-        }
-
-        Ok(())
+            .context("Failed to close all open wallets")
     }
 }
 

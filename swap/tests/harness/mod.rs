@@ -946,33 +946,33 @@ async fn assert_eventual_balance<A: fmt::Display + PartialOrd>(
 trait Wallet {
     type Amount;
 
-    async fn refresh(&self) -> Result<()>;
-    async fn get_balance(&self) -> Result<Self::Amount>;
+    fn refresh(&self) -> impl Future<Output = Result<()>>;
+    fn get_balance(&self) -> impl Future<Output = Result<Self::Amount>>;
 }
 
-#[async_trait]
 impl Wallet for monero::Wallet {
     type Amount = monero::Amount;
 
-    async fn refresh(&self) -> Result<()> {
-        while !self.synchronized() {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
+    fn refresh(&self) -> impl Future<Output = Result<()>> {
+        async move {
+            while !self.synchronized() {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
 
-        Ok(())
+            Ok(())
+        }
     }
 
-    async fn get_balance(&self) -> Result<Self::Amount> {
-        Ok(self.total_balance().into())
+    fn get_balance(&self) -> impl Future<Output = Result<Self::Amount>> {
+        async move { Ok(self.total_balance().into()) }
     }
 }
 
-#[async_trait]
 impl Wallet for bitcoin::Wallet {
     type Amount = bitcoin::Amount;
 
-    async fn refresh(&self) -> Result<()> {
-        self.sync().await
+    fn refresh(&self) -> impl Future<Output = Result<()>> {
+        async move { self.sync().await }
     }
 
     async fn get_balance(&self) -> Result<Self::Amount> {

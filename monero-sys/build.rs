@@ -169,7 +169,7 @@ fn main() {
     // Build the CXX bridge
     let mut build = cxx_build::bridge("src/bridge.rs");
     build
-        .flag("-mmacosx-version-min=11.0")
+        // .flag("-mmacosx-version-min=11.0")
         .flag_if_supported("-std=c++17")
         .include("src") // Include the bridge.h file
         .include("monero/src") // Includes the monero headers

@@ -88,6 +88,9 @@ impl WalletManager {
     pub async fn get<'a>(daemon: Option<Daemon>) -> anyhow::Result<Arc<Mutex<Self>>> {
         let manager = WALLET_MANAGER.get_or_init(|| {
             let manager = ffi::getWalletManager();
+            if manager.is_null() {
+                panic!("Failed to get wallet manager, got null pointer");
+            }
             let manager = Self {
                 inner: RawWalletManager(manager),
                 wallets: HashMap::new(),
@@ -258,11 +261,20 @@ impl WalletManager {
     }
 
     /// Close a wallet, optionally storing the wallet state.
-    pub async fn close_wallet(&mut self, wallet: Arc<Mutex<Wallet>>) -> anyhow::Result<()> {
+    ///
+    /// This function is only safe because
+    ///  - the only way to obtain an owned `Mutex<Wallet>` is by `Arc::into_inner`, guaranteeing
+    ///    that there are no other references to the wallet, and
+    ///  - it consumes the Mutex, guaranteeing that no other references to the wallet
+    ///    will be created.
+    ///
+    /// **DO NOT CHANGE OR YOU WILL TRIGGER UNDEFINED BEHAVIOR (BAD)**
+    pub async fn close_wallet(&mut self, wallet: Mutex<Wallet>) -> anyhow::Result<()> {
         let path = wallet.lock().await.path();
 
         tracing::debug!(wallet_path = %path, "Closing wallet");
 
+        // Safety: we know we have a valid, unique pointer to the wallet
         let success = unsafe {
             self.inner
                 .pinned()
@@ -275,6 +287,23 @@ impl WalletManager {
 
         // Remove the wallet from the map
         self.wallets.remove(&path);
+
+        Ok(())
+    }
+
+    pub async fn close_all_wallets(&mut self) -> anyhow::Result<()> {
+        // To drop the Arcs, we need to remove all wallets from the map first.
+        let mut wallets = HashMap::new();
+        std::mem::swap(&mut wallets, &mut self.wallets);
+
+        for (path, wallet) in wallets {
+            let wallet = Arc::into_inner(wallet).context(
+                "Couldn't unwrap Arc<Mutex<Wallet>>, not all other Arcs have been dropped",
+            )?;
+            self.close_wallet(wallet)
+                .await
+                .context(format!("Failed to close wallet `{}`", &path))?;
+        }
 
         Ok(())
     }
@@ -377,7 +406,6 @@ impl RawWalletManager {
 
 /// Safety: Todo
 unsafe impl Send for RawWalletManager {}
-unsafe impl Sync for RawWalletManager {}
 
 impl Wallet {
     const MAIN_ACCOUNT_INDEX: u32 = 0;
@@ -843,7 +871,6 @@ impl Wallet {
 
 /// # Safety: Todo
 unsafe impl Send for RawWallet {}
-unsafe impl Sync for RawWallet {}
 
 impl PendingTransaction {
     /// Return `Ok` when the pending transaction is ok, otherwise return the error.
@@ -960,4 +987,3 @@ impl Deref for PendingTransaction {
 }
 
 unsafe impl Send for PendingTransaction {}
-unsafe impl Sync for PendingTransaction {}
