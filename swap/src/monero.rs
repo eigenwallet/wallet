@@ -34,7 +34,6 @@ pub enum network {
 
 /// A Monero block height.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(transparent)]
 pub struct BlockHeight {
     pub height: u64,
 }
