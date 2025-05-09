@@ -317,8 +317,8 @@ async fn init_test_wallets(
         .network(env_config.bitcoin_network)
         .electrum_rpc_url(electrum_rpc_url.as_str().to_string())
         .persister(swap::bitcoin::wallet::PersisterConfig::InMemorySqlite)
-        .finality_confirmations(1)
-        .target_block(1)
+        .finality_confirmations(1 as u32)
+        .target_block(1 as usize)
         .sync_interval(Duration::from_secs(60))
         .build()
         .await

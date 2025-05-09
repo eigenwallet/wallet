@@ -22,7 +22,7 @@ backoff = { version = "0.4", features = [ "tokio" ] }
 base64 = "0.22"
 bdk = { version = "0.28" }
 bdk_electrum = { version = "0.19", features = [ "use-rustls" ] }
-bdk_wallet = { version = "1.0.0-beta.5", features = [ "rusqlite" ] }
+bdk_wallet = { version = "1.0.0-beta.5", features = [ "rusqlite", "test-utils" ] }
 big-bytes = "1"
 bitcoin = { version = "0.32", features = [ "rand", "serde" ] }
 bmrng = "0.5.2"

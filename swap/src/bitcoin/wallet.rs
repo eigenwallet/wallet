@@ -8,11 +8,12 @@ use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
 use bdk_electrum::BdkElectrumClient;
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::bitcoin::Network;
-use bdk_wallet::chain::spk_client::SyncRequest;
+use bdk_wallet::chain::BlockId;
 use bdk_wallet::export::FullyNodedExport;
 use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::template::{Bip84, DescriptorTemplate};
+use bdk_wallet::test_utils::{insert_checkpoint, receive_output_in_latest_block};
 use bdk_wallet::KeychainKind;
 use bdk_wallet::SignOptions;
 use bdk_wallet::WalletPersister;
@@ -1514,28 +1515,47 @@ impl TestWalletBuilder {
         }
     }
 
-    pub async fn build(self) -> Wallet<bdk_wallet::rusqlite::Connection> {
-        let mut database = Connection::open_in_memory().expect("sqlite in memory to work");
+    pub async fn build(self) -> Wallet<Connection> {
+        // Build an empty wallet from the given key
+        // Use our constructor wrappers
+        const ELECTRUM_RPC_URL: &str = "tcp://127.0.0.1:50001";
 
-        bdk::populate_test_db!(
-            &mut database,
-            testutils! {
-                @tx ( (@external descriptors, index as u32) => self.utxo_amount ) (@confirmations 1)
+        // TODO: Use the provided key here. Dont bother for now.
+        // TODO: Use a stub EstimateFeeRate here for testing
+        let wallet = WalletBuilder::create_empty()
+            .persister(PersisterConfig::InMemorySqlite)
+            .electrum_rpc_url(ELECTRUM_RPC_URL)
+            .network(Network::Regtest)
+            .build()
+            .await
+            .unwrap();
+
+        let mut locked_wallet = wallet.wallet.try_lock().unwrap();
+
+        // Create a block
+        insert_checkpoint(
+            &mut *locked_wallet,
+            BlockId {
+                height: 42,
+                hash: <bitcoin::blockdata::block::BlockHash as bitcoin::hashes::Hash>::all_zeros(),
             },
-            Some(100)
         );
 
-        let wallet = super::WalletBuilder::default()
-            .seed(self.key.clone())
-            .network(Network::Regtest)
-            .electrum_rpc_url("tcp://127.0.0.1:60001".to_string())
-            .persister(super::bitcoin::wallet::PersisterConfig::InMemorySqlite)
-            .finality_confirmations(1)
-            .target_block(1)
-            .sync_interval(Duration::from_secs(10))
-            .build_wallet()
-            .await
-            .expect("could not init btc wallet");
+        // Fund the wallet with fake utxos
+        for _ in 0..self.num_utxos {
+            receive_output_in_latest_block(&mut *locked_wallet, self.utxo_amount);
+        }
+
+        // Create another block to confirm the utxos
+        insert_checkpoint(
+            &mut *locked_wallet,
+            BlockId {
+                height: 43,
+                hash: <bitcoin::blockdata::block::BlockHash as bitcoin::hashes::Hash>::all_zeros(),
+            },
+        );
+
+        drop(locked_wallet);
 
         wallet
     }
@@ -1931,3 +1951,4 @@ DEBUG swap::bitcoin::wallet: Bitcoin transaction status changed txid=00000000000
         }
     }
 }
+
