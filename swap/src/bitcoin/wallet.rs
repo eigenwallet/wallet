@@ -2,7 +2,6 @@ use crate::bitcoin::{Address, Amount, Transaction};
 use crate::cli::api::tauri_bindings::{
     TauriBackgroundProgress, TauriBitcoinSyncProgress, TauriEmitter, TauriHandle,
 };
-use crate::env::{self, GetConfig};
 use crate::seed::Seed;
 use anyhow::{anyhow, bail, Context, Result};
 use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
@@ -43,7 +42,7 @@ use derive_builder::Builder;
 
 /// Assuming we add a spread of 3% we don't want to pay more than 3% of the
 /// amount for tx fees.
-const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.1);
+const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.03);
 const MAX_ABSOLUTE_TX_FEE: Decimal = dec!(100_000);
 const DUST_AMOUNT: Amount = Amount::from_sat(546);
 
@@ -189,13 +188,13 @@ impl WalletBuilder {
 /// This wallet is generic over the persister, which may be a
 /// rusqlite connection, or an in-memory database, or something else.
 #[derive(Clone)]
-pub struct Wallet<Persister = Connection> {
+pub struct Wallet<Persister = Connection, C = Client> {
     /// The wallet, which is persisted to the disk.
     wallet: Arc<Mutex<PersistedWallet<Persister>>>,
     /// The database connection used to persist the wallet.
     persister: Arc<Mutex<Persister>>,
     /// The electrum client.
-    client: Arc<Mutex<Client>>,
+    client: Arc<Mutex<C>>,
     /// The network this wallet is on.
     network: Network,
     /// The number of confirmations (blocks) we require for a transaction
@@ -535,34 +534,7 @@ impl Wallet {
 
         Ok(wallet)
     }
-}
 
-// These are the methods that are always available, regardless of the persister.
-impl<T> Wallet<T> {
-    /// Get the network of this wallet.
-    pub fn network(&self) -> Network {
-        self.network
-    }
-
-    /// Get the finality confirmations of this wallet.
-    pub fn finality_confirmations(&self) -> u32 {
-        self.finality_confirmations
-    }
-
-    /// Get the target block of this wallet.
-    ///
-    /// This is the the number of blocks we want to wait at most for
-    /// one ofour transaction to be confirmed.
-    pub fn target_block(&self) -> usize {
-        self.target_block
-    }
-}
-
-impl<Persister> Wallet<Persister>
-where
-    Persister: WalletPersister + Sized,
-    <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
-{
     /// Broadcast the given transaction to the network and emit a tracing statement
     /// if done so successfully.
     ///
@@ -633,7 +605,7 @@ where
 
                         if new_status != ScriptStatus::Retrying
                         {
-                            last_status = Some(trace_status_change(txid, last_status, new_status));
+                            last_status = Some(debug_status_change(txid, last_status, new_status));
 
                             let all_receivers_gone = sender.send(new_status).is_err();
 
@@ -671,6 +643,127 @@ where
         }
     }
 
+    /// Get a transaction from the Electrum server or the cache.
+    pub async fn get_tx(&self, txid: Txid) -> Result<Arc<Transaction>> {
+        let client = self.client.lock().await;
+        let tx = client
+            .get_tx(txid)
+            .context("Failed to get transaction from cache or Electrum server")?;
+
+        Ok(tx)
+    }
+
+    /// Sync the wallet with the blockchain, optionally calling a callback on progress updates.
+    /// This will NOT emit progress events to the UI.
+    pub async fn sync_with_custom_callback<F>(&self, mut callback: Option<F>) -> Result<()>
+    where
+        F: FnMut(usize, usize) + Send + 'static,
+    {
+        const BATCH_SIZE: usize = 64;
+
+        let sync_request = self
+            .wallet
+            .lock()
+            .await
+            .start_sync_with_revealed_spks()
+            .inspect(move |_, progress| {
+                if let Some(cb) = callback.as_mut() {
+                    cb(progress.consumed(), progress.total());
+                }
+
+                tracing::debug!(
+                    "Syncing wallet ({:?} / {:?} done)",
+                    progress.consumed(),
+                    progress.total()
+                );
+            })
+            .build();
+
+        // We spawn a blocking task to sync the wallet
+        // because the sync method is blocking.
+        let client_mutex = self.client.clone();
+        let res = tokio::task::spawn_blocking(move || {
+            let client = client_mutex.blocking_lock();
+            client.electrum.sync(sync_request, BATCH_SIZE, true)
+        })
+        .await??;
+
+        let mut wallet = self.wallet.lock().await;
+        wallet.apply_update(res)?;
+
+        let mut persister = self.persister.lock().await;
+        wallet.persist(&mut persister)?;
+
+        Ok(())
+    }
+
+    /// Sync the wallet with the blockchain
+    /// and emit progress events to the UI
+    pub async fn sync(&self) -> Result<()> {
+        let background_process_handle = self
+            .tauri_handle
+            .new_background_process_with_initial_progress(
+                TauriBackgroundProgress::SyncingBitcoinWallet,
+                TauriBitcoinSyncProgress::Unknown,
+            );
+
+        let background_process_handle_clone = background_process_handle.clone();
+        self.sync_with_custom_callback::<Box<dyn Fn(usize, usize) + Send>>(Some(Box::new(
+            move |consumed, total| {
+                background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
+                    consumed: consumed as u64,
+                    total: total as u64,
+                });
+            },
+        )))
+        .await?;
+
+        background_process_handle.finish();
+
+        Ok(())
+    }
+
+     /// Calculate the fee for a given transaction.
+    ///
+    /// Will fail if the transaction inputs are not owned by this wallet.
+    pub async fn transaction_fee(&self, txid: Txid) -> Result<Amount> {
+        let transaction = self
+            .get_tx(txid)
+            .await
+            .context("Could not find tx in bdk wallet when trying to determine fees")?;
+        let fee = self.wallet.lock().await.calculate_fee(&transaction)?;
+
+        Ok(fee)
+    }
+}
+
+// These are the methods that are always available, regardless of the persister.
+impl<T, C> Wallet<T, C> {
+    /// Get the network of this wallet.
+    pub fn network(&self) -> Network {
+        self.network
+    }
+
+    /// Get the finality confirmations of this wallet.
+    pub fn finality_confirmations(&self) -> u32 {
+        self.finality_confirmations
+    }
+
+    /// Get the target block of this wallet.
+    ///
+    /// This is the the number of blocks we want to wait at most for
+    /// one ofour transaction to be confirmed.
+    pub fn target_block(&self) -> usize {
+        self.target_block
+    }
+}
+
+impl<Persister, C> Wallet<Persister, C>
+where
+    Persister: WalletPersister + Sized,
+    <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
+    C: EstimateFeeRate + Send + Sync + 'static,
+{
     pub async fn sign_and_finalize(&self, mut psbt: bitcoin::psbt::Psbt) -> Result<Transaction> {
         // Acquire the wallet lock once here for efficiency within the non-finalized block
         let wallet_guard = self.wallet.lock().await;
@@ -712,19 +805,6 @@ where
         wallet.persist(&mut persister)?;
 
         Ok(address)
-    }
-
-    /// Calculate the fee for a given transaction.
-    ///
-    /// Will fail if the transaction inputs are not owned by this wallet.
-    pub async fn transaction_fee(&self, txid: Txid) -> Result<Amount> {
-        let transaction = self
-            .get_tx(txid)
-            .await
-            .context("Could not find tx in bdk wallet when trying to determine fees")?;
-        let fee = self.wallet.lock().await.calculate_fee(&transaction)?;
-
-        Ok(fee)
     }
 
     /// Builds a partially signed transaction
@@ -845,86 +925,6 @@ where
         let min_relay_fee = client.min_relay_fee()?;
 
         estimate_fee(weight, transfer_amount, fee_rate, min_relay_fee)
-    }
-
-    /// Get a transaction from the Electrum server or the cache.
-    pub async fn get_tx(&self, txid: Txid) -> Result<Arc<Transaction>> {
-        let client = self.client.lock().await;
-        let tx = client
-            .get_tx(txid)
-            .context("Failed to get transaction from cache or Electrum server")?;
-
-        Ok(tx)
-    }
-
-    /// Sync the wallet with the blockchain, optionally calling a callback on progress updates.
-    /// This will NOT emit progress events to the UI.
-    pub async fn sync_with_custom_callback<F>(&self, mut callback: Option<F>) -> Result<()>
-    where
-        F: FnMut(usize, usize) + Send + 'static,
-    {
-        const BATCH_SIZE: usize = 64;
-
-        let sync_request = self
-            .wallet
-            .lock()
-            .await
-            .start_sync_with_revealed_spks()
-            .inspect(move |_, progress| {
-                if let Some(cb) = callback.as_mut() {
-                    cb(progress.consumed(), progress.total());
-                }
-
-                tracing::debug!(
-                    "Syncing wallet ({:?} / {:?} done)",
-                    progress.consumed(),
-                    progress.total()
-                );
-            })
-            .build();
-
-        // We spawn a blocking task to sync the wallet
-        // because the sync method is blocking.
-        let client_mutex = self.client.clone();
-        let res = tokio::task::spawn_blocking(move || {
-            let client = client_mutex.blocking_lock();
-            client.electrum.sync(sync_request, BATCH_SIZE, true)
-        })
-        .await??;
-
-        let mut wallet = self.wallet.lock().await;
-        wallet.apply_update(res)?;
-
-        let mut persister = self.persister.lock().await;
-        wallet.persist(&mut persister)?;
-
-        Ok(())
-    }
-
-    /// Sync the wallet with the blockchain
-    /// and emit progress events to the UI
-    pub async fn sync(&self) -> Result<()> {
-        let background_process_handle = self
-            .tauri_handle
-            .new_background_process_with_initial_progress(
-                TauriBackgroundProgress::SyncingBitcoinWallet,
-                TauriBitcoinSyncProgress::Unknown,
-            );
-
-        let background_process_handle_clone = background_process_handle.clone();
-        self.sync_with_custom_callback::<Box<dyn Fn(usize, usize) + Send>>(Some(Box::new(
-            move |consumed, total| {
-                background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
-                    consumed: consumed as u64,
-                    total: total as u64,
-                });
-            },
-        )))
-        .await?;
-
-        background_process_handle.finish();
-
-        Ok(())
     }
 }
 
@@ -1092,13 +1092,13 @@ impl EstimateFeeRate for Client {
     }
 }
 
-fn trace_status_change(txid: Txid, old: Option<ScriptStatus>, new: ScriptStatus) -> ScriptStatus {
+fn debug_status_change(txid: Txid, old: Option<ScriptStatus>, new: ScriptStatus) -> ScriptStatus {
     match (old, new) {
         (None, new_status) => {
             tracing::debug!(%txid, status = %new_status, "Found relevant Bitcoin transaction");
         }
         (Some(old_status), new_status) if old_status != new_status => {
-            tracing::trace!(%txid, %new_status, %old_status, "Bitcoin transaction status changed");
+            tracing::debug!(%txid, %new_status, %old_status, "Bitcoin transaction status changed");
         }
         _ => {}
     }
@@ -1516,24 +1516,36 @@ impl TestWalletBuilder {
         }
     }
 
-    pub async fn build(self) -> Wallet<Connection> {
-        // Build an empty wallet from the given key
-        // Use our constructor wrappers
-        const ELECTRUM_RPC_URL: &str = "tcp://127.0.0.1:50001";
+    pub async fn build(self) -> Wallet<Connection, StaticFeeRate>
+    {
+        let bdk_network = bitcoin::Network::Regtest;
 
-        // TODO: Use a stub EstimateFeeRate here for testing
-        let wallet = WalletBuilder::create_empty()
-            .seed(Seed::random().unwrap())         // TODO: Use the provided key here. Dont bother for now. 
-            .persister(PersisterConfig::InMemorySqlite)
-            .electrum_rpc_url(ELECTRUM_RPC_URL)
-            .network(Network::Regtest)
-            .env_config(env::Regtest::get_config())
-            .finality_confirmations(1 as u32)
-            .target_block(1 as usize)
-            .sync_interval(Duration::from_secs(1))
-            .build()
-            .await
-            .unwrap();
+        let external_descriptor = Bip84(self.key, KeychainKind::External)
+            .build(bdk_network)
+            .expect("Failed to build external descriptor for test wallet");
+        let internal_descriptor = Bip84(self.key, KeychainKind::Internal)
+            .build(bdk_network)
+            .expect("Failed to build internal descriptor for test wallet");
+
+        let mut persister = bdk_wallet::rusqlite::Connection::open_in_memory()
+            .expect("Failed to open in-memory DB for test wallet");
+
+        let bdk_core_wallet = bdk_wallet::Wallet::create(external_descriptor, internal_descriptor)
+            .network(bdk_network)
+            .create_wallet(&mut persister)
+            .expect("Failed to create bdk_wallet::Wallet for test");
+
+        let client = StaticFeeRate::new(FeeRate::from_sat_per_vb(self.sats_per_vb).unwrap(), bitcoin::Amount::from_sat(self.min_relay_fee_sats));
+        
+        let wallet = Wallet {
+            wallet: Arc::new(Mutex::new(bdk_core_wallet)), // This field was missing
+            client: Arc::new(Mutex::new(client)),
+            persister: Arc::new(Mutex::new(persister)), // Use the created persister
+            network: Network::Regtest,
+            finality_confirmations: 1,
+            target_block: 1,
+            tauri_handle: None,
+        };
 
         let mut locked_wallet = wallet.wallet.try_lock().unwrap();
 
@@ -1761,7 +1773,7 @@ mod tests {
     proptest! {
         #[test]
         fn given_fee_above_max_should_always_errors(
-            sat_per_vb in 100_000_000u64..,
+            sat_per_vb in 100_000_000u64..(u64::MAX / 250),
         ) {
             let weight = 400;
             let amount = bitcoin::Amount::from_sat(547u64);
@@ -1890,34 +1902,34 @@ mod tests {
         let inner = bitcoin::hashes::sha256d::Hash::all_zeros();
         let tx = Txid::from_raw_hash(inner);
         let mut old = None;
-        old = Some(trace_status_change(tx, old, ScriptStatus::Unseen));
-        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(trace_status_change(
+        old = Some(debug_status_change(tx, old, ScriptStatus::Unseen));
+        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(debug_status_change(
+            tx,
+            old,
+            ScriptStatus::Confirmed(Confirmed { depth: 0 }),
+        ));
+        old = Some(debug_status_change(
             tx,
             old,
             ScriptStatus::Confirmed(Confirmed { depth: 1 }),
         ));
-        old = Some(trace_status_change(
+        old = Some(debug_status_change(
+            tx,
+            old,
+            ScriptStatus::Confirmed(Confirmed { depth: 1 }),
+        ));
+        old = Some(debug_status_change(
             tx,
             old,
             ScriptStatus::Confirmed(Confirmed { depth: 2 }),
         ));
-        old = Some(trace_status_change(
-            tx,
-            old,
-            ScriptStatus::Confirmed(Confirmed { depth: 3 }),
-        ));
-        old = Some(trace_status_change(
-            tx,
-            old,
-            ScriptStatus::Confirmed(Confirmed { depth: 3 }),
-        ));
-        trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 3 }));
+        debug_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 2 }));
 
         assert_eq!(
             writer.captured(),

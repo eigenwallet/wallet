@@ -3,7 +3,6 @@ use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
 use anyhow::{anyhow, Context, Result};
 use bitcoin::Txid;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;

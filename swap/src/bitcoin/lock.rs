@@ -10,6 +10,8 @@ use bdk_wallet::psbt::PsbtUtils;
 use bitcoin::{locktime::absolute::LockTime as PackedLockTime, ScriptBuf, Sequence};
 use serde::{Deserialize, Serialize};
 
+use super::wallet::EstimateFeeRate;
+
 const SCRIPT_SIZE: usize = 34;
 const TX_LOCK_WEIGHT: usize = 485;
 
@@ -21,7 +23,7 @@ pub struct TxLock {
 
 impl TxLock {
     pub async fn new(
-        wallet: &Wallet,
+        wallet: &Wallet<bdk_wallet::rusqlite::Connection, impl EstimateFeeRate + Send + Sync + 'static>,
         amount: Amount,
         A: PublicKey,
         B: PublicKey,
@@ -272,7 +274,7 @@ mod tests {
     async fn bob_make_psbt(
         A: PublicKey,
         B: PublicKey,
-        wallet: &Wallet<bdk_wallet::rusqlite::Connection>,
+        wallet: &Wallet<bdk_wallet::rusqlite::Connection, impl EstimateFeeRate + Send + Sync + 'static>,
         amount: Amount,
     ) -> PartiallySignedTransaction {
         let change = wallet.new_address().await.unwrap();
