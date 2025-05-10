@@ -499,6 +499,17 @@ pub enum TauriBitcoinSyncProgress {
     Unknown,
 }
 
+#[derive(Clone, Serialize)]
+#[typeshare]
+#[serde(tag = "type", content = "content")]
+pub enum TauriBitcoinFullScanProgress {
+    Known {
+        #[typeshare(serialized_as = "number")]
+        current_index: u64,
+    },
+    Unknown,
+}
+
 #[derive(Serialize, Clone)]
 #[typeshare]
 pub struct BackgroundRefundProgress {
@@ -516,6 +527,7 @@ pub enum TauriBackgroundProgress {
     OpeningDatabase(PendingCompleted<()>),
     EstablishingTorCircuits(PendingCompleted<TorBootstrapStatus>),
     SyncingBitcoinWallet(PendingCompleted<TauriBitcoinSyncProgress>),
+    FullScanningBitcoinWallet(PendingCompleted<TauriBitcoinFullScanProgress>),
     BackgroundRefund(PendingCompleted<BackgroundRefundProgress>),
 }
 

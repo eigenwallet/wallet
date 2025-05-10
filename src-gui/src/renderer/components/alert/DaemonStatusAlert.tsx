@@ -34,7 +34,7 @@ function AlertWithLinearProgress({ title, progress }: {
   return <Alert severity="info">
     <Box style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
       {title}
-      {(progress === null || progress === 0 || progress === 100) ? (
+      {(progress === null || progress === 0 || progress >= 100) ? (
         <LinearProgress variant="indeterminate" />
       ) : (
         <LinearProgress variant="buffer" value={progress} valueBuffer={Math.min(progress + bufferProgressAddition, 100)} />
@@ -65,6 +65,9 @@ function PartialInitStatus({ status, currentNumOfType, totalOfType, classes }: {
         (status.progress.content?.content?.consumed / status.progress.content?.content?.total) * 100 : null;
 
       return <AlertWithLinearProgress title={`Syncing Bitcoin wallet${titleSuffix}`} progress={progressValue} />
+    case "FullScanningBitcoinWallet":
+      const fullScanProgressValue = status.progress.content?.type === "Known" ? (status.progress.content?.content?.current_index / 1250) * 100 : null;
+      return <AlertWithLinearProgress title={`Full scan of Bitcoin wallet (one time operation)`} progress={fullScanProgressValue} />
     case "OpeningBitcoinWallet":
       return (
         <LoadingSpinnerAlert severity="info">
@@ -104,7 +107,7 @@ export default function DaemonStatusAlert() {
 
   switch (contextStatus) {
     case TauriContextStatusEvent.Initializing:
-      return <LoadingSpinnerAlert severity="warning">Some parts of the application are still loading</LoadingSpinnerAlert>;
+      return <LoadingSpinnerAlert severity="warning">Core components are loading</LoadingSpinnerAlert>;
     case TauriContextStatusEvent.Available:
       return <Alert severity="success">The daemon is running</Alert>;
     case TauriContextStatusEvent.Failed:

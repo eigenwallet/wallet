@@ -20,7 +20,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as SyncMutex, Once};
 use tauri_bindings::{
-    TauriBackgroundProgress, TauriBitcoinSyncProgress, TauriContextStatusEvent, TauriEmitter,
+    TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter,
     TauriHandle,
 };
 use tokio::sync::{broadcast, broadcast::Sender, Mutex as TokioMutex, RwLock};
@@ -335,8 +335,8 @@ impl ContextBuilder {
 
                     let bitcoin_progress_handle = tauri_handle
                         .new_background_process_with_initial_progress(
-                            TauriBackgroundProgress::SyncingBitcoinWallet,
-                            TauriBitcoinSyncProgress::Unknown,
+                            TauriBackgroundProgress::OpeningBitcoinWallet,
+                            (),
                         );
 
                     let wallet = init_bitcoin_wallet(

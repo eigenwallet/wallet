@@ -1,6 +1,6 @@
 use crate::bitcoin::{Address, Amount, Transaction};
 use crate::cli::api::tauri_bindings::{
-    TauriBackgroundProgress, TauriBitcoinSyncProgress, TauriEmitter, TauriHandle,
+    TauriBackgroundProgress, TauriBitcoinFullScanProgress, TauriBitcoinSyncProgress, TauriEmitter, TauriHandle
 };
 use crate::seed::Seed;
 use anyhow::{anyhow, bail, Context, Result};
@@ -284,7 +284,7 @@ impl Wallet {
     /// which might end up unused.
     const SCAN_STOP_GAP: usize = 1_000;
     /// The batch size for the full scan.
-    const SCAN_BATCH_SIZE: usize = 5;
+    const SCAN_BATCH_SIZE: usize = 32;
 
     const WALLET_PARENT_DIR_NAME: &str = "wallet";
     const WALLET_DIR_NAME: &str = "wallet-new";
@@ -464,7 +464,18 @@ impl Wallet {
 
         tracing::debug!("Starting initial Bitcoin wallet scan");
 
-        let full_scan = wallet.start_full_scan();
+        // Send progress updates to the UI
+        let progress_handle = tauri_handle.new_background_process_with_initial_progress(
+            TauriBackgroundProgress::FullScanningBitcoinWallet,
+            TauriBitcoinFullScanProgress::Unknown,
+        );
+
+        let progress_handle_clone = progress_handle.clone();
+        let full_scan = wallet.start_full_scan().inspect(move |_, curr_index, _| {
+            tracing::debug!("Full scanning Bitcoin wallet, current at index {}", curr_index);
+            progress_handle_clone.update(TauriBitcoinFullScanProgress::Known { current_index: curr_index as u64 });
+        });
+
         let full_scan_result = client.electrum.full_scan(
             full_scan,
             Self::SCAN_STOP_GAP,
@@ -474,6 +485,8 @@ impl Wallet {
 
         wallet.apply_update(full_scan_result)?;
         wallet.persist(&mut persister)?;
+
+        progress_handle.finish();
 
         tracing::debug!("Initial Bitcoin wallet scan completed");
 
@@ -657,8 +670,6 @@ impl Wallet {
     where
         F: FnMut(usize, usize) + Send + 'static,
     {
-        const BATCH_SIZE: usize = 64;
-
         let sync_request = self
             .wallet
             .lock()
@@ -682,7 +693,7 @@ impl Wallet {
         let client_mutex = self.client.clone();
         let res = tokio::task::spawn_blocking(move || {
             let client = client_mutex.blocking_lock();
-            client.electrum.sync(sync_request, BATCH_SIZE, true)
+            client.electrum.sync(sync_request, Self::SCAN_BATCH_SIZE, true)
         })
         .await??;
 
@@ -1516,6 +1527,9 @@ impl TestWalletBuilder {
 
     pub async fn build(self) -> Wallet<Connection, StaticFeeRate>
     {
+        use bdk_wallet::test_utils::{insert_checkpoint, receive_output_in_latest_block};
+        use bdk_wallet::chain::BlockId;
+
         let bdk_network = bitcoin::Network::Regtest;
 
         let external_descriptor = Bip84(self.key, KeychainKind::External)
