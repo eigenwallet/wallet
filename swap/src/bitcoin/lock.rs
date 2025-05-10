@@ -23,7 +23,10 @@ pub struct TxLock {
 
 impl TxLock {
     pub async fn new(
-        wallet: &Wallet<bdk_wallet::rusqlite::Connection, impl EstimateFeeRate + Send + Sync + 'static>,
+        wallet: &Wallet<
+            bdk_wallet::rusqlite::Connection,
+            impl EstimateFeeRate + Send + Sync + 'static,
+        >,
         amount: Amount,
         A: PublicKey,
         B: PublicKey,
@@ -274,7 +277,10 @@ mod tests {
     async fn bob_make_psbt(
         A: PublicKey,
         B: PublicKey,
-        wallet: &Wallet<bdk_wallet::rusqlite::Connection, impl EstimateFeeRate + Send + Sync + 'static>,
+        wallet: &Wallet<
+            bdk_wallet::rusqlite::Connection,
+            impl EstimateFeeRate + Send + Sync + 'static,
+        >,
         amount: Amount,
     ) -> PartiallySignedTransaction {
         let change = wallet.new_address().await.unwrap();

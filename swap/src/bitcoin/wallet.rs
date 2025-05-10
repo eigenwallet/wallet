@@ -1,6 +1,7 @@
 use crate::bitcoin::{Address, Amount, Transaction};
 use crate::cli::api::tauri_bindings::{
-    TauriBackgroundProgress, TauriBitcoinFullScanProgress, TauriBitcoinSyncProgress, TauriEmitter, TauriHandle
+    TauriBackgroundProgress, TauriBitcoinFullScanProgress, TauriBitcoinSyncProgress, TauriEmitter,
+    TauriHandle,
 };
 use crate::seed::Seed;
 use anyhow::{anyhow, bail, Context, Result};
@@ -472,8 +473,13 @@ impl Wallet {
 
         let progress_handle_clone = progress_handle.clone();
         let full_scan = wallet.start_full_scan().inspect(move |_, curr_index, _| {
-            tracing::debug!("Full scanning Bitcoin wallet, current at index {}", curr_index);
-            progress_handle_clone.update(TauriBitcoinFullScanProgress::Known { current_index: curr_index as u64 });
+            tracing::debug!(
+                "Full scanning Bitcoin wallet, current at index {}",
+                curr_index
+            );
+            progress_handle_clone.update(TauriBitcoinFullScanProgress::Known {
+                current_index: curr_index as u64,
+            });
         });
 
         let full_scan_result = client.electrum.full_scan(
@@ -693,7 +699,9 @@ impl Wallet {
         let client_mutex = self.client.clone();
         let res = tokio::task::spawn_blocking(move || {
             let client = client_mutex.blocking_lock();
-            client.electrum.sync(sync_request, Self::SCAN_BATCH_SIZE, true)
+            client
+                .electrum
+                .sync(sync_request, Self::SCAN_BATCH_SIZE, true)
         })
         .await??;
 
@@ -732,7 +740,7 @@ impl Wallet {
         Ok(())
     }
 
-     /// Calculate the fee for a given transaction.
+    /// Calculate the fee for a given transaction.
     ///
     /// Will fail if the transaction inputs are not owned by this wallet.
     pub async fn transaction_fee(&self, txid: Txid) -> Result<Amount> {
@@ -1525,10 +1533,9 @@ impl TestWalletBuilder {
         }
     }
 
-    pub async fn build(self) -> Wallet<Connection, StaticFeeRate>
-    {
-        use bdk_wallet::test_utils::{insert_checkpoint, receive_output_in_latest_block};
+    pub async fn build(self) -> Wallet<Connection, StaticFeeRate> {
         use bdk_wallet::chain::BlockId;
+        use bdk_wallet::test_utils::{insert_checkpoint, receive_output_in_latest_block};
 
         let bdk_network = bitcoin::Network::Regtest;
 
@@ -1547,8 +1554,11 @@ impl TestWalletBuilder {
             .create_wallet(&mut persister)
             .expect("Failed to create bdk_wallet::Wallet for test");
 
-        let client = StaticFeeRate::new(FeeRate::from_sat_per_vb(self.sats_per_vb).unwrap(), bitcoin::Amount::from_sat(self.min_relay_fee_sats));
-        
+        let client = StaticFeeRate::new(
+            FeeRate::from_sat_per_vb(self.sats_per_vb).unwrap(),
+            bitcoin::Amount::from_sat(self.min_relay_fee_sats),
+        );
+
         let wallet = Wallet {
             wallet: Arc::new(Mutex::new(bdk_core_wallet)), // This field was missing
             client: Arc::new(Mutex::new(client)),
@@ -1980,4 +1990,3 @@ DEBUG swap::bitcoin::wallet: Bitcoin transaction status changed txid=00000000000
         }
     }
 }
-

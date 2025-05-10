@@ -182,7 +182,14 @@ impl State0 {
         }
     }
 
-    pub async fn receive(self, wallet: &bitcoin::Wallet<bdk_wallet::rusqlite::Connection, impl EstimateFeeRate + Send + Sync + 'static>, msg: Message1) -> Result<State1> {
+    pub async fn receive(
+        self,
+        wallet: &bitcoin::Wallet<
+            bdk_wallet::rusqlite::Connection,
+            impl EstimateFeeRate + Send + Sync + 'static,
+        >,
+        msg: Message1,
+    ) -> Result<State1> {
         let valid = CROSS_CURVE_PROOF_SYSTEM.verify(
             &msg.dleq_proof_s_a,
             (

@@ -19,10 +19,7 @@ use std::fmt;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as SyncMutex, Once};
-use tauri_bindings::{
-    TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter,
-    TauriHandle,
-};
+use tauri_bindings::{TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter, TauriHandle};
 use tokio::sync::{broadcast, broadcast::Sender, Mutex as TokioMutex, RwLock};
 use tokio::task::JoinHandle;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
