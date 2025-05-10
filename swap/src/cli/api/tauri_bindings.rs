@@ -3,6 +3,7 @@ use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
 use anyhow::{anyhow, Context, Result};
 use bitcoin::Txid;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -106,6 +107,8 @@ pub struct TauriHandle(
 impl TauriHandle {
     #[cfg(feature = "tauri")]
     pub fn new(tauri_handle: tauri::AppHandle) -> Self {
+        use std::collections::HashMap;
+
         Self(
             #[cfg(feature = "tauri")]
             Arc::new(TauriHandleInner {
