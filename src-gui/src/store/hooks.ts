@@ -167,9 +167,10 @@ export function isSyncingBitcoin(): boolean {
   return syncProgress.length > 0;
 }
 
-/// This function returns the sync progress of the Bitcoin wallet and accounts for multiple simultaneous syncs
-/// It uses the min(...) of the all progress values and the max(...) of the all total values
-/// If all the syncs are unknown, it returns null
+/// This function returns the cumulative sync progress of all currently running Bitcoin wallet syncs
+/// If all syncs are unknown, it returns {type: "Unknown"}
+/// If at least one sync is known, it returns {type: "Known", content: {consumed, total}}
+/// where consumed and total are the sum of all the consumed and total values of the syncs
 export function useConservativeBitcoinSyncProgress(): TauriBitcoinSyncProgress | null {
   const syncingProcesses = useBitcoinSyncProgress();
   const progressValues = syncingProcesses.map((c) => c.content?.consumed ?? 0);
@@ -178,6 +179,7 @@ export function useConservativeBitcoinSyncProgress(): TauriBitcoinSyncProgress |
   const progress = sum(progressValues);
   const total = sum(totalValues);
 
+  // If either the progress or the total is 0, we consider the sync to be unknown
   if (progress === 0 || total === 0) {
     return {
       type: "Unknown",
