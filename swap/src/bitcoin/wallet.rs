@@ -474,7 +474,7 @@ impl Wallet {
         let progress_handle_clone = progress_handle.clone();
         let full_scan = wallet.start_full_scan().inspect(move |_, curr_index, _| {
             tracing::debug!(
-                "Full scanning Bitcoin wallet, current at index {}",
+                "Full scanning Bitcoin wallet, currently at index {}",
                 curr_index
             );
             progress_handle_clone.update(TauriBitcoinFullScanProgress::Known {
