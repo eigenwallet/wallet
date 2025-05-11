@@ -73,7 +73,7 @@ pub struct WalletConfig {
     persister: PersisterConfig,
     env_config: Option<crate::env::Config>,
     finality_confirmations: u32,
-    target_block: usize,
+    target_block: u32,
     sync_interval: Duration,
     #[builder(default)]
     tauri_handle: Option<TauriHandle>,
@@ -203,7 +203,7 @@ pub struct Wallet<Persister = Connection, C = Client> {
     finality_confirmations: u32,
     /// We want our transactions to be confirmed after this many blocks
     /// (used for fee estimation).
-    target_block: usize,
+    target_block: u32,
     /// The Tauri handle
     tauri_handle: Option<TauriHandle>,
 }
@@ -274,7 +274,7 @@ pub trait Watchable {
 /// An object that can estimate fee rates and minimum relay fees.
 pub trait EstimateFeeRate {
     /// Estimate the fee rate for a given target block.
-    fn estimate_feerate(&self, target_block: usize) -> Result<FeeRate>;
+    fn estimate_feerate(&self, target_block: u32) -> Result<FeeRate>;
     /// Get the minimum relay fee.
     fn min_relay_fee(&self) -> Result<bitcoin::Amount>;
 }
@@ -341,7 +341,7 @@ impl Wallet {
         electrum_rpc_url: &str,
         data_dir: impl AsRef<Path>,
         finality_confirmations: u32,
-        target_block: usize,
+        target_block: u32,
         sync_interval: Duration,
         env_config: crate::env::Config,
         tauri_handle: Option<TauriHandle>,
@@ -403,7 +403,7 @@ impl Wallet {
         network: Network,
         electrum_rpc_url: &str,
         finality_confirmations: u32,
-        target_block: usize,
+        target_block: u32,
         sync_interval: Duration,
         tauri_handle: Option<TauriHandle>,
     ) -> Result<Wallet<bdk_wallet::rusqlite::Connection>> {
@@ -429,7 +429,7 @@ impl Wallet {
         client: Client,
         mut persister: Persister,
         finality_confirmations: u32,
-        target_block: usize,
+        target_block: u32,
         old_wallet: Option<pre_1_0_0_bdk::Export>,
         tauri_handle: Option<TauriHandle>,
     ) -> Result<Wallet<Persister>>
@@ -514,7 +514,7 @@ impl Wallet {
         client: Client,
         mut persister: Persister,
         finality_confirmations: u32,
-        target_block: usize,
+        target_block: u32,
         tauri_handle: Option<TauriHandle>,
     ) -> Result<Wallet<Persister>>
     where
@@ -622,7 +622,7 @@ impl Wallet {
 
                         if new_status != ScriptStatus::Retrying
                         {
-                            last_status = Some(debug_status_change(txid, last_status, new_status));
+                            last_status = Some(trace_status_change(txid, last_status, new_status));
 
                             let all_receivers_gone = sender.send(new_status).is_err();
 
@@ -770,7 +770,7 @@ impl<T, C> Wallet<T, C> {
     ///
     /// This is the the number of blocks we want to wait at most for
     /// one ofour transaction to be confirmed.
-    pub fn target_block(&self) -> usize {
+    pub fn target_block(&self) -> u32 {
         self.target_block
     }
 }
@@ -1092,9 +1092,9 @@ impl Client {
 }
 
 impl EstimateFeeRate for Client {
-    fn estimate_feerate(&self, target_block: usize) -> Result<FeeRate> {
+    fn estimate_feerate(&self, target_block: u32) -> Result<FeeRate> {
         // Get the fee rate in BTC/kvB
-        let btc_per_kvb = self.electrum.inner.estimate_fee(target_block)?;
+        let btc_per_kvb = self.electrum.inner.estimate_fee(target_block as usize)?;
         let amount_per_kvb = Amount::from_btc(btc_per_kvb)?;
         // Convert to sat/kwu
         let amount_per_kwu = amount_per_kvb.checked_div(4).context("fee rate overflow")?;
@@ -1109,13 +1109,13 @@ impl EstimateFeeRate for Client {
     }
 }
 
-fn debug_status_change(txid: Txid, old: Option<ScriptStatus>, new: ScriptStatus) -> ScriptStatus {
+fn trace_status_change(txid: Txid, old: Option<ScriptStatus>, new: ScriptStatus) -> ScriptStatus {
     match (old, new) {
         (None, new_status) => {
             tracing::debug!(%txid, status = %new_status, "Found relevant Bitcoin transaction");
         }
         (Some(old_status), new_status) if old_status != new_status => {
-            tracing::debug!(%txid, %new_status, %old_status, "Bitcoin transaction status changed");
+            tracing::trace!(%txid, %new_status, %old_status, "Bitcoin transaction status changed");
         }
         _ => {}
     }
@@ -1471,7 +1471,7 @@ impl StaticFeeRate {
 
 #[cfg(test)]
 impl EstimateFeeRate for StaticFeeRate {
-    fn estimate_feerate(&self, _target_block: usize) -> Result<FeeRate> {
+    fn estimate_feerate(&self, _target_block: u32) -> Result<FeeRate> {
         Ok(self.fee_rate)
     }
 
@@ -1573,7 +1573,7 @@ impl TestWalletBuilder {
 
         // Create a block
         insert_checkpoint(
-            &mut *locked_wallet,
+            &mut locked_wallet,
             BlockId {
                 height: 42,
                 hash: <bitcoin::blockdata::block::BlockHash as bitcoin::hashes::Hash>::all_zeros(),
@@ -1582,12 +1582,12 @@ impl TestWalletBuilder {
 
         // Fund the wallet with fake utxos
         for _ in 0..self.num_utxos {
-            receive_output_in_latest_block(&mut *locked_wallet, self.utxo_amount);
+            receive_output_in_latest_block(&mut locked_wallet, self.utxo_amount);
         }
 
         // Create another block to confirm the utxos
         insert_checkpoint(
-            &mut *locked_wallet,
+            &mut locked_wallet,
             BlockId {
                 height: 43,
                 hash: <bitcoin::blockdata::block::BlockHash as bitcoin::hashes::Hash>::all_zeros(),
@@ -1924,48 +1924,44 @@ mod tests {
         let inner = bitcoin::hashes::sha256d::Hash::all_zeros();
         let tx = Txid::from_raw_hash(inner);
         let mut old = None;
-        old = Some(debug_status_change(tx, old, ScriptStatus::Unseen));
-        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(debug_status_change(tx, old, ScriptStatus::InMempool));
-        old = Some(debug_status_change(
+        old = Some(trace_status_change(tx, old, ScriptStatus::Unseen));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(tx, old, ScriptStatus::InMempool));
+        old = Some(trace_status_change(
             tx,
             old,
             ScriptStatus::Confirmed(Confirmed { depth: 0 }),
         ));
-        old = Some(debug_status_change(
+        old = Some(trace_status_change(
             tx,
             old,
             ScriptStatus::Confirmed(Confirmed { depth: 1 }),
         ));
-        old = Some(debug_status_change(
+        old = Some(trace_status_change(
             tx,
             old,
             ScriptStatus::Confirmed(Confirmed { depth: 1 }),
         ));
-        old = Some(debug_status_change(
+        old = Some(trace_status_change(
             tx,
             old,
             ScriptStatus::Confirmed(Confirmed { depth: 2 }),
         ));
-        debug_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 2 }));
+        trace_status_change(tx, old, ScriptStatus::Confirmed(Confirmed { depth: 2 }));
 
         assert_eq!(
             writer.captured(),
             r"DEBUG swap::bitcoin::wallet: Found relevant Bitcoin transaction txid=0000000000000000000000000000000000000000000000000000000000000000 status=unseen
-DEBUG swap::bitcoin::wallet: Bitcoin transaction status changed txid=0000000000000000000000000000000000000000000000000000000000000000 new_status=in mempool old_status=unseen
-DEBUG swap::bitcoin::wallet: Bitcoin transaction status changed txid=0000000000000000000000000000000000000000000000000000000000000000 new_status=confirmed with 1 blocks old_status=in mempool
-DEBUG swap::bitcoin::wallet: Bitcoin transaction status changed txid=0000000000000000000000000000000000000000000000000000000000000000 new_status=confirmed with 2 blocks old_status=confirmed with 1 blocks
-DEBUG swap::bitcoin::wallet: Bitcoin transaction status changed txid=0000000000000000000000000000000000000000000000000000000000000000 new_status=confirmed with 3 blocks old_status=confirmed with 2 blocks
+TRACE swap::bitcoin::wallet: Bitcoin transaction status changed txid=0000000000000000000000000000000000000000000000000000000000000000 new_status=in mempool old_status=unseen
+TRACE swap::bitcoin::wallet: Bitcoin transaction status changed txid=0000000000000000000000000000000000000000000000000000000000000000 new_status=confirmed with 1 blocks old_status=in mempool
+TRACE swap::bitcoin::wallet: Bitcoin transaction status changed txid=0000000000000000000000000000000000000000000000000000000000000000 new_status=confirmed with 2 blocks old_status=confirmed with 1 blocks
+TRACE swap::bitcoin::wallet: Bitcoin transaction status changed txid=0000000000000000000000000000000000000000000000000000000000000000 new_status=confirmed with 3 blocks old_status=confirmed with 2 blocks
 "
         )
-    }
-
-    fn confs(confirmations: u32) -> ScriptStatus {
-        ScriptStatus::from_confirmations(confirmations)
     }
 
     proptest::proptest! {
