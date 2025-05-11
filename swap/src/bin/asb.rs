@@ -414,7 +414,6 @@ async fn init_bitcoin_wallet(
         .finality_confirmations(env_config.bitcoin_finality_confirmations)
         .target_block(config.bitcoin.target_block)
         .sync_interval(env_config.bitcoin_sync_interval())
-        .env_config(env_config)
         .build()
         .await
         .context("Failed to initialize Bitcoin wallet")?;

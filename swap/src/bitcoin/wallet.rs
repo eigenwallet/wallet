@@ -71,7 +71,6 @@ pub struct WalletConfig {
     network: Network,
     electrum_rpc_url: String,
     persister: PersisterConfig,
-    env_config: Option<crate::env::Config>,
     finality_confirmations: u32,
     target_block: u32,
     sync_interval: Duration,
@@ -93,14 +92,9 @@ impl WalletBuilder {
 
         match &config.persister {
             PersisterConfig::SqliteFile { data_dir } => {
-                let env_config = config
-                    .env_config
-                    .context("env_config is required for file-based SQLite wallet")?;
-
-                let xpriv_derivation_network = env_config.bitcoin_network;
                 let xprivkey = config
                     .seed
-                    .derive_extended_private_key(xpriv_derivation_network)
+                    .derive_extended_private_key(config.network)
                     .context("Failed to derive extended private key for file wallet")?;
 
                 let wallet_parent_dir = data_dir.join(Wallet::<Connection>::WALLET_PARENT_DIR_NAME);
@@ -134,7 +128,6 @@ impl WalletBuilder {
                         data_dir,
                         config.network,
                         &config.seed,
-                        env_config,
                     )
                     .await
                     .context("Failed to get pre-1.0.0 BDK wallet export for migration")?;
@@ -295,7 +288,6 @@ impl Wallet {
         data_dir: impl AsRef<Path>,
         network: Network,
         seed: &Seed,
-        env_config: crate::env::Config,
     ) -> Result<Option<pre_1_0_0_bdk::Export>> {
         // Construct the directory in which the old (<1.0.0 bdk) wallet was stored
         let wallet_parent_dir = data_dir.as_ref().join(Self::WALLET_PARENT_DIR_NAME);
@@ -315,7 +307,7 @@ impl Wallet {
 
             let xprivkey = seed.derive_extended_private_key_legacy(legacy_network)?;
             let old_wallet =
-                pre_1_0_0_bdk::OldWallet::new(&pre_bdk_1_0_0_wallet_dir, xprivkey, env_config)
+                pre_1_0_0_bdk::OldWallet::new(&pre_bdk_1_0_0_wallet_dir, xprivkey, network)
                     .await?;
 
             let export = old_wallet.export("old-wallet").await?;
@@ -379,7 +371,7 @@ impl Wallet {
             // If the new Bitcoin wallet (> 1.0.0 bdk) does not yet exist:
             // We check if we have an old (< 1.0.0 bdk) wallet. If so, we migrate.
             let export =
-                Self::get_pre_1_0_0_bdk_wallet_export(data_dir, network, seed, env_config).await?;
+                Self::get_pre_1_0_0_bdk_wallet_export(data_dir, network, seed).await?;
 
             Self::create_new(
                 xprivkey,
@@ -1191,8 +1183,6 @@ pub mod pre_1_0_0_bdk {
     use bdk::KeychainKind;
     use tokio::sync::Mutex;
 
-    use crate::env;
-
     pub const WALLET: &str = "wallet";
     const SLED_TREE_NAME: &str = "default_tree";
 
@@ -1219,12 +1209,11 @@ pub mod pre_1_0_0_bdk {
         pub async fn new(
             data_dir: impl AsRef<Path>,
             xprivkey: ExtendedPrivKey,
-            env_config: env::Config,
+            network: bitcoin::Network,
         ) -> Result<Self> {
             let data_dir = data_dir.as_ref();
             let wallet_dir = data_dir.join(WALLET);
             let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
-            let network = env_config.bitcoin_network;
 
             // Convert bitcoin network to the bdk network type...
             let network = match network {
@@ -1560,9 +1549,9 @@ impl TestWalletBuilder {
         );
 
         let wallet = Wallet {
-            wallet: Arc::new(Mutex::new(bdk_core_wallet)), // This field was missing
+            wallet: Arc::new(Mutex::new(bdk_core_wallet)),
             client: Arc::new(Mutex::new(client)),
-            persister: Arc::new(Mutex::new(persister)), // Use the created persister
+            persister: Arc::new(Mutex::new(persister)),
             network: Network::Regtest,
             finality_confirmations: 1,
             target_block: 1,

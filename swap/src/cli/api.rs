@@ -522,8 +522,7 @@ async fn init_bitcoin_wallet(
         })
         .finality_confirmations(env_config.bitcoin_finality_confirmations)
         .target_block(bitcoin_target_block)
-        .sync_interval(env_config.bitcoin_sync_interval())
-        .env_config(env_config);
+        .sync_interval(env_config.bitcoin_sync_interval());
 
     if let Some(handle) = tauri_handle_option {
         builder = builder.tauri_handle(handle.clone());
