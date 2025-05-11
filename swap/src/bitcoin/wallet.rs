@@ -307,8 +307,7 @@ impl Wallet {
 
             let xprivkey = seed.derive_extended_private_key_legacy(legacy_network)?;
             let old_wallet =
-                pre_1_0_0_bdk::OldWallet::new(&pre_bdk_1_0_0_wallet_dir, xprivkey, network)
-                    .await?;
+                pre_1_0_0_bdk::OldWallet::new(&pre_bdk_1_0_0_wallet_dir, xprivkey, network).await?;
 
             let export = old_wallet.export("old-wallet").await?;
 
@@ -370,8 +369,7 @@ impl Wallet {
         } else {
             // If the new Bitcoin wallet (> 1.0.0 bdk) does not yet exist:
             // We check if we have an old (< 1.0.0 bdk) wallet. If so, we migrate.
-            let export =
-                Self::get_pre_1_0_0_bdk_wallet_export(data_dir, network, seed).await?;
+            let export = Self::get_pre_1_0_0_bdk_wallet_export(data_dir, network, seed).await?;
 
             Self::create_new(
                 xprivkey,
