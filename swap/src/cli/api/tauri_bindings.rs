@@ -298,10 +298,6 @@ pub trait TauriEmitter {
         ));
     }
 
-    fn gen_background_progress_id(&self) -> Uuid {
-        Uuid::new_v4()
-    }
-
     /// Create a new background progress handle for tracking a specific type of progress
     fn new_background_process<T: Clone>(
         &self,
@@ -336,7 +332,7 @@ impl TauriEmitter for TauriHandle {
         &self,
         component: fn(PendingCompleted<T>) -> TauriBackgroundProgress,
     ) -> TauriBackgroundProgressHandle<T> {
-        let id = self.gen_background_progress_id();
+        let id = Uuid::new_v4();
 
         TauriBackgroundProgressHandle {
             id,
@@ -388,7 +384,7 @@ impl TauriEmitter for Option<TauriHandle> {
         &self,
         component: fn(PendingCompleted<T>) -> TauriBackgroundProgress,
     ) -> TauriBackgroundProgressHandle<T> {
-        let id = self.gen_background_progress_id();
+        let id = Uuid::new_v4();
 
         TauriBackgroundProgressHandle {
             id,
