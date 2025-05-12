@@ -173,5 +173,6 @@ fn main() {
         .flag_if_supported("-std=c++17")
         .include("src") // Include the bridge.h file
         .include("monero/src") // Includes the monero headers
-        .compile("monero-wallet-sys");
+        .include("monero/external/easylogging++") // Includes the easylogging++ headers
+        .compile("monero-sys");
 }

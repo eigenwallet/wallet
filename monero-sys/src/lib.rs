@@ -1,5 +1,3 @@
-#![doc = include_str!("../README.md")]
-
 mod bridge;
 
 use std::{
@@ -95,6 +93,9 @@ impl WalletManager {
     /// all wallets opened by the manager will connect.
     pub async fn get<'a>(daemon: Option<Daemon>) -> anyhow::Result<Arc<Mutex<Self>>> {
         let manager = WALLET_MANAGER.get_or_init(|| {
+            // Install the log callback to route c++ logs to tracing.
+            bridge::log::install_log_callback();
+
             let manager = ffi::getWalletManager();
             if manager.is_null() {
                 panic!("Failed to get wallet manager, got null pointer");

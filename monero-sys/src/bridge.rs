@@ -1,3 +1,5 @@
+use cxx::CxxString;
+
 #[cxx::bridge(namespace = "Monero")]
 pub mod ffi {
     /// The type of the network.
@@ -250,5 +252,40 @@ impl From<ffi::NetworkType> for monero::Network {
                 "There should be no other network type besides Mainnet, Testnet, and Stagenet"
             ),
         }
+    }
+}
+
+#[cxx::bridge(namespace = "monero_rust_log")]
+pub mod log {
+    extern "Rust" {
+        fn forward_cpp_log(
+            level: u8,
+            file: &CxxString,
+            line: u32,
+            func: &CxxString,
+            msg: &CxxString,
+        );
+    }
+
+    unsafe extern "C++" {
+        include!("easylogging++.h");
+        include!("bridge.h");
+
+        fn install_log_callback();
+    }
+}
+
+fn forward_cpp_log(level: u8, file: &CxxString, _line: u32, func: &CxxString, msg: &CxxString) {
+    let _file_str = file.to_string();
+    let msg_str = msg.to_string();
+    let func_str = func.to_string();
+
+    match level {
+        0 => tracing::trace!(target: "monero_cpp", function=func_str, "{}", msg_str),
+        1 => tracing::debug!(target: "monero_cpp", function=func_str, "{}", msg_str),
+        2 => tracing::info!(target: "monero_cpp", function=func_str, "{}", msg_str),
+        3 => tracing::warn!(target: "monero_cpp", function=func_str, "{}", msg_str),
+        4 => tracing::error!(target: "monero_cpp", function=func_str, "{}", msg_str),
+        _ => tracing::info!(target: "monero_cpp", function=func_str, "{}", msg_str),
     }
 }

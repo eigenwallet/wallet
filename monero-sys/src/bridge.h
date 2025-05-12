@@ -16,8 +16,7 @@ namespace Monero
     {
         // This causes the wallet to print some logging to stdout
         // This is useful for debugging
-        // TODO: Only enable in debug releases or expose setLogLevel as a FFI function
-        // WalletManagerFactory::setLogLevel(2);
+        WalletManagerFactory::setLogLevel(2);
 
         return WalletManagerFactory::getWalletManager();
     }
@@ -122,3 +121,80 @@ namespace Monero
         return std::make_unique<std::vector<std::string>>(tx.txid());
     }
 }
+
+#include "easylogging++.h"
+#include "bridge.h"
+#include "monero-sys/src/bridge.rs.h"
+
+namespace monero_rust_log
+{
+    // One dispatch callback instance for the whole program.
+    class RustDispatch final : public el::LogDispatchCallback
+    {
+    protected:
+        void handle(const el::LogDispatchData *data) noexcept override
+        {
+            auto *m = data->logMessage();
+
+            uint8_t level;
+            switch (m->level())
+            {
+            case el::Level::Trace:
+                level = 0;
+                break;
+            case el::Level::Debug:
+                level = 1;
+                break;
+            case el::Level::Info:
+                level = 2;
+                break;
+            case el::Level::Warning:
+                level = 3;
+                break;
+            case el::Level::Error:
+            case el::Level::Fatal:
+                level = 4;
+                break;
+            default:
+                level = 2; // Default to info.
+                break;
+            }
+
+            // Forward to Rust.
+            monero_rust_log::forward_cpp_log(
+                level,
+                m->file().length() > 0 ? m->file() : "",
+                m->line(),
+                m->func(),
+                m->message());
+        }
+    };
+
+    bool installed = false;
+
+    inline void install_log_callback()
+    {
+        if (installed)
+            return;
+        installed = true;
+
+        // Make sure easylogging++ itself is initialised (usually already done
+        // because the Monero libs call el::Helpers::setThreadName etc.).
+        el::Helpers::installLogDispatchCallback<RustDispatch>("rust-forward");
+
+        // Disable all default easylogging++ log writers such that messages are **only**
+        // forwarded through the RustDispatch callback above. This prevents them from
+        // being printed directly to stdout/stderr or written to files.
+        el::Loggers::reconfigureAllLoggers(el::ConfigurationType::ToStandardOutput, "false");
+        el::Loggers::reconfigureAllLoggers(el::ConfigurationType::ToFile, "false");
+
+        // Make the above configuration the *default* for any loggers that may be
+        // created after this point (many Monero components lazily create their
+        // own logger instances). Without this, newly-created loggers would revert
+        // to printing to stdout again.
+        el::Configurations defaultConf;
+        defaultConf.set(el::Level::Global, el::ConfigurationType::ToStandardOutput, "false");
+        defaultConf.set(el::Level::Global, el::ConfigurationType::ToFile, "false");
+        el::Loggers::setDefaultConfigurations(defaultConf, true /* enable default for new loggers */);
+    }
+} // namespace
