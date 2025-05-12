@@ -282,7 +282,7 @@ impl Wallet {
     /// The batch size for the full scan.
     const SCAN_BATCH_SIZE: usize = 16;
     /// The number of maximum chunks to split the full scan into.
-    const SCAN_CHUNKS: usize = 10;
+    const SCAN_CHUNKS: usize = 5;
 
     const WALLET_PARENT_DIR_NAME: &str = "wallet";
     const WALLET_DIR_NAME: &str = "wallet-new";
