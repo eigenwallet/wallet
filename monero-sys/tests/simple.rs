@@ -37,7 +37,7 @@ async fn main() {
     let wallet_path = temp_dir.path().join(wallet_name).display().to_string();
 
     tracing::info!("Recovering wallet from seed");
-    let wallet_mutex = wallet_manager
+    let wallet = wallet_manager
         .recover_wallet(
             &wallet_path,
             PASSWORD,
@@ -48,12 +48,12 @@ async fn main() {
         .await
         .expect("Failed to recover wallet");
 
-    tracing::info!("Primary address: {}", wallet_mutex.main_address().await);
+    tracing::info!("Primary address: {}", wallet.main_address().await);
 
     // Wait for a while to let the wallet sync, checking sync status
     tracing::info!("Waiting for wallet to sync...");
 
-    wallet_mutex
+    wallet
         .wait_until_synced(Some(|sync_progress: SyncProgress| {
             tracing::info!("Sync progress: {}%", sync_progress.percentage());
         }))
@@ -62,9 +62,9 @@ async fn main() {
 
     tracing::info!("Wallet is synchronized!");
 
-    let balance = wallet_mutex.total_balance().await;
-    tracing::info!("Balance: {}", balance.as_pico());
+    let balance = wallet.total_balance().await;
+    tracing::info!("Balance: {}", balance);
 
-    let unlocked_balance = wallet_mutex.unlocked_balance().await;
-    tracing::info!("Unlocked balance: {}", unlocked_balance.as_pico());
+    let unlocked_balance = wallet.unlocked_balance().await;
+    tracing::info!("Unlocked balance: {}", unlocked_balance);
 }

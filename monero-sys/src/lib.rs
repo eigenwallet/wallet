@@ -3,11 +3,12 @@
 mod bridge;
 
 use std::{
+    cmp::Ordering,
     collections::HashMap,
     ops::Deref,
     pin::Pin,
     str::FromStr,
-    sync::{Arc, OnceLock},
+    sync::{Arc, OnceLock, Weak},
 };
 
 use anyhow::{bail, Context, Result};
@@ -25,7 +26,11 @@ pub struct WalletManager {
     /// A wrapper around the raw C++ wallet manager pointer.
     inner: RawWalletManager,
     /// A map of opened wallets, indexed by their absolute path.
-    wallets: HashMap<String, Arc<Wallet>>,
+    ///
+    /// We use `Weak` instead of `Arc` to allow the wallet to be dropped
+    /// while still having a reference in the hashmap.
+    /// This way we can implement the saving behaviour in Drop.
+    wallets: HashMap<String, Weak<Wallet>>,
     /// The daemon to connect to. All wallets opened
     /// by the manager will connect to this daemon, too.
     daemon: Option<Daemon>,
@@ -36,6 +41,7 @@ struct RawWalletManager(*mut ffi::WalletManager);
 
 /// A single Monero wallet.
 pub struct Wallet {
+    path: String,
     inner: Arc<Mutex<RawWallet>>,
     manager: Arc<Mutex<WalletManager>>,
 }
@@ -44,6 +50,7 @@ pub struct Wallet {
 struct RawWallet(*mut ffi::Wallet);
 
 /// The progress of synchronization of a wallet with the remote node.
+#[derive(Debug, Clone, Copy)]
 pub struct SyncProgress {
     /// The current block height of the wallet.
     pub current_block: u64,
@@ -117,35 +124,31 @@ impl WalletManager {
     /// Create a new wallet, or open if it already exists.
     pub async fn open_or_create_wallet(
         &mut self,
-        filename: &str,
+        path: &str,
         password: Option<&str>,
         network: monero::Network,
     ) -> anyhow::Result<Arc<Wallet>> {
         tracing::info!(
             "Opening or creating wallet: {}. Currently opened {} wallets.",
-            filename,
+            path,
             self.wallets.len()
         );
 
-        // If we've already loaded this wallet, return it.
-        if self.wallets.contains_key(filename) {
-            let wallet = self.wallets[filename].clone();
-            return Ok(wallet);
-        }
-
-        let kdf_rounds = Self::DEFAULT_KDF_ROUNDS;
         // If we haven't loaded the wallet, but it already exists, open it.
-        if self.wallet_exists(filename).await {
-            tracing::debug!(wallet=%filename, "Wallet already exists, opening it");
+        if self.wallet_exists(path).await {
+            tracing::debug!(wallet=%path, "Wallet already exists, opening it");
 
             return self
-                .open_wallet(filename, password, network)
+                .open_wallet(path, password, network)
                 .await
-                .context(format!("Failed to open wallet `{}`", &filename));
+                .context(format!("Failed to open wallet `{}`", &path));
         }
 
+        tracing::debug!(%path, "Wallet doesn't exist, creating it");
+
         // Otherwise, create (and open) a new wallet.
-        let_cxx_string!(path = filename);
+        let kdf_rounds = Self::DEFAULT_KDF_ROUNDS;
+        let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
         let_cxx_string!(language = "");
         let network_type = network.into();
@@ -161,6 +164,7 @@ impl WalletManager {
 
         let raw_wallet = RawWallet(wallet_pointer);
         let wallet = Wallet::new(
+            path.to_string(),
             raw_wallet,
             self.daemon.clone(),
             WALLET_MANAGER
@@ -169,10 +173,11 @@ impl WalletManager {
                 .clone(),
         )
         .await
-        .context(format!("Failed to initialize wallet `{}`", &filename))?;
+        .context(format!("Failed to initialize wallet `{}`", &path))?;
 
         let wallet = Arc::new(wallet);
-        self.wallets.insert(filename.to_string(), wallet.clone());
+        self.wallets
+            .insert(path.to_string(), Arc::downgrade(&wallet));
 
         Ok(wallet)
     }
@@ -224,6 +229,7 @@ impl WalletManager {
 
         let raw_wallet = RawWallet(wallet_pointer);
         let wallet = Wallet::new(
+            path.to_string(),
             raw_wallet,
             self.daemon.clone(),
             WALLET_MANAGER
@@ -235,7 +241,8 @@ impl WalletManager {
         .context(format!("Failed to initialize wallet `{}`", &path))?;
 
         let wallet = Arc::new(wallet);
-        self.wallets.insert(path.to_string(), wallet.clone());
+        self.wallets
+            .insert(path.to_string(), Arc::downgrade(&wallet));
 
         Ok(wallet)
     }
@@ -268,6 +275,7 @@ impl WalletManager {
 
         let raw_wallet = RawWallet(wallet_pointer);
         let wallet = Wallet::new(
+            path.to_string(),
             raw_wallet,
             self.daemon.clone(),
             WALLET_MANAGER
@@ -278,7 +286,8 @@ impl WalletManager {
         .await?;
 
         let wallet = Arc::new(wallet);
-        self.wallets.insert(path.to_string(), wallet.clone());
+        self.wallets
+            .insert(path.to_string(), Arc::downgrade(&wallet));
 
         Ok(wallet)
     }
@@ -286,30 +295,24 @@ impl WalletManager {
     /// Close a wallet, optionally storing the wallet state.
     ///
     /// This function is only safe because
-    ///  - the only way to obtain an owned `Mutex<Wallet>` is by `Arc::into_inner`, guaranteeing
+    ///  - the only way to obtain a `&mut Wallet` is via `Arc::into_inner`, guaranteeing
     ///    that there are no other references to the wallet, and
-    ///  - it consumes the Mutex, guaranteeing that no other references to the wallet
-    ///    will be created.
+    ///  - it is only used in Drop, such that there guaranteedly exists no other reference to the wallet.
     ///
     /// **DO NOT CHANGE OR YOU WILL TRIGGER UNDEFINED BEHAVIOR (BAD)**
-    pub async fn close_wallet(&mut self, wallet: Wallet) -> anyhow::Result<()> {
-        let path = wallet.path().await;
-
-        tracing::debug!(wallet_path = %path, "Closing wallet");
+    fn close_wallet(&mut self, wallet_path: &str, wallet_ptr: RawWallet) -> anyhow::Result<()> {
+        tracing::debug!(wallet_path = %wallet_path, "Closing wallet");
 
         // Safety: we know we have a valid, unique pointer to the wallet
-        let success = unsafe {
-            self.inner
-                .pinned()
-                .closeWallet(wallet.inner.lock().await.0, true)
-        };
+        let success = unsafe { self.inner.pinned().closeWallet(wallet_ptr.0, true) };
 
         if !success {
             anyhow::bail!("Failed to close wallet");
         }
 
-        // Remove the wallet from the map
-        self.wallets.remove(&path);
+        self.wallets.remove(wallet_path);
+
+        tracing::debug!(wallet_path = %wallet_path, "Closed Monero wallet");
 
         Ok(())
     }
@@ -318,18 +321,10 @@ impl WalletManager {
     /// Fails if any wallet fails to close.
     /// A wallet fails to close if it is still being used.
     pub async fn close_all_wallets(&mut self) -> anyhow::Result<()> {
-        // To drop the Arcs, we need to remove all wallets from the map first.
         let mut wallets = HashMap::new();
         std::mem::swap(&mut wallets, &mut self.wallets);
 
-        for (path, wallet) in wallets {
-            let wallet = Arc::into_inner(wallet).context(
-                "Couldn't unwrap Arc<Mutex<Wallet>>, not all other Arcs have been dropped",
-            )?;
-            self.close_wallet(wallet)
-                .await
-                .context(format!("Failed to close wallet `{}`", &path))?;
-        }
+        let _ = wallets;
 
         Ok(())
     }
@@ -343,6 +338,15 @@ impl WalletManager {
         password: Option<&str>,
         network_type: monero::Network,
     ) -> anyhow::Result<Arc<Wallet>> {
+        // If we've already loaded this wallet, return it.
+        if let Some(wallet) = self.wallets.get(path) {
+            tracing::trace!(%path, "Already opened this wallet before, getting existing instance");
+            if let Some(wallet) = wallet.upgrade() {
+                return Ok(wallet);
+            }
+            tracing::trace!(%path, "No instance found, opening file instead");
+        }
+
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
         let network_type = network_type.into();
@@ -365,6 +369,7 @@ impl WalletManager {
         let raw_wallet = RawWallet(wallet_pointer);
 
         let wallet = Wallet::new(
+            path.to_string(),
             raw_wallet,
             self.daemon.clone(),
             WALLET_MANAGER
@@ -376,14 +381,15 @@ impl WalletManager {
         .context("Failed to initialize wallet")?;
 
         let wallet = Arc::new(wallet);
-        self.wallets.insert(path.to_string(), wallet.clone());
+        self.wallets
+            .insert(path.to_string(), Arc::downgrade(&wallet));
 
         Ok(wallet)
     }
 
     /// Get all open wallets.
     pub fn all_open_wallets(&self) -> Vec<Arc<Wallet>> {
-        self.wallets.values().cloned().collect()
+        self.wallets.values().filter_map(Weak::upgrade).collect()
     }
 
     /// Set the address of the remote node ("daemon").
@@ -397,8 +403,12 @@ impl WalletManager {
 
     /// Check if a wallet exists at the given path.
     pub async fn wallet_exists(&mut self, path: &str) -> bool {
-        let_cxx_string!(path = path);
+        // True if we have it in our map, or if it exists on disk.
+        if let Some(wallet) = self.wallets.get(path) {
+            return wallet.strong_count() > 0;
+        }
 
+        let_cxx_string!(path = path);
         self.inner.pinned().walletExists(&path)
     }
 
@@ -445,6 +455,7 @@ impl Wallet {
 
     /// Create and initialize new wallet from a raw C++ wallet pointer.
     async fn new(
+        path: String,
         inner: RawWallet,
         daemon: Option<Daemon>,
         manager: Arc<Mutex<WalletManager>>,
@@ -454,13 +465,17 @@ impl Wallet {
         }
 
         let wallet = Self {
+            path,
             inner: Arc::new(Mutex::new(inner)),
             manager,
         };
 
         tracing::debug!("Initializing wallet");
 
-        wallet.check_error().await?;
+        {
+            let raw_wallet = wallet.inner.lock().await;
+            wallet.check_error(&*raw_wallet)
+        }?;
 
         let daemon = daemon.unwrap_or_default();
 
@@ -469,7 +484,17 @@ impl Wallet {
             .await
             .context("Failed to initialize wallet")?;
 
+        {
+            let raw_wallet = wallet.inner.lock().await;
+            wallet.check_error(&*raw_wallet)
+        }?;
+
         wallet.start_refresh().await;
+
+        {
+            let raw_wallet = wallet.inner.lock().await;
+            wallet.check_error(&*raw_wallet)
+        }?;
 
         Ok(wallet)
     }
@@ -489,11 +514,12 @@ impl Wallet {
 
     pub async fn set_daemon_address(&self, address: &str) -> anyhow::Result<()> {
         let_cxx_string!(address = address);
-        let success = ffi::setWalletDaemon(self.inner.lock().await.pinned(), &address);
+        let mut raw_wallet = self.inner.lock().await;
+
+        let success = ffi::setWalletDaemon(raw_wallet.pinned(), &address);
 
         if !success {
-            self.check_error()
-                .await
+            self.check_error(&*raw_wallet)
                 .context("Failed to set daemon address")?;
             anyhow::bail!("Failed to set daemon address");
         }
@@ -514,7 +540,9 @@ impl Wallet {
         let_cxx_string!(daemon_password = "");
         let_cxx_string!(proxy_address = "");
 
-        let success = self.inner.lock().await.pinned().init(
+        let mut raw_wallet = self.inner.lock().await;
+
+        let success = raw_wallet.pinned().init(
             &daemon_address,
             0,
             &daemon_username,
@@ -525,10 +553,9 @@ impl Wallet {
         );
 
         if !success {
-            self.check_error()
-                .await
+            self.check_error(&*raw_wallet)
                 .context("Failed to initialize wallet")?;
-            anyhow::bail!("Failed to initialize wallet");
+            anyhow::bail!("Failed to initialize wallet, error string empty");
         }
 
         Ok(())
@@ -559,9 +586,9 @@ impl Wallet {
         &self,
         listener: Option<impl Fn(SyncProgress)>,
     ) -> anyhow::Result<()> {
-        // We wait for 250ms before polling the wallet's sync status again.
+        // We wait for ms before polling the wallet's sync status again.
         // This is ok because this doesn't involve any blocking calls.
-        const POLL_INTERVAL_MILLIS: u64 = 250;
+        const POLL_INTERVAL_MILLIS: u64 = 500;
 
         tracing::debug!("Waiting for wallet to sync");
 
@@ -587,6 +614,10 @@ impl Wallet {
             tokio::time::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MILLIS)).await;
         }
 
+        // Keep track of the sync progress to avoid calling
+        // the listener twice with the same progress
+        let mut current_progress = SyncProgress::zero();
+
         // Continue polling until the sync is complete
         loop {
             // Get the current sync status (releasing the lock immediately afterwords)
@@ -594,9 +625,14 @@ impl Wallet {
                 { (self.synchronized().await, self.sync_progress().await) };
 
             // Notify the listener (if it exists)
-            if let Some(listener) = &listener {
-                listener(sync_progress);
+            if sync_progress > current_progress {
+                if let Some(listener) = &listener {
+                    listener(sync_progress);
+                }
             }
+
+            // Update the current progress
+            current_progress = sync_progress;
 
             // If the wallet is synced, break out of the loop.
             if synced {
@@ -777,8 +813,10 @@ impl Wallet {
         let mut in_pool = false;
         let mut confirmations = 0;
 
+        let mut raw_wallet = self.inner.lock().await;
+
         let success = ffi::checkTxKey(
-            self.inner.lock().await.pinned(),
+            raw_wallet.pinned(),
             &txid,
             &tx_key,
             &address,
@@ -788,7 +826,8 @@ impl Wallet {
         );
 
         if !success {
-            self.check_error().await.context("Failed to check tx key")?;
+            self.check_error(&*raw_wallet)
+                .context("Failed to check tx key")?;
             anyhow::bail!("Failed to check tx key");
         }
 
@@ -891,32 +930,74 @@ impl Wallet {
     /// Return `Ok` when the wallet is ok, otherwise return the error.
     /// This is a convenience method we use for retrieving errors after
     /// a method call failed.
-    async fn check_error(&self) -> anyhow::Result<()> {
+    ///
+    /// We have to pass the raw wallet here to make sure we don't have to
+    /// release the mutex in between an operation and the check.
+    fn check_error(&self, raw_wallet: &RawWallet) -> anyhow::Result<()> {
         let mut status = 0;
         let mut error_string = String::new();
         let_cxx_string!(error_string_ref = &mut error_string);
 
-        self.inner
-            .lock()
-            .await
-            .statusWithErrorString(&mut status, error_string_ref);
+        raw_wallet.statusWithErrorString(&mut status, error_string_ref);
 
         // If the status is ok, we return None
         if status == 0 {
             return Ok(());
         }
 
+        let error_string = if error_string.is_empty() {
+            "unknown error, error not set".to_string()
+        } else {
+            error_string
+        };
+
         let error_type = if status == 2 { "critical" } else { "error" };
 
         // Otherwise we return the error
         bail!(format!(
-            "Experienced wallet error ({}): {}",
-            error_type, error_string
+            "Experienced wallet error ({}): `{}`",
+            error_type,
+            error_string.to_string()
         ))
     }
 }
 
-/// # Safety: Todo
+impl Drop for Wallet {
+    fn drop(&mut self) {
+        // First, we move the arc from out of self such that we own it.
+        // This requires replacing the one in self with a null pointer, but since we're in drop
+        // that's ok.
+        let mut inner = Arc::new(Mutex::new(RawWallet(std::ptr::null_mut())));
+        std::mem::swap(&mut inner, &mut self.inner);
+
+        let Some(raw_mutex) = Arc::into_inner(inner) else {
+            tracing::warn!(path=%self.path, "Failed to close wallet, other instance still alive");
+            return;
+        };
+
+        // Try to get the inner RawWallet from the Mutex. Fails if poisoned.
+        let raw_wallet = raw_mutex.into_inner();
+
+        // Successfully obtained ownership of RawWallet.
+        // Clone necessary data for the spawned task.
+        let manager = self.manager.clone();
+        let path = self.path.clone();
+
+        // Spawn a task to perform the async close operation.
+        tokio::spawn(async move {
+            // Call the close function.
+            if let Err(e) = manager.lock().await.close_wallet(&path, raw_wallet) {
+                tracing::error!("Failed to close wallet {} in background task: {}", path, e);
+            } else {
+                tracing::debug!("Successfully closed wallet {} in background task.", path);
+            }
+        });
+    }
+}
+
+/// # Safety
+///
+/// This is safe because we only ever use Arc<Wallet>.
 unsafe impl Send for RawWallet {}
 
 impl PendingTransaction {
@@ -989,6 +1070,18 @@ impl SyncProgress {
     /// Get the sync progress as a percentage.
     pub fn percentage(&self) -> f32 {
         100.0 * self.fraction()
+    }
+}
+
+impl PartialOrd for SyncProgress {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.fraction().partial_cmp(&other.fraction())
+    }
+}
+
+impl PartialEq for SyncProgress {
+    fn eq(&self, other: &Self) -> bool {
+        self.fraction() == other.fraction()
     }
 }
 
