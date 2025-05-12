@@ -274,6 +274,49 @@ pub trait EstimateFeeRate {
     fn min_relay_fee(&self) -> Result<bitcoin::Amount>;
 }
 
+/// Defines a type alias for the core optional callback used in chunked sync.
+type InnerSyncCallback = Option<Box<dyn FnMut(usize, usize) + Send + 'static>>;
+/// Defines a type alias for the thread-safe, reference-counted callback.
+type SyncCallback = Arc<SyncMutex<InnerSyncCallback>>;
+
+/// Throttles a sync callback, invoking the original callback only when
+/// the progress increases by at least `min_percentage_increase`.
+///
+/// Ensures the callback is always invoked when progress reaches 100%.
+fn throttle_callback(
+    callback: InnerSyncCallback,
+    min_percentage_increase: f32,
+) -> InnerSyncCallback {
+    match callback {
+        None => None,
+        Some(mut original_cb) => {
+            // State captured by the throttling closure
+            let mut last_reported_percentage: f32 = 0.0;
+            // Pre-calculate threshold for efficiency
+            let threshold = min_percentage_increase / 100.0;
+            // Ensure threshold is valid (0.0 to 1.0)
+            let threshold = threshold.clamp(0.0, 1.0);
+
+            Some(Box::new(move |consumed, total| {
+                if total == 0 {
+                    // Avoid division by zero and pointless calls
+                    return;
+                }
+
+                let current_percentage = consumed as f32 / total as f32;
+                let is_complete = consumed == total;
+                let should_report =
+                    is_complete || (current_percentage - last_reported_percentage >= threshold);
+
+                if should_report {
+                    original_cb(consumed, total);
+                    last_reported_percentage = current_percentage;
+                }
+            }))
+        }
+    }
+}
+
 impl Wallet {
     /// If this many consequent addresses are unused, we stop the full scan.
     /// This needs to be a very big number, because we generate a lot of addresses
@@ -738,14 +781,9 @@ impl Wallet {
     /// Sync the wallet with the Blockchain
     /// Spawn `num_chunks` tasks to sync the wallet in parallel
     /// Call the callback with the cumulative progress of the sync
-    pub async fn chunked_sync_with_callback(
-        &self,
-        callback: Arc<SyncMutex<Option<Box<dyn FnMut(usize, usize) + Send + 'static>>>>,
-    ) -> Result<()> {
-        // This struct caches singular progress updates from each chunk
-        // and calculates the cumulative progress from them
-        // Key: index of the chunk
-        // Value: (consumed, total)
+    pub async fn chunked_sync_with_callback(&self, callback: SyncCallback) -> Result<()> {
+        // This struct combines progress updates from all chunks
+        // and makes them seem like a single progress update to outsiders
         struct CumulativeProgress(HashMap<usize, (usize, usize)>);
 
         impl CumulativeProgress {
@@ -764,6 +802,36 @@ impl Wallet {
             /// Updates the progress of a single chunk
             fn insert_single(&mut self, index: usize, consumed: usize, total: usize) {
                 self.0.insert(index, (consumed, total));
+            }
+        }
+
+        trait ProgressCacheHandle {
+            fn chunk_callback(self, callback: SyncCallback, index: usize) -> InnerSyncCallback;
+        }
+
+        impl ProgressCacheHandle for Arc<SyncMutex<CumulativeProgress>> {
+            /// Takes a SyncCallback and an index
+            /// Returns a new SyncCallback that should be passed to the chunk sync function
+            fn chunk_callback(self, callback: SyncCallback, index: usize) -> InnerSyncCallback {
+                Some(Box::new(move |consumed, total| {
+                    // Insert the latest progress update into the cache
+                    if let Ok(mut cache) = self.lock() {
+                        cache.insert_single(index, consumed, total);
+
+                        // Calculate the cumulative consumed and the cumulative total
+                        let (cumulative_consumed, cumulative_total) =
+                            cache.get_cumulative_progress();
+
+                        // Send the cumulative progress to the callback
+                        // We use sync Mutex here but it's ok because we're only blocking for a short time
+                        let callback = callback.lock();
+                        if let Ok(mut callback) = callback {
+                            if let Some(callback) = callback.as_mut() {
+                                callback(cumulative_consumed, cumulative_total);
+                            }
+                        }
+                    }
+                }))
             }
         }
 
@@ -794,28 +862,11 @@ impl Wallet {
             sync_requests
                 .into_iter()
                 .map(|(i, progress_cache, callback, sync_request)| {
-                    self.sync_with_custom_callback::<Box<dyn FnMut(usize, usize) + Send + 'static>>(
+                    self.sync_with_custom_callback(
                         sync_request,
-                        Some(Box::new(move |consumed, total| {
-                            if let Ok(mut cache) = progress_cache.lock() {
-                                // Insert the latest progress update into the cache
-                                cache.insert_single(i, consumed, total);
-
-                                // Calculate the cumulative consumed and the cumulative total
-                                let (cumulative_consumed, cumulative_total) =
-                                    cache.get_cumulative_progress();
-
-                                // Send the cumulative progress to the callback
-                                // We use sync Mutex here but it's ok because we're only blocking for a short time
-                                let callback = callback.lock();
-                                if let Ok(mut callback) = callback {
-                                    if let Some(callback) = callback.as_mut() {
-                                        callback(cumulative_consumed, cumulative_total);
-                                    }
-                                }
-                            }
-                        })),
+                        progress_cache.chunk_callback(callback, i),
                     )
+                    .in_current_span()
                 });
 
         // Start timer to measure the time taken to sync the wallet
@@ -832,7 +883,7 @@ impl Wallet {
         // Calculate the time taken to sync the wallet
         let duration = start_time.elapsed();
         tracing::info!(
-            "Time taken to sync the wallet: {:?} with {} chunks and batch size {}",
+            "Synced Bitcoin wallet in {:?} with {} concurrent chunks and batch size {}",
             duration,
             Self::SCAN_CHUNKS,
             Self::SCAN_BATCH_SIZE
@@ -845,14 +896,11 @@ impl Wallet {
     /// This will NOT emit progress events to the UI.
     ///
     /// If no sync request is provided, we default to syncing all revealed spks.
-    pub async fn sync_with_custom_callback<F>(
+    pub async fn sync_with_custom_callback(
         &self,
         sync_request: SyncRequestBuilder<(KeychainKind, u32)>,
-        mut callback: Option<F>,
-    ) -> Result<()>
-    where
-        F: FnMut(usize, usize) + Send + 'static,
-    {
+        mut callback: InnerSyncCallback,
+    ) -> Result<()> {
         let sync_request = sync_request
             .inspect(move |_, progress| {
                 if let Some(cb) = callback.as_mut() {
@@ -894,15 +942,23 @@ impl Wallet {
             );
 
         let background_process_handle_clone = background_process_handle.clone();
-        self.chunked_sync_with_callback(Arc::new(SyncMutex::new(Some(Box::new(
-            move |consumed, total| {
-                background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
-                    consumed: consumed as u64,
-                    total: total as u64,
-                });
-            },
-        )))))
-        .await?;
+
+        let callback: InnerSyncCallback = Some(Box::new(move |consumed, total| {
+            tracing::debug!("Syncing Bitcoin wallet ({}/{})", consumed, total);
+
+            background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
+                consumed: consumed as u64,
+                total: total as u64,
+            });
+        }));
+
+        // Throttle the callback to 10% increments
+        let callback = throttle_callback(callback, 5.0); // 10% increments
+
+        // Wrap the throttled callback for the sync function
+        let final_callback = Arc::new(SyncMutex::new(callback));
+
+        self.chunked_sync_with_callback(final_callback).await?;
 
         background_process_handle.finish();
 
@@ -1275,6 +1331,9 @@ impl EstimateFeeRate for Client {
 
         // Convert to sat / kB without ever constructing an Amount from the float
         // Simply by multiplying the float with the satoshi value of 1 BTC.
+        // Truncation is allowed here because we are converting to sats and rounding down sats will
+        // not lose us any precision (because there is no fractional satoshi).
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let sats_per_kvb = (btc_per_kvb * Amount::ONE_BTC.to_sat() as f64).ceil() as u64;
 
         // Convert to sat / kwu (kwu = kB × 4)
