@@ -17,7 +17,7 @@ fn main() {
     let monero_build_dir = output_directory.join("build");
 
     println!(
-        "cargo:warning=Build directory: {}",
+        "cargo:debug=Build directory: {}",
         output_directory.display()
     );
 

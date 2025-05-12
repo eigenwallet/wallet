@@ -1,5 +1,5 @@
 use monero_harness::{image::Monerod, Monero};
-use monero_sys::{Daemon, SyncProgress, Wallet, WalletManager};
+use monero_sys::{Daemon, SyncProgress, WalletManager};
 use std::sync::OnceLock;
 use tempfile::{tempdir, TempDir};
 use testcontainers::{clients::Cli, Container};
@@ -93,12 +93,10 @@ async fn create_wallet(wallet_name: &str, daemon: Option<Daemon>) -> (monero::Ad
         .await
         .expect("Failed to recover wallet");
 
-    let wallet = wallet.lock().await;
-
     // Get the main address
     let address = wallet.main_address();
 
-    (address, seed.to_string())
+    (address.await, seed.to_string())
 }
 
 /// Funds an address with a given amount of piconero.
@@ -176,21 +174,17 @@ async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amou
 
     // We need to allow mismatched daemon versions for the Regtest network
     // to be accepted by wallet2
-    wallet_mutex.lock().await.allow_mismatched_daemon_version();
+    wallet_mutex.allow_mismatched_daemon_version().await;
 
-    Wallet::wait_until_synced(
-        wallet_mutex.clone(),
-        Some(|sync_progress: SyncProgress| {
+    wallet_mutex
+        .wait_until_synced(Some(|sync_progress: SyncProgress| {
             tracing::info!("Sync progress: {}%", sync_progress.percentage());
-        }),
-    )
-    .await
-    .expect("Failed to sync wallet");
-
-    let wallet = wallet_mutex.lock().await;
+        }))
+        .await
+        .expect("Failed to sync wallet");
 
     // Check balance
-    let balance = wallet.total_balance();
+    let balance = wallet_mutex.total_balance().await;
     info!("Final balance check: {}", balance);
     balance
 }

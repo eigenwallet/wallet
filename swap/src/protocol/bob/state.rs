@@ -673,8 +673,7 @@ impl State5 {
             .await
             .context("Failed to open Monero wallet")?;
 
-        let mut wallet_lock = wallet.lock().await;
-        let tx_hashes = wallet_lock
+        let tx_hashes = wallet
             .sweep(&monero_receive_address)
             .await
             .context("Failed to sweep Monero")?

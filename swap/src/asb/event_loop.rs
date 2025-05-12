@@ -534,11 +534,10 @@ where
                 .open_main_wallet()
                 .await
                 .context("Failed to open main Monero wallet")?
-                .lock(),
+                .unlocked_balance(),
         )
         .await
-        .context("Timeout while waiting for lock on monero wallet while making quote")?
-        .unlocked_balance();
+        .context("Timeout while waiting for lock on monero wallet while making quote")?;
 
         let max_bitcoin_for_monero = monero::Amount::from(xmr_balance)
             .max_bitcoin_for_price(ask_price)

@@ -82,7 +82,7 @@ impl Wallets {
     }
 
     /// Try to open a wallet by name (creates if it doesn't exist).
-    async fn open(&self, wallet_name: &str) -> Result<Arc<Mutex<Wallet>>> {
+    async fn open(&self, wallet_name: &str) -> Result<Arc<Wallet>> {
         let mut manager = self.wallet_manager.lock().await;
         let wallet_path = self.wallet_dir.join(wallet_name).display().to_string();
 
@@ -93,13 +93,14 @@ impl Wallets {
     }
 
     /// Open the lock wallet of a specific swap.
+    /// Used to redeem (Bob) or refund (Alice) the Monero.
     pub async fn open_swap_wallet(
         &self,
         swap_id: Uuid,
         spend_key: monero::PrivateKey,
         view_key: super::PrivateViewKey,
         restore_height: super::BlockHeight,
-    ) -> Result<Arc<Mutex<Wallet>>> {
+    ) -> Result<Arc<Wallet>> {
         // Derive wallet address from the keys
         let address = {
             let pubkey = monero::PublicKey::from_private_key(&view_key.into());
@@ -131,7 +132,7 @@ impl Wallets {
     }
 
     /// Get the main wallet (specified when initializing the `Wallets` instance).
-    pub async fn open_main_wallet(&self) -> Result<Arc<Mutex<Wallet>>> {
+    pub async fn open_main_wallet(&self) -> Result<Arc<Wallet>> {
         self.open(&self.main_wallet)
             .await
             .context(format!("Failed to open main wallet `{}`", self.main_wallet))
@@ -167,16 +168,16 @@ impl Wallets {
             watch_request.public_view_key.0,
         );
 
-        Wallet::wait_until_confirmed(
-            wallet,
-            &watch_request.transfer_proof.tx_hash.0,
-            watch_request.transfer_proof.tx_key,
-            &address,
-            watch_request.expected_amount,
-            watch_request.confirmation_target,
-            listener,
-        )
-        .await
+        wallet
+            .wait_until_confirmed(
+                &watch_request.transfer_proof.tx_hash.0,
+                watch_request.transfer_proof.tx_key,
+                &address,
+                watch_request.expected_amount,
+                watch_request.confirmation_target,
+                listener,
+            )
+            .await
     }
 
     /// Close all open wallets.

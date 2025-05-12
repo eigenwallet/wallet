@@ -543,13 +543,10 @@ impl State3 {
             .open_main_wallet()
             .await
             .context("Failed to open main wallet")?
-            .lock()
-            .await
-            .main_address();
+            .main_address()
+            .await;
 
         swap_wallet
-            .lock()
-            .await
             .sweep(&main_address)
             .await
             .context("Failed to sweep Monero to redeem address")?;

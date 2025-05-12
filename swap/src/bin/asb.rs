@@ -127,16 +127,15 @@ pub async fn main() -> Result<()> {
                 .open_main_wallet()
                 .await
                 .unwrap()
-                .lock()
-                .await
-                .main_address();
+                .main_address()
+                .await;
             tracing::info!(%monero_address, "Monero wallet address");
 
             // Check Monero balance
             let wallet = monero_wallet.open_main_wallet().await.unwrap();
 
-            let total = wallet.lock().await.total_balance().as_pico();
-            let unlocked = wallet.lock().await.unlocked_balance().as_pico();
+            let total = wallet.total_balance().await.as_pico();
+            let unlocked = wallet.unlocked_balance().await.as_pico();
 
             match (total, unlocked) {
                 (0, _) => {
@@ -332,9 +331,8 @@ pub async fn main() -> Result<()> {
                 .open_main_wallet()
                 .await
                 .unwrap()
-                .lock()
-                .await
-                .total_balance();
+                .total_balance()
+                .await;
             tracing::info!(%monero_balance);
 
             let bitcoin_wallet = init_bitcoin_wallet(&config, &seed, env_config).await?;

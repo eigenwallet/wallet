@@ -63,9 +63,8 @@ impl WalletSnapshot {
             .open_main_wallet()
             .await
             .context("Failed to open main Monero wallet")?
-            .lock()
-            .await
-            .unlocked_balance();
+            .unlocked_balance()
+            .await;
         let redeem_address = external_redeem_address
             .clone()
             .unwrap_or(bitcoin_wallet.new_address().await?);

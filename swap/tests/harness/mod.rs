@@ -442,9 +442,8 @@ impl BobParams {
                 .open_main_wallet()
                 .await
                 .unwrap()
-                .lock()
-                .await
-                .main_address(),
+                .main_address()
+                .await,
         )
     }
 
@@ -470,9 +469,8 @@ impl BobParams {
                 .open_main_wallet()
                 .await
                 .unwrap()
-                .lock()
-                .await
-                .main_address(),
+                .main_address()
+                .await,
         )
         .await?;
 
@@ -508,9 +506,8 @@ impl BobParams {
                 .open_main_wallet()
                 .await
                 .unwrap()
-                .lock()
-                .await
-                .main_address(),
+                .main_address()
+                .await,
             self.bitcoin_wallet.new_address().await?,
             btc_amount,
         );
@@ -652,13 +649,7 @@ impl TestContext {
         .unwrap();
 
         assert_eventual_balance(
-            &*self
-                .alice_monero_wallet
-                .open_main_wallet()
-                .await
-                .unwrap()
-                .lock()
-                .await,
+            &*self.alice_monero_wallet.open_main_wallet().await.unwrap(),
             Ordering::Less,
             self.alice_redeemed_xmr_balance(),
         )
@@ -679,13 +670,7 @@ impl TestContext {
 
         // Alice pays fees - comparison does not take exact lock fee into account
         assert_eventual_balance(
-            &*self
-                .alice_monero_wallet
-                .open_main_wallet()
-                .await
-                .unwrap()
-                .lock()
-                .await,
+            &*self.alice_monero_wallet.open_main_wallet().await.unwrap(),
             Ordering::Greater,
             self.alice_refunded_xmr_balance(),
         )
@@ -705,13 +690,7 @@ impl TestContext {
         .unwrap();
 
         assert_eventual_balance(
-            &*self
-                .alice_monero_wallet
-                .open_main_wallet()
-                .await
-                .unwrap()
-                .lock()
-                .await,
+            &*self.alice_monero_wallet.open_main_wallet().await.unwrap(),
             Ordering::Less,
             self.alice_punished_xmr_balance(),
         )
@@ -729,13 +708,7 @@ impl TestContext {
         .unwrap();
 
         assert_eventual_balance(
-            &*self
-                .bob_monero_wallet
-                .open_main_wallet()
-                .await
-                .unwrap()
-                .lock()
-                .await,
+            &*self.bob_monero_wallet.open_main_wallet().await.unwrap(),
             Ordering::Greater,
             self.bob_redeemed_xmr_balance(),
         )
@@ -776,13 +749,7 @@ impl TestContext {
         assert!(bob_cancelled_and_refunded);
 
         assert_eventual_balance(
-            &*self
-                .bob_monero_wallet
-                .open_main_wallet()
-                .await
-                .unwrap()
-                .lock()
-                .await,
+            &*self.bob_monero_wallet.open_main_wallet().await.unwrap(),
             Ordering::Equal,
             self.bob_refunded_xmr_balance(),
         )
@@ -800,13 +767,7 @@ impl TestContext {
         .unwrap();
 
         assert_eventual_balance(
-            &*self
-                .bob_monero_wallet
-                .open_main_wallet()
-                .await
-                .unwrap()
-                .lock()
-                .await,
+            &*self.bob_monero_wallet.open_main_wallet().await.unwrap(),
             Ordering::Equal,
             self.bob_punished_xmr_balance(),
         )
@@ -955,7 +916,7 @@ impl Wallet for monero::Wallet {
 
     fn refresh(&self) -> impl Future<Output = Result<()>> {
         async move {
-            while !self.synchronized() {
+            while !self.synchronized().await {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
 
@@ -964,7 +925,7 @@ impl Wallet for monero::Wallet {
     }
 
     fn get_balance(&self) -> impl Future<Output = Result<Self::Amount>> {
-        async move { Ok(self.total_balance().into()) }
+        async move { Ok(self.total_balance().await.into()) }
     }
 }
 

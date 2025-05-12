@@ -1,4 +1,4 @@
-use monero_sys::{Daemon, SyncProgress, Wallet, WalletManager};
+use monero_sys::{Daemon, SyncProgress, WalletManager};
 
 const PASSWORD: &str = "test";
 
@@ -48,28 +48,23 @@ async fn main() {
         .await
         .expect("Failed to recover wallet");
 
-    tracing::info!(
-        "Primary address: {}",
-        wallet_mutex.lock().await.main_address()
-    );
+    tracing::info!("Primary address: {}", wallet_mutex.main_address().await);
 
     // Wait for a while to let the wallet sync, checking sync status
     tracing::info!("Waiting for wallet to sync...");
 
-    Wallet::wait_until_synced(
-        wallet_mutex.clone(),
-        Some(|sync_progress: SyncProgress| {
+    wallet_mutex
+        .wait_until_synced(Some(|sync_progress: SyncProgress| {
             tracing::info!("Sync progress: {}%", sync_progress.percentage());
-        }),
-    )
-    .await
-    .expect("Failed to sync wallet");
+        }))
+        .await
+        .expect("Failed to sync wallet");
 
     tracing::info!("Wallet is synchronized!");
 
-    let balance = wallet_mutex.lock().await.total_balance();
+    let balance = wallet_mutex.total_balance().await;
     tracing::info!("Balance: {}", balance.as_pico());
 
-    let unlocked_balance = wallet_mutex.lock().await.unlocked_balance();
+    let unlocked_balance = wallet_mutex.unlocked_balance().await;
     tracing::info!("Unlocked balance: {}", unlocked_balance.as_pico());
 }

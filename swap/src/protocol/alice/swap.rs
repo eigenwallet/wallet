@@ -155,8 +155,6 @@ where
                         .open_main_wallet()
                         .await
                         .context("Failed to open Monero main wallet")?
-                        .lock()
-                        .await
                         .transfer(&address, amount)
                         .await
                         .map_err(|e| tracing::error!(err=%e, "Failed to lock Monero"))
