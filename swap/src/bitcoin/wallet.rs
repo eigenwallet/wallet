@@ -290,20 +290,17 @@ fn throttle_callback(
     match callback {
         None => None,
         Some(mut original_cb) => {
-            // State captured by the throttling closure
-            let mut last_reported_percentage: f32 = 0.0;
-            // Pre-calculate threshold for efficiency
-            let threshold = min_percentage_increase / 100.0;
-            // Ensure threshold is valid (0.0 to 1.0)
+            let mut last_reported_percentage: f64 = 0.0;
+            let threshold = min_percentage_increase as f64 / 100.0;
             let threshold = threshold.clamp(0.0, 1.0);
 
+            #[allow(clippy::cast_precision_loss)]
             Some(Box::new(move |consumed, total| {
                 if total == 0 {
-                    // Avoid division by zero and pointless calls
                     return;
                 }
 
-                let current_percentage = consumed as f32 / total as f32;
+                let current_percentage = consumed as f64 / total as f64;
                 let is_complete = consumed == total;
                 let should_report =
                     is_complete || (current_percentage - last_reported_percentage >= threshold);
@@ -1333,7 +1330,7 @@ impl EstimateFeeRate for Client {
         // Simply by multiplying the float with the satoshi value of 1 BTC.
         // Truncation is allowed here because we are converting to sats and rounding down sats will
         // not lose us any precision (because there is no fractional satoshi).
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
         let sats_per_kvb = (btc_per_kvb * Amount::ONE_BTC.to_sat() as f64).ceil() as u64;
 
         // Convert to sat / kwu (kwu = kB × 4)
