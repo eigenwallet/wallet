@@ -5,6 +5,7 @@ use crate::cli::api::tauri_bindings::{
 };
 use crate::seed::Seed;
 use anyhow::{anyhow, bail, Context, Result};
+use bdk_chain::spk_client::{SyncRequest, SyncRequestBuilder};
 use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
 use bdk_electrum::BdkElectrumClient;
 use bdk_wallet::bitcoin::FeeRate;
@@ -23,6 +24,7 @@ use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use uuid::Uuid;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
@@ -204,7 +206,7 @@ pub struct Wallet<Persister = Connection, C = Client> {
 /// This is our wrapper around a bdk electrum client.
 pub struct Client {
     /// The underlying bdk electrum client.
-    electrum: BdkElectrumClient<bdk_electrum::electrum_client::Client>,
+    electrum: Arc<BdkElectrumClient<bdk_electrum::electrum_client::Client>>,
     /// The history of transactions for each script.
     script_history: BTreeMap<ScriptBuf, Vec<GetHistoryRes>>,
     /// The subscriptions to the status of transactions.
@@ -278,7 +280,9 @@ impl Wallet {
     /// which might end up unused.
     const SCAN_STOP_GAP: usize = 1_000;
     /// The batch size for the full scan.
-    const SCAN_BATCH_SIZE: usize = 32;
+    const SCAN_BATCH_SIZE: usize = 16;
+    /// The number of chunks to split the full scan into.
+    const SCAN_CHUNKS: usize = 1;
 
     const WALLET_PARENT_DIR_NAME: &str = "wallet";
     const WALLET_DIR_NAME: &str = "wallet-new";
@@ -660,41 +664,142 @@ impl Wallet {
         Ok(tx)
     }
 
+    /// Create a vector of sync requests
+    /// 
+    /// This splits up all the revealed spks and builds a sync request for each chunk.
+    /// Useful for syncing the whole wallet in chunks.
+    async fn chunked_sync_request(&self, num_chunks: usize) -> Vec<SyncRequestBuilder<(bdk_wallet::KeychainKind, u32)>> {
+        let wallet = self.wallet.lock().await;
+        let spks: Vec<_> = wallet.spk_index().revealed_spks(..).collect();    
+        let mut chunks = Vec::new();
+
+        let total = spks.len();
+        let chunk_size = (total + num_chunks - 1) / num_chunks;
+
+        for i in 0..num_chunks {
+            let start = i * chunk_size;
+            if start >= total { break; }
+            let end = (start + chunk_size).min(total);
+
+            let spks_chunk = &spks[start..end];
+            let spks_chunk = spks_chunk.iter().cloned();
+
+            // Get the underlying data from wallet.local_chain().tip()
+            let chain_tip = wallet.local_chain().tip();
+
+             // Create a new checkpoint with the correct type for SyncRequest::builder()
+            let sync_request = SyncRequest::builder()
+                .chain_tip(chain_tip)
+                .spks_with_indexes(spks_chunk);
+            
+            chunks.push(sync_request);
+        }
+
+        chunks
+    }
+
+    /// Sync the wallet with the Blockchain
+    /// Spawn `num_chunks` tasks to sync the wallet in parallel
+    /// Call the callback with the cumulative progress of the sync
+    pub async fn chunked_sync_with_callback(&self, num_chunks: usize, callback: Arc<Mutex<Option<Box<dyn FnMut(usize, usize) + Send + 'static>>>>) -> Result<()> {
+        // Construct the chunks to process
+        let sync_requests = self.chunked_sync_request(num_chunks).await;
+
+        // For each sync request, store the latest progress update in a HashMap keyed by the index of the chunk
+        let progress_updates: Arc<Mutex<HashMap<usize, (usize, usize)>>> = Arc::new(Mutex::new(HashMap::new()));
+
+        // Assign each sync request: its index, a copy of the progress_updates Arc<_>, the callback, and the sync_request
+        let sync_requests = sync_requests.into_iter().enumerate().map(|(index, sync_request)| {
+            (index, progress_updates.clone(), callback.clone(), sync_request)
+        }).collect::<Vec<_>>();
+
+        // Create a vector of futures to process in parallel
+        let futures = sync_requests.into_iter().map(|(i, progress_cache, callback, sync_request)| {
+            self.sync_with_custom_callback::<Box<dyn FnMut(usize, usize) + Send + 'static>>(
+                Some(sync_request), 
+                Some(Box::new(move |consumed, total| {
+                    if let Ok(mut cache) = progress_cache.try_lock() {
+                        // Insert the latest progress update into the cache
+                        cache.insert(i, (consumed, total));
+
+                        // Calculate the cumulative consumed and the cumulative total
+                        let cumulative_consumed = cache.values().map(|(consumed, _)| *consumed).sum();
+                        let cumulative_total = cache.values().map(|(_, total)| *total).sum();
+
+                        // Send the cumulative progress to the callback
+                        // This is then displayed in the UI
+                        if let Ok(mut cb) = callback.try_lock() {
+                            if let Some(cb) = cb.as_mut() {
+                                cb(cumulative_consumed, cumulative_total);
+                            }
+                        }
+                    }
+                })))
+        });
+
+        // Start timer to measure the time taken to sync the wallet
+        let start_time = Instant::now();
+
+        // Execute all futures concurrently and collect results
+        let results = futures::future::join_all(futures).await;
+        
+        // Check if any requests failed
+        for result in results {
+            result?;
+        }
+
+        // Calculate the time taken to sync the wallet
+        let duration = start_time.elapsed();
+        tracing::info!("Time taken to sync the wallet: {:?} with {} chunks and batch size {}", duration, num_chunks, Self::SCAN_BATCH_SIZE);
+
+        Ok(())
+    }
+
     /// Sync the wallet with the blockchain, optionally calling a callback on progress updates.
     /// This will NOT emit progress events to the UI.
-    pub async fn sync_with_custom_callback<F>(&self, mut callback: Option<F>) -> Result<()>
+    /// 
+    /// If no sync request is provided, we default to syncing all revealed spks.
+    pub async fn sync_with_custom_callback<F>(&self, sync_request: Option<SyncRequestBuilder<(KeychainKind, u32)>>, mut callback: Option<F>) -> Result<()>
     where
         F: FnMut(usize, usize) + Send + 'static,
     {
-        let sync_request = self
-            .wallet
-            .lock()
-            .await
-            .start_sync_with_revealed_spks()
-            .inspect(move |_, progress| {
-                if let Some(cb) = callback.as_mut() {
-                    cb(progress.consumed(), progress.total());
-                }
+        // If no sync request is provided, we default to syncing all revealed spks
+        let sync_request = if let Some(sync_request) = sync_request {
+            sync_request
+        } else {
+            self.wallet.lock().await.start_sync_with_revealed_spks()
+        };
 
-                tracing::debug!(
-                    "Syncing wallet ({:?} / {:?} done)",
-                    progress.consumed(),
-                    progress.total()
-                );
-            })
-            .build();
+        let id = Uuid::new_v4();
 
-        // We spawn a blocking task to sync the wallet
-        // because the sync method is blocking.
-        let client_mutex = self.client.clone();
+        let sync_request = sync_request.inspect(move |_, progress| {
+            if let Some(cb) = callback.as_mut() {
+                cb(progress.consumed(), progress.total());
+            }
+
+            tracing::debug!(
+                "Syncing wallet ({:?} / {:?} done) (Chunk ID: {:?})",
+                progress.consumed(),
+                progress.total(),
+                id
+            );
+        })
+        .build();
+
+        // We make a copy of the Arc<BdkElectrumClient> because we do not want to block the
+        // other concurrently running syncs.
+        let client = self.client.lock().await;
+        let electrum_client = client.electrum.clone();
+        drop(client); // We drop the lock to allow others to make a copy of the Arc<_>
+
+        // The .sync(...) method is blocking, so we spawn a blocking task to sync the wallet
         let res = tokio::task::spawn_blocking(move || {
-            let client = client_mutex.blocking_lock();
-            client
-                .electrum
+            electrum_client
                 .sync(sync_request, Self::SCAN_BATCH_SIZE, true)
         })
         .await??;
 
+        // We only acquire the lock after the long running .sync(...) call has finished
         let mut wallet = self.wallet.lock().await;
         wallet.apply_update(res)?;
 
@@ -715,15 +820,17 @@ impl Wallet {
             );
 
         let background_process_handle_clone = background_process_handle.clone();
-        self.sync_with_custom_callback::<Box<dyn Fn(usize, usize) + Send>>(Some(Box::new(
-            move |consumed, total| {
-                background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
-                    consumed: consumed as u64,
-                    total: total as u64,
-                });
-            },
-        )))
-        .await?;
+        self.chunked_sync_with_callback(
+            Self::SCAN_CHUNKS, 
+            Arc::new(Mutex::new(Some(Box::new(
+                move |consumed, total| {
+                    background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
+                        consumed: consumed as u64,
+                        total: total as u64,
+                    });
+                }
+            ))))
+        ).await?;
 
         background_process_handle.finish();
 
@@ -940,7 +1047,7 @@ impl Client {
     pub fn new(electrum_rpc_url: &str, sync_interval: Duration) -> Result<Self> {
         let client = bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?;
         Ok(Self {
-            electrum: BdkElectrumClient::new(client),
+            electrum: Arc::new(BdkElectrumClient::new(client)),
             script_history: Default::default(),
             last_sync: Instant::now()
                 .checked_sub(sync_interval)
