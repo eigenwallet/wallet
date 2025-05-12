@@ -1330,7 +1330,11 @@ impl EstimateFeeRate for Client {
         // Simply by multiplying the float with the satoshi value of 1 BTC.
         // Truncation is allowed here because we are converting to sats and rounding down sats will
         // not lose us any precision (because there is no fractional satoshi).
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
         let sats_per_kvb = (btc_per_kvb * Amount::ONE_BTC.to_sat() as f64).ceil() as u64;
 
         // Convert to sat / kwu (kwu = kB × 4)
