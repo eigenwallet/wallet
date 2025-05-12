@@ -570,6 +570,19 @@ impl Wallet {
                 format!("Failed to broadcast Bitcoin {} transaction {}", kind, txid)
             })?;
 
+        // The transaction was accepted by the mempool (otherwise Electrum would have rejected it)
+        // Mark the transaction we just published as unconfirmed in the mempool
+        // This ensures it is used to calculate the Balance (without requiring a rescan of the wallet)
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time went backwards")
+            .as_secs();
+
+        let mut wallet = self.wallet.lock().await;
+        let mut persister = self.persister.lock().await;
+        wallet.apply_unconfirmed_txs(vec![(transaction, timestamp)]);
+        wallet.persist(&mut persister)?;
+
         tracing::info!(%txid, %kind, "Published Bitcoin transaction");
 
         Ok((txid, subscription))

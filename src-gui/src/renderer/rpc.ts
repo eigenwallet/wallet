@@ -85,6 +85,14 @@ export async function checkBitcoinBalance() {
   store.dispatch(rpcSetBalance(response.balance));
 }
 
+export async function cheapCheckBitcoinBalance() {
+  const response = await invoke<BalanceArgs, BalanceResponse>("get_balance", {
+    force_refresh: false,
+  });
+
+  store.dispatch(rpcSetBalance(response.balance));
+}
+
 export async function getAllSwapInfos() {
   const response =
     await invokeNoArgs<GetSwapInfoResponse[]>("get_swap_infos_all");
@@ -113,6 +121,10 @@ export async function withdrawBtc(address: string): Promise<string> {
       amount: null,
     },
   );
+
+  // We check the balance, this is cheap and does not sync the wallet
+  // but instead uses our local cached balance
+  await cheapCheckBitcoinBalance();
 
   return response.txid;
 }
