@@ -24,7 +24,6 @@ use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use uuid::Uuid;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
@@ -32,6 +31,7 @@ use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex as SyncMutex;
 use std::time::Duration;
 use std::time::Instant;
 use tokio::sync::{watch, Mutex};
@@ -281,8 +281,8 @@ impl Wallet {
     const SCAN_STOP_GAP: usize = 1_000;
     /// The batch size for the full scan.
     const SCAN_BATCH_SIZE: usize = 16;
-    /// The number of chunks to split the full scan into.
-    const SCAN_CHUNKS: usize = 1;
+    /// The number of maximum chunks to split the full scan into.
+    const SCAN_CHUNKS: usize = 10;
 
     const WALLET_PARENT_DIR_NAME: &str = "wallet";
     const WALLET_DIR_NAME: &str = "wallet-new";
@@ -665,35 +665,55 @@ impl Wallet {
     }
 
     /// Create a vector of sync requests
-    /// 
+    ///
     /// This splits up all the revealed spks and builds a sync request for each chunk.
     /// Useful for syncing the whole wallet in chunks.
-    async fn chunked_sync_request(&self, num_chunks: usize) -> Vec<SyncRequestBuilder<(bdk_wallet::KeychainKind, u32)>> {
+    async fn chunked_sync_request(
+        &self,
+        num_chunks: usize,
+        batch_size: usize,
+    ) -> Vec<SyncRequestBuilder<(bdk_wallet::KeychainKind, u32)>> {
         let wallet = self.wallet.lock().await;
-        let spks: Vec<_> = wallet.spk_index().revealed_spks(..).collect();    
+        let spks: Vec<_> = wallet.spk_index().revealed_spks(..).collect();
+        let total_spks = spks.len();
+
+        // We only use as many chunks as are useful to reduce the number of requests
+        // given the batch size
+        // This means: num_chunks * batch_size < total number of spks
+        //
+        // E.g we have 1000 spks and a batch size of 100, we only use 10 chunks at most
+        // If we used 20 chunks we would not maximize the batch size
+        //
+        // At least one chunk is always required. At most total_spks / batch_size or the provided num_chunks (whichever is smaller)
+        let num_chunks = num_chunks.min(total_spks / batch_size).max(1);
+
         let mut chunks = Vec::new();
 
-        let total = spks.len();
-        let chunk_size = (total + num_chunks - 1) / num_chunks;
+        let chunk_size = (total_spks + num_chunks - 1) / num_chunks;
 
         for i in 0..num_chunks {
             let start = i * chunk_size;
-            if start >= total { break; }
-            let end = (start + chunk_size).min(total);
+            if start >= total_spks {
+                break;
+            }
+            let end = (start + chunk_size).min(total_spks);
 
             let spks_chunk = &spks[start..end];
             let spks_chunk = spks_chunk.iter().cloned();
 
-            // Get the underlying data from wallet.local_chain().tip()
+            // Get the chain tip
             let chain_tip = wallet.local_chain().tip();
 
-             // Create a new checkpoint with the correct type for SyncRequest::builder()
+            // Create a new SyncRequestBuilder with just the spks of the current chunk
+            // We don't build the request here because the caller might want to add a custom callback
             let sync_request = SyncRequest::builder()
                 .chain_tip(chain_tip)
                 .spks_with_indexes(spks_chunk);
-            
+
             chunks.push(sync_request);
         }
+
+        tracing::debug!("Constructed sync request vector with {} chunks with a total of {} spks", chunks.len(), total_spks);
 
         chunks
     }
@@ -701,48 +721,92 @@ impl Wallet {
     /// Sync the wallet with the Blockchain
     /// Spawn `num_chunks` tasks to sync the wallet in parallel
     /// Call the callback with the cumulative progress of the sync
-    pub async fn chunked_sync_with_callback(&self, num_chunks: usize, callback: Arc<Mutex<Option<Box<dyn FnMut(usize, usize) + Send + 'static>>>>) -> Result<()> {
+    pub async fn chunked_sync_with_callback(
+        &self,
+        callback: Arc<SyncMutex<Option<Box<dyn FnMut(usize, usize) + Send + 'static>>>>,
+    ) -> Result<()> {
+        // This struct caches singular progress updates from each chunk
+        // and calculates the cumulative progress from them
+        // Key: index of the chunk
+        // Value: (consumed, total)
+        struct CumulativeProgress(HashMap<usize, (usize, usize)>);
+
+        impl CumulativeProgress {
+            fn new() -> Self {
+                Self(HashMap::new())
+            }
+
+            /// Get the cumulative progress from all cached singular progress updates
+            fn get_cumulative_progress(&self) -> (usize, usize) {
+                let total_consumed = self.0.values().map(|(consumed, _)| *consumed).sum();
+                let total_total = self.0.values().map(|(_, total)| *total).sum();
+
+                (total_consumed, total_total)
+            }
+
+            /// Updates the progress of a single chunk
+            fn insert_single(&mut self, index: usize, consumed: usize, total: usize) {
+                self.0.insert(index, (consumed, total));
+            }
+        }
+
         // Construct the chunks to process
-        let sync_requests = self.chunked_sync_request(num_chunks).await;
+        let sync_requests = self
+            .chunked_sync_request(Self::SCAN_CHUNKS, Self::SCAN_BATCH_SIZE)
+            .await;
 
         // For each sync request, store the latest progress update in a HashMap keyed by the index of the chunk
-        let progress_updates: Arc<Mutex<HashMap<usize, (usize, usize)>>> = Arc::new(Mutex::new(HashMap::new()));
+        let progress_cache = Arc::new(SyncMutex::new(CumulativeProgress::new())); // Use the newtype here
 
         // Assign each sync request: its index, a copy of the progress_updates Arc<_>, the callback, and the sync_request
-        let sync_requests = sync_requests.into_iter().enumerate().map(|(index, sync_request)| {
-            (index, progress_updates.clone(), callback.clone(), sync_request)
-        }).collect::<Vec<_>>();
+        let sync_requests = sync_requests
+            .into_iter()
+            .enumerate()
+            .map(|(index, sync_request)| {
+                (
+                    index,
+                    progress_cache.clone(),
+                    callback.clone(),
+                    sync_request,
+                )
+            })
+            .collect::<Vec<_>>();
 
         // Create a vector of futures to process in parallel
-        let futures = sync_requests.into_iter().map(|(i, progress_cache, callback, sync_request)| {
-            self.sync_with_custom_callback::<Box<dyn FnMut(usize, usize) + Send + 'static>>(
-                Some(sync_request), 
-                Some(Box::new(move |consumed, total| {
-                    if let Ok(mut cache) = progress_cache.try_lock() {
-                        // Insert the latest progress update into the cache
-                        cache.insert(i, (consumed, total));
+        let futures =
+            sync_requests
+                .into_iter()
+                .map(|(i, progress_cache, callback, sync_request)| {
+                    self.sync_with_custom_callback::<Box<dyn FnMut(usize, usize) + Send + 'static>>(
+                        sync_request,
+                        Some(Box::new(move |consumed, total| {
+                            if let Ok(mut cache) = progress_cache.lock() {
+                                // Insert the latest progress update into the cache
+                                cache.insert_single(i, consumed, total);
 
-                        // Calculate the cumulative consumed and the cumulative total
-                        let cumulative_consumed = cache.values().map(|(consumed, _)| *consumed).sum();
-                        let cumulative_total = cache.values().map(|(_, total)| *total).sum();
+                                // Calculate the cumulative consumed and the cumulative total
+                                let (cumulative_consumed, cumulative_total) =
+                                    cache.get_cumulative_progress();
 
-                        // Send the cumulative progress to the callback
-                        // This is then displayed in the UI
-                        if let Ok(mut cb) = callback.try_lock() {
-                            if let Some(cb) = cb.as_mut() {
-                                cb(cumulative_consumed, cumulative_total);
+                                // Send the cumulative progress to the callback
+                                // We use sync Mutex here but it's ok because we're only blocking for a short time
+                                let callback = callback.lock();
+                                if let Ok(mut callback) = callback {
+                                    if let Some(callback) = callback.as_mut() {
+                                        callback(cumulative_consumed, cumulative_total);
+                                    }
+                                }
                             }
-                        }
-                    }
-                })))
-        });
+                        })),
+                    )
+                });
 
         // Start timer to measure the time taken to sync the wallet
         let start_time = Instant::now();
 
         // Execute all futures concurrently and collect results
         let results = futures::future::join_all(futures).await;
-        
+
         // Check if any requests failed
         for result in results {
             result?;
@@ -750,41 +814,35 @@ impl Wallet {
 
         // Calculate the time taken to sync the wallet
         let duration = start_time.elapsed();
-        tracing::info!("Time taken to sync the wallet: {:?} with {} chunks and batch size {}", duration, num_chunks, Self::SCAN_BATCH_SIZE);
+        tracing::info!(
+            "Time taken to sync the wallet: {:?} with {} chunks and batch size {}",
+            duration,
+            Self::SCAN_CHUNKS,
+            Self::SCAN_BATCH_SIZE
+        );
 
         Ok(())
     }
 
     /// Sync the wallet with the blockchain, optionally calling a callback on progress updates.
     /// This will NOT emit progress events to the UI.
-    /// 
+    ///
     /// If no sync request is provided, we default to syncing all revealed spks.
-    pub async fn sync_with_custom_callback<F>(&self, sync_request: Option<SyncRequestBuilder<(KeychainKind, u32)>>, mut callback: Option<F>) -> Result<()>
+    pub async fn sync_with_custom_callback<F>(
+        &self,
+        sync_request: SyncRequestBuilder<(KeychainKind, u32)>,
+        mut callback: Option<F>,
+    ) -> Result<()>
     where
         F: FnMut(usize, usize) + Send + 'static,
     {
-        // If no sync request is provided, we default to syncing all revealed spks
-        let sync_request = if let Some(sync_request) = sync_request {
-            sync_request
-        } else {
-            self.wallet.lock().await.start_sync_with_revealed_spks()
-        };
-
-        let id = Uuid::new_v4();
-
-        let sync_request = sync_request.inspect(move |_, progress| {
-            if let Some(cb) = callback.as_mut() {
-                cb(progress.consumed(), progress.total());
-            }
-
-            tracing::debug!(
-                "Syncing wallet ({:?} / {:?} done) (Chunk ID: {:?})",
-                progress.consumed(),
-                progress.total(),
-                id
-            );
-        })
-        .build();
+        let sync_request = sync_request
+            .inspect(move |_, progress| {
+                if let Some(cb) = callback.as_mut() {
+                    cb(progress.consumed(), progress.total());
+                }
+            })
+            .build();
 
         // We make a copy of the Arc<BdkElectrumClient> because we do not want to block the
         // other concurrently running syncs.
@@ -794,8 +852,7 @@ impl Wallet {
 
         // The .sync(...) method is blocking, so we spawn a blocking task to sync the wallet
         let res = tokio::task::spawn_blocking(move || {
-            electrum_client
-                .sync(sync_request, Self::SCAN_BATCH_SIZE, true)
+            electrum_client.sync(sync_request, Self::SCAN_BATCH_SIZE, true)
         })
         .await??;
 
@@ -820,17 +877,15 @@ impl Wallet {
             );
 
         let background_process_handle_clone = background_process_handle.clone();
-        self.chunked_sync_with_callback(
-            Self::SCAN_CHUNKS, 
-            Arc::new(Mutex::new(Some(Box::new(
-                move |consumed, total| {
-                    background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
-                        consumed: consumed as u64,
-                        total: total as u64,
-                    });
-                }
-            ))))
-        ).await?;
+        self.chunked_sync_with_callback(Arc::new(SyncMutex::new(Some(Box::new(
+            move |consumed, total| {
+                background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
+                    consumed: consumed as u64,
+                    total: total as u64,
+                });
+            },
+        )))))
+        .await?;
 
         background_process_handle.finish();
 

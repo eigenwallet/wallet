@@ -9460,6 +9460,7 @@ dependencies = [
  "backoff",
  "base64 0.22.1",
  "bdk",
+ "bdk_chain",
  "bdk_electrum",
  "bdk_wallet",
  "big-bytes",
