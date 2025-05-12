@@ -1245,13 +1245,26 @@ impl Client {
 
 impl EstimateFeeRate for Client {
     fn estimate_feerate(&self, target_block: u32) -> Result<FeeRate> {
-        // Get the fee rate in BTC/kvB
+        // Get the fee rate in Bitcoin per kilobyte
         let btc_per_kvb = self.electrum.inner.estimate_fee(target_block as usize)?;
-        let amount_per_kvb = Amount::from_btc(btc_per_kvb)?;
-        // Convert to sat/kwu
-        let amount_per_kwu = amount_per_kvb.checked_div(4).context("fee rate overflow")?;
 
-        Ok(FeeRate::from_sat_per_kwu(amount_per_kwu.to_sat()))
+        // If the fee rate is less than 0, return an error
+        // The Electrum server returns 0 if it cannot estimate the fee rate.
+        if btc_per_kvb <= 0.0 {
+            return Err(anyhow!("Fee rate returned by Electrum server is less than 0"));
+        }
+
+        // Convert to sat / kB without ever constructing an Amount from the float
+        // Simply by multiplying the float with the satoshi value of 1 BTC.
+        let sats_per_kvb = (btc_per_kvb * Amount::ONE_BTC.to_sat() as f64).ceil() as u64;
+
+        // Convert to sat / kwu (kwu = kB × 4)
+        let sat_per_kwu = sats_per_kvb / 4;
+        
+        // Construct the fee rate
+        let fee_rate = FeeRate::from_sat_per_kwu(sat_per_kwu);
+
+        Ok(fee_rate)
     }
 
     fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
