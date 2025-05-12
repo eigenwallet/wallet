@@ -12,6 +12,7 @@ export default function WalletRefreshButton() {
       isIconButton
       isLoadingOverride={isSyncing}
       onInvoke={() => checkBitcoinBalance()}
+      displayErrorSnackbar
       size="small"
     />
   );
