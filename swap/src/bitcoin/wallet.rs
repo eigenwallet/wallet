@@ -110,12 +110,16 @@ impl WalletBuilder {
                     .await
                     .context("Failed to create wallet directory")?;
 
-                let connection = Connection::open(&wallet_path).context(format!(
-                    "Failed to open SQLite database at {:?}",
-                    wallet_path
-                ))?;
+                let open_connection = || -> Result<Connection> {
+                    Connection::open(&wallet_path).context(format!(
+                        "Failed to open SQLite database at {:?}",
+                        wallet_path
+                    ))
+                };
 
                 if wallet_exists {
+                    let connection = open_connection()?;
+
                     Wallet::create_existing(
                         xprivkey,
                         config.network,
@@ -128,7 +132,7 @@ impl WalletBuilder {
                     .await
                     .context("Failed to load existing wallet")
                 } else {
-                    let old_wallet_export = Wallet::<Connection>::get_pre_1_0_0_bdk_wallet_export(
+                    let old_wallet_export = Wallet::<Connection>::get_pre_1_0_bdk_wallet_export(
                         data_dir,
                         config.network,
                         &config.seed,
@@ -140,7 +144,7 @@ impl WalletBuilder {
                         xprivkey,
                         config.network,
                         client,
-                        connection,
+                        open_connection,
                         config.finality_confirmations,
                         config.target_block,
                         old_wallet_export,
@@ -159,11 +163,11 @@ impl WalletBuilder {
                 let persister = Connection::open_in_memory()
                     .context("Failed to open in-memory SQLite database")?;
 
-                Wallet::create_new(
+                Wallet::create_new::<Connection>(
                     xprivkey,
                     config.network,
                     client,
-                    persister,
+                    move || Ok(persister),
                     config.finality_confirmations,
                     config.target_block,
                     None,
@@ -281,27 +285,41 @@ mod sync_ext {
     use std::sync::Arc;
     use std::sync::Mutex as SyncMutex;
 
+    use bdk_wallet::KeychainKind;
+
     use super::IntoArcMutex;
 
     /// Type alias for an optional callback
     /// that is used to report progress of a sync (or a chunk of a sync)
-    pub type InnerSyncCallback = Option<Box<dyn FnMut(usize, usize) + Send + 'static>>;
+    pub type InnerSyncCallback = Option<Box<dyn FnMut(u64, u64) + Send + 'static>>;
 
     /// Type alias for the thread-safe, reference-counted callback of an [`InnerSyncCallback`]
     pub type SyncCallback = Arc<SyncMutex<InnerSyncCallback>>;
 
     pub trait SyncCallbackExt {
-        fn new(callback: Box<dyn FnMut(usize, usize) + Send + 'static>) -> Self;
+        fn new<F>(callback: F) -> InnerSyncCallback
+        where
+            F: FnMut(u64, u64) + Send + 'static;
         fn throttle_callback(self, min_percentage_increase: f32) -> InnerSyncCallback;
         fn chain(self, callback: InnerSyncCallback) -> InnerSyncCallback;
         fn finalize(self) -> SyncCallback;
-        fn call(&mut self, consumed: usize, total: usize);
+        fn call(&mut self, consumed: u64, total: u64);
+        fn to_full_scan_callback(
+            self,
+            stop_gap: u32,
+            assumed_buffer: u32,
+        ) -> Box<dyn FnMut(KeychainKind, u32, &bitcoin::Script) + Send + 'static>
+        where
+            Self: Sized;
     }
 
     impl SyncCallbackExt for InnerSyncCallback {
-        /// Creates a new sync callback from a Boxed callback function.
-        fn new(callback: Box<dyn FnMut(usize, usize) + Send + 'static>) -> Self {
-            Some(callback)
+        /// Creates a new sync callback from a callback function.
+        fn new<F>(callback: F) -> InnerSyncCallback
+        where
+            F: FnMut(u64, u64) + Send + 'static,
+        {
+            Some(Box::new(callback))
         }
 
         /// Throttles a sync callback, invoking the original callback only when
@@ -326,8 +344,9 @@ mod sync_ext {
 
                 let current_percentage = consumed as f64 / total as f64;
                 let is_complete = consumed == total;
-                let should_report =
-                    is_complete || (current_percentage - last_reported_percentage >= threshold);
+                let should_report = is_complete
+                    || (current_percentage - last_reported_percentage >= threshold)
+                    || last_reported_percentage == 0.0;
 
                 if should_report {
                     callback(consumed, total);
@@ -339,14 +358,14 @@ mod sync_ext {
         /// Chains this callback with another callback
         /// Creates a new callback that invokes both callbacks in order.
         fn chain(mut self, mut callback: InnerSyncCallback) -> InnerSyncCallback {
-            Self::new(Box::new(move |consumed, total| {
+            Self::new(move |consumed, total| {
                 self.call(consumed, total);
                 callback.call(consumed, total);
-            }))
+            })
         }
 
         /// Calls the callback with the given progress, if it's Some(...).
-        fn call(&mut self, consumed: usize, total: usize) {
+        fn call(&mut self, consumed: u64, total: u64) {
             if let Some(cb) = self.as_mut() {
                 cb(consumed, total);
             }
@@ -356,11 +375,26 @@ mod sync_ext {
         fn finalize(self) -> SyncCallback {
             self.into_arc_mutex_sync()
         }
+
+        fn to_full_scan_callback(
+            mut self,
+            stop_gap: u32,
+            assumed_buffer: u32,
+        ) -> Box<dyn FnMut(KeychainKind, u32, &bitcoin::Script) + Send + 'static>
+        where
+            Self: Sized,
+        {
+            Box::new(move |_, current_index, _| {
+                let total = stop_gap.max(current_index + assumed_buffer);
+
+                self.call(current_index as u64, total as u64);
+            })
+        }
     }
 
     // This struct combines progress updates from different chunks
     // and makes them seem like a single progress update to outsiders
-    pub struct CumulativeProgress(HashMap<usize, (usize, usize)>);
+    pub struct CumulativeProgress(HashMap<u64, (u64, u64)>);
 
     impl CumulativeProgress {
         pub fn new() -> Self {
@@ -368,7 +402,7 @@ mod sync_ext {
         }
 
         /// Get the cumulative progress from all cached singular progress updates
-        pub fn get_cumulative(&self) -> (usize, usize) {
+        pub fn get_cumulative(&self) -> (u64, u64) {
             let total_consumed = self.0.values().map(|(consumed, _)| *consumed).sum();
             let total_total = self.0.values().map(|(_, total)| *total).sum();
 
@@ -376,13 +410,13 @@ mod sync_ext {
         }
 
         /// Updates the progress of a single chunk
-        pub fn insert_single(&mut self, index: usize, consumed: usize, total: usize) {
+        pub fn insert_single(&mut self, index: u64, consumed: u64, total: u64) {
             self.0.insert(index, (consumed, total));
         }
     }
 
     pub trait CumulativeProgressHandle {
-        fn chunk_callback(self, callback: SyncCallback, index: usize) -> InnerSyncCallback;
+        fn chunk_callback(self, callback: SyncCallback, index: u64) -> InnerSyncCallback;
     }
 
     impl CumulativeProgressHandle for Arc<SyncMutex<CumulativeProgress>> {
@@ -394,8 +428,8 @@ mod sync_ext {
         ///
         /// If one wants to a callback to be called called for every update you need to
         /// pass it into every call to this function for every chunk.
-        fn chunk_callback(self, callback: SyncCallback, index: usize) -> InnerSyncCallback {
-            InnerSyncCallback::new(Box::new(move |consumed, total| {
+        fn chunk_callback(self, callback: SyncCallback, index: u64) -> InnerSyncCallback {
+            InnerSyncCallback::new(move |consumed, total| {
                 // Insert the latest progress update into the cache
                 if let Ok(mut cache) = self.lock() {
                     cache.insert_single(index, consumed, total);
@@ -410,37 +444,37 @@ mod sync_ext {
                         callback.call(cumulative_consumed, cumulative_total);
                     }
                 }
-            }))
+            })
         }
     }
 }
 
 impl Wallet {
     /// If this many consequent addresses are unused, we stop the full scan.
-    /// This needs to be a very big number, because we generate a lot of addresses
-    /// which might end up unused.
-    const SCAN_STOP_GAP: usize = 1_000;
-    /// The batch size for the full scan.
-    const SCAN_BATCH_SIZE: usize = 16;
-    /// The number of maximum chunks to split the full scan into.
-    const SCAN_CHUNKS: usize = 5;
+    /// On old wallets we used to generate a ton of unused addresses
+    /// which results in us having a bunch of large gaps in the SPKs
+    const SCAN_STOP_GAP: u32 = 500;
+    /// The batch size for syncing
+    const SCAN_BATCH_SIZE: u32 = 16;
+    /// The number of maximum chunks to use when syncing
+    const SCAN_CHUNKS: u32 = 5;
 
     const WALLET_PARENT_DIR_NAME: &str = "wallet";
-    const WALLET_DIR_NAME: &str = "wallet-new";
-    const WALLET_FILE_NAME: &str = "walletdb.sqlite";
+    const WALLET_DIR_NAME: &str = "wallet-post-bdk-1.0";
+    const WALLET_FILE_NAME: &str = "wallet-db.sqlite";
 
-    async fn get_pre_1_0_0_bdk_wallet_export(
+    async fn get_pre_1_0_bdk_wallet_export(
         data_dir: impl AsRef<Path>,
         network: Network,
         seed: &Seed,
     ) -> Result<Option<pre_1_0_0_bdk::Export>> {
-        // Construct the directory in which the old (<1.0.0 bdk) wallet was stored
+        // Construct the directory in which the old (<1.0 bdk) wallet was stored
         let wallet_parent_dir = data_dir.as_ref().join(Self::WALLET_PARENT_DIR_NAME);
-        let pre_bdk_1_0_0_wallet_dir = wallet_parent_dir.join(pre_1_0_0_bdk::WALLET);
-        let pre_bdk_1_0_0_wallet_exists = pre_bdk_1_0_0_wallet_dir.exists();
+        let pre_bdk_1_0_wallet_dir = wallet_parent_dir.join(pre_1_0_0_bdk::WALLET);
+        let pre_bdk_1_0_wallet_exists = pre_bdk_1_0_wallet_dir.exists();
 
-        if pre_bdk_1_0_0_wallet_exists {
-            tracing::info!("Found old Bitcoin wallet (pre 1.0.0 bdk). Migrating...");
+        if pre_bdk_1_0_wallet_exists {
+            tracing::info!("Found old Bitcoin wallet (pre 1.0 bdk). Migrating...");
 
             // We need to support the legacy wallet format for the migration path.
             // We need to convert the network to the legacy BDK network type.
@@ -452,7 +486,7 @@ impl Wallet {
 
             let xprivkey = seed.derive_extended_private_key_legacy(legacy_network)?;
             let old_wallet =
-                pre_1_0_0_bdk::OldWallet::new(&pre_bdk_1_0_0_wallet_dir, xprivkey, network).await?;
+                pre_1_0_0_bdk::OldWallet::new(&pre_bdk_1_0_wallet_dir, xprivkey, network).await?;
 
             let export = old_wallet.export("old-wallet").await?;
 
@@ -497,7 +531,8 @@ impl Wallet {
         // Make sure the wallet directory exists.
         tokio::fs::create_dir_all(&wallet_dir).await?;
 
-        let connection = Connection::open(&wallet_path)?;
+        let connection =
+            || Connection::open(&wallet_path).context("Failed to open SQLite database");
 
         // If the new Bitcoin wallet (> 1.0.0 bdk) already exists, we open it
         if wallet_exists {
@@ -505,7 +540,7 @@ impl Wallet {
                 xprivkey,
                 network,
                 client,
-                connection,
+                connection()?,
                 finality_confirmations,
                 target_block,
                 tauri_handle,
@@ -514,7 +549,7 @@ impl Wallet {
         } else {
             // If the new Bitcoin wallet (> 1.0.0 bdk) does not yet exist:
             // We check if we have an old (< 1.0.0 bdk) wallet. If so, we migrate.
-            let export = Self::get_pre_1_0_0_bdk_wallet_export(data_dir, network, seed).await?;
+            let export = Self::get_pre_1_0_bdk_wallet_export(data_dir, network, seed).await?;
 
             Self::create_new(
                 xprivkey,
@@ -546,7 +581,10 @@ impl Wallet {
             seed.derive_extended_private_key(network)?,
             network,
             Client::new(electrum_rpc_url, sync_interval).expect("Failed to create electrum client"),
-            bdk_wallet::rusqlite::Connection::open_in_memory()?,
+            || {
+                bdk_wallet::rusqlite::Connection::open_in_memory()
+                    .context("Failed to open in-memory SQLite database")
+            },
             finality_confirmations,
             target_block,
             None,
@@ -562,7 +600,7 @@ impl Wallet {
         xprivkey: Xpriv,
         network: Network,
         client: Client,
-        mut persister: Persister,
+        persister_constructor: impl FnOnce() -> Result<Persister>,
         finality_confirmations: u32,
         target_block: u32,
         old_wallet: Option<pre_1_0_0_bdk::Export>,
@@ -580,50 +618,69 @@ impl Wallet {
             .build(network)
             .context("Failed to build change wallet descriptor")?;
 
-        let mut wallet = bdk_wallet::Wallet::create(external_descriptor, internal_descriptor)
-            .network(network)
-            .create_wallet(&mut persister)
-            .context("Failed to create wallet")?;
+        // Build the wallet without a persister
+        // because we create the persistence AFTER the full scan
+        let mut wallet =
+            bdk_wallet::Wallet::create(external_descriptor.clone(), internal_descriptor.clone())
+                .network(network)
+                .create_wallet_no_persist()
+                .context("Failed to create persisterless wallet")?;
 
         // If we have an old wallet, we need to reveal the addresses that were used before
         // to speed up the initial sync.
         if let Some(old_wallet) = old_wallet {
-            tracing::info!("Migrating from old Bitcoin wallet (< 1.0.0 bdk)");
+            tracing::info!("Migrating from old Bitcoin wallet (< 1.0 bdk)");
 
+            // We reveal the address but we DO NOT persist them yet
+            // Because if we persist it'll create the wallet file and we will
+            // not start the initial scan again if it's interrupted by the user
             let _ = wallet
                 .reveal_addresses_to(KeychainKind::External, old_wallet.external_derivation_index);
             let _ = wallet
                 .reveal_addresses_to(KeychainKind::Internal, old_wallet.internal_derivation_index);
-
-            wallet.persist(&mut persister)?;
         }
 
-        tracing::debug!("Starting initial Bitcoin wallet scan");
+        tracing::info!("Starting initial Bitcoin wallet scan. This might take a while...");
 
-        // Send progress updates to the UI
         let progress_handle = tauri_handle.new_background_process_with_initial_progress(
             TauriBackgroundProgress::FullScanningBitcoinWallet,
             TauriBitcoinFullScanProgress::Unknown,
         );
 
         let progress_handle_clone = progress_handle.clone();
-        let full_scan = wallet.start_full_scan().inspect(move |_, curr_index, _| {
-            tracing::debug!(
-                "Full scanning Bitcoin wallet, currently at index {}",
-                curr_index
-            );
+
+        let callback = sync_ext::InnerSyncCallback::new(move |consumed, total| {
             progress_handle_clone.update(TauriBitcoinFullScanProgress::Known {
-                current_index: curr_index as u64,
+                current_index: consumed as u64,
+                assumed_total: total as u64,
             });
-        });
+        }).chain(sync_ext::InnerSyncCallback::new(move |consumed, total| {
+            tracing::debug!(
+                "Full scanning Bitcoin wallet, currently at index {}. We will scan around {} in total.",
+                consumed,
+                total
+            );
+        }).throttle_callback(10.0)).to_full_scan_callback(Self::SCAN_STOP_GAP, 100);
+
+        let full_scan = wallet.start_full_scan().inspect(callback);
 
         let full_scan_result = client.electrum.full_scan(
             full_scan,
-            Self::SCAN_STOP_GAP,
-            Self::SCAN_BATCH_SIZE,
+            Self::SCAN_STOP_GAP as usize,
+            Self::SCAN_BATCH_SIZE as usize,
             true,
         )?;
 
+        // Only create the persister once we have the full scan result
+        let mut persister = persister_constructor()?;
+
+        // Create a new (persisted) wallet
+        let mut wallet = bdk_wallet::Wallet::create(external_descriptor, internal_descriptor)
+            .network(network)
+            .create_wallet(&mut persister)
+            .context("Failed to create wallet with persister")?;
+
+        // Apply the full scan result to the wallet
         wallet.apply_update(full_scan_result)?;
         wallet.persist(&mut persister)?;
 
@@ -664,7 +721,7 @@ impl Wallet {
             .build(network)
             .context("Failed to build change wallet descriptor")?;
 
-        tracing::debug!("Loading Bitcoin wallet from database");
+        tracing::debug!("Loading existing Bitcoin wallet from database");
 
         let wallet = bdk_wallet::Wallet::load()
             .descriptor(KeychainKind::External, Some(external_descriptor))
@@ -827,12 +884,12 @@ impl Wallet {
     /// Useful for syncing the whole wallet in chunks.
     async fn chunked_sync_request(
         &self,
-        num_chunks: usize,
-        batch_size: usize,
+        max_num_chunks: u32,
+        batch_size: u32,
     ) -> Vec<SyncRequestBuilder<(bdk_wallet::KeychainKind, u32)>> {
         let wallet = self.wallet.lock().await;
         let spks: Vec<_> = wallet.spk_index().revealed_spks(..).collect();
-        let total_spks = spks.len();
+        let total_spks = spks.len() as u32;
 
         if total_spks == 0 {
             tracing::debug!("Not syncing because there are no spks in our wallet");
@@ -848,12 +905,12 @@ impl Wallet {
         // each chunk would have 50 spks (which is less than the batch size)
         //
         // At least one chunk is always required. At most total_spks / batch_size or the provided num_chunks (whichever is smaller)
-        let num_chunks = num_chunks.min(total_spks / batch_size).max(1);
+        let num_chunks = max_num_chunks.min(total_spks / batch_size).max(1);
         let chunk_size = (total_spks + num_chunks - 1) / num_chunks;
 
         let mut chunks = Vec::new();
 
-        for spk_chunk in spks.chunks(chunk_size) {
+        for spk_chunk in spks.chunks(chunk_size as usize) {
             let spk_chunk = spk_chunk.iter().cloned();
 
             // Get the chain tip
@@ -898,7 +955,7 @@ impl Wallet {
             .map(|(index, sync_request)| {
                 let callback = cumulative_progress_handle
                     .clone()
-                    .chunk_callback(callback.clone(), index);
+                    .chunk_callback(callback.clone(), index as u64);
 
                 (callback, sync_request)
             })
@@ -944,7 +1001,7 @@ impl Wallet {
     ) -> Result<()> {
         let sync_request = sync_request
             .inspect(move |_, progress| {
-                callback.call(progress.consumed(), progress.total());
+                callback.call(progress.consumed() as u64, progress.total() as u64);
             })
             .build();
 
@@ -954,9 +1011,13 @@ impl Wallet {
         let electrum_client = client.electrum.clone();
         drop(client); // We drop the lock to allow others to make a copy of the Arc<_>
 
-        // The .sync(...) method is blocking, so we spawn a blocking task to sync the wallet
+        // The .sync(...) method is blocking
+        // We spawn a blocking task to sync the wallet without blocking the tokio runtime
+        let current_span = tracing::Span::current();
         let res = tokio::task::spawn_blocking(move || {
-            electrum_client.sync(sync_request, Self::SCAN_BATCH_SIZE, true)
+            current_span.in_scope(|| {
+                electrum_client.sync(sync_request, Self::SCAN_BATCH_SIZE as usize, true)
+            })
         })
         .await??;
 
@@ -983,19 +1044,18 @@ impl Wallet {
         let background_process_handle_clone = background_process_handle.clone();
 
         // We want to update the UI as often as possible
-        let tauri_callback = sync_ext::InnerSyncCallback::new(Box::new(move |consumed, total| {
+        let tauri_callback = sync_ext::InnerSyncCallback::new(move |consumed, total| {
             background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
                 consumed: consumed as u64,
                 total: total as u64,
             });
-        }));
+        });
 
         // We throttle the tracing logging to 10% increments
-        let tracing_callback =
-            sync_ext::InnerSyncCallback::new(Box::new(move |consumed, total| {
-                tracing::debug!("Syncing Bitcoin wallet ({}/{})", consumed, total);
-            }))
-            .throttle_callback(10.0);
+        let tracing_callback = sync_ext::InnerSyncCallback::new(move |consumed, total| {
+            tracing::debug!("Syncing Bitcoin wallet ({}/{})", consumed, total);
+        })
+        .throttle_callback(10.0);
 
         // We chain the callbacks and then initiate the sync
         self.chunked_sync_with_callback(tauri_callback.chain(tracing_callback).finalize())
@@ -1363,7 +1423,9 @@ impl EstimateFeeRate for Client {
         let btc_per_kvb = self.electrum.inner.estimate_fee(target_block as usize)?;
 
         // If the fee rate is less than 0, return an error
-        // The Electrum server returns 0 if it cannot estimate the fee rate.
+        // The Electrum server returns a value <= 0 if it cannot estimate the fee rate.
+        // See: https://github.com/romanz/electrs/blob/ed0ef2ee22efb45fcf0c7f3876fd746913008de3/src/electrum.rs#L239-L245
+        //      https://github.com/romanz/electrs/blob/ed0ef2ee22efb45fcf0c7f3876fd746913008de3/src/electrum.rs#L31
         if btc_per_kvb <= 0.0 {
             return Err(anyhow!(
                 "Fee rate returned by Electrum server is less than 0"

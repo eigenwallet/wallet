@@ -502,6 +502,8 @@ pub enum TauriBitcoinFullScanProgress {
     Known {
         #[typeshare(serialized_as = "number")]
         current_index: u64,
+        #[typeshare(serialized_as = "number")]
+        assumed_total: u64,
     },
     Unknown,
 }
