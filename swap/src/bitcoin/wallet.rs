@@ -834,6 +834,11 @@ impl Wallet {
         let spks: Vec<_> = wallet.spk_index().revealed_spks(..).collect();
         let total_spks = spks.len();
 
+        if total_spks == 0 {
+            tracing::debug!("Not syncing because there are no spks in our wallet");
+            return vec![];
+        }
+
         // We only use as many chunks as are useful to reduce the number of requests
         // given the batch size
         // This means: num_chunks * batch_size < total number of spks
