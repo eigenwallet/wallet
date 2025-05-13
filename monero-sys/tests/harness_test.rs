@@ -16,7 +16,7 @@ static GLOBAL_TEMP_DIR: OnceLock<TempDir> = OnceLock::new();
 #[tokio::test]
 async fn test_monero_wrapper_with_harness() {
     tracing_subscriber::fmt()
-        .with_env_filter("warn,test=debug,monero_harness=debug,monero_rpc=debug,harness_test=debug,monero_sys=trace")
+        .with_env_filter("info,test=debug,monero_harness=debug,monero_rpc=debug,harness_test=debug,monero_sys=trace")
         .with_test_writer()
         .init();
 

@@ -4,6 +4,26 @@
 
 #include "../monero/src/wallet/api/wallet2_api.h"
 
+/**
+ * This file contains some C++ glue code needed to make the FFI work.
+ * This consists mainly of two use-cases:
+ *
+ *  1. Work arounds around CXX limitations.
+ *  2. Hooking into the C++ logging system to forward the messages to Rust.
+ *
+ *  1. Work arounds:
+ *     - CXX doesn't support static methods as yet, so we define free functions here that
+ *       simply call the appropriate static methods.
+ *     - CXX also doesn't support returning strings by value from C++ to Rust, so we wrap
+ *       those in a unique_ptr.
+ *     - CXX doesn't support optional arguments, so we make thin wrapper functions that either
+ *       take the argument or not.
+ *
+ *  2. Hooking into the C++ logging system:
+ *     - We install a custom callback to the easylogging++ logging system that forwards
+ *       all log messages to Rust.
+ */
+
 namespace Monero
 {
     using ConnectionStatus = Wallet::ConnectionStatus;
@@ -128,14 +148,19 @@ namespace Monero
 
 namespace monero_rust_log
 {
-    // One dispatch callback instance for the whole program.
+    /**
+     * A dispatch callback that forwards all log messages to Rust.
+     */
     class RustDispatch final : public el::LogDispatchCallback
     {
     protected:
         void handle(const el::LogDispatchData *data) noexcept override
         {
+            // Get the log message.
             auto *m = data->logMessage();
 
+            // Convert the log level to an int for easier ffi
+            // (couldn't get the damn enum to work).
             uint8_t level;
             switch (m->level())
             {
@@ -160,7 +185,7 @@ namespace monero_rust_log
                 break;
             }
 
-            // Forward to Rust.
+            // Call the rust function to forward the log message.
             monero_rust_log::forward_cpp_log(
                 level,
                 m->file().length() > 0 ? m->file() : "",
@@ -170,31 +195,41 @@ namespace monero_rust_log
         }
     };
 
+    // static variable to make sure we don't install twice.
     bool installed = false;
 
+    /**
+     * Install a callback to the easylogging++ logging system that forwards all log
+     * messages to Rust.
+     */
     inline void install_log_callback()
     {
         if (installed)
             return;
         installed = true;
 
-        // Make sure easylogging++ itself is initialised (usually already done
-        // because the Monero libs call el::Helpers::setThreadName etc.).
+        // Pass all log messages to the RustDispatch callback above.
         el::Helpers::installLogDispatchCallback<RustDispatch>("rust-forward");
 
-        // Disable all default easylogging++ log writers such that messages are **only**
+        // Disable all existing easylogging++ log writers such that messages are **only**
         // forwarded through the RustDispatch callback above. This prevents them from
         // being printed directly to stdout/stderr or written to files.
         el::Loggers::reconfigureAllLoggers(el::ConfigurationType::ToStandardOutput, "false");
         el::Loggers::reconfigureAllLoggers(el::ConfigurationType::ToFile, "false");
 
-        // Make the above configuration the *default* for any loggers that may be
-        // created after this point (many Monero components lazily create their
-        // own logger instances). Without this, newly-created loggers would revert
-        // to printing to stdout again.
+        // Create a default configuration such that newly created loggers will not
+        // print to stdout/stderr or files by default.
         el::Configurations defaultConf;
         defaultConf.set(el::Level::Global, el::ConfigurationType::ToStandardOutput, "false");
         defaultConf.set(el::Level::Global, el::ConfigurationType::ToFile, "false");
         el::Loggers::setDefaultConfigurations(defaultConf, true /* enable default for new loggers */);
+
+        // Disable the PERF logger, which measures... some performance stuff:
+        // 2025-05-12T23:45:19.517995Z  INFO monero_cpp: PERF      364    process_new_transaction function="tools::LoggingPerformanceTimer::~LoggingPerformanceTimer()"
+        // 2025-05-12T23:45:19.518013Z  INFO monero_cpp: PERF             ---------- function="tools::LoggingPerformanceTimer::LoggingPerformanceTimer(const std::string &, const std::string &, uint64_t, el::Level)"
+        el::Configurations perfConf;
+        perfConf.set(el::Level::Global, el::ConfigurationType::Enabled, "false");
+        el::Logger *perfLogger = el::Loggers::getLogger("PERF");
+        perfLogger->configure(perfConf);
     }
 } // namespace

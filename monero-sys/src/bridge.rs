@@ -1,5 +1,11 @@
 use cxx::CxxString;
 
+/// This is the main ffi module that exposes the Monero C++ API to Rust.
+/// See [cxx.rs](https://cxx.rs/book/ffi-modules.html) for more information
+/// on how this works exactly.
+///
+/// Basically, we just write a corresponding rust function/type header for every c++
+/// function/type we wish to call.
 #[cxx::bridge(namespace = "Monero")]
 pub mod ffi {
     /// The type of the network.
@@ -240,6 +246,7 @@ impl From<monero::Network> for ffi::NetworkType {
     }
 }
 
+/// We want do use the `monero-rs` type so we convert as early as possible.
 impl From<ffi::NetworkType> for monero::Network {
     fn from(network: ffi::NetworkType) -> Self {
         match network {
@@ -255,6 +262,11 @@ impl From<ffi::NetworkType> for monero::Network {
     }
 }
 
+/// This is a bridge that enables us to capture c++ log messages and forward them
+/// to tracing.
+///
+/// We do this by installing a custom callback to the easylogging++ logging system
+/// that forwards all log messages to our rust callback function.
 #[cxx::bridge(namespace = "monero_rust_log")]
 pub mod log {
     extern "Rust" {
@@ -275,10 +287,17 @@ pub mod log {
     }
 }
 
+/// This is the actual rust function that forwards the c++ log messages to tracing.
+/// Just calls e.g. `tracing::info!` with the appropriate log level and message.
 fn forward_cpp_log(level: u8, file: &CxxString, _line: u32, func: &CxxString, msg: &CxxString) {
     let _file_str = file.to_string();
     let msg_str = msg.to_string();
     let func_str = func.to_string();
+
+    // We don't want to log the performance timer.
+    if func_str.starts_with("tools::LoggingPerformanceTimer::LoggingPerformanceTimer(") {
+        return;
+    }
 
     match level {
         0 => tracing::trace!(target: "monero_cpp", function=func_str, "{}", msg_str),

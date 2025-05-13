@@ -10,7 +10,7 @@ const STAGENET_WALLET_RESTORE_HEIGHT: u64 = 1728128;
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            "warn,test=debug,monero_harness=debug,monero_rpc=debug,simple=trace,monero_sys=trace",
+            "info,test=debug,monero_harness=debug,monero_rpc=debug,simple=trace,monero_sys=trace",
         )
         .with_test_writer()
         .init();
