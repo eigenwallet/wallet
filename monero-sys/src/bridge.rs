@@ -295,7 +295,7 @@ fn forward_cpp_log(level: u8, file: &CxxString, _line: u32, func: &CxxString, ms
     let func_str = func.to_string();
 
     // We don't want to log the performance timer.
-    if func_str.starts_with("tools::LoggingPerformanceTimer::LoggingPerformanceTimer(") {
+    if func_str.starts_with("tools::LoggingPerformanceTimer") {
         return;
     }
 

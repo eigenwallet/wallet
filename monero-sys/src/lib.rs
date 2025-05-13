@@ -151,7 +151,7 @@ impl WalletManager {
         let kdf_rounds = Self::DEFAULT_KDF_ROUNDS;
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
-        let_cxx_string!(language = "");
+        let_cxx_string!(language = "English");
         let network_type = network.into();
 
         let wallet_pointer =
@@ -205,7 +205,7 @@ impl WalletManager {
 
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
-        let_cxx_string!(language = "");
+        let_cxx_string!(language = "English");
         let network_type = network.into();
         let_cxx_string!(address = address.to_string());
         let_cxx_string!(view_key = view_key.to_string());
@@ -989,8 +989,6 @@ impl Drop for Wallet {
             // Call the close function.
             if let Err(e) = manager.lock().await.close_wallet(&path, raw_wallet) {
                 tracing::error!("Failed to close wallet {} in background task: {}", path, e);
-            } else {
-                tracing::debug!("Successfully closed wallet {} in background task.", path);
             }
         });
     }
