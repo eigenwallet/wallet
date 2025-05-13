@@ -34,7 +34,9 @@ use std::sync::Arc;
 use std::sync::Mutex as SyncMutex;
 use std::time::Duration;
 use std::time::Instant;
-use tokio::sync::{watch, Mutex};
+use sync_ext::{CumulativeProgressHandle, InnerSyncCallback, SyncCallbackExt};
+use tokio::sync::watch;
+use tokio::sync::Mutex as TokioMutex;
 use tracing::{debug_span, Instrument};
 
 use super::bitcoin_address::revalidate_network;
@@ -184,11 +186,11 @@ impl WalletBuilder {
 #[derive(Clone)]
 pub struct Wallet<Persister = Connection, C = Client> {
     /// The wallet, which is persisted to the disk.
-    wallet: Arc<Mutex<PersistedWallet<Persister>>>,
+    wallet: Arc<TokioMutex<PersistedWallet<Persister>>>,
     /// The database connection used to persist the wallet.
-    persister: Arc<Mutex<Persister>>,
+    persister: Arc<TokioMutex<Persister>>,
     /// The electrum client.
-    client: Arc<Mutex<C>>,
+    client: Arc<TokioMutex<C>>,
     /// The network this wallet is on.
     network: Network,
     /// The number of confirmations (blocks) we require for a transaction
@@ -274,22 +276,44 @@ pub trait EstimateFeeRate {
     fn min_relay_fee(&self) -> Result<bitcoin::Amount>;
 }
 
-/// Defines a type alias for the core optional callback used in chunked sync.
-type InnerSyncCallback = Option<Box<dyn FnMut(usize, usize) + Send + 'static>>;
-/// Defines a type alias for the thread-safe, reference-counted callback.
-type SyncCallback = Arc<SyncMutex<InnerSyncCallback>>;
+mod sync_ext {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::sync::Mutex as SyncMutex;
 
-/// Throttles a sync callback, invoking the original callback only when
-/// the progress increases by at least `min_percentage_increase`.
-///
-/// Ensures the callback is always invoked when progress reaches 100%.
-fn throttle_callback(
-    callback: InnerSyncCallback,
-    min_percentage_increase: f32,
-) -> InnerSyncCallback {
-    match callback {
-        None => None,
-        Some(mut original_cb) => {
+    use super::IntoArcMutex;
+
+    /// Type alias for an optional callback
+    /// that is used to report progress of a sync (or a chunk of a sync)
+    pub type InnerSyncCallback = Option<Box<dyn FnMut(usize, usize) + Send + 'static>>;
+
+    /// Type alias for the thread-safe, reference-counted callback of an [`InnerSyncCallback`]
+    pub type SyncCallback = Arc<SyncMutex<InnerSyncCallback>>;
+
+    pub trait SyncCallbackExt {
+        fn new(callback: Box<dyn FnMut(usize, usize) + Send + 'static>) -> Self;
+        fn throttle_callback(self, min_percentage_increase: f32) -> InnerSyncCallback;
+        fn chain(self, callback: InnerSyncCallback) -> InnerSyncCallback;
+        fn finalize(self) -> SyncCallback;
+        fn call(&mut self, consumed: usize, total: usize);
+    }
+
+    impl SyncCallbackExt for InnerSyncCallback {
+        /// Creates a new sync callback from a Boxed callback function.
+        fn new(callback: Box<dyn FnMut(usize, usize) + Send + 'static>) -> Self {
+            Some(callback)
+        }
+
+        /// Throttles a sync callback, invoking the original callback only when
+        /// the progress has increased by at least `min_percentage_increase` since the last invocation.
+        ///
+        /// Ensures the callback is always invoked when progress reaches 100%.
+        fn throttle_callback(self, min_percentage_increase: f32) -> InnerSyncCallback {
+            let mut callback = match self {
+                None => return None,
+                Some(cb) => cb,
+            };
+
             let mut last_reported_percentage: f64 = 0.0;
             let threshold = min_percentage_increase as f64 / 100.0;
             let threshold = threshold.clamp(0.0, 1.0);
@@ -306,8 +330,85 @@ fn throttle_callback(
                     is_complete || (current_percentage - last_reported_percentage >= threshold);
 
                 if should_report {
-                    original_cb(consumed, total);
+                    callback(consumed, total);
                     last_reported_percentage = current_percentage;
+                }
+            }))
+        }
+
+        /// Chains this callback with another callback
+        /// Creates a new callback that invokes both callbacks in order.
+        fn chain(mut self, mut callback: InnerSyncCallback) -> InnerSyncCallback {
+            Self::new(Box::new(move |consumed, total| {
+                self.call(consumed, total);
+                callback.call(consumed, total);
+            }))
+        }
+
+        /// Calls the callback with the given progress, if it's Some(...).
+        fn call(&mut self, consumed: usize, total: usize) {
+            if let Some(cb) = self.as_mut() {
+                cb(consumed, total);
+            }
+        }
+
+        /// Builds a Arc<Mutex<Self>> from the callback
+        fn finalize(self) -> SyncCallback {
+            self.into_arc_mutex_sync()
+        }
+    }
+
+    // This struct combines progress updates from different chunks
+    // and makes them seem like a single progress update to outsiders
+    pub struct CumulativeProgress(HashMap<usize, (usize, usize)>);
+
+    impl CumulativeProgress {
+        pub fn new() -> Self {
+            Self(HashMap::new())
+        }
+
+        /// Get the cumulative progress from all cached singular progress updates
+        pub fn get_cumulative(&self) -> (usize, usize) {
+            let total_consumed = self.0.values().map(|(consumed, _)| *consumed).sum();
+            let total_total = self.0.values().map(|(_, total)| *total).sum();
+
+            (total_consumed, total_total)
+        }
+
+        /// Updates the progress of a single chunk
+        pub fn insert_single(&mut self, index: usize, consumed: usize, total: usize) {
+            self.0.insert(index, (consumed, total));
+        }
+    }
+
+    pub trait CumulativeProgressHandle {
+        fn chunk_callback(self, callback: SyncCallback, index: usize) -> InnerSyncCallback;
+    }
+
+    impl CumulativeProgressHandle for Arc<SyncMutex<CumulativeProgress>> {
+        /// Takes a callback function and an index of singular SyncRequest chunk
+        ///
+        /// Returns a new SyncCallback that when called will update the cumulative progress
+        ///
+        /// The given callback will be called when there's a progress update for the given chunk
+        ///
+        /// If one wants to a callback to be called called for every update you need to
+        /// pass it into every call to this function for every chunk.
+        fn chunk_callback(self, callback: SyncCallback, index: usize) -> InnerSyncCallback {
+            InnerSyncCallback::new(Box::new(move |consumed, total| {
+                // Insert the latest progress update into the cache
+                if let Ok(mut cache) = self.lock() {
+                    cache.insert_single(index, consumed, total);
+
+                    // Calculate the cumulative consumed and the cumulative total
+                    let (cumulative_consumed, cumulative_total) = cache.get_cumulative();
+
+                    // Send the cumulative progress to the callback
+                    // We use sync Mutex here but it's ok because we're only blocking for a short time
+                    let callback = callback.lock();
+                    if let Ok(mut callback) = callback {
+                        callback.call(cumulative_consumed, cumulative_total);
+                    }
                 }
             }))
         }
@@ -531,13 +632,13 @@ impl Wallet {
         tracing::debug!("Initial Bitcoin wallet scan completed");
 
         Ok(Wallet {
-            wallet: Arc::new(Mutex::new(wallet)),
-            client: Arc::new(Mutex::new(client)),
+            wallet: wallet.into_arc_mutex_async(),
+            client: client.into_arc_mutex_async(),
+            persister: persister.into_arc_mutex_async(),
+            tauri_handle,
             network,
             finality_confirmations,
             target_block,
-            persister: Arc::new(Mutex::new(persister)),
-            tauri_handle,
         })
     }
 
@@ -574,13 +675,13 @@ impl Wallet {
             .context("No wallet found in database")?;
 
         let wallet = Wallet {
-            wallet: Arc::new(Mutex::new(wallet)),
-            client: Arc::new(Mutex::new(client)),
+            wallet: wallet.into_arc_mutex_async(),
+            client: client.into_arc_mutex_async(),
+            persister: persister.into_arc_mutex_async(),
+            tauri_handle,
             network,
             finality_confirmations,
             target_block,
-            persister: Arc::new(Mutex::new(persister)),
-            tauri_handle,
         };
 
         Ok(wallet)
@@ -610,9 +711,12 @@ impl Wallet {
                 format!("Failed to broadcast Bitcoin {} transaction {}", kind, txid)
             })?;
 
-        // The transaction was accepted by the mempool (otherwise Electrum would have rejected it)
-        // Mark the transaction we just published as unconfirmed in the mempool
-        // This ensures it is used to calculate the Balance (without requiring a rescan of the wallet)
+        // The transaction was accepted by the mempool
+        // We know this because otherwise Electrum would have rejected it
+        //
+        // Mark the transaction as unconfirmed in the mempool
+        // This ensures it is used to calculate the balance from here on
+        // out
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time went backwards")
@@ -735,24 +839,17 @@ impl Wallet {
         // This means: num_chunks * batch_size < total number of spks
         //
         // E.g we have 1000 spks and a batch size of 100, we only use 10 chunks at most
-        // If we used 20 chunks we would not maximize the batch size
+        // If we used 20 chunks we would not maximize the batch size because
+        // each chunk would have 50 spks (which is less than the batch size)
         //
         // At least one chunk is always required. At most total_spks / batch_size or the provided num_chunks (whichever is smaller)
         let num_chunks = num_chunks.min(total_spks / batch_size).max(1);
+        let chunk_size = (total_spks + num_chunks - 1) / num_chunks;
 
         let mut chunks = Vec::new();
 
-        let chunk_size = (total_spks + num_chunks - 1) / num_chunks;
-
-        for i in 0..num_chunks {
-            let start = i * chunk_size;
-            if start >= total_spks {
-                break;
-            }
-            let end = (start + chunk_size).min(total_spks);
-
-            let spks_chunk = &spks[start..end];
-            let spks_chunk = spks_chunk.iter().cloned();
+        for spk_chunk in spks.chunks(chunk_size) {
+            let spk_chunk = spk_chunk.iter().cloned();
 
             // Get the chain tip
             let chain_tip = wallet.local_chain().tip();
@@ -761,16 +858,10 @@ impl Wallet {
             // We don't build the request here because the caller might want to add a custom callback
             let sync_request = SyncRequest::builder()
                 .chain_tip(chain_tip)
-                .spks_with_indexes(spks_chunk);
+                .spks_with_indexes(spk_chunk);
 
             chunks.push(sync_request);
         }
-
-        tracing::debug!(
-            "Constructed sync request vector with {} chunks with a total of {} spks",
-            chunks.len(),
-            total_spks
-        );
 
         chunks
     }
@@ -778,93 +869,41 @@ impl Wallet {
     /// Sync the wallet with the Blockchain
     /// Spawn `num_chunks` tasks to sync the wallet in parallel
     /// Call the callback with the cumulative progress of the sync
-    pub async fn chunked_sync_with_callback(&self, callback: SyncCallback) -> Result<()> {
-        // This struct combines progress updates from all chunks
-        // and makes them seem like a single progress update to outsiders
-        struct CumulativeProgress(HashMap<usize, (usize, usize)>);
-
-        impl CumulativeProgress {
-            fn new() -> Self {
-                Self(HashMap::new())
-            }
-
-            /// Get the cumulative progress from all cached singular progress updates
-            fn get_cumulative_progress(&self) -> (usize, usize) {
-                let total_consumed = self.0.values().map(|(consumed, _)| *consumed).sum();
-                let total_total = self.0.values().map(|(_, total)| *total).sum();
-
-                (total_consumed, total_total)
-            }
-
-            /// Updates the progress of a single chunk
-            fn insert_single(&mut self, index: usize, consumed: usize, total: usize) {
-                self.0.insert(index, (consumed, total));
-            }
-        }
-
-        trait ProgressCacheHandle {
-            fn chunk_callback(self, callback: SyncCallback, index: usize) -> InnerSyncCallback;
-        }
-
-        impl ProgressCacheHandle for Arc<SyncMutex<CumulativeProgress>> {
-            /// Takes a SyncCallback and an index
-            /// Returns a new SyncCallback that should be passed to the chunk sync function
-            fn chunk_callback(self, callback: SyncCallback, index: usize) -> InnerSyncCallback {
-                Some(Box::new(move |consumed, total| {
-                    // Insert the latest progress update into the cache
-                    if let Ok(mut cache) = self.lock() {
-                        cache.insert_single(index, consumed, total);
-
-                        // Calculate the cumulative consumed and the cumulative total
-                        let (cumulative_consumed, cumulative_total) =
-                            cache.get_cumulative_progress();
-
-                        // Send the cumulative progress to the callback
-                        // We use sync Mutex here but it's ok because we're only blocking for a short time
-                        let callback = callback.lock();
-                        if let Ok(mut callback) = callback {
-                            if let Some(callback) = callback.as_mut() {
-                                callback(cumulative_consumed, cumulative_total);
-                            }
-                        }
-                    }
-                }))
-            }
-        }
-
+    pub async fn chunked_sync_with_callback(&self, callback: sync_ext::SyncCallback) -> Result<()> {
         // Construct the chunks to process
         let sync_requests = self
             .chunked_sync_request(Self::SCAN_CHUNKS, Self::SCAN_BATCH_SIZE)
             .await;
 
-        // For each sync request, store the latest progress update in a HashMap keyed by the index of the chunk
-        let progress_cache = Arc::new(SyncMutex::new(CumulativeProgress::new())); // Use the newtype here
+        tracing::debug!(
+            "Starting to sync Bitcoin wallet with {} concurrent chunks and batch size of {}",
+            sync_requests.len(),
+            Self::SCAN_BATCH_SIZE
+        );
 
-        // Assign each sync request: its index, a copy of the progress_updates Arc<_>, the callback, and the sync_request
+        // For each sync request, store the latest progress update in a HashMap keyed by the index of the chunk
+        let cumulative_progress_handle = sync_ext::CumulativeProgress::new().into_arc_mutex_sync(); // Use the newtype here
+
+        // Assign each sync request:
+        // 1. its individual callback which links back to the CumulativeProgress
+        // 2. its chunk of the SyncRequest
         let sync_requests = sync_requests
             .into_iter()
             .enumerate()
             .map(|(index, sync_request)| {
-                (
-                    index,
-                    progress_cache.clone(),
-                    callback.clone(),
-                    sync_request,
-                )
+                let callback = cumulative_progress_handle
+                    .clone()
+                    .chunk_callback(callback.clone(), index);
+
+                (callback, sync_request)
             })
             .collect::<Vec<_>>();
 
         // Create a vector of futures to process in parallel
-        let futures =
-            sync_requests
-                .into_iter()
-                .map(|(i, progress_cache, callback, sync_request)| {
-                    self.sync_with_custom_callback(
-                        sync_request,
-                        progress_cache.chunk_callback(callback, i),
-                    )
-                    .in_current_span()
-                });
+        let futures = sync_requests.into_iter().map(|(callback, sync_request)| {
+            self.sync_with_custom_callback(sync_request, callback)
+                .in_current_span()
+        });
 
         // Start timer to measure the time taken to sync the wallet
         let start_time = Instant::now();
@@ -879,7 +918,7 @@ impl Wallet {
 
         // Calculate the time taken to sync the wallet
         let duration = start_time.elapsed();
-        tracing::info!(
+        tracing::debug!(
             "Synced Bitcoin wallet in {:?} with {} concurrent chunks and batch size {}",
             duration,
             Self::SCAN_CHUNKS,
@@ -900,9 +939,7 @@ impl Wallet {
     ) -> Result<()> {
         let sync_request = sync_request
             .inspect(move |_, progress| {
-                if let Some(cb) = callback.as_mut() {
-                    cb(progress.consumed(), progress.total());
-                }
+                callback.call(progress.consumed(), progress.total());
             })
             .build();
 
@@ -940,22 +977,24 @@ impl Wallet {
 
         let background_process_handle_clone = background_process_handle.clone();
 
-        let callback: InnerSyncCallback = Some(Box::new(move |consumed, total| {
-            tracing::debug!("Syncing Bitcoin wallet ({}/{})", consumed, total);
-
+        // We want to update the UI as often as possible
+        let tauri_callback = sync_ext::InnerSyncCallback::new(Box::new(move |consumed, total| {
             background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
                 consumed: consumed as u64,
                 total: total as u64,
             });
         }));
 
-        // Throttle the callback to 10% increments
-        let callback = throttle_callback(callback, 5.0); // 10% increments
+        // We throttle the tracing logging to 10% increments
+        let tracing_callback =
+            sync_ext::InnerSyncCallback::new(Box::new(move |consumed, total| {
+                tracing::debug!("Syncing Bitcoin wallet ({}/{})", consumed, total);
+            }))
+            .throttle_callback(10.0);
 
-        // Wrap the throttled callback for the sync function
-        let final_callback = Arc::new(SyncMutex::new(callback));
-
-        self.chunked_sync_with_callback(final_callback).await?;
+        // We chain the callbacks and then initiate the sync
+        self.chunked_sync_with_callback(tauri_callback.chain(tracing_callback).finalize())
+            .await?;
 
         background_process_handle.finish();
 
@@ -1433,7 +1472,9 @@ pub mod pre_1_0_0_bdk {
     use bdk::bitcoin::{util::bip32::ExtendedPrivKey, Network};
     use bdk::sled::Tree;
     use bdk::KeychainKind;
-    use tokio::sync::Mutex;
+    use tokio::sync::Mutex as TokioMutex;
+
+    use super::IntoArcMutex;
 
     pub const WALLET: &str = "wallet";
     const SLED_TREE_NAME: &str = "default_tree";
@@ -1441,7 +1482,7 @@ pub mod pre_1_0_0_bdk {
     /// The is the old bdk wallet before the migration.
     /// We need to contruct it before migration to get the keys and revelation indeces.
     pub struct OldWallet<D = Tree> {
-        wallet: Arc<Mutex<bdk::Wallet<D>>>,
+        wallet: Arc<TokioMutex<bdk::Wallet<D>>>,
         network: Network,
     }
 
@@ -1484,7 +1525,7 @@ pub mod pre_1_0_0_bdk {
             )?;
 
             Ok(Self {
-                wallet: Arc::new(Mutex::new(wallet)),
+                wallet: wallet.into_arc_mutex_async(),
                 network,
             })
         }
@@ -1694,6 +1735,23 @@ impl fmt::Display for ScriptStatus {
     }
 }
 
+/// Trait for converting a type into an Arc<Mutex<T>>.
+// We use this a ton in this file so this is a convenience trait.
+trait IntoArcMutex<T> {
+    fn into_arc_mutex_async(self) -> Arc<TokioMutex<T>>;
+    fn into_arc_mutex_sync(self) -> Arc<SyncMutex<T>>;
+}
+
+impl<T> IntoArcMutex<T> for T {
+    fn into_arc_mutex_async(self) -> Arc<TokioMutex<T>> {
+        Arc::new(TokioMutex::new(self))
+    }
+
+    fn into_arc_mutex_sync(self) -> Arc<SyncMutex<T>> {
+        Arc::new(SyncMutex::new(self))
+    }
+}
+
 #[cfg(test)]
 pub struct StaticFeeRate {
     fee_rate: FeeRate,
@@ -1801,13 +1859,13 @@ impl TestWalletBuilder {
         );
 
         let wallet = Wallet {
-            wallet: Arc::new(Mutex::new(bdk_core_wallet)),
-            client: Arc::new(Mutex::new(client)),
-            persister: Arc::new(Mutex::new(persister)),
+            wallet: bdk_core_wallet.into_arc_mutex_async(),
+            client: client.into_arc_mutex_async(),
+            persister: persister.into_arc_mutex_async(),
+            tauri_handle: None,
             network: Network::Regtest,
             finality_confirmations: 1,
             target_block: 1,
-            tauri_handle: None,
         };
 
         let mut locked_wallet = wallet.wallet.try_lock().unwrap();
