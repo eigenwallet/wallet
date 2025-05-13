@@ -90,13 +90,13 @@ jobs:
       - name: Build Monero (C++) - Linux/macOS
         if: matrix.platform == env.UBUNTU_PLATFORM_ID || startsWith(matrix.platform, 'macos')
         working-directory: monero-sys/monero
-        run: make release -j
+        run: make -j4 release
         shell: bash
 
       - name: Build Monero (C++) - Windows
         if: matrix.platform == env.WINDOWS_PLATFORM_ID
         working-directory: monero-sys/monero
-        run: make release -j
+        run: make -j4 release
         shell: msys2 {0}
 
       - name: work around spurious network errors in curl 8.0

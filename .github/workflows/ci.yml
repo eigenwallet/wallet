@@ -45,7 +45,7 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Check formatting
@@ -92,7 +92,7 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Build swap
@@ -134,7 +134,7 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Install sqlx-cli
@@ -214,7 +214,7 @@ jobs:
       - name: Build Monero (C++)
         if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Setup ccache (Windows)
@@ -225,7 +225,7 @@ jobs:
       - name: Build Monero (C++) - Windows
         if: matrix.os == 'windows-latest'
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: msys2 {0}
 
       - name: Build binary
@@ -310,7 +310,7 @@ jobs:
       - name: Build Monero (C++)
         if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - uses: Swatinem/rust-cache@v2.7.3
@@ -397,7 +397,7 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Run test ${{ matrix.test_name }}
@@ -436,7 +436,7 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Run RPC server tests
@@ -477,7 +477,7 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Run cargo check on stable rust

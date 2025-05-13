@@ -118,13 +118,13 @@ jobs:
       - name: Build Monero (C++) - Linux/macOS
         if: matrix.os == 'ubuntu-latest' || startsWith(matrix.os, 'macos')
         working-directory: monero-sys/monero
-        run: make release -j
+        run: make -j4 release
         shell: bash
 
       - name: Build Monero (C++) - Windows
         if: matrix.os == 'windows-latest'
         working-directory: monero-sys/monero
-        run: make release -j
+        run: make -j4 release
         shell: msys2 {0}
 
       - name: Cross Build ${{ matrix.target }} ${{ matrix.bin }} binary
