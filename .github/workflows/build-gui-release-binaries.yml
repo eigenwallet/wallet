@@ -34,6 +34,11 @@ jobs:
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
 
+      - uses: actionhippie/swap-space@v1
+        if: matrix.platform == env.UBUNTU_PLATFORM_ID
+        with:
+          size: 15G
+
       - name: setup node
         uses: actions/setup-node@v4
         with:

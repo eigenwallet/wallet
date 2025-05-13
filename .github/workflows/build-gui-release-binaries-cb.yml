@@ -46,6 +46,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actionhippie/swap-space@v1
+        with:
+          size: 15G
+
       - name: Create Draft Release
         uses: crabnebula-dev/cloud-release@v0
         with:
@@ -71,6 +76,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - uses: actionhippie/swap-space@v1
+        if: matrix.platform == env.UBUNTU
+        with:
+          size: 15G
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -182,6 +192,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - uses: actionhippie/swap-space@v1
+        with:
+          size: 15G
 
       - name: Publish Release
         uses: crabnebula-dev/cloud-release@v0
