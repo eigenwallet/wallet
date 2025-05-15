@@ -286,7 +286,7 @@ impl Wallet {
     /// which results in us having a bunch of large gaps in the SPKs
     const SCAN_STOP_GAP: u32 = 500;
     /// The batch size for syncing
-    const SCAN_BATCH_SIZE: u32 = 16;
+    const SCAN_BATCH_SIZE: u32 = 32;
     /// The number of maximum chunks to use when syncing
     const SCAN_CHUNKS: u32 = 5;
 
