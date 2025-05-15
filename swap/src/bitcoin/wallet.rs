@@ -2286,7 +2286,7 @@ mod tests {
 
     #[test]
     fn printing_status_change_doesnt_spam_on_same_status() {
-        let writer = capture_logs(LevelFilter::DEBUG);
+        let writer = capture_logs(LevelFilter::TRACE);
 
         let inner = bitcoin::hashes::sha256d::Hash::all_zeros();
         let tx = Txid::from_raw_hash(inner);
