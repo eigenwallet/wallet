@@ -1244,7 +1244,7 @@ where
         "Received quote",
     );
 
-    sync().await?;
+    sync().await.context("Failed to sync of Bitcoin wallet")?;
     let mut max_giveable = max_giveable_fn().await?;
 
     if max_giveable == bitcoin::Amount::ZERO || max_giveable < bid_quote.min_quantity {
@@ -1294,7 +1294,9 @@ where
             }
 
             max_giveable = loop {
-                sync().await?;
+                sync()
+                    .await
+                    .context("Failed to sync Bitcoin wallet while waiting for deposit")?;
                 let new_max_givable = max_giveable_fn().await?;
 
                 if new_max_givable > max_giveable {

@@ -49,11 +49,49 @@ const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.03);
 const MAX_ABSOLUTE_TX_FEE: Decimal = dec!(100_000);
 const DUST_AMOUNT: Amount = Amount::from_sat(546);
 
-/// Configuration for how the wallet should be persisted.
-#[derive(Debug, Clone)]
-pub enum PersisterConfig {
-    SqliteFile { data_dir: PathBuf },
-    InMemorySqlite,
+/// This is our wrapper around a bdk wallet and a corresponding
+/// bdk electrum client.
+/// It unifies all the functionality we need when interacting
+/// with the bitcoin network.
+///
+/// This wallet is generic over the persister, which may be a
+/// rusqlite connection, or an in-memory database, or something else.
+#[derive(Clone)]
+pub struct Wallet<Persister = Connection, C = Client> {
+    /// The wallet, which is persisted to the disk.
+    wallet: Arc<TokioMutex<PersistedWallet<Persister>>>,
+    /// The database connection used to persist the wallet.
+    persister: Arc<TokioMutex<Persister>>,
+    /// The electrum client.
+    client: Arc<TokioMutex<C>>,
+    /// The network this wallet is on.
+    network: Network,
+    /// The number of confirmations (blocks) we require for a transaction
+    /// to be considered final.
+    ///
+    /// Usually set to 1.
+    finality_confirmations: u32,
+    /// We want our transactions to be confirmed after this many blocks
+    /// (used for fee estimation).
+    target_block: u32,
+    /// The Tauri handle
+    tauri_handle: Option<TauriHandle>,
+}
+
+/// This is our wrapper around a bdk electrum client.
+pub struct Client {
+    /// The underlying bdk electrum client.
+    electrum: Arc<BdkElectrumClient<bdk_electrum::electrum_client::Client>>,
+    /// The history of transactions for each script.
+    script_history: BTreeMap<ScriptBuf, Vec<GetHistoryRes>>,
+    /// The subscriptions to the status of transactions.
+    subscriptions: HashMap<(Txid, ScriptBuf), Subscription>,
+    /// The time of the last sync.
+    last_sync: Instant,
+    /// How often we sync with the server.
+    sync_interval: Duration,
+    /// The height of the latest block we know about.
+    latest_block_height: BlockHeight,
 }
 
 /// Holds the configuration parameters for creating a Bitcoin wallet.
@@ -180,49 +218,11 @@ impl WalletBuilder {
     }
 }
 
-/// This is our wrapper around a bdk wallet and a corresponding
-/// bdk electrum client.
-/// It unifies all the functionality we need when interacting
-/// with the bitcoin network.
-///
-/// This wallet is generic over the persister, which may be a
-/// rusqlite connection, or an in-memory database, or something else.
-#[derive(Clone)]
-pub struct Wallet<Persister = Connection, C = Client> {
-    /// The wallet, which is persisted to the disk.
-    wallet: Arc<TokioMutex<PersistedWallet<Persister>>>,
-    /// The database connection used to persist the wallet.
-    persister: Arc<TokioMutex<Persister>>,
-    /// The electrum client.
-    client: Arc<TokioMutex<C>>,
-    /// The network this wallet is on.
-    network: Network,
-    /// The number of confirmations (blocks) we require for a transaction
-    /// to be considered final.
-    ///
-    /// Usually set to 1.
-    finality_confirmations: u32,
-    /// We want our transactions to be confirmed after this many blocks
-    /// (used for fee estimation).
-    target_block: u32,
-    /// The Tauri handle
-    tauri_handle: Option<TauriHandle>,
-}
-
-/// This is our wrapper around a bdk electrum client.
-pub struct Client {
-    /// The underlying bdk electrum client.
-    electrum: Arc<BdkElectrumClient<bdk_electrum::electrum_client::Client>>,
-    /// The history of transactions for each script.
-    script_history: BTreeMap<ScriptBuf, Vec<GetHistoryRes>>,
-    /// The subscriptions to the status of transactions.
-    subscriptions: HashMap<(Txid, ScriptBuf), Subscription>,
-    /// The time of the last sync.
-    last_sync: Instant,
-    /// How often we sync with the server.
-    sync_interval: Duration,
-    /// The height of the latest block we know about.
-    latest_block_height: BlockHeight,
+/// Configuration for how the wallet should be persisted.
+#[derive(Debug, Clone)]
+pub enum PersisterConfig {
+    SqliteFile { data_dir: PathBuf },
+    InMemorySqlite,
 }
 
 /// A subscription to the status of a given transaction
@@ -280,177 +280,6 @@ pub trait EstimateFeeRate {
     fn min_relay_fee(&self) -> Result<bitcoin::Amount>;
 }
 
-mod sync_ext {
-    use std::collections::HashMap;
-    use std::sync::Arc;
-    use std::sync::Mutex as SyncMutex;
-
-    use bdk_wallet::KeychainKind;
-
-    use super::IntoArcMutex;
-
-    /// Type alias for an optional callback
-    /// that is used to report progress of a sync (or a chunk of a sync)
-    pub type InnerSyncCallback = Option<Box<dyn FnMut(u64, u64) + Send + 'static>>;
-
-    /// Type alias for the thread-safe, reference-counted callback of an [`InnerSyncCallback`]
-    pub type SyncCallback = Arc<SyncMutex<InnerSyncCallback>>;
-
-    pub trait SyncCallbackExt {
-        #[allow(clippy::new_ret_no_self)]
-        fn new<F>(callback: F) -> InnerSyncCallback
-        where
-            F: FnMut(u64, u64) + Send + 'static;
-        fn throttle_callback(self, min_percentage_increase: f32) -> InnerSyncCallback;
-        fn chain(self, callback: InnerSyncCallback) -> InnerSyncCallback;
-        fn finalize(self) -> SyncCallback;
-        fn call(&mut self, consumed: u64, total: u64);
-        #[allow(clippy::type_complexity)]
-        fn to_full_scan_callback(
-            self,
-            stop_gap: u32,
-            assumed_buffer: u32,
-        ) -> Box<dyn FnMut(KeychainKind, u32, &bitcoin::Script) + Send + 'static>
-        where
-            Self: Sized;
-    }
-
-    impl SyncCallbackExt for InnerSyncCallback {
-        /// Creates a new sync callback from a callback function.
-        fn new<F>(callback: F) -> InnerSyncCallback
-        where
-            F: FnMut(u64, u64) + Send + 'static,
-        {
-            Some(Box::new(callback))
-        }
-
-        /// Throttles a sync callback, invoking the original callback only when
-        /// the progress has increased by at least `min_percentage_increase` since the last invocation.
-        ///
-        /// Ensures the callback is always invoked when progress reaches 100%.
-        fn throttle_callback(self, min_percentage_increase: f32) -> InnerSyncCallback {
-            let mut callback = match self {
-                None => return None,
-                Some(cb) => cb,
-            };
-
-            let mut last_reported_percentage: f64 = 0.0;
-            let threshold = min_percentage_increase as f64 / 100.0;
-            let threshold = threshold.clamp(0.0, 1.0);
-
-            #[allow(clippy::cast_precision_loss)]
-            Some(Box::new(move |consumed, total| {
-                if total == 0 {
-                    return;
-                }
-
-                let current_percentage = consumed as f64 / total as f64;
-                let is_complete = consumed == total;
-                let should_report = is_complete
-                    || (current_percentage - last_reported_percentage >= threshold)
-                    || last_reported_percentage == 0.0;
-
-                if should_report {
-                    callback(consumed, total);
-                    last_reported_percentage = current_percentage;
-                }
-            }))
-        }
-
-        /// Chains this callback with another callback
-        /// Creates a new callback that invokes both callbacks in order.
-        fn chain(mut self, mut callback: InnerSyncCallback) -> InnerSyncCallback {
-            Self::new(move |consumed, total| {
-                self.call(consumed, total);
-                callback.call(consumed, total);
-            })
-        }
-
-        /// Calls the callback with the given progress, if it's Some(...).
-        fn call(&mut self, consumed: u64, total: u64) {
-            if let Some(cb) = self.as_mut() {
-                cb(consumed, total);
-            }
-        }
-
-        /// Builds a Arc<Mutex<Self>> from the callback
-        fn finalize(self) -> SyncCallback {
-            self.into_arc_mutex_sync()
-        }
-
-        fn to_full_scan_callback(
-            mut self,
-            stop_gap: u32,
-            assumed_buffer: u32,
-        ) -> Box<dyn FnMut(KeychainKind, u32, &bitcoin::Script) + Send + 'static>
-        where
-            Self: Sized,
-        {
-            Box::new(move |_, current_index, _| {
-                let total = stop_gap.max(current_index + assumed_buffer);
-
-                self.call(current_index as u64, total as u64);
-            })
-        }
-    }
-
-    // This struct combines progress updates from different chunks
-    // and makes them seem like a single progress update to outsiders
-    pub struct CumulativeProgress(HashMap<u64, (u64, u64)>);
-
-    impl CumulativeProgress {
-        pub fn new() -> Self {
-            Self(HashMap::new())
-        }
-
-        /// Get the cumulative progress from all cached singular progress updates
-        pub fn get_cumulative(&self) -> (u64, u64) {
-            let total_consumed = self.0.values().map(|(consumed, _)| *consumed).sum();
-            let total_total = self.0.values().map(|(_, total)| *total).sum();
-
-            (total_consumed, total_total)
-        }
-
-        /// Updates the progress of a single chunk
-        pub fn insert_single(&mut self, index: u64, consumed: u64, total: u64) {
-            self.0.insert(index, (consumed, total));
-        }
-    }
-
-    pub trait CumulativeProgressHandle {
-        fn chunk_callback(self, callback: SyncCallback, index: u64) -> InnerSyncCallback;
-    }
-
-    impl CumulativeProgressHandle for Arc<SyncMutex<CumulativeProgress>> {
-        /// Takes a callback function and an index of singular SyncRequest chunk
-        ///
-        /// Returns a new SyncCallback that when called will update the cumulative progress
-        ///
-        /// The given callback will be called when there's a progress update for the given chunk
-        ///
-        /// If one wants to a callback to be called called for every update you need to
-        /// pass it into every call to this function for every chunk.
-        fn chunk_callback(self, callback: SyncCallback, index: u64) -> InnerSyncCallback {
-            InnerSyncCallback::new(move |consumed, total| {
-                // Insert the latest progress update into the cache
-                if let Ok(mut cache) = self.lock() {
-                    cache.insert_single(index, consumed, total);
-
-                    // Calculate the cumulative consumed and the cumulative total
-                    let (cumulative_consumed, cumulative_total) = cache.get_cumulative();
-
-                    // Send the cumulative progress to the callback
-                    // We use sync Mutex here but it's ok because we're only blocking for a short time
-                    let callback = callback.lock();
-                    if let Ok(mut callback) = callback {
-                        callback.call(cumulative_consumed, cumulative_total);
-                    }
-                }
-            })
-        }
-    }
-}
-
 impl Wallet {
     /// If this many consequent addresses are unused, we stop the full scan.
     /// On old wallets we used to generate a ton of unused addresses
@@ -495,7 +324,7 @@ impl Wallet {
             tracing::debug!(
                 external_index=%export.external_derivation_index,
                 internal_index=%export.internal_derivation_index,
-                "Constructed export of old Bitcoin wallet (pre 1.0.0 bdk) for migration"
+                "Constructed export of old Bitcoin wallet (pre 1.0 bdk) for migration"
             );
 
             Ok(Some(export))
@@ -1460,6 +1289,178 @@ impl EstimateFeeRate for Client {
     }
 }
 
+/// Extension trait for our custom concurrent sync implementation.
+mod sync_ext {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::sync::Mutex as SyncMutex;
+
+    use bdk_wallet::KeychainKind;
+
+    use super::IntoArcMutex;
+
+    /// Type alias for an optional callback
+    /// that is used to report progress of a sync (or a chunk of a sync)
+    pub type InnerSyncCallback = Option<Box<dyn FnMut(u64, u64) + Send + 'static>>;
+
+    /// Type alias for the thread-safe, reference-counted callback of an [`InnerSyncCallback`]
+    pub type SyncCallback = Arc<SyncMutex<InnerSyncCallback>>;
+
+    pub trait SyncCallbackExt {
+        #[allow(clippy::new_ret_no_self)]
+        fn new<F>(callback: F) -> InnerSyncCallback
+        where
+            F: FnMut(u64, u64) + Send + 'static;
+        fn throttle_callback(self, min_percentage_increase: f32) -> InnerSyncCallback;
+        fn chain(self, callback: InnerSyncCallback) -> InnerSyncCallback;
+        fn finalize(self) -> SyncCallback;
+        fn call(&mut self, consumed: u64, total: u64);
+        #[allow(clippy::type_complexity)]
+        fn to_full_scan_callback(
+            self,
+            stop_gap: u32,
+            assumed_buffer: u32,
+        ) -> Box<dyn FnMut(KeychainKind, u32, &bitcoin::Script) + Send + 'static>
+        where
+            Self: Sized;
+    }
+
+    impl SyncCallbackExt for InnerSyncCallback {
+        /// Creates a new sync callback from a callback function.
+        fn new<F>(callback: F) -> InnerSyncCallback
+        where
+            F: FnMut(u64, u64) + Send + 'static,
+        {
+            Some(Box::new(callback))
+        }
+
+        /// Throttles a sync callback, invoking the original callback only when
+        /// the progress has increased by at least `min_percentage_increase` since the last invocation.
+        ///
+        /// Ensures the callback is always invoked when progress reaches 100%.
+        fn throttle_callback(self, min_percentage_increase: f32) -> InnerSyncCallback {
+            let mut callback = match self {
+                None => return None,
+                Some(cb) => cb,
+            };
+
+            let mut last_reported_percentage: f64 = 0.0;
+            let threshold = min_percentage_increase as f64 / 100.0;
+            let threshold = threshold.clamp(0.0, 1.0);
+
+            #[allow(clippy::cast_precision_loss)]
+            Some(Box::new(move |consumed, total| {
+                if total == 0 {
+                    return;
+                }
+
+                let current_percentage = consumed as f64 / total as f64;
+                let is_complete = consumed == total;
+                let should_report = is_complete
+                    || (current_percentage - last_reported_percentage >= threshold)
+                    || last_reported_percentage == 0.0;
+
+                if should_report {
+                    callback(consumed, total);
+                    last_reported_percentage = current_percentage;
+                }
+            }))
+        }
+
+        /// Chains this callback with another callback
+        /// Creates a new callback that invokes both callbacks in order.
+        fn chain(mut self, mut callback: InnerSyncCallback) -> InnerSyncCallback {
+            Self::new(move |consumed, total| {
+                self.call(consumed, total);
+                callback.call(consumed, total);
+            })
+        }
+
+        /// Calls the callback with the given progress, if it's Some(...).
+        fn call(&mut self, consumed: u64, total: u64) {
+            if let Some(cb) = self.as_mut() {
+                cb(consumed, total);
+            }
+        }
+
+        /// Builds a Arc<Mutex<Self>> from the callback
+        fn finalize(self) -> SyncCallback {
+            self.into_arc_mutex_sync()
+        }
+
+        fn to_full_scan_callback(
+            mut self,
+            stop_gap: u32,
+            assumed_buffer: u32,
+        ) -> Box<dyn FnMut(KeychainKind, u32, &bitcoin::Script) + Send + 'static>
+        where
+            Self: Sized,
+        {
+            Box::new(move |_, current_index, _| {
+                let total = stop_gap.max(current_index + assumed_buffer);
+
+                self.call(current_index as u64, total as u64);
+            })
+        }
+    }
+
+    // This struct combines progress updates from different chunks
+    // and makes them seem like a single progress update to outsiders
+    pub struct CumulativeProgress(HashMap<u64, (u64, u64)>);
+
+    impl CumulativeProgress {
+        pub fn new() -> Self {
+            Self(HashMap::new())
+        }
+
+        /// Get the cumulative progress from all cached singular progress updates
+        pub fn get_cumulative(&self) -> (u64, u64) {
+            let total_consumed = self.0.values().map(|(consumed, _)| *consumed).sum();
+            let total_total = self.0.values().map(|(_, total)| *total).sum();
+
+            (total_consumed, total_total)
+        }
+
+        /// Updates the progress of a single chunk
+        pub fn insert_single(&mut self, index: u64, consumed: u64, total: u64) {
+            self.0.insert(index, (consumed, total));
+        }
+    }
+
+    pub trait CumulativeProgressHandle {
+        fn chunk_callback(self, callback: SyncCallback, index: u64) -> InnerSyncCallback;
+    }
+
+    impl CumulativeProgressHandle for Arc<SyncMutex<CumulativeProgress>> {
+        /// Takes a callback function and an index of singular SyncRequest chunk
+        ///
+        /// Returns a new SyncCallback that when called will update the cumulative progress
+        ///
+        /// The given callback will be called when there's a progress update for the given chunk
+        ///
+        /// If one wants to a callback to be called called for every update you need to
+        /// pass it into every call to this function for every chunk.
+        fn chunk_callback(self, callback: SyncCallback, index: u64) -> InnerSyncCallback {
+            InnerSyncCallback::new(move |consumed, total| {
+                // Insert the latest progress update into the cache
+                if let Ok(mut cache) = self.lock() {
+                    cache.insert_single(index, consumed, total);
+
+                    // Calculate the cumulative consumed and the cumulative total
+                    let (cumulative_consumed, cumulative_total) = cache.get_cumulative();
+
+                    // Send the cumulative progress to the callback
+                    // We use sync Mutex here but it's ok because we're only blocking for a short time
+                    let callback = callback.lock();
+                    if let Ok(mut callback) = callback {
+                        callback.call(cumulative_consumed, cumulative_total);
+                    }
+                }
+            })
+        }
+    }
+}
+
 fn trace_status_change(txid: Txid, old: Option<ScriptStatus>, new: ScriptStatus) -> ScriptStatus {
     match (old, new) {
         (None, new_status) => {
@@ -1526,107 +1527,6 @@ impl Subscription {
         }
 
         Ok(())
-    }
-}
-
-pub mod pre_1_0_0_bdk {
-    //! This module contains some code for creating a bdk wallet from before the update.
-    //! We need to keep this around to be able to migrate the wallet.
-
-    use std::path::Path;
-    use std::sync::Arc;
-
-    use anyhow::{anyhow, bail, Result};
-    use bdk::bitcoin::{util::bip32::ExtendedPrivKey, Network};
-    use bdk::sled::Tree;
-    use bdk::KeychainKind;
-    use tokio::sync::Mutex as TokioMutex;
-
-    use super::IntoArcMutex;
-
-    pub const WALLET: &str = "wallet";
-    const SLED_TREE_NAME: &str = "default_tree";
-
-    /// The is the old bdk wallet before the migration.
-    /// We need to contruct it before migration to get the keys and revelation indeces.
-    pub struct OldWallet<D = Tree> {
-        wallet: Arc<TokioMutex<bdk::Wallet<D>>>,
-        network: Network,
-    }
-
-    /// This is all the data we need from the old wallet to be able to migrate it
-    /// and check whether we did it correctly.
-    pub struct Export {
-        /// Wallet descriptor and blockheight.
-        pub export: bdk_wallet::export::FullyNodedExport,
-        /// Index of the last external address that was revealed.
-        pub external_derivation_index: u32,
-        /// Index of the last internal address that was revealed.
-        pub internal_derivation_index: u32,
-    }
-
-    impl OldWallet {
-        /// Create a new old wallet.
-        pub async fn new(
-            data_dir: impl AsRef<Path>,
-            xprivkey: ExtendedPrivKey,
-            network: bitcoin::Network,
-        ) -> Result<Self> {
-            let data_dir = data_dir.as_ref();
-            let wallet_dir = data_dir.join(WALLET);
-            let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
-
-            // Convert bitcoin network to the bdk network type...
-            let network = match network {
-                bitcoin::Network::Bitcoin => bdk::bitcoin::Network::Bitcoin,
-                bitcoin::Network::Testnet => bdk::bitcoin::Network::Testnet,
-                bitcoin::Network::Regtest => bdk::bitcoin::Network::Regtest,
-                bitcoin::Network::Signet => bdk::bitcoin::Network::Signet,
-                _ => bail!("Unsupported network"),
-            };
-
-            let wallet = bdk::Wallet::new(
-                bdk::template::Bip84(xprivkey, KeychainKind::External),
-                Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
-                network,
-                database,
-            )?;
-
-            Ok(Self {
-                wallet: wallet.into_arc_mutex_async(),
-                network,
-            })
-        }
-
-        /// Get a full export of the wallet including descriptors and blockheight.
-        /// It also includes the internal (change) address and external (receiving) address derivation indices.
-        pub async fn export(&self, role: &str) -> Result<Export> {
-            let wallet = self.wallet.lock().await;
-            let export = bdk::wallet::export::FullyNodedExport::export_wallet(
-                &wallet,
-                &format!("{}-{}", role, self.network),
-                true,
-            )
-            .map_err(|_| anyhow!("Failed to export old wallet descriptor"))?;
-
-            // Because we upgraded bdk, the type id changed.
-            // Thus, we serialize to json and then deserialize to the new type.
-            let json = serde_json::to_string(&export)?;
-            let export = serde_json::from_str::<bdk_wallet::export::FullyNodedExport>(&json)?;
-
-            let external_info = wallet.get_address(bdk::wallet::AddressIndex::LastUnused)?;
-            let external_derivation_index = external_info.index;
-
-            let internal_info =
-                wallet.get_internal_address(bdk::wallet::AddressIndex::LastUnused)?;
-            let internal_derivation_index = internal_info.index;
-
-            Ok(Export {
-                export,
-                internal_derivation_index,
-                external_derivation_index,
-            })
-        }
     }
 }
 
@@ -1799,6 +1699,107 @@ impl fmt::Display for ScriptStatus {
             ScriptStatus::Confirmed(inner) => {
                 write!(f, "confirmed with {} blocks", inner.confirmations())
             }
+        }
+    }
+}
+
+pub mod pre_1_0_0_bdk {
+    //! This module contains some code for creating a bdk wallet from before the update.
+    //! We need to keep this around to be able to migrate the wallet.
+
+    use std::path::Path;
+    use std::sync::Arc;
+
+    use anyhow::{anyhow, bail, Result};
+    use bdk::bitcoin::{util::bip32::ExtendedPrivKey, Network};
+    use bdk::sled::Tree;
+    use bdk::KeychainKind;
+    use tokio::sync::Mutex as TokioMutex;
+
+    use super::IntoArcMutex;
+
+    pub const WALLET: &str = "wallet";
+    const SLED_TREE_NAME: &str = "default_tree";
+
+    /// The is the old bdk wallet before the migration.
+    /// We need to contruct it before migration to get the keys and revelation indeces.
+    pub struct OldWallet<D = Tree> {
+        wallet: Arc<TokioMutex<bdk::Wallet<D>>>,
+        network: Network,
+    }
+
+    /// This is all the data we need from the old wallet to be able to migrate it
+    /// and check whether we did it correctly.
+    pub struct Export {
+        /// Wallet descriptor and blockheight.
+        pub export: bdk_wallet::export::FullyNodedExport,
+        /// Index of the last external address that was revealed.
+        pub external_derivation_index: u32,
+        /// Index of the last internal address that was revealed.
+        pub internal_derivation_index: u32,
+    }
+
+    impl OldWallet {
+        /// Create a new old wallet.
+        pub async fn new(
+            data_dir: impl AsRef<Path>,
+            xprivkey: ExtendedPrivKey,
+            network: bitcoin::Network,
+        ) -> Result<Self> {
+            let data_dir = data_dir.as_ref();
+            let wallet_dir = data_dir.join(WALLET);
+            let database = bdk::sled::open(wallet_dir)?.open_tree(SLED_TREE_NAME)?;
+
+            // Convert bitcoin network to the bdk network type...
+            let network = match network {
+                bitcoin::Network::Bitcoin => bdk::bitcoin::Network::Bitcoin,
+                bitcoin::Network::Testnet => bdk::bitcoin::Network::Testnet,
+                bitcoin::Network::Regtest => bdk::bitcoin::Network::Regtest,
+                bitcoin::Network::Signet => bdk::bitcoin::Network::Signet,
+                _ => bail!("Unsupported network"),
+            };
+
+            let wallet = bdk::Wallet::new(
+                bdk::template::Bip84(xprivkey, KeychainKind::External),
+                Some(bdk::template::Bip84(xprivkey, KeychainKind::Internal)),
+                network,
+                database,
+            )?;
+
+            Ok(Self {
+                wallet: wallet.into_arc_mutex_async(),
+                network,
+            })
+        }
+
+        /// Get a full export of the wallet including descriptors and blockheight.
+        /// It also includes the internal (change) address and external (receiving) address derivation indices.
+        pub async fn export(&self, role: &str) -> Result<Export> {
+            let wallet = self.wallet.lock().await;
+            let export = bdk::wallet::export::FullyNodedExport::export_wallet(
+                &wallet,
+                &format!("{}-{}", role, self.network),
+                true,
+            )
+            .map_err(|_| anyhow!("Failed to export old wallet descriptor"))?;
+
+            // Because we upgraded bdk, the type id changed.
+            // Thus, we serialize to json and then deserialize to the new type.
+            let json = serde_json::to_string(&export)?;
+            let export = serde_json::from_str::<bdk_wallet::export::FullyNodedExport>(&json)?;
+
+            let external_info = wallet.get_address(bdk::wallet::AddressIndex::LastUnused)?;
+            let external_derivation_index = external_info.index;
+
+            let internal_info =
+                wallet.get_internal_address(bdk::wallet::AddressIndex::LastUnused)?;
+            let internal_derivation_index = internal_info.index;
+
+            Ok(Export {
+                export,
+                internal_derivation_index,
+                external_derivation_index,
+            })
         }
     }
 }
