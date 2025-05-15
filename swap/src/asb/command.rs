@@ -763,29 +763,21 @@ mod tests {
 
     #[test]
     fn given_bitcoin_address_network_mismatch_then_error() {
-        let error = bitcoin_address::parse_and_validate(BITCOIN_MAINNET_ADDRESS, true).unwrap_err();
-
-        assert_eq!(
-            error
-                .downcast_ref::<BitcoinAddressNetworkMismatch>()
-                .unwrap(),
-            &BitcoinAddressNetworkMismatch {
-                expected: bitcoin::Network::Testnet,
-                actual: bitcoin::Network::Bitcoin
-            }
-        );
-
         let error =
             bitcoin_address::parse_and_validate(BITCOIN_TESTNET_ADDRESS, false).unwrap_err();
 
+        let error_message = error.to_string();
         assert_eq!(
-            error
-                .downcast_ref::<BitcoinAddressNetworkMismatch>()
-                .unwrap(),
-            &BitcoinAddressNetworkMismatch {
-                expected: bitcoin::Network::Bitcoin,
-                actual: bitcoin::Network::Testnet
-            }
+            error_message,
+            "Bitcoin address network mismatch, expected `Bitcoin`"
+        );
+
+        let error = bitcoin_address::parse_and_validate(BITCOIN_MAINNET_ADDRESS, true).unwrap_err();
+
+        let error_message = error.to_string();
+        assert_eq!(
+            error_message,
+            "Bitcoin address network mismatch, expected `Testnet`"
         );
     }
 }

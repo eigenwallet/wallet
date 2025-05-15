@@ -357,7 +357,7 @@ pub mod bitcoin_address {
     ) -> Result<bitcoin::Address> {
         let addres = bitcoin::Address::from_str(address)?;
         let addres = addres.require_network(expected_network).with_context(|| {
-            format!("bitcoin address network mismatch, expected `{expected_network:?}`",)
+            format!("Bitcoin address network mismatch, expected `{expected_network:?}`")
         })?;
         Ok(addres)
     }
