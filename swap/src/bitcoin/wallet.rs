@@ -297,6 +297,7 @@ mod sync_ext {
     pub type SyncCallback = Arc<SyncMutex<InnerSyncCallback>>;
 
     pub trait SyncCallbackExt {
+        #[allow(clippy::new_ret_no_self)]
         fn new<F>(callback: F) -> InnerSyncCallback
         where
             F: FnMut(u64, u64) + Send + 'static;
@@ -304,6 +305,7 @@ mod sync_ext {
         fn chain(self, callback: InnerSyncCallback) -> InnerSyncCallback;
         fn finalize(self) -> SyncCallback;
         fn call(&mut self, consumed: u64, total: u64);
+        #[allow(clippy::type_complexity)]
         fn to_full_scan_callback(
             self,
             stop_gap: u32,
@@ -651,8 +653,8 @@ impl Wallet {
 
         let callback = sync_ext::InnerSyncCallback::new(move |consumed, total| {
             progress_handle_clone.update(TauriBitcoinFullScanProgress::Known {
-                current_index: consumed as u64,
-                assumed_total: total as u64,
+                current_index: consumed,
+                assumed_total: total,
             });
         }).chain(sync_ext::InnerSyncCallback::new(move |consumed, total| {
             tracing::debug!(
@@ -889,7 +891,8 @@ impl Wallet {
     ) -> Vec<SyncRequestBuilder<(bdk_wallet::KeychainKind, u32)>> {
         let wallet = self.wallet.lock().await;
         let spks: Vec<_> = wallet.spk_index().revealed_spks(..).collect();
-        let total_spks = spks.len() as u32;
+        let total_spks =
+            u32::try_from(spks.len()).expect("Number of SPKs should not exceed u32::MAX");
 
         if total_spks == 0 {
             tracing::debug!("Not syncing because there are no spks in our wallet");
@@ -1045,10 +1048,8 @@ impl Wallet {
 
         // We want to update the UI as often as possible
         let tauri_callback = sync_ext::InnerSyncCallback::new(move |consumed, total| {
-            background_process_handle_clone.update(TauriBitcoinSyncProgress::Known {
-                consumed: consumed as u64,
-                total: total as u64,
-            });
+            background_process_handle_clone
+                .update(TauriBitcoinSyncProgress::Known { consumed, total });
         });
 
         // We throttle the tracing logging to 10% increments
