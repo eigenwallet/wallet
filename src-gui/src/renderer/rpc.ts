@@ -26,6 +26,8 @@ import {
   GetDataDirArgs,
   ResolveApprovalArgs,
   ResolveApprovalResponse,
+  RedactArgs,
+  RedactResponse,
 } from "models/tauriModel";
 import {
   rpcSetBalance,
@@ -41,6 +43,8 @@ import { getNetwork, isTestnet } from "store/config";
 import { Blockchain, Network } from "store/features/settingsSlice";
 import { setStatus } from "store/features/nodesSlice";
 import { discoveredMakersByRendezvous } from "store/features/makersSlice";
+import { CliLog } from "models/cliModel";
+import { logsToRawString, parseLogsFromString } from "utils/parseUtils";
 
 export const PRESET_RENDEZVOUS_POINTS = [
   "/dnsaddr/xxmr.cheap/p2p/12D3KooWMk3QyPS8D1d1vpHZoY7y2MnXdPE5yV6iyPvyuj4zcdxT",
@@ -52,8 +56,7 @@ export async function fetchSellersAtPresetRendezvousPoints() {
     store.dispatch(discoveredMakersByRendezvous(response.sellers));
 
     logger.info(`Discovered ${response.sellers.length} sellers at rendezvous point ${rendezvousPoint} during startup fetch`);
-  }),
-  );
+  }));
 }
 
 async function invoke<ARGS, RESPONSE>(
@@ -70,8 +73,22 @@ async function invokeNoArgs<RESPONSE>(command: string): Promise<RESPONSE> {
 }
 
 export async function checkBitcoinBalance() {
+  // If we are already syncing, don't start a new sync
+  if (Object.values(store.getState().rpc?.state.background ?? {}).some(progress => progress.componentName === "SyncingBitcoinWallet" && progress.progress.type === "Pending")) {
+    console.log("checkBitcoinBalance() was called but we are already syncing Bitcoin, skipping");
+    return;
+  }
+
   const response = await invoke<BalanceArgs, BalanceResponse>("get_balance", {
     force_refresh: true,
+  });
+
+  store.dispatch(rpcSetBalance(response.balance));
+}
+
+export async function cheapCheckBitcoinBalance() {
+  const response = await invoke<BalanceArgs, BalanceResponse>("get_balance", {
+    force_refresh: false,
   });
 
   store.dispatch(rpcSetBalance(response.balance));
@@ -105,6 +122,10 @@ export async function withdrawBtc(address: string): Promise<string> {
       amount: null,
     },
   );
+
+  // We check the balance, this is cheap and does not sync the wallet
+  // but instead uses our local cached balance
+  await cheapCheckBitcoinBalance();
 
   return response.txid;
 }
@@ -165,6 +186,17 @@ export async function getLogsOfSwap(
   });
 }
 
+/// Call the rust backend to redact logs.
+export async function redactLogs(
+  logs: (string | CliLog)[]
+): Promise<(string | CliLog)[]> {
+  const response = await invoke<RedactArgs, RedactResponse>("redact", {
+    text: logsToRawString(logs)
+  })
+
+  return parseLogsFromString(response.text);
+}
+
 export async function listSellersAtRendezvousPoint(
   rendezvousPointAddresses: string[],
 ): Promise<ListSellersResponse> {
@@ -176,6 +208,7 @@ export async function listSellersAtRendezvousPoint(
 export async function initializeContext() {
   const network = getNetwork();
   const testnet = isTestnet();
+  const useTor = store.getState().settings.enableTor;
 
   // This looks convoluted but it does the following:
   // - Fetch the status of all nodes for each blockchain in parallel
@@ -209,6 +242,7 @@ export async function initializeContext() {
   const tauriSettings: TauriSettings = {
     electrum_rpc_url: bitcoinNode,
     monero_node_url: moneroNode,
+    use_tor: useTor
   };
 
   logger.info("Initializing context with settings", tauriSettings);

@@ -6,6 +6,10 @@ on:
     branches:
       - "master" # Always build head of master for the badge in the README
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   static_analysis:
     runs-on: ubuntu-latest
@@ -15,7 +19,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.80"
+          toolchain: "1.81"
           components: clippy,rustfmt
 
       - uses: Swatinem/rust-cache@v2.7.3
@@ -123,7 +127,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.80"
+          toolchain: "1.81"
           targets: armv7-unknown-linux-gnueabihf
 
       - name: Install dependencies required by Tauri v2 (ubuntu only)

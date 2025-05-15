@@ -29,6 +29,7 @@ import {
   resetSettings,
   setFetchFiatPrices,
   setFiatCurrency,
+  setTorEnabled,
 } from "store/features/settingsSlice";
 import {
   addNode,
@@ -85,6 +86,7 @@ export default function SettingsBox() {
           <TableContainer>
             <Table>
               <TableBody>
+                <TorSettings />
                 <ElectrumRpcUrlSetting />
                 <MoneroNodeUrlSetting />
                 <RendezvousPointsSetting />
@@ -594,4 +596,23 @@ function RendezvousPointsSetting() {
       </TableCell>
     </TableRow>
   );
+}
+
+export function TorSettings() {
+  const dispatch = useAppDispatch();
+  const torEnabled = useSettings((settings) => settings.enableTor)
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => dispatch(setTorEnabled(event.target.checked));
+  const status = (state: boolean) => state === true ? "enabled" : "disabled";
+
+  return (
+    <TableRow>
+      <TableCell>
+        <SettingLabel label="Use Tor" tooltip="Tor (The Onion Router) is a decentralized network allowing for anonymous browsing. If enabled, the app will use its internal Tor client to hide your IP address from the maker. Requires a restart to take effect." />
+      </TableCell>
+
+      <TableCell>
+        <Switch checked={torEnabled} onChange={handleChange} color="primary" />
+      </TableCell>
+    </TableRow>
+  )
 }

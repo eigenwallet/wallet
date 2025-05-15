@@ -4,7 +4,7 @@ use crate::cli::api::tauri_bindings::{TauriEmitter, TauriSwapProgressEvent};
 use crate::cli::api::Context;
 use crate::cli::list_sellers::{QuoteWithAddress, UnreachableSeller};
 use crate::cli::{list_sellers as list_sellers_impl, EventLoop, SellerStatus};
-use crate::common::get_logs;
+use crate::common::{get_logs, redact};
 use crate::libp2p_ext::MultiAddrExt;
 use crate::monero::wallet_rpc::MoneroDaemon;
 use crate::network::quote::{BidQuote, ZeroQuoteReceived};
@@ -12,6 +12,7 @@ use crate::network::swarm;
 use crate::protocol::bob::{BobState, Swap};
 use crate::protocol::{bob, State};
 use crate::{bitcoin, cli, monero, rpc};
+use ::bitcoin::address::NetworkUnchecked;
 use ::bitcoin::Txid;
 use ::monero::Network;
 use anyhow::{bail, Context as AnyContext, Result};
@@ -34,6 +35,7 @@ use tracing::debug_span;
 use tracing::Instrument;
 use tracing::Span;
 use typeshare::typeshare;
+use url::Url;
 use uuid::Uuid;
 
 /// This trait is implemented by all types of request args that
@@ -57,7 +59,7 @@ pub struct BuyXmrArgs {
     #[typeshare(serialized_as = "string")]
     pub seller: Multiaddr,
     #[typeshare(serialized_as = "Option<string>")]
-    pub bitcoin_change_address: Option<bitcoin::Address>,
+    pub bitcoin_change_address: Option<bitcoin::Address<NetworkUnchecked>>,
     #[typeshare(serialized_as = "string")]
     pub monero_receive_address: monero::Address,
 }
@@ -144,9 +146,10 @@ impl Request for MoneroRecoveryArgs {
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct WithdrawBtcArgs {
     #[typeshare(serialized_as = "number")]
-    #[serde(default, with = "::bitcoin::util::amount::serde::as_sat::opt")]
+    #[serde(default, with = "::bitcoin::amount::serde::as_sat::opt")]
     pub amount: Option<bitcoin::Amount>,
     #[typeshare(serialized_as = "string")]
+    #[serde(with = "crate::bitcoin::address_serde")]
     pub address: bitcoin::Address,
 }
 
@@ -154,7 +157,7 @@ pub struct WithdrawBtcArgs {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WithdrawBtcResponse {
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub amount: bitcoin::Amount,
     pub txid: String,
 }
@@ -228,18 +231,18 @@ pub struct GetSwapInfoResponse {
     #[typeshare(serialized_as = "number")]
     pub xmr_amount: monero::Amount,
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub btc_amount: bitcoin::Amount,
     #[typeshare(serialized_as = "string")]
     pub tx_lock_id: Txid,
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub tx_cancel_fee: bitcoin::Amount,
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub tx_refund_fee: bitcoin::Amount,
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub tx_lock_fee: bitcoin::Amount,
     pub btc_refund_address: String,
     pub cancel_timelock: CancelTimelock,
@@ -266,7 +269,7 @@ pub struct BalanceArgs {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BalanceResponse {
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub balance: bitcoin::Amount,
 }
 
@@ -360,6 +363,7 @@ pub struct ExportBitcoinWalletArgs;
 #[typeshare]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ExportBitcoinWalletResponse {
+    #[typeshare(serialized_as = "object")]
     pub wallet_descriptor: serde_json::Value,
 }
 
@@ -420,6 +424,29 @@ impl Request for GetLogsArgs {
         }
 
         Ok(GetLogsResponse { logs })
+    }
+}
+
+/// Best effort redaction of logs, e.g. wallet addresses, swap-ids
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RedactArgs {
+    pub text: String,
+}
+
+#[typeshare]
+#[derive(Serialize, Debug)]
+pub struct RedactResponse {
+    pub text: String,
+}
+
+impl Request for RedactArgs {
+    type Response = RedactResponse;
+
+    async fn request(self, _: Arc<Context>) -> Result<Self::Response> {
+        Ok(RedactResponse {
+            text: redact(&self.text),
+        })
     }
 }
 
@@ -591,7 +618,9 @@ pub async fn buy_xmr(
     );
 
     let bitcoin_change_address = match bitcoin_change_address {
-        Some(addr) => addr,
+        Some(addr) => addr
+            .require_network(bitcoin_wallet.network())
+            .context("Address is not on the correct network")?,
         None => {
             let internal_wallet_address = bitcoin_wallet.new_address().await?;
 
@@ -1013,7 +1042,7 @@ pub async fn withdraw_btc(
         .await?;
 
     Ok(WithdrawBtcResponse {
-        txid: signed_tx.txid().to_string(),
+        txid: signed_tx.compute_txid().to_string(),
         amount,
     })
 }
@@ -1097,6 +1126,7 @@ pub async fn list_sellers(
         context.tor_client.clone(),
         identity,
         Some(context.db.clone()),
+        context.tauri_handle.clone(),
     )
     .await?;
 
@@ -1236,7 +1266,7 @@ where
         "Received quote",
     );
 
-    sync().await?;
+    sync().await.context("Failed to sync of Bitcoin wallet")?;
     let mut max_giveable = max_giveable_fn().await?;
 
     if max_giveable == bitcoin::Amount::ZERO || max_giveable < bid_quote.min_quantity {
@@ -1286,7 +1316,9 @@ where
             }
 
             max_giveable = loop {
-                sync().await?;
+                sync()
+                    .await
+                    .context("Failed to sync Bitcoin wallet while waiting for deposit")?;
                 let new_max_givable = max_giveable_fn().await?;
 
                 if new_max_givable > max_giveable {
@@ -1384,12 +1416,12 @@ pub struct CheckElectrumNodeResponse {
 impl CheckElectrumNodeArgs {
     pub async fn request(self) -> Result<CheckElectrumNodeResponse> {
         // Check if the URL is valid
-        let Ok(url) = self.url.parse() else {
+        let Ok(url) = Url::parse(&self.url) else {
             return Ok(CheckElectrumNodeResponse { available: false });
         };
 
         // Check if the node is available
-        let res = wallet::Client::new(url, Duration::from_secs(10), 0);
+        let res = wallet::Client::new(url.as_str(), Duration::from_secs(60));
 
         Ok(CheckElectrumNodeResponse {
             available: res.is_ok(),

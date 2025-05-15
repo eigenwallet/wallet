@@ -1,5 +1,5 @@
-import { sortBy } from "lodash";
-import { BobStateName, GetSwapInfoResponseExt, PendingApprovalRequest, PendingLockBitcoinApprovalRequest } from "models/tauriModelExt";
+import { sortBy, sum } from "lodash";
+import { BobStateName, GetSwapInfoResponseExt, isBitcoinSyncProgress, isPendingBackgroundProcess, isPendingLockBitcoinApprovalEvent, PendingApprovalRequest, PendingLockBitcoinApprovalRequest } from "models/tauriModelExt";
 import { TypedUseSelectorHook, useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "renderer/store/storeRenderer";
 import { parseDateString } from "utils/parseUtils";
@@ -9,6 +9,8 @@ import { SettingsState } from "./features/settingsSlice";
 import { NodesSlice } from "./features/nodesSlice";
 import { RatesState } from "./features/ratesSlice";
 import { sortMakerList } from "utils/sortUtils";
+import { TauriBackgroundProgress, TauriBitcoinSyncProgress, TauriContextStatusEvent, DiscoveryProgress } from "models/tauriModel";
+import { TauriDiscoveryProgress, isDiscoveryProgress } from "models/tauriModelExt";
 
 export const useAppDispatch = () => useDispatch<AppDispatch>();
 export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
@@ -47,7 +49,7 @@ export function useIsSwapRunning() {
 }
 
 export function useIsContextAvailable() {
-  return useAppSelector((state) => state.rpc.status?.type === "Available");
+  return useAppSelector((state) => state.rpc.status === TauriContextStatusEvent.Available);
 }
 
 /// We do not use a sanity check here, as opposed to the other useSwapInfo hooks,
@@ -145,5 +147,137 @@ export function usePendingApprovals(): PendingApprovalRequest[] {
 
 export function usePendingLockBitcoinApproval(): PendingLockBitcoinApprovalRequest[] {
   const approvals = usePendingApprovals();
-  return approvals.filter((c) => c.content.details.type === "LockBitcoin");
+  return approvals.filter((c) => isPendingLockBitcoinApprovalEvent(c));
+}
+
+/// Returns all the pending background processes
+/// In the format [id, {componentName, {type: "Pending", content: {consumed, total}}}]
+export function usePendingBackgroundProcesses(): [string, TauriBackgroundProgress][] {
+  const background = useAppSelector((state) => state.rpc.state.background);
+  return Object.entries(background).filter(([_, c]) => isPendingBackgroundProcess(c));
+}
+
+export function useBitcoinSyncProgress(): TauriBitcoinSyncProgress[] {
+  const pendingProcesses = usePendingBackgroundProcesses();
+  const syncingProcesses = pendingProcesses.map(([_, c]) => c).filter(isBitcoinSyncProgress);
+  return syncingProcesses.map((c) => c.progress.content);
+}
+
+export function isSyncingBitcoin(): boolean {
+  const syncProgress = useBitcoinSyncProgress();
+  return syncProgress.length > 0;
+}
+
+/// This function returns the cumulative sync progress of all currently running Bitcoin wallet syncs
+/// If all syncs are unknown, it returns {type: "Unknown"}
+/// If at least one sync is known, it returns {type: "Known", content: {consumed, total}}
+/// where consumed and total are the sum of all the consumed and total values of the syncs
+export function useConservativeBitcoinSyncProgress(): TauriBitcoinSyncProgress | null {
+  const syncingProcesses = useBitcoinSyncProgress();
+  const progressValues = syncingProcesses.map((c) => c.content?.consumed ?? 0);
+  const totalValues = syncingProcesses.map((c) => c.content?.total ?? 0);
+
+  const progress = sum(progressValues);
+  const total = sum(totalValues);
+
+  // If either the progress or the total is 0, we consider the sync to be unknown
+  if (progress === 0 || total === 0) {
+    return {
+      type: "Unknown",
+    };
+  }
+
+  return {
+    type: "Known",
+    content: {
+      consumed: progress,
+      total: total,
+    },
+  };
+}
+
+/**
+ * Calculates the number of unread messages from staff for a specific feedback conversation.
+ * @param feedbackId The ID of the feedback conversation.
+ * @returns The number of unread staff messages.
+ */
+export function useUnreadMessagesCount(feedbackId: string): number {
+  const { conversationsMap, seenMessagesSet } = useAppSelector((state) => ({
+    conversationsMap: state.conversations.conversations,
+    // Convert seenMessages array to a Set for efficient lookup
+    seenMessagesSet: new Set(state.conversations.seenMessages),
+  }));
+
+  const messages = conversationsMap[feedbackId] || [];
+
+  const unreadStaffMessages = messages.filter(
+    (msg) => msg.is_from_staff && !seenMessagesSet.has(msg.id.toString()),
+  );
+
+  return unreadStaffMessages.length;
+}
+
+/**
+ * Calculates the total number of unread messages from staff across all feedback conversations.
+ * @returns The total number of unread staff messages.
+ */
+export function useTotalUnreadMessagesCount(): number {
+  const { conversationsMap, seenMessagesSet } = useAppSelector((state) => ({
+    conversationsMap: state.conversations.conversations,
+    seenMessagesSet: new Set(state.conversations.seenMessages),
+  }));
+
+  let totalUnreadCount = 0;
+  for (const feedbackId in conversationsMap) {
+    const messages = conversationsMap[feedbackId] || [];
+    const unreadStaffMessages = messages.filter(
+      (msg) => msg.is_from_staff && !seenMessagesSet.has(msg.id.toString()),
+    );
+    totalUnreadCount += unreadStaffMessages.length;
+  }
+
+  return totalUnreadCount;
+}
+
+// Discovery progress hook
+export function useLastDiscoveryProgress(): DiscoveryProgress | null {
+  const pendingProcesses = usePendingBackgroundProcesses();
+  
+  // Find Discovery processes
+  const discoveryProcesses = pendingProcesses
+    .map(([_, progress]) => progress)
+    .filter(isDiscoveryProgress);
+  
+  // If we have discovery processes, return the last one's content
+  if (discoveryProcesses.length > 0) {
+    return discoveryProcesses.at(-1)?.progress.content;
+  }
+  
+  return null;
+}
+
+// Calculate rendezvous points progress percentage
+export function useRendezvousPointsProgress(): number | null {
+  const progress = useLastDiscoveryProgress();
+  
+  if (!progress) return null;
+  
+  const { total_rendezvous_points, total_succeeded_rendezvous_points, total_failed_rendezvous_points } = progress;
+  
+  if (total_rendezvous_points === 0) return 0;
+  
+  return ((total_succeeded_rendezvous_points + total_failed_rendezvous_points) / total_rendezvous_points) * 100;
+}
+
+// Calculate quotes progress percentage
+export function useQuotesProgress(): number | null {
+  const progress = useLastDiscoveryProgress();
+  
+  if (!progress) return null;
+  
+  const { total_quote_requests, total_succeeded_quote_requests, total_failed_quote_requests } = progress;
+  
+  if (total_quote_requests === 0) return 0;
+  
+  return ((total_succeeded_quote_requests + total_failed_quote_requests) / total_quote_requests) * 100;
 }

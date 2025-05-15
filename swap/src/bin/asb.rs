@@ -45,6 +45,10 @@ const DEFAULT_WALLET_NAME: &str = "asb-wallet";
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to install default rustls provider");
+
     let Arguments {
         testnet,
         json,
@@ -73,7 +77,7 @@ pub async fn main() -> Result<()> {
         Ok(config) => config,
         Err(ConfigNotInitialized {}) => {
             initial_setup(config_path.clone(), query_user_for_initial_config(testnet)?)?;
-            read_config(config_path)?.expect("after initial setup config can be read")
+            read_config(config_path.clone())?.expect("after initial setup config can be read")
         }
     };
 
@@ -122,11 +126,11 @@ pub async fn main() -> Result<()> {
 
             // Initialize Monero wallet
             let monero_wallet = init_monero_wallet(&config, env_config).await?;
-            let monero_address = monero_wallet.get_main_address();
+            let monero_address = monero_wallet.lock().await.get_main_address();
             tracing::info!(%monero_address, "Monero wallet address");
 
             // Check Monero balance
-            let monero = monero_wallet.get_balance().await?;
+            let monero = monero_wallet.lock().await.get_balance().await?;
             match (monero.balance, monero.unlocked_balance) {
                 (0, _) => {
                     tracing::warn!(
@@ -160,7 +164,7 @@ pub async fn main() -> Result<()> {
             let namespace = XmrBtcNamespace::from_is_testnet(testnet);
 
             // Initialize Tor client
-            let tor_client = init_tor_client(&config.data.dir).await?.into();
+            let tor_client = init_tor_client(&config.data.dir, None).await?.into();
 
             let (mut swarm, onion_addresses) = swarm::asb(
                 &seed,
@@ -317,7 +321,7 @@ pub async fn main() -> Result<()> {
         }
         Command::Balance => {
             let monero_wallet = init_monero_wallet(&config, env_config).await?;
-            let monero_balance = monero_wallet.get_balance().await?;
+            let monero_balance = monero_wallet.lock().await.get_balance().await?;
             tracing::info!(%monero_balance);
 
             let bitcoin_wallet = init_bitcoin_wallet(&config, &seed, env_config).await?;
@@ -387,7 +391,7 @@ pub async fn main() -> Result<()> {
         Command::ExportBitcoinWallet => {
             let bitcoin_wallet = init_bitcoin_wallet(&config, &seed, env_config).await?;
             let wallet_export = bitcoin_wallet.wallet_export("asb").await?;
-            println!("{}", wallet_export.to_string())
+            println!("{}", wallet_export)
         }
     }
 
@@ -400,16 +404,19 @@ async fn init_bitcoin_wallet(
     env_config: swap::env::Config,
 ) -> Result<bitcoin::Wallet> {
     tracing::debug!("Opening Bitcoin wallet");
-    let data_dir = &config.data.dir;
-    let wallet = bitcoin::Wallet::new(
-        config.bitcoin.electrum_rpc_url.clone(),
-        data_dir,
-        seed.derive_extended_private_key(env_config.bitcoin_network)?,
-        env_config,
-        config.bitcoin.target_block,
-    )
-    .await
-    .context("Failed to initialize Bitcoin wallet")?;
+    let wallet = bitcoin::wallet::WalletBuilder::default()
+        .seed(seed.clone())
+        .network(env_config.bitcoin_network)
+        .electrum_rpc_url(config.bitcoin.electrum_rpc_url.as_str().to_string())
+        .persister(bitcoin::wallet::PersisterConfig::SqliteFile {
+            data_dir: config.data.dir.clone(),
+        })
+        .finality_confirmations(env_config.bitcoin_finality_confirmations)
+        .target_block(config.bitcoin.target_block)
+        .sync_interval(env_config.bitcoin_sync_interval())
+        .build()
+        .await
+        .context("Failed to initialize Bitcoin wallet")?;
 
     wallet.sync().await?;
 
@@ -419,7 +426,7 @@ async fn init_bitcoin_wallet(
 async fn init_monero_wallet(
     config: &Config,
     env_config: swap::env::Config,
-) -> Result<monero::Wallet> {
+) -> Result<tokio::sync::Mutex<monero::Wallet>> {
     tracing::debug!("Opening Monero wallet");
     let wallet = monero::Wallet::open_or_create(
         config.monero.wallet_rpc_url.clone(),
@@ -428,7 +435,7 @@ async fn init_monero_wallet(
     )
     .await?;
 
-    Ok(wallet)
+    Ok(tokio::sync::Mutex::new(wallet))
 }
 
 /// This struct is used to extract swap details from the database and print them in a table format

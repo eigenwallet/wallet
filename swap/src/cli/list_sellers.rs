@@ -19,6 +19,11 @@ use std::time::Duration;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
 use typeshare::typeshare;
 
+use super::api::tauri_bindings::{
+    DiscoveryProgress, TauriBackgroundProgress, TauriBackgroundProgressHandle, TauriEmitter,
+    TauriHandle,
+};
+
 /// Returns sorted list of sellers, with [Online](Status::Online) listed first.
 ///
 /// First uses the rendezvous node to discover peers in the given namespace,
@@ -34,6 +39,7 @@ pub async fn list_sellers(
     maybe_tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
     identity: identity::Keypair,
     db: Option<Arc<dyn Database + Send + Sync>>,
+    tauri_handle: Option<TauriHandle>,
 ) -> Result<Vec<SellerStatus>> {
     let behaviour = Behaviour {
         rendezvous: rendezvous::client::Behaviour::new(identity.clone()),
@@ -51,7 +57,13 @@ pub async fn list_sellers(
         None => VecDeque::new(),
     };
 
-    let event_loop = EventLoop::new(swarm, rendezvous_points, namespace, external_dial_queue);
+    let event_loop = EventLoop::new(
+        swarm,
+        rendezvous_points,
+        namespace,
+        external_dial_queue,
+        tauri_handle,
+    );
     let sellers = event_loop.run().await;
 
     Ok(sellers)
@@ -128,6 +140,16 @@ enum QuoteStatus {
     Received(Option<BidQuote>),
 }
 
+impl QuoteStatus {
+    fn is_succeeded(&self) -> bool {
+        matches!(self, QuoteStatus::Received(Some(_)))
+    }
+
+    fn is_failed(&self) -> bool {
+        matches!(self, QuoteStatus::Received(None))
+    }
+}
+
 #[derive(Debug)]
 enum RendezvousPointStatus {
     Dialed,  // We have initiated dialing but do not know if it succeeded or not
@@ -142,6 +164,14 @@ impl RendezvousPointStatus {
             self,
             RendezvousPointStatus::Success | RendezvousPointStatus::Failed
         )
+    }
+
+    fn is_failed(&self) -> bool {
+        matches!(self, RendezvousPointStatus::Failed)
+    }
+
+    fn is_succeeded(&self) -> bool {
+        matches!(self, RendezvousPointStatus::Success)
     }
 }
 
@@ -166,6 +196,9 @@ struct EventLoop {
     /// The queue of peers to dial
     /// When we discover a peer we add it is then dialed by the event loop
     to_request_quote: VecDeque<(PeerId, Vec<Multiaddr>)>,
+
+    /// The tauri handle to emit events to
+    tauri_handle: Option<TauriHandle>,
 }
 
 impl EventLoop {
@@ -174,6 +207,7 @@ impl EventLoop {
         rendezvous_points: Vec<(PeerId, Multiaddr)>,
         namespace: XmrBtcNamespace,
         dial_queue: VecDeque<(PeerId, Vec<Multiaddr>)>,
+        tauri_handle: Option<TauriHandle>,
     ) -> Self {
         Self {
             swarm,
@@ -183,6 +217,7 @@ impl EventLoop {
             reachable_asb_address: Default::default(),
             asb_quote_status: Default::default(),
             to_request_quote: dial_queue,
+            tauri_handle,
         }
     }
 
@@ -211,7 +246,57 @@ impl EventLoop {
         }
     }
 
+    fn emit_progress_event(
+        &self,
+        progress_handle: &TauriBackgroundProgressHandle<DiscoveryProgress>,
+    ) {
+        // We include:
+        // 1. the total number of rendezvous points
+        // 2. the total number of failed/succeeded rendezvous points (up to this point)
+        // 3. the total number of quote requests
+        // 4. the total number of failed/succeeded quote requests (up to this point)
+        let total_rendezvous_points = self.rendezvous_points.len() as u64;
+        let total_succeeded_rendezvous_points = self
+            .rendezvous_points_status
+            .iter()
+            .filter(|(_, status)| status.is_succeeded())
+            .count() as u64;
+        let total_failed_rendezvous_points = self
+            .rendezvous_points_status
+            .iter()
+            .filter(|(_, status)| status.is_failed())
+            .count() as u64;
+
+        let total_succeeded_quote_requests = self
+            .asb_quote_status
+            .iter()
+            .filter(|(_, status)| status.is_succeeded())
+            .count() as u64;
+        let total_failed_quote_requests = self
+            .asb_quote_status
+            .iter()
+            .filter(|(_, status)| status.is_failed())
+            .count() as u64;
+        let total_quote_requests = self.asb_quote_status.len() as u64;
+
+        let progress = DiscoveryProgress {
+            total_rendezvous_points,
+            total_succeeded_rendezvous_points,
+            total_failed_rendezvous_points,
+            total_quote_requests,
+            total_succeeded_quote_requests,
+            total_failed_quote_requests,
+        };
+
+        progress_handle.update(progress);
+    }
+
     async fn run(mut self) -> Vec<SellerStatus> {
+        // Progress handle for Tauri
+        let progress_handle = self
+            .tauri_handle
+            .new_background_process(TauriBackgroundProgress::Discovery);
+
         // Dial all rendezvous points initially
         for (peer_id, multiaddr) in &self.rendezvous_points {
             let dial_opts = DialOpts::peer_id(*peer_id)
@@ -230,6 +315,9 @@ impl EventLoop {
         }
 
         loop {
+            // After each loop iteration we emit a progress event to the Tauri handle
+            self.emit_progress_event(&progress_handle);
+
             tokio::select! {
                 Some((peer_id, multiaddresses)) = async { self.to_request_quote.pop_front() } => {
                     // We do not allow an overlap of rendezvous points and quote requests
@@ -451,48 +539,42 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sellers_sort_with_unreachable_coming_last() {
+    fn seller_status_sort_with_unreachable_coming_last() {
         let mut list = vec![
-            Seller {
-                multiaddr: "/ip4/127.0.0.1/tcp/1234".parse().unwrap(),
-                status: SellerStatus::Unreachable,
-            },
-            Seller {
-                multiaddr: Multiaddr::empty(),
-                status: SellerStatus::Unreachable,
-            },
-            Seller {
+            SellerStatus::Unreachable(UnreachableSeller {
+                peer_id: PeerId::random(),
+            }),
+            SellerStatus::Unreachable(UnreachableSeller {
+                peer_id: PeerId::random(),
+            }),
+            SellerStatus::Online(QuoteWithAddress {
                 multiaddr: "/ip4/127.0.0.1/tcp/5678".parse().unwrap(),
-                status: SellerStatus::Online(BidQuote {
+                peer_id: PeerId::random(),
+                quote: BidQuote {
                     price: Default::default(),
                     min_quantity: Default::default(),
                     max_quantity: Default::default(),
-                }),
-            },
+                },
+            }),
         ];
 
         list.sort();
 
-        assert_eq!(
-            list,
-            vec![
-                Seller {
-                    multiaddr: "/ip4/127.0.0.1/tcp/5678".parse().unwrap(),
-                    status: SellerStatus::Online(BidQuote {
-                        price: Default::default(),
-                        min_quantity: Default::default(),
-                        max_quantity: Default::default(),
-                    })
-                },
-                Seller {
-                    multiaddr: Multiaddr::empty(),
-                    status: SellerStatus::Unreachable
-                },
-                Seller {
-                    multiaddr: "/ip4/127.0.0.1/tcp/1234".parse().unwrap(),
-                    status: SellerStatus::Unreachable
-                },
-            ]
-        )
+        // Check that Online status is first in the sorted list
+        match &list[0] {
+            SellerStatus::Online(_) => {}
+            _ => panic!("First element should be Online status"),
+        }
+
+        // Check that Unreachable statuses are last
+        match &list[1] {
+            SellerStatus::Unreachable(_) => {}
+            _ => panic!("Second element should be Unreachable status"),
+        }
+
+        match &list[2] {
+            SellerStatus::Unreachable(_) => {}
+            _ => panic!("Third element should be Unreachable status"),
+        }
     }
 }

@@ -9,8 +9,8 @@ use swap::cli::{
             CheckElectrumNodeResponse, CheckMoneroNodeArgs, CheckMoneroNodeResponse,
             ExportBitcoinWalletArgs, GetDataDirArgs, GetHistoryArgs, GetLogsArgs,
             GetMoneroAddressesArgs, GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs,
-            MoneroRecoveryArgs, ResolveApprovalArgs, ResumeSwapArgs, SuspendCurrentSwapArgs,
-            WithdrawBtcArgs,
+            MoneroRecoveryArgs, RedactArgs, ResolveApprovalArgs, ResumeSwapArgs,
+            SuspendCurrentSwapArgs, WithdrawBtcArgs,
         },
         tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle, TauriSettings},
         Context, ContextBuilder,
@@ -18,7 +18,6 @@ use swap::cli::{
     command::{Bitcoin, Monero},
 };
 use tauri::{async_runtime::RwLock, Manager, RunEvent};
-use uuid::Uuid;
 
 /// Trait to convert Result<T, E> to Result<T, String>
 /// Tauri commands require the error type to be a string
@@ -186,7 +185,8 @@ pub fn run() {
             check_electrum_node,
             get_wallet_descriptor,
             get_data_dir,
-            resolve_approval_request
+            resolve_approval_request,
+            redact
         ])
         .setup(setup)
         .build(tauri::generate_context!())
@@ -228,6 +228,7 @@ tauri_command!(get_logs, GetLogsArgs);
 tauri_command!(list_sellers, ListSellersArgs);
 tauri_command!(cancel_and_refund, CancelAndRefundArgs);
 tauri_command!(resolve_approval_request, ResolveApprovalArgs);
+tauri_command!(redact, RedactArgs);
 
 // These commands require no arguments
 tauri_command!(get_wallet_descriptor, ExportBitcoinWalletArgs, no_args);
@@ -317,6 +318,9 @@ async fn initialize_context(
     // Get app handle and create a Tauri handle
     let tauri_handle = TauriHandle::new(app_handle.clone());
 
+    // Notify frontend that the context is being initialized
+    tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Initializing);
+
     let context_result = ContextBuilder::new(testnet)
         .with_bitcoin(Bitcoin {
             bitcoin_electrum_rpc_url: settings.electrum_rpc_url.clone(),
@@ -327,7 +331,7 @@ async fn initialize_context(
         })
         .with_json(false)
         .with_debug(true)
-        .with_tor(true)
+        .with_tor(settings.use_tor)
         .with_tauri(tauri_handle.clone())
         .build()
         .await;
