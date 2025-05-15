@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import TruncatedText from "../other/TruncatedText";
 import BitcoinIcon from "../icons/BitcoinIcon";
 import MoneroIcon from "../icons/MoneroIcon";
+import TorIcon from "../icons/TorIcon";
 
 const useStyles = makeStyles((theme) => ({
   innerAlert: {
@@ -67,7 +68,6 @@ function PartialInitStatus({ status, totalOfType, classes }: {
 
   switch (status.componentName) {
     case "EstablishingTorCircuits":
-      console.log("EstablishingTorCircuits", status.progress.content);
       return (
         <AlertWithLinearProgress
           title={
@@ -77,6 +77,7 @@ function PartialInitStatus({ status, totalOfType, classes }: {
           }
           progress={status.progress.content.frac * 100}
           count={totalOfType}
+          icon={<TorIcon />}
         />
       );
     case "SyncingBitcoinWallet":

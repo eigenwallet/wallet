@@ -193,7 +193,6 @@ export async function redactLogs(
     text: logsToRawString(logs)
   })
 
-  console.log(response.text.split("\n").length)
   return parseLogsFromString(response.text);
 }
 
