@@ -22,7 +22,7 @@ backoff = { version = "0.4", features = [ "tokio" ] }
 base64 = "0.22"
 bdk = { version = "0.28" }
 bdk_chain = { version = "0.20" }
-bdk_electrum = { version = "0.19", features = [ "use-rustls" ] }
+bdk_electrum = { version = "0.19", default-features = false, features = [ "use-rustls-ring" ] }
 bdk_wallet = { version = "1.0.0-beta.5", features = [ "rusqlite", "test-utils" ] }
 big-bytes = "1"
 bitcoin = { version = "0.32", features = [ "rand", "serde" ] }
@@ -59,13 +59,13 @@ rand_chacha = "0.3"
 regex = "1.10"
 reqwest = { version = "0.12", features = [
     "http2",
-    "rustls-tls",
+    "rustls-tls-native-roots",
     "stream",
     "socks",
 ], default-features = false }
 rust_decimal = { version = "1", features = [ "serde-float" ] }
 rust_decimal_macros = "1"
-rustls = "0.23"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde = { version = "1.0", features = [ "derive" ] }
 serde_cbor = "0.11"
 serde_json = "1"
