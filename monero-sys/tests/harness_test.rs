@@ -161,7 +161,7 @@ async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amou
     tracing::info!("Recovering wallet from seed to `{}`", &wallet_path);
 
     // Recover wallet from seed
-    let wallet_mutex = wallet_manager
+    let wallet = wallet_manager
         .recover_wallet(
             &wallet_path,
             PASSWORD,
@@ -174,9 +174,9 @@ async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amou
 
     // We need to allow mismatched daemon versions for the Regtest network
     // to be accepted by wallet2
-    wallet_mutex.allow_mismatched_daemon_version().await;
+    wallet.allow_mismatched_daemon_version().await;
 
-    wallet_mutex
+    wallet
         .wait_until_synced(Some(|sync_progress: SyncProgress| {
             tracing::info!("Sync progress: {}%", sync_progress.percentage());
         }))
@@ -184,7 +184,7 @@ async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amou
         .expect("Failed to sync wallet");
 
     // Check balance
-    let balance = wallet_mutex.total_balance().await;
+    let balance = wallet.total_balance().await;
     info!("Final balance check: {}", balance);
     balance
 }

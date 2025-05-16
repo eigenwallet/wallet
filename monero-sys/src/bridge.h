@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "../monero/src/wallet/api/wallet2_api.h"
+#include "../monero/src/wallet/api/wallet_manager.h"
 
 /**
  * This file contains some C++ glue code needed to make the FFI work.
@@ -24,6 +25,10 @@
  *       all log messages to Rust.
  */
 
+/**
+ * This adds some glue to the Monero namespace to make the ffi work.
+ * Mostly work arounds for CXX limitations.
+ */
 namespace Monero
 {
     using ConnectionStatus = Wallet::ConnectionStatus;
@@ -34,11 +39,14 @@ namespace Monero
      */
     inline WalletManager *getWalletManager()
     {
-        // This causes the wallet to print some logging to stdout
-        // This is useful for debugging
-        WalletManagerFactory::setLogLevel(2);
+        // This causes the wallet start logging.
+        // This is useful for debugging.
+        // We enable the maximum log level since we capture
+        // and forward the logs to tracing anyway, which has a seperate level control
+        WalletManagerFactory::setLogLevel(4);
 
-        return WalletManagerFactory::getWalletManager();
+        auto *manager = Monero::WalletManagerFactory::getWalletManager();
+        return manager;
     }
 
     /**
@@ -146,6 +154,10 @@ namespace Monero
 #include "bridge.h"
 #include "monero-sys/src/bridge.rs.h"
 
+/**
+ * This section is us capturing the log messages from easylogging++
+ * and forwarding it to rust's tracing.
+ */
 namespace monero_rust_log
 {
     /**
