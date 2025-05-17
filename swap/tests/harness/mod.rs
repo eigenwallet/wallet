@@ -319,7 +319,7 @@ async fn init_test_wallets(
         .persister(swap::bitcoin::wallet::PersisterConfig::InMemorySqlite)
         .finality_confirmations(1_u32)
         .target_block(1_u32)
-        .sync_interval(Duration::from_secs(60))
+        .sync_interval(Duration::from_secs(3)) // high sync interval to speed up tests
         .build()
         .await
         .expect("could not init btc wallet");
