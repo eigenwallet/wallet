@@ -411,9 +411,24 @@ impl TauriEmitter for Option<TauriHandle> {
 ///
 /// ```
 /// // For Tor bootstrap progress
+/// use self::{TauriHandle, TauriBackgroundProgress, TorBootstrapStatus};
+///
+/// // In a real scenario, tauri_handle would be properly initialized.
+/// // For this example, we'll use Option<TauriHandle>::None,
+/// // which allows calling new_background_process.
+/// let tauri_handle: Option<TauriHandle> = None;
+///
 /// let tor_progress = tauri_handle.new_background_process(
 ///     |status| TauriBackgroundProgress::EstablishingTorCircuits(status)
 /// );
+///
+/// // Define a sample TorBootstrapStatus
+/// let tor_status = TorBootstrapStatus {
+///     frac: 0.5,
+///     ready_for_traffic: false,
+///     blockage: None,
+/// };
+///
 /// tor_progress.update(tor_status);
 /// tor_progress.finish();
 /// ```
