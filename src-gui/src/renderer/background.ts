@@ -3,7 +3,7 @@ import { TauriContextStatusEvent, TauriEvent } from "models/tauriModel";
 import { contextStatusEventReceived, receivedCliLog, rpcSetBalance, timelockChangeEventReceived, approvalEventReceived, backgroundProgressEventReceived } from "store/features/rpcSlice";
 import { swapProgressEventReceived } from "store/features/swapSlice";
 import logger from "utils/logger";
-import { fetchAllConversations, updatePublicRegistry, updateRates } from "./api";
+import { fetchAllConversations, updateAlerts, updatePublicRegistry, updateRates } from "./api";
 import { checkContextAvailability, getSwapInfo, initializeContext, updateAllNodeStatuses } from "./rpc";
 import { store } from "./store/storeRenderer";
 import { exhaustiveGuard } from "utils/typescriptUtils";
@@ -34,6 +34,10 @@ export async function setupBackgroundTasks(): Promise<void> {
     setIntervalImmediate(updateRates, UPDATE_RATE_INTERVAL);
     setIntervalImmediate(fetchAllConversations, FETCH_CONVERSATIONS_INTERVAL);
 
+    // Fetch all alerts
+    updateAlerts();
+
+    // Setup Tauri event listeners
     // Check if the context is already available. This is to prevent unnecessary re-initialization
     if (await checkContextAvailability()) {
         store.dispatch(contextStatusEventReceived(TauriContextStatusEvent.Available));
