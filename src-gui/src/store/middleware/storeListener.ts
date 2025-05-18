@@ -7,7 +7,6 @@ import { fetchFeedbackMessagesViaHttp, updateRates } from "renderer/api";
 import { store } from "renderer/store/storeRenderer";
 import { swapProgressEventReceived } from "store/features/swapSlice";
 import { addFeedbackId, setConversation } from "store/features/conversationsSlice";
-import { TauriContextStatusEvent } from "models/tauriModel";
 
 export function createMainListeners() {
   const listener = createListenerMiddleware();
@@ -20,7 +19,7 @@ export function createMainListeners() {
       const status = action.payload;
 
       // If the context is available, check the Bitcoin balance and fetch all swap infos
-      if (status === TauriContextStatusEvent.Available) {
+      if (status.type === "Available") {
         logger.debug(
           "Context is available, checking Bitcoin balance and history",
         );

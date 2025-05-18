@@ -69,6 +69,15 @@ pub enum TauriContextStatusEvent {
     Failed,
 }
 
+#[typeshare]
+#[derive(Display, Clone, Serialize)]
+#[serde(tag = "type", content = "content")]
+pub enum TauriPartialInitProgress {
+    OpeningDatabase(PendingCompleted<()>),
+    OpeningBitcoinWallet(PendingCompleted<()>),
+    OpeningMoneroWallet(PendingCompleted<()>),
+}
+
 impl TauriHandle {
     /// Create a new Tauri handle, that actually has access to the Tauri API.
     ///
@@ -750,7 +759,7 @@ pub struct TauriTimelockChangeEvent {
     timelock: Option<ExpiredTimelocks>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[typeshare]
 #[serde(tag = "type", content = "content")]
 pub enum BackgroundRefundState {
@@ -768,4 +777,13 @@ pub struct TorBootstrapStatus {
     pub frac: f32,
     pub ready_for_traffic: bool,
     pub blockage: Option<String>,
+}
+
+/// This struct contains the settings for the Context
+#[typeshare]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TauriBackgroundRefundEvent {
+    #[typeshare(serialized_as = "string")]
+    swap_id: Uuid,
+    state: BackgroundRefundState,
 }

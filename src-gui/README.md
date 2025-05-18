@@ -14,15 +14,13 @@
 For development, we need to run both `vite` and `tauri` servers:
 
 ```bash
-cd src-gui
-yarn install && yarn run dev
 # let this run
+make gui_install && make gui
 ```
 
 ```bash
-cd src-tauri
-cargo tauri dev --no-watch -- -- --testnet
-# let this run as well
+# let this run
+make tauri
 ```
 
 ## Generate bindings for Tauri API
