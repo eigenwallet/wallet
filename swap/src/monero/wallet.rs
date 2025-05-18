@@ -5,14 +5,17 @@
 //!  - wait for transactions to be confirmed
 //!  - send money from one wallet to another.
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Weak},
+};
 
 use anyhow::{Context, Result};
 use monero::{Address, Network};
-use monero_sys::WalletManager;
 use tokio::sync::Mutex;
 
-pub use monero_sys::{Daemon, Wallet};
+pub use monero_sys::{Daemon, WalletHandle as Wallet};
 use uuid::Uuid;
 
 use super::{BlockHeight, TransferProof};
@@ -21,12 +24,13 @@ use super::{BlockHeight, TransferProof};
 /// You can use this struct to open specific wallets and monitor the blockchain.
 pub struct Wallets {
     wallet_dir: PathBuf,
-    wallet_manager: Arc<Mutex<WalletManager>>,
+    /// We keep a map of all open wallets,
+    /// but we use weak references to make sure they're not kept alive
+    /// by the `Wallets` struct.
+    wallets: Mutex<HashMap<String, Weak<Wallet>>>,
     network: Network,
-    /// Filename of the main wallet.
-    /// Will be used for monitoring.
-    /// Will also be continuously synced in background.
-    main_wallet: String,
+    daemon: Daemon,
+    main_wallet: Arc<Wallet>,
 }
 
 /// A request to watch for a transfer.
@@ -48,53 +52,45 @@ pub struct TransferRequest {
     pub amount: monero::Amount,
 }
 
-/// Pass this to [`Wallet::wait_until_confirmed`] to not receive any confirmation callbacks.
-/// Necessary because just passing `None` leads to a compile error
-/// since rust can't infer what the excact type is because of the `impl Fn(u64)`.
-pub const NO_LISTENER: Option<fn(u64)> = Some(|_| {});
-
 impl Wallets {
     /// Create a new `Wallets` instance.
     /// Wallets will be opened on the specified network, connected to the specified daemon
     /// and stored in the specified directory.
+    ///
+    /// The main wallet will be kept alive and synced, other wallets are
+    /// opened and closed on demand.
     pub async fn new(
         wallet_dir: PathBuf,
-        main_wallet: String,
+        main_wallet_name: String,
         daemon: Daemon,
         network: Network,
     ) -> Result<Self> {
-        let wallet_manager = WalletManager::get(Some(daemon))
-            .await
-            .context("Failed to initialize Monero wallet manager")?;
+        let main_wallet = Wallet::open_or_create(
+            wallet_dir.join(&main_wallet_name).display().to_string(),
+            daemon.clone(),
+            network,
+        )
+        .await
+        .context("Failed to open main wallet")?;
+
+        let mut wallets = HashMap::new();
+        let main_wallet = Arc::new(main_wallet);
+        wallets.insert(main_wallet_name.clone(), Arc::downgrade(&main_wallet));
 
         let wallets = Self {
             wallet_dir,
-            wallet_manager,
             network,
-            main_wallet: main_wallet.clone(),
+            daemon,
+            wallets: Mutex::new(wallets),
+            main_wallet,
         };
-
-        // Open the monitoring wallet -- we will use this for monitoring
-        // tasks that don't require a specific wallet.
-        wallets.open(&main_wallet).await?;
 
         Ok(wallets)
     }
 
-    /// Try to open a wallet by name (creates if it doesn't exist).
-    async fn open(&self, wallet_name: &str) -> Result<Arc<Wallet>> {
-        let mut manager = self.wallet_manager.lock().await;
-        let wallet_path = self.wallet_dir.join(wallet_name).display().to_string();
-
-        manager
-            .open_or_create_wallet(&wallet_path, None, self.network)
-            .await
-            .context(format!("Failed to open or create wallet `{}`", wallet_name))
-    }
-
     /// Open the lock wallet of a specific swap.
     /// Used to redeem (Bob) or refund (Alice) the Monero.
-    pub async fn open_swap_wallet(
+    pub async fn get_swap_wallet(
         &self,
         swap_id: Uuid,
         spend_key: monero::PrivateKey,
@@ -110,41 +106,45 @@ impl Wallets {
         };
         // The wallet's filename is just the swap's uuid as a string
         let filename = swap_id.to_string();
-        let wallet_path = self.wallet_dir.join(filename).display().to_string();
+        let wallet_path = self.wallet_dir.join(&filename).display().to_string();
 
-        self.wallet_manager
+        let wallet = Wallet::open_or_create_from_keys(
+            wallet_path.clone(),
+            None,
+            self.network,
+            address.clone(),
+            view_key.into(),
+            spend_key,
+            restore_height.height,
+            self.daemon.clone(),
+        )
+        .await
+        .context(format!(
+            "Failed to open or create wallet `{}` from the specified keys",
+            wallet_path
+        ))?;
+
+        let wallet = Arc::new(wallet);
+        self.wallets
             .lock()
             .await
-            .open_or_create_wallet_from_keys(
-                &wallet_path,
-                None,
-                self.network,
-                &address,
-                view_key.into(),
-                spend_key,
-                restore_height.height,
-            )
-            .await
-            .context(format!(
-                "Failed to open or create wallet `{}` from the specified keys",
-                wallet_path
-            ))
+            .insert(filename, Arc::downgrade(&wallet));
+
+        Ok(wallet)
     }
 
     /// Get the main wallet (specified when initializing the `Wallets` instance).
-    pub async fn open_main_wallet(&self) -> Result<Arc<Wallet>> {
-        self.open(&self.main_wallet)
-            .await
-            .context(format!("Failed to open main wallet `{}`", self.main_wallet))
+    pub async fn get_main_wallet(&self) -> Arc<Wallet> {
+        self.main_wallet.clone()
     }
 
     /// Get the current blockchain height.
     /// May fail if not connected to a daemon.
     pub async fn blockchain_height(&self) -> Result<BlockHeight> {
-        let mut manager = self.wallet_manager.lock().await;
+        let wallet = self.get_main_wallet().await;
 
         Ok(BlockHeight {
-            height: manager.blockchain_height().await.context(
+            height: wallet.blockchain_height().await.context(
                 "Failed to get blockchain height: wallet manager not connected to daemon",
             )?,
         })
@@ -158,9 +158,9 @@ impl Wallets {
     pub async fn wait_until_confirmed(
         &self,
         watch_request: WatchRequest,
-        listener: Option<impl Fn(u64)>,
+        listener: Option<impl Fn(u64) + Send + 'static>,
     ) -> Result<()> {
-        let wallet = self.open_main_wallet().await?;
+        let wallet = self.get_main_wallet().await;
 
         let address = Address::standard(
             self.network,
@@ -170,7 +170,7 @@ impl Wallets {
 
         wallet
             .wait_until_confirmed(
-                &watch_request.transfer_proof.tx_hash.0,
+                watch_request.transfer_proof.tx_hash.0.clone(),
                 watch_request.transfer_proof.tx_key,
                 &address,
                 watch_request.expected_amount,
@@ -182,11 +182,10 @@ impl Wallets {
 
     /// Close all open wallets.
     pub async fn close_all_wallets(&self) -> Result<()> {
-        let mut manager = self.wallet_manager.lock().await;
-        manager
-            .close_all_wallets()
-            .await
-            .context("Failed to close all open wallets")
+        let mut wallets = self.wallets.lock().await;
+        wallets.clear();
+
+        Ok(())
     }
 }
 
@@ -197,6 +196,12 @@ impl TransferRequest {
             self.amount,
         )
     }
+}
+
+/// Pass this to [`Wallet::wait_until_confirmed`] or [`Wallet::wait_until_synced`]
+/// to not receive any confirmation callbacks.
+pub fn no_listener<T>() -> Option<impl Fn(T) + Send + 'static> {
+    Some(|_| {})
 }
 
 // use crate::env::Config;

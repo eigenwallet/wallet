@@ -164,12 +164,42 @@ fn main() {
 
     #[cfg(target_os = "macos")]
     {
+        // Locate the Clang built-ins directory that contains libclang_rt.osx.*
+        let clang = std::process::Command::new("xcrun")
+            .args(["--find", "clang"])
+            .output()
+            .expect("failed to run xcrun --find clang");
+        let clang_bin = std::path::PathBuf::from(String::from_utf8(clang.stdout).unwrap().trim());
+
+        // <toolchain>/usr/bin/clang -> strip /bin/clang -> <toolchain>/usr
+        let mut clang_dir = clang_bin;
+        clang_dir.pop(); // bin
+        clang_dir.pop(); // usr
+
+        // lib/clang/<version>/lib/darwin
+        let builtins_dir = clang_dir.join("lib").join("clang");
+        // Highest version sub-directory
+        let version_dir = std::fs::read_dir(&builtins_dir)
+            .expect("read clang directory")
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().ok().map(|t| t.is_dir()).unwrap_or(false))
+            .max_by_key(|e| e.file_name()) // pick latest version
+            .expect("no clang version dirs found")
+            .path();
+        let darwin_dir = version_dir.join("lib").join("darwin");
+
+        println!("cargo:rustc-link-search=native={}", darwin_dir.display());
+
+        // Static archive is always present, dylib only on some versions.
+        println!("cargo:rustc-link-lib=static=clang_rt.osx");
+
+        // Minimum OS version you already add:
         println!("cargo:rustc-link-arg=-mmacosx-version-min=11.0");
     }
     // Build the CXX bridge
     let mut build = cxx_build::bridge("src/bridge.rs");
     build
-        // .flag("-mmacosx-version-min=11.0")
+        .flag("-mmacosx-version-min=11.0")
         .flag_if_supported("-std=c++17")
         .include("src") // Include the bridge.h file
         .include("monero/src") // Includes the monero headers

@@ -531,9 +531,8 @@ where
         let xmr_balance = timeout(
             MAX_WAIT_DURATION,
             self.monero_wallet
-                .open_main_wallet()
+                .get_main_wallet()
                 .await
-                .context("Failed to open main Monero wallet")?
                 .unlocked_balance(),
         )
         .await

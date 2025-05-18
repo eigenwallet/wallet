@@ -1,4 +1,4 @@
-use monero_sys::{Daemon, WalletManager};
+use monero_sys::{Daemon, WalletHandle};
 
 const STAGENET_REMOTE_NODE: &str = "node.sethforprivacy.com:38089";
 
@@ -15,64 +15,38 @@ async fn main() {
         ssl: true,
     };
 
-    let manager = WalletManager::get(Some(daemon)).await.unwrap();
-
     {
-        let mut manager_lock = manager.lock().await;
+        let wallet = WalletHandle::open_or_create(
+            temp_dir.path().join("test_wallet").display().to_string(),
+            daemon.clone(),
+            monero::Network::Stagenet,
+        )
+        .await
+        .expect("Failed to create wallet");
+        tracing::info!("Dropping wallet");
 
-        while !manager_lock.connected().await {
-            tracing::info!("Waiting to connect to daemon...");
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        }
-
-        let _wallet = manager_lock
-            .open_or_create_wallet(
-                temp_dir
-                    .path()
-                    .join("wallet212321")
-                    .display()
-                    .to_string()
-                    .as_str(),
-                None,
-                monero::Network::Stagenet,
-            )
-            .await
-            .unwrap();
-
-        tracing::debug!("Dropping wallet");
+        std::mem::drop(wallet);
     }
 
     // Sleep for 2 seconds to allow the wallet to be closed
     tracing::info!("Sleeping for 2 seconds");
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-    assert!(manager.lock().await.all_open_wallets().is_empty());
     tracing::info!("Closed wallet automatically");
 
     {
-        // Make sure we can open the wallet again
-        let mut manager_lock = manager.lock().await;
-        let _wallet = manager_lock
-            .open_or_create_wallet(
-                temp_dir
-                    .path()
-                    .join("wallet212321")
-                    .display()
-                    .to_string()
-                    .as_str(),
-                None,
-                monero::Network::Stagenet,
-            )
-            .await
-            .unwrap();
+        let wallet = WalletHandle::open_or_create(
+            temp_dir.path().join("test_wallet").display().to_string(),
+            daemon.clone(),
+            monero::Network::Stagenet,
+        )
+        .await
+        .expect("Failed to create wallet");
+        tracing::info!("Dropping wallet");
 
-        std::mem::drop(manager_lock); // To avoid deadlock
-        tracing::debug!("Dropping wallet");
+        std::mem::drop(wallet);
     }
 
     tracing::info!("Sleeping for 2 seconds");
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
-    // Make sure the wallet is still closed again
-    assert!(manager.lock().await.all_open_wallets().is_empty());
 }

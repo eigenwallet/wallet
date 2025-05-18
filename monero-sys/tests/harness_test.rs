@@ -1,11 +1,14 @@
+use anyhow::Context;
 use monero_harness::{image::Monerod, Monero};
-use monero_sys::{Daemon, SyncProgress, WalletManager};
+use monero_sys::{Daemon, SyncProgress, WalletHandle};
 use std::sync::OnceLock;
 use tempfile::{tempdir, TempDir};
 use testcontainers::{clients::Cli, Container};
 use tracing::info;
 
 const PASSWORD: &str = "test";
+
+const SEED: &str = "echo ourselves ruined oven masterful wives enough addicted future cottage illness adopt lucky movement tiger taboo imbalance antics iceberg hobby oval aloof tuesday uttered oval";
 
 // Amount to fund the wallet with (in piconero)
 const FUND_AMOUNT: monero::Amount = monero::Amount::ONE_XMR;
@@ -34,10 +37,24 @@ async fn test_monero_wrapper_with_harness() {
 
     // Step 2: Create a wallet with monero-sys using the global temp directory
     let wallet_path = temp_wallet_path();
-    let (address, wallet_seed) = create_wallet(&wallet_path, Some(daemon.clone())).await;
+    let wallet = WalletHandle::open_or_create_from_seed(
+        wallet_path,
+        SEED.to_string(),
+        monero::Network::Mainnet,
+        1,
+        daemon.clone(),
+    )
+    .await
+    .expect("Failed to create wallet");
 
-    info!("Created monero-wrapper wallet with address: {}", address);
-    info!("Wallet seed: {}", wallet_seed);
+    wallet
+        .__unsafe_never_call_outside_regtests_or_you_will_go_to_hell()
+        .await;
+
+    info!(
+        "Created monero-wrapper wallet with address: {}",
+        wallet.main_address().await
+    );
 
     // Initialize miner
     info!("Initializing miner wallet");
@@ -51,15 +68,25 @@ async fn test_monero_wrapper_with_harness() {
     monero.start_miner().await.expect("Failed to start miner");
 
     // Fund the address created by monero-wrapper
-    info!("Funding the test wallet address: {}", address);
-    fund_address(&monero, &address, FUND_AMOUNT)
+    info!(
+        "Funding the test wallet address: {}",
+        &wallet.main_address().await
+    );
+    fund_address(&monero, &wallet.main_address().await, FUND_AMOUNT)
         .await
         .expect("Failed to fund wallet address");
 
     // Step 3: Connect the wrapper wallet to the daemon and check balance
     info!("Connecting to daemon at: {}", &daemon.address);
 
-    let wallet_balance = connect_and_check_balance(wallet_seed, daemon).await;
+    wallet
+        .wait_until_synced(Some(|sync_progress: SyncProgress| {
+            info!("Sync progress: {}%", sync_progress.percentage());
+        }))
+        .await
+        .expect("Failed to sync wallet");
+
+    let wallet_balance = wallet.total_balance().await;
 
     // Step 4: Verify the balance
     info!("Wallet balance: {}", wallet_balance);
@@ -71,35 +98,7 @@ async fn test_monero_wrapper_with_harness() {
     info!("Test passed! Wallet successfully received and detected funds");
 }
 
-/// Creates a wallet from a predefined seed and returns the main address and seed.
-async fn create_wallet(wallet_name: &str, daemon: Option<Daemon>) -> (monero::Address, String) {
-    // Get wallet manager
-    let wallet_manager_mutex = WalletManager::get(daemon).await.unwrap();
-    let mut wallet_manager = wallet_manager_mutex.lock().await;
-
-    // Define a fixed seed to use for reproducible tests
-    let seed = "echo ourselves ruined oven masterful wives enough addicted future cottage illness adopt lucky movement tiger taboo imbalance antics iceberg hobby oval aloof tuesday uttered oval";
-
-    // Create wallet from the seed - we'll use 'recover' since we have a seed
-    let wallet = wallet_manager
-        .recover_wallet(
-            wallet_name,
-            PASSWORD,
-            seed,
-            // Regtest uses Mainnet addresses
-            monero::Network::Mainnet,
-            1,
-        )
-        .await
-        .expect("Failed to recover wallet");
-
-    // Get the main address
-    let address = wallet.main_address();
-
-    (address.await, seed.to_string())
-}
-
-/// Funds an address with a given amount of piconero.
+/// Creates a wallet from a predefined seed and returns/// Funds an address with a given amount of piconero.
 async fn fund_address(
     monero: &Monero,
     address: &monero::Address,
@@ -149,42 +148,4 @@ fn get_daemon_address(monerod_container: &Container<'_, Monerod>) -> String {
         .expect("monerod should have a mapping to the host for the default RPC port");
 
     format!("127.0.0.1:{}", local_daemon_rpc_port)
-}
-
-async fn connect_and_check_balance(seed: String, daemon: Daemon) -> monero::Amount {
-    // Get wallet manager
-    let wallet_path = temp_wallet_path();
-    let wallet_manager_mutex = WalletManager::get(Some(daemon.clone())).await.unwrap();
-    let mut wallet_manager = wallet_manager_mutex.lock().await;
-
-    // Get a unique wallet path from the global temp directory
-    tracing::info!("Recovering wallet from seed to `{}`", &wallet_path);
-
-    // Recover wallet from seed
-    let wallet = wallet_manager
-        .recover_wallet(
-            &wallet_path,
-            PASSWORD,
-            &seed,
-            monero::Network::Mainnet, // Regtest uses Mainnet addresses
-            1,                        // Restore height (start from beginning)
-        )
-        .await
-        .expect("Failed to recover wallet");
-
-    // We need to allow mismatched daemon versions for the Regtest network
-    // to be accepted by wallet2
-    wallet.allow_mismatched_daemon_version().await;
-
-    wallet
-        .wait_until_synced(Some(|sync_progress: SyncProgress| {
-            tracing::info!("Sync progress: {}%", sync_progress.percentage());
-        }))
-        .await
-        .expect("Failed to sync wallet");
-
-    // Check balance
-    let balance = wallet.total_balance().await;
-    info!("Final balance check: {}", balance);
-    balance
 }

@@ -12,7 +12,7 @@ use tokio::sync::{
 use bridge::ffi;
 
 /// A handle that can communicate with the [`FfiWallet`] object.
-pub struct Wallet {
+pub struct WalletHandle {
     call_sender: UnboundedSender<Call>,
 }
 
@@ -25,8 +25,7 @@ pub struct Wallet {
 /// This goes for Wallet and WalletManager, meaning that each Wallet must be in its
 /// WalletManager's thread (since you need a WalletManager to create a Wallet).
 ///
-pub struct WrappedWallet {
-    path: String,
+pub struct Wallet {
     wallet: FfiWallet,
     manager: WalletManager,
     call_receiver: UnboundedReceiver<Call>,
@@ -39,7 +38,7 @@ struct Call {
 }
 
 /// A singleton responsible for managing (creating, opening, ...) wallets.
-pub struct WalletManager {
+struct WalletManager {
     /// A wrapper around the raw C++ wallet manager pointer.
     inner: RawWalletManager,
 }
@@ -96,9 +95,29 @@ pub struct Daemon {
 /// A wrapper around a pending transaction.
 pub struct PendingTransaction(*mut ffi::PendingTransaction);
 
-impl Wallet {
+impl WalletHandle {
+    async fn check_wallet(&self) -> anyhow::Result<()> {
+        let (sender, receiver) = oneshot::channel();
+
+        self.call_sender
+            .send(Call {
+                function: Box::new(move |wallet| {
+                    Box::new(wallet.check_error()) as Box<dyn Any + Send>
+                }),
+                sender,
+            })
+            .map_err(|_| anyhow::anyhow!("failed to send check_wallet call"))?;
+
+        receiver
+            .await
+            .context("wallet channel closed unexpectedly")?;
+
+        Ok(())
+    }
+
     /// Execute a function on the wallet thread and return the result.
     /// Necessary because every interaction with the wallet must run on a single thread.
+    /// Panics if the channel is closed unexpectedly.
     pub async fn call<F, R>(&self, function: F) -> R
     where
         F: FnOnce(&mut FfiWallet) -> R + Send + 'static,
@@ -113,11 +132,12 @@ impl Wallet {
                 function: Box::new(move |wallet| Box::new(function(wallet)) as Box<dyn Any + Send>),
                 sender,
             })
+            .inspect_err(|e| tracing::error!(error=%e, "failed to send call"))
             .expect("channel to be open");
 
         // Wait for the result and cast back to the expected type
         let result = *receiver
-            .blocking_recv()
+            .await
             .expect("channel to be open")
             .downcast::<R>() // We know that F returns R
             .expect("return type to be consistent");
@@ -139,12 +159,19 @@ impl Wallet {
                 .open_or_create_wallet(&path, None, network, daemon.clone())
                 .expect("wallet to be created");
 
-            let mut wrapped_wallet = WrappedWallet::new(path, wallet, manager, call_receiver);
+            let mut wrapped_wallet = Wallet::new(wallet, manager, call_receiver);
 
             wrapped_wallet.run();
         });
 
-        Ok(Wallet { call_sender })
+        // Ensure the wallet was created successfully by performing a dummy call
+        let wallet = WalletHandle { call_sender };
+        wallet
+            .check_wallet()
+            .await
+            .context("failed to create wallet")?;
+
+        Ok(wallet)
     }
 
     /// Open an existing wallet or create a new one by recovering it from a
@@ -187,15 +214,15 @@ impl Wallet {
                     .expect("wallet to be recovered from seed")
             };
 
-            let mut wrapped_wallet = WrappedWallet::new(path, wallet, manager, call_receiver);
+            let mut wrapped_wallet = Wallet::new(wallet, manager, call_receiver);
 
             wrapped_wallet.run();
         });
 
-        let mut wallet = Wallet { call_sender };
+        let wallet = WalletHandle { call_sender };
         // Make a test call to ensure that the wallet is created.
         wallet
-            .main_address()
+            .check_wallet()
             .await
             .context("failed to create wallet")?;
 
@@ -235,17 +262,17 @@ impl Wallet {
                 )
                 .expect("wallet to be opened or created from keys");
 
-            let mut wrapped_wallet = WrappedWallet::new(path, wallet, manager, call_receiver);
+            let mut wrapped_wallet = Wallet::new(wallet, manager, call_receiver);
 
             wrapped_wallet.run();
         });
 
-        let mut wallet = Wallet { call_sender };
+        let wallet = WalletHandle { call_sender };
         // Make a test call to ensure that the wallet is created.
         wallet
-            .main_address()
+            .check_wallet()
             .await
-            .context("failed to create wallet")?;
+            .context("Failed to create wallet")?;
 
         Ok(wallet)
     }
@@ -258,8 +285,9 @@ impl Wallet {
         self.call(move |wallet| wallet.main_address()).await
     }
 
-    pub async fn blockchain_height(&self) -> u64 {
-        self.call(move |wallet| wallet.blockchain_height()).await
+    pub async fn blockchain_height(&self) -> Option<u64> {
+        self.call(move |wallet| wallet.daemon_blockchain_height())
+            .await
     }
 
     pub async fn transfer(
@@ -291,6 +319,18 @@ impl Wallet {
 
     async fn sync_progress(&self) -> SyncProgress {
         self.call(move |wallet| wallet.sync_progress()).await
+    }
+
+    pub async fn connected(&self) -> bool {
+        self.call(move |wallet| wallet.connected()).await
+    }
+
+    /// Allow the wallet to connect to a daemon with a different version.
+    /// Only used for regtests.
+    #[doc(hidden)]
+    pub async fn __unsafe_never_call_outside_regtests_or_you_will_go_to_hell(&self) {
+        self.call(move |wallet| wallet.allow_mismatched_daemon_version())
+            .await
     }
 
     pub async fn wait_until_synced(
@@ -442,15 +482,13 @@ impl Wallet {
     }
 }
 
-impl WrappedWallet {
+impl Wallet {
     fn new(
-        path: String,
         wallet: FfiWallet,
         manager: WalletManager,
         call_receiver: UnboundedReceiver<Call>,
     ) -> Self {
         Self {
-            path,
             wallet,
             manager,
             call_receiver,
@@ -467,7 +505,7 @@ impl WrappedWallet {
     }
 }
 
-impl Drop for WrappedWallet {
+impl Drop for Wallet {
     fn drop(&mut self) {
         if let Err(e) = self.manager.close_wallet(&mut self.wallet) {
             tracing::error!("Failed to close wallet: {}", e);
@@ -520,6 +558,13 @@ impl WalletManager {
         }
 
         tracing::debug!(%path, "Wallet doesn't exist, creating it");
+
+        // Ensure the parent directory exists so the Monero library can write the wallet files
+        if let Some(dir) = std::path::Path::new(path).parent() {
+            std::fs::create_dir_all(dir).with_context(|| {
+                format!("failed to create wallet directory `{}`", dir.display())
+            })?;
+        }
 
         // Otherwise, create (and open) a new wallet.
         let kdf_rounds = Self::DEFAULT_KDF_ROUNDS;
@@ -742,16 +787,15 @@ impl FfiWallet {
         }
 
         let mut wallet = Self { inner: inner };
-
-        tracing::debug!("Initializing wallet");
-
         wallet.check_error()?;
 
-        let daemon = daemon;
+        tracing::debug!("Initializing wallet");
 
         wallet
             .init(&daemon.address, daemon.ssl)
             .context("Failed to initialize wallet")?;
+        wallet.check_error()?;
+        wallet.set_daemon_address(&daemon.address)?;
         wallet.check_error()?;
 
         wallet.start_refresh();

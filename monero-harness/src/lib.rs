@@ -266,6 +266,10 @@ impl<'c> Monerod {
         ))
     }
 
+    pub fn address(&self) -> String {
+        format!("{}:{}", self.name, RPC_PORT)
+    }
+
     pub fn client(&self) -> &monerod::Client {
         &self.client
     }

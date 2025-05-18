@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::asb::{EventLoopHandle, LatestRate};
 use crate::bitcoin::ExpiredTimelocks;
 use crate::env::Config;
-use crate::monero::wallet::NO_LISTENER;
+use crate::monero::wallet::no_listener;
 use crate::monero::TransferProof;
 use crate::protocol::alice::{AliceState, Swap};
 use crate::{bitcoin, monero};
@@ -152,9 +152,8 @@ where
 
                     // Lock the Monero
                     let receipt = monero_wallet
-                        .open_main_wallet()
+                        .get_main_wallet()
                         .await
-                        .context("Failed to open Monero main wallet")?
                         .transfer(&address, amount)
                         .await
                         .map_err(|e| tracing::error!(err=%e, "Failed to lock Monero"))
@@ -216,7 +215,7 @@ where
                 monero_wallet
                     .wait_until_confirmed(
                         state3.lock_xmr_watch_request(transfer_proof.clone(), 1),
-                        NO_LISTENER, // TODO: Add a listener with status updates
+                        no_listener(), // TODO: Add a listener with status updates
                     )
                     .await
                     .with_context(|| {

@@ -21,6 +21,7 @@ use swap::cli::api;
 use swap::database::{AccessMode, SqliteDatabase};
 use swap::env::{Config, GetConfig};
 use swap::fs::ensure_directory_exists;
+use swap::monero::wallet::no_listener;
 use swap::network::rendezvous::XmrBtcNamespace;
 use swap::network::swarm;
 use swap::protocol::alice::{AliceState, Swap};
@@ -48,7 +49,7 @@ where
     let cli = Cli::default();
 
     let _guard = tracing_subscriber::fmt()
-        .with_env_filter("warn,swap=debug,monero_harness=debug,monero_rpc=debug,bitcoin_harness=info,testcontainers=info") // add `reqwest::connect::verbose=trace` if you want to logs of the RPC clients
+        .with_env_filter("info,swap=debug,monero_harness=debug,monero_rpc=debug,bitcoin_harness=info,testcontainers=info,monero_cpp=debug,monero_sys=debug") // add `reqwest::connect::verbose=trace` if you want to logs of the RPC clients
         .with_test_writer()
         .set_default();
 
@@ -70,6 +71,7 @@ where
         MONERO_WALLET_NAME_ALICE,
         containers.bitcoind_url.clone(),
         &monero,
+        &containers._monerod_container,
         alice_starting_balances.clone(),
         tempdir().unwrap().path(),
         electrs_rpc_port,
@@ -101,6 +103,7 @@ where
         MONERO_WALLET_NAME_BOB,
         containers.bitcoind_url,
         &monero,
+        &containers._monerod_container,
         bob_starting_balances.clone(),
         tempdir().unwrap().path(),
         electrs_rpc_port,
@@ -284,6 +287,7 @@ async fn init_test_wallets(
     name: &str,
     bitcoind_url: Url,
     monero: &Monero,
+    monerod_container: &Container<'_, image::Monerod>,
     starting_balances: StartingBalances,
     datadir: &Path,
     electrum_rpc_port: u16,
@@ -302,8 +306,12 @@ async fn init_test_wallets(
         .await
         .unwrap();
 
-    let daemon = Daemon {
-        address: bitcoind_url.to_string(),
+    let monerod_port = monerod_container
+        .ports()
+        .map_to_host_port_ipv4(image::RPC_PORT)
+        .expect("rpc port should be mapped to some external port");
+    let monero_daemon = Daemon {
+        address: format!("127.0.0.1:{}", monerod_port),
         ssl: false,
     };
 
@@ -311,11 +319,23 @@ async fn init_test_wallets(
     let xmr_wallet = monero::Wallets::new(
         wallet_dir,
         name.to_string(),
-        daemon,
+        monero_daemon,
         env_config.monero_network,
     )
     .await
     .unwrap();
+
+    tracing::info!("Initialized monero wallet");
+
+    // On regtests we need to allow a mismatched daemon version.
+    // Regtests use the Mainnet network.
+    if env_config.monero_network == monero::Network::Mainnet {
+        xmr_wallet
+            .get_main_wallet()
+            .await
+            .__unsafe_never_call_outside_regtests_or_you_will_go_to_hell()
+            .await;
+    }
 
     let electrum_rpc_url = {
         let input = format!("tcp://@localhost:{}", electrum_rpc_port);
@@ -439,9 +459,8 @@ impl BobParams {
         (
             self.bitcoin_wallet.new_address().await.unwrap(),
             self.monero_wallet
-                .open_main_wallet()
+                .get_main_wallet()
                 .await
-                .unwrap()
                 .main_address()
                 .await,
         )
@@ -466,9 +485,8 @@ impl BobParams {
             self.env_config,
             handle,
             self.monero_wallet
-                .open_main_wallet()
+                .get_main_wallet()
                 .await
-                .unwrap()
                 .main_address()
                 .await,
         )
@@ -503,9 +521,8 @@ impl BobParams {
             self.env_config,
             handle,
             self.monero_wallet
-                .open_main_wallet()
+                .get_main_wallet()
                 .await
-                .unwrap()
                 .main_address()
                 .await,
             self.bitcoin_wallet.new_address().await?,
@@ -649,7 +666,7 @@ impl TestContext {
         .unwrap();
 
         assert_eventual_balance(
-            &*self.alice_monero_wallet.open_main_wallet().await.unwrap(),
+            &*self.alice_monero_wallet.get_main_wallet().await,
             Ordering::Less,
             self.alice_redeemed_xmr_balance(),
         )
@@ -670,7 +687,7 @@ impl TestContext {
 
         // Alice pays fees - comparison does not take exact lock fee into account
         assert_eventual_balance(
-            &*self.alice_monero_wallet.open_main_wallet().await.unwrap(),
+            &*self.alice_monero_wallet.get_main_wallet().await,
             Ordering::Greater,
             self.alice_refunded_xmr_balance(),
         )
@@ -690,7 +707,7 @@ impl TestContext {
         .unwrap();
 
         assert_eventual_balance(
-            &*self.alice_monero_wallet.open_main_wallet().await.unwrap(),
+            &*self.alice_monero_wallet.get_main_wallet().await,
             Ordering::Less,
             self.alice_punished_xmr_balance(),
         )
@@ -708,7 +725,7 @@ impl TestContext {
         .unwrap();
 
         assert_eventual_balance(
-            &*self.bob_monero_wallet.open_main_wallet().await.unwrap(),
+            &*self.bob_monero_wallet.get_main_wallet().await,
             Ordering::Greater,
             self.bob_redeemed_xmr_balance(),
         )
@@ -749,7 +766,7 @@ impl TestContext {
         assert!(bob_cancelled_and_refunded);
 
         assert_eventual_balance(
-            &*self.bob_monero_wallet.open_main_wallet().await.unwrap(),
+            &*self.bob_monero_wallet.get_main_wallet().await,
             Ordering::Equal,
             self.bob_refunded_xmr_balance(),
         )
@@ -767,7 +784,7 @@ impl TestContext {
         .unwrap();
 
         assert_eventual_balance(
-            &*self.bob_monero_wallet.open_main_wallet().await.unwrap(),
+            &*self.bob_monero_wallet.get_main_wallet().await,
             Ordering::Equal,
             self.bob_punished_xmr_balance(),
         )
@@ -915,13 +932,7 @@ impl Wallet for monero::Wallet {
     type Amount = monero::Amount;
 
     fn refresh(&self) -> impl Future<Output = Result<()>> {
-        async move {
-            while !self.synchronized().await {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-
-            Ok(())
-        }
+        async move { self.wait_until_synced(no_listener()).await }
     }
 
     fn get_balance(&self) -> impl Future<Output = Result<Self::Amount>> {
