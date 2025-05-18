@@ -48,6 +48,9 @@ pub mod ffi {
         /// A pending transaction.
         type PendingTransaction;
 
+        /// TransactionHistory interface for displaying transaction history
+        // type TransactionHistory;
+
         /// A wallet listener.
         ///
         /// Can be attached to a wallet and will get notified upon specific events.

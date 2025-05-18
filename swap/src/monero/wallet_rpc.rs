@@ -158,7 +158,7 @@ struct MoneroDaemonGetInfoResponse {
 }
 
 /// Chooses an available Monero daemon based on the specified network.
-async fn choose_monero_daemon(network: Network) -> Result<MoneroDaemon, Error> {
+pub async fn choose_monero_daemon(network: Network) -> Result<MoneroDaemon, Error> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .https_only(false)

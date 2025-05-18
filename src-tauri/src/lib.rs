@@ -1,21 +1,24 @@
 use anyhow::Context as AnyhowContext;
 use std::result::Result;
 use std::sync::Arc;
-use swap::cli::{
-    api::{
-        data,
-        request::{
-            BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, CheckElectrumNodeArgs,
-            CheckElectrumNodeResponse, CheckMoneroNodeArgs, CheckMoneroNodeResponse,
-            ExportBitcoinWalletArgs, GetDataDirArgs, GetHistoryArgs, GetLogsArgs,
-            GetMoneroAddressesArgs, GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs,
-            MoneroRecoveryArgs, RedactArgs, ResolveApprovalArgs, ResumeSwapArgs,
-            SuspendCurrentSwapArgs, WithdrawBtcArgs,
+use swap::{
+    cli::{
+        api::{
+            data,
+            request::{
+                BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, CheckElectrumNodeArgs,
+                CheckElectrumNodeResponse, CheckMoneroNodeArgs, CheckMoneroNodeResponse,
+                ExportBitcoinWalletArgs, GetDataDirArgs, GetHistoryArgs, GetLogsArgs,
+                GetMoneroAddressesArgs, GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs,
+                MoneroRecoveryArgs, RedactArgs, ResolveApprovalArgs, ResumeSwapArgs,
+                SuspendCurrentSwapArgs, WithdrawBtcArgs,
+            },
+            tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle, TauriSettings},
+            Context, ContextBuilder,
         },
-        tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle, TauriSettings},
-        Context, ContextBuilder,
+        command::{Bitcoin, Monero},
     },
-    command::{Bitcoin, Monero},
+    monero::{wallet_rpc::choose_monero_daemon, Network},
 };
 use tauri::{async_runtime::RwLock, Manager, RunEvent};
 
@@ -321,13 +324,37 @@ async fn initialize_context(
     // Notify frontend that the context is being initialized
     tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Initializing);
 
+    let monero_node_address = url::Url::parse(&if let Some(url) = settings.monero_node_url {
+        url
+    } else {
+        let monero_node_address = format!(
+            "{}",
+            choose_monero_daemon(if testnet {
+                Network::Stagenet
+            } else {
+                Network::Mainnet
+            })
+            .await
+            .to_string_result()?
+        );
+
+        println!(
+            "User did not provide a Monero node URL, we chose one dynamically: {}",
+            monero_node_address
+        );
+
+        monero_node_address
+    })
+    .context("Failed to parse monero node URL")
+    .to_string_result()?;
+
     let context_result = ContextBuilder::new(testnet)
         .with_bitcoin(Bitcoin {
             bitcoin_electrum_rpc_url: settings.electrum_rpc_url.clone(),
             bitcoin_target_block: None,
         })
         .with_monero(Monero {
-            monero_node_address: settings.monero_node_url.clone(),
+            monero_node_address,
         })
         .with_json(false)
         .with_debug(true)

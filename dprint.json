@@ -16,7 +16,7 @@
   "excludes": [
     "target/",
     "src-tauri/Cargo.toml",
-    "monero-sys/monero/"
+    "monero-sys/monero/**"
   ],
   "plugins": [
     "https://plugins.dprint.dev/markdown-0.13.1.wasm",

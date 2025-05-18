@@ -60,3 +60,7 @@ bindings: # Generate the bindings for the Tauri API
 .PHONY: kill_monero_wallet_rpc
 kill_monero_wallet_rpc: # Kill all instances of monero-wallet-rpc running in the background
 	killall monero-wallet-rpc && pkill -f monero-wallet-rpc
+
+.PHONY: fmt
+fmt: # Format the code
+	dprint fmt
