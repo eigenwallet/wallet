@@ -8,7 +8,7 @@ on:
 
 jobs:
   static_analysis:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -17,6 +17,10 @@ jobs:
         
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
+
+      - uses: actionhippie/swap-space@v1
+        with:
+          size: 15G
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -28,7 +32,7 @@ jobs:
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (self-hosted)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }} git
@@ -41,7 +45,7 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Check formatting
@@ -56,7 +60,7 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   bdk_test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -66,12 +70,16 @@ jobs:
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
 
+      - uses: actionhippie/swap-space@v1
+        with:
+          size: 15G
+
       - uses: Swatinem/rust-cache@v2.7.3
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (self-hosted)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -84,7 +92,7 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Build swap
@@ -94,7 +102,7 @@ jobs:
         run: ./swap/tests/bdk.sh
 
   sqlx_test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -104,12 +112,16 @@ jobs:
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
 
+      - uses: actionhippie/swap-space@v1
+        with:
+          size: 15G
+
       - uses: Swatinem/rust-cache@v2.7.3
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (self-hosted)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -122,7 +134,7 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Install sqlx-cli
@@ -138,9 +150,9 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: self-hosted
           - target: armv7-unknown-linux-gnueabihf
-            os: ubuntu-latest
+            os: self-hosted
           - target: x86_64-apple-darwin
             os: macos-13
           - target: aarch64-apple-darwin
@@ -157,6 +169,11 @@ jobs:
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
 
+      - uses: actionhippie/swap-space@v1
+        if: matrix.os == 'self-hosted'
+        with:
+          size: 15G
+
       - uses: Swatinem/rust-cache@v2.7.3
 
       - uses: dtolnay/rust-toolchain@master
@@ -165,11 +182,11 @@ jobs:
           targets: armv7-unknown-linux-gnueabihf
 
       - name: Configure apt for retries
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'self-hosted'
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
-        if: matrix.os == 'ubuntu-latest' # This must match the platform value defined above.
+      - name: Install dependencies (self-hosted)
+        if: matrix.os == 'self-hosted' # This must match the platform value defined above.
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }} git
@@ -191,13 +208,13 @@ jobs:
           install: ${{ env.DEPS_MONERO_WINDOWS_MSYS2 }}
 
       - name: Setup ccache (Linux/macOS)
-        if: matrix.os == 'ubuntu-latest' || startsWith(matrix.os, 'macos-')
+        if: matrix.os == 'self-hosted' || startsWith(matrix.os, 'macos-')
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
 
       - name: Build Monero (C++)
-        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+        if: matrix.os == 'self-hosted' || matrix.os == 'macos-latest'
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Setup ccache (Windows)
@@ -208,7 +225,7 @@ jobs:
       - name: Build Monero (C++) - Windows
         if: matrix.os == 'windows-latest'
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: msys2 {0}
 
       - name: Build binary
@@ -238,11 +255,11 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [self-hosted, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - name: (Free disk space on Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'self-hosted'
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
         with:
           # removing all of these takes ~10 mins, so just do as needed
@@ -262,12 +279,17 @@ jobs:
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
 
+      - uses: actionhippie/swap-space@v1
+        if: matrix.os == 'self-hosted'
+        with:
+          size: 15G
+
       - name: Configure apt for retries
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'self-hosted'
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install dependencies (self-hosted)
+        if: matrix.os == 'self-hosted'
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -282,13 +304,13 @@ jobs:
         run: git submodule update --init --recursive
 
       - name: Setup ccache (Linux/macOS)
-        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+        if: matrix.os == 'self-hosted' || matrix.os == 'macos-latest'
         run: ${{ env.CCACHE_SETTINGS_COMMAND }}
 
       - name: Build Monero (C++)
-        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+        if: matrix.os == 'self-hosted' || matrix.os == 'macos-latest'
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - uses: Swatinem/rust-cache@v2.7.3
@@ -297,7 +319,7 @@ jobs:
         run: cargo build --tests --workspace --all-features
 
       - name: Run monero-harness tests
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'self-hosted'
         run: cargo test --package monero-harness --all-features
 
       - name: Run library tests for swap
@@ -343,7 +365,7 @@ jobs:
             test_name: happy_path_bob_offline_while_alice_redeems_btc
           - package: monero-sys
             test_name: harness_test
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -353,12 +375,16 @@ jobs:
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
 
+      - uses: actionhippie/swap-space@v1
+        with:
+          size: 15G
+
       - uses: Swatinem/rust-cache@v2.7.3
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (self-hosted)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -371,14 +397,14 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Run test ${{ matrix.test_name }}
         run: cargo test --package ${{ matrix.package }} --test ${{ matrix.test_name }} -- --nocapture
 
   rpc_tests:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -388,12 +414,16 @@ jobs:
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
 
+      - uses: actionhippie/swap-space@v1
+        with:
+          size: 15G
+
       - uses: Swatinem/rust-cache@v2.7.3
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (self-hosted)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -406,14 +436,14 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Run RPC server tests
         run: cargo test --package swap --test rpc -- --nocapture
 
   check_stable:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -422,6 +452,10 @@ jobs:
         
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
+
+      - uses: actionhippie/swap-space@v1
+        with:
+          size: 15G
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -430,7 +464,7 @@ jobs:
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (self-hosted)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -443,7 +477,7 @@ jobs:
 
       - name: Build Monero (C++)
         working-directory: monero-sys/monero
-        run: make
+        run: make -j4 release
         shell: bash
 
       - name: Run cargo check on stable rust

@@ -66,6 +66,11 @@ jobs:
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
 
+      - uses: actionhippie/swap-space@v1
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          size: 15G
+
       - uses: Swatinem/rust-cache@v2.7.3
 
       - uses: dtolnay/rust-toolchain@master
@@ -113,13 +118,13 @@ jobs:
       - name: Build Monero (C++) - Linux/macOS
         if: matrix.os == 'ubuntu-latest' || startsWith(matrix.os, 'macos')
         working-directory: monero-sys/monero
-        run: make release -j
+        run: make -j4 release
         shell: bash
 
       - name: Build Monero (C++) - Windows
         if: matrix.os == 'windows-latest'
         working-directory: monero-sys/monero
-        run: make release -j
+        run: make -j4 release
         shell: msys2 {0}
 
       - name: Cross Build ${{ matrix.target }} ${{ matrix.bin }} binary
@@ -195,6 +200,10 @@ jobs:
           
       - name: Set up environment variables
         uses: ./.github/actions/set-monero-env
+
+      - uses: actionhippie/swap-space@v1
+        with:
+          size: 15G
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
