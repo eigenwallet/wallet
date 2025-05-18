@@ -75,7 +75,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.80"
+          toolchain: "1.81"
 
       - name: Configure apt for retries
         if: matrix.os == 'ubuntu-latest'

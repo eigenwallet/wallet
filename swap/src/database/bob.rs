@@ -3,16 +3,14 @@ use crate::monero::TransferProof;
 use crate::protocol::bob;
 use crate::protocol::bob::BobState;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
 use std::fmt;
 
-#[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub enum Bob {
     Started {
-        #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+        #[serde(with = "::bitcoin::amount::serde::as_sat")]
         btc_amount: bitcoin::Amount,
-        #[serde_as(as = "DisplayFromStr")]
+        #[serde(with = "crate::bitcoin::address_serde")]
         change_address: bitcoin::Address,
     },
     ExecutionSetupDone {
