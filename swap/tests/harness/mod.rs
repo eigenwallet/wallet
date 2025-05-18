@@ -325,7 +325,7 @@ async fn init_test_wallets(
     .await
     .unwrap();
 
-    tracing::info!("Initialized monero wallet");
+    tracing::info!(address=%xmr_wallet.get_main_wallet().await.main_address().await, "Initialized monero wallet");
 
     // On regtests we need to allow a mismatched daemon version.
     // Regtests use the Mainnet network.
@@ -382,6 +382,16 @@ async fn init_test_wallets(
             interval.tick().await;
         }
     }
+
+    tracing::info!("Waiting for monero wallet to sync");
+    xmr_wallet
+        .get_main_wallet()
+        .await
+        .wait_until_synced(no_listener())
+        .await
+        .unwrap();
+
+    tracing::info!("Monero wallet synced");
 
     (Arc::new(btc_wallet), Arc::new(xmr_wallet))
 }
