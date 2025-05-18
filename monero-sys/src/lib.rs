@@ -33,9 +33,11 @@ pub struct Wallet {
 
 /// A function call to be executed on the wallet and a channel to send the result back.
 struct Call {
-    function: Box<dyn FnOnce(&mut FfiWallet) -> Box<dyn Any + Send> + Send>,
-    sender: oneshot::Sender<Box<dyn Any + Send>>,
+    function: Box<dyn FnOnce(&mut FfiWallet) -> AnyBox + Send>,
+    sender: oneshot::Sender<AnyBox>,
 }
+
+type AnyBox = Box<dyn Any + Send>;
 
 /// A singleton responsible for managing (creating, opening, ...) wallets.
 struct WalletManager {
@@ -136,13 +138,11 @@ impl WalletHandle {
             .expect("channel to be open");
 
         // Wait for the result and cast back to the expected type
-        let result = *receiver
+        *receiver
             .await
             .expect("channel to be open")
             .downcast::<R>() // We know that F returns R
-            .expect("return type to be consistent");
-
-        result
+            .expect("return type to be consistent")
     }
 
     pub async fn open_or_create(
@@ -295,13 +295,13 @@ impl WalletHandle {
         address: &monero::Address,
         amount: monero::Amount,
     ) -> anyhow::Result<TxReceipt> {
-        let address = address.clone();
+        let address = *address;
         self.call(move |wallet| wallet.transfer(&address, amount))
             .await
     }
 
     pub async fn sweep(&self, address: &monero::Address) -> anyhow::Result<Vec<String>> {
-        let address = address.clone();
+        let address = *address;
         self.call(move |wallet| wallet.sweep(&address)).await
     }
 
@@ -414,7 +414,7 @@ impl WalletHandle {
         tx_key: monero::PrivateKey,
         destination_address: &monero::Address,
     ) -> anyhow::Result<TxStatus> {
-        let destination_address = destination_address.clone();
+        let destination_address = *destination_address;
         self.call(move |wallet| wallet.check_tx_status(&txid, tx_key, &destination_address))
             .await
     }
@@ -737,24 +737,6 @@ impl WalletManager {
         let_cxx_string!(path = path);
         self.inner.pinned().walletExists(&path)
     }
-
-    /// Check if the wallet manager is connected to the configured daemon.
-    ///
-    /// The manager might takes a few seconds to connect to the daemon after startup.
-    pub fn connected(&mut self) -> bool {
-        let mut version = 0;
-        unsafe { self.inner.pinned().connected(&mut version) }
-    }
-
-    /// Get the current blockchain height, if the manager is connected to a daemon.
-    ///
-    /// Returns None if the manager is not connected to a daemon.
-    pub fn blockchain_height(&mut self) -> Option<u64> {
-        match self.inner.pinned().blockchainHeight() {
-            0 => None,
-            height => Some(height),
-        }
-    }
 }
 
 impl RawWalletManager {
@@ -786,7 +768,7 @@ impl FfiWallet {
             anyhow::bail!("Failed to create wallet: got null pointer");
         }
 
-        let mut wallet = Self { inner: inner };
+        let mut wallet = Self { inner };
         wallet.check_error()?;
 
         tracing::debug!("Initializing wallet");
@@ -806,14 +788,14 @@ impl FfiWallet {
 
     /// Get the path to the wallet file.
     pub fn path(&self) -> String {
-        ffi::walletPath(&*self.inner).to_string()
+        ffi::walletPath(&self.inner).to_string()
     }
 
     /// Get the address for the given account and address index.
     /// address(0, 0) is the main address.
     /// We don't use anything besides the main address so this is a private method (for now).
     fn address(&self, account_index: u32, address_index: u32) -> monero::Address {
-        let address = ffi::address(&*self.inner, account_index, address_index);
+        let address = ffi::address(&self.inner, account_index, address_index);
         monero::Address::from_str(&address.to_string()).expect("wallet's own address to be valid")
     }
 
@@ -1025,7 +1007,7 @@ impl FfiWallet {
 
         // Fetch the tx key from the wallet.
         let_cxx_string!(txid_cxx = txid.clone());
-        let tx_key = ffi::walletGetTxKey(&*self.inner, &txid_cxx).to_string();
+        let tx_key = ffi::walletGetTxKey(&self.inner, &txid_cxx).to_string();
 
         // Get current blockchain height (wallet height).
         let height = self.blockchain_height();

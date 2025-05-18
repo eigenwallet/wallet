@@ -114,18 +114,8 @@ pub mod ffi {
         /// Check whether a wallet exists at the given path.
         fn walletExists(self: Pin<&mut WalletManager>, path: &CxxString) -> bool;
 
-        /// Get the current blockchain height.
-        fn blockchainHeight(self: Pin<&mut WalletManager>) -> u64;
-
         /// Set the address of the remote node ("daemon").
         fn setDaemonAddress(self: Pin<&mut WalletManager>, address: &CxxString);
-
-        /// Check if the wallet manager is connected to the configured daemon.
-        ///
-        /// # Safety
-        ///
-        /// - `version` must be a valid pointer to a `u32` or null.
-        unsafe fn connected(self: Pin<&mut WalletManager>, version: *mut u32) -> bool;
 
         /// Get the path of the wallet.
         fn walletPath(wallet: &Wallet) -> UniquePtr<CxxString>;

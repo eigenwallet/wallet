@@ -1,7 +1,5 @@
 use monero_sys::{Daemon, SyncProgress, WalletHandle};
 
-const PASSWORD: &str = "test";
-
 const STAGENET_REMOTE_NODE: &str = "node.sethforprivacy.com:38089";
 const STAGENET_WALLET_SEED: &str = "echo ourselves ruined oven masterful wives enough addicted future cottage illness adopt lucky movement tiger taboo imbalance antics iceberg hobby oval aloof tuesday uttered oval";
 const STAGENET_WALLET_RESTORE_HEIGHT: u64 = 1728128;

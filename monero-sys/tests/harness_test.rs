@@ -1,12 +1,9 @@
-use anyhow::Context;
 use monero_harness::{image::Monerod, Monero};
 use monero_sys::{Daemon, SyncProgress, WalletHandle};
 use std::sync::OnceLock;
 use tempfile::{tempdir, TempDir};
 use testcontainers::{clients::Cli, Container};
 use tracing::info;
-
-const PASSWORD: &str = "test";
 
 const SEED: &str = "echo ourselves ruined oven masterful wives enough addicted future cottage illness adopt lucky movement tiger taboo imbalance antics iceberg hobby oval aloof tuesday uttered oval";
 

@@ -112,7 +112,7 @@ impl Wallets {
             wallet_path.clone(),
             None,
             self.network,
-            address.clone(),
+            address,
             view_key.into(),
             spend_key,
             restore_height.height,
