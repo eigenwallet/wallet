@@ -1,4 +1,4 @@
-use monero_sys::{Daemon, SyncProgress, WalletManager};
+use monero_sys::{Daemon, SyncProgress, WalletHandle};
 
 const PASSWORD: &str = "test";
 
@@ -20,33 +20,20 @@ async fn main() {
         address: STAGENET_REMOTE_NODE.into(),
         ssl: true,
     };
-    let wallet_manager_mutex = WalletManager::get(Some(daemon)).await.unwrap();
-    let mut wallet_manager = wallet_manager_mutex.lock().await;
-
-    while !wallet_manager.connected().await {
-        tracing::info!("Waiting to connect to daemon...");
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
-    tracing::info!("Connected to daemon");
-    tracing::info!(
-        "Daemon height: {}",
-        wallet_manager.blockchain_height().await.unwrap()
-    );
 
     let wallet_name = "recovered_wallet";
     let wallet_path = temp_dir.path().join(wallet_name).display().to_string();
 
     tracing::info!("Recovering wallet from seed");
-    let wallet = wallet_manager
-        .recover_wallet(
-            &wallet_path,
-            PASSWORD,
-            STAGENET_WALLET_SEED,
-            monero::Network::Stagenet,
-            STAGENET_WALLET_RESTORE_HEIGHT,
-        )
-        .await
-        .expect("Failed to recover wallet");
+    let wallet = WalletHandle::open_or_create_from_seed(
+        wallet_path,
+        STAGENET_WALLET_SEED.to_string(),
+        monero::Network::Stagenet,
+        STAGENET_WALLET_RESTORE_HEIGHT,
+        daemon,
+    )
+    .await
+    .expect("Failed to recover wallet");
 
     tracing::info!("Primary address: {}", wallet.main_address().await);
 

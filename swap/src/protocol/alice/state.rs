@@ -3,7 +3,7 @@ use crate::bitcoin::{
     TxPunish, TxRedeem, TxRefund, Txid,
 };
 use crate::env::Config;
-use crate::monero::wallet::{TransferRequest, WatchRequest, NO_LISTENER};
+use crate::monero::wallet::{no_listener, TransferRequest, WatchRequest};
 use crate::monero::BlockHeight;
 use crate::monero::TransferProof;
 use crate::monero_ext::ScalarExt;
@@ -530,13 +530,16 @@ impl State3 {
         // for the confirmations.
         tracing::debug!("Waiting for Monero lock transaction to be confirmed");
         monero_wallet
-            .wait_until_confirmed(self.lock_xmr_watch_request(transfer_proof, 10), NO_LISTENER)
+            .wait_until_confirmed(
+                self.lock_xmr_watch_request(transfer_proof, 10),
+                no_listener(),
+            )
             .await
             .context("Failed to wait for Monero lock transaction to be confirmed")?;
 
         tracing::debug!("Refunding Monero");
         let swap_wallet = monero_wallet
-            .open_swap_wallet(
+            .get_swap_wallet(
                 swap_id,
                 spend_key,
                 view_key,
@@ -545,12 +548,7 @@ impl State3 {
             .await
             .context(format!("Failed to open/create swap wallet `{}`", swap_id))?;
 
-        let main_address = monero_wallet
-            .open_main_wallet()
-            .await
-            .context("Failed to open main wallet")?
-            .main_address()
-            .await;
+        let main_address = monero_wallet.get_main_wallet().await.main_address().await;
 
         swap_wallet
             .sweep(&main_address)

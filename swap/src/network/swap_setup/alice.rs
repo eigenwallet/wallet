@@ -60,9 +60,8 @@ impl WalletSnapshot {
         transfer_amount: bitcoin::Amount,
     ) -> Result<Self> {
         let unlocked_balance = monero_wallet
-            .open_main_wallet()
+            .get_main_wallet()
             .await
-            .context("Failed to open main Monero wallet")?
             .unlocked_balance()
             .await;
         let redeem_address = external_redeem_address

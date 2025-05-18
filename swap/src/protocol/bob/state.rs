@@ -671,7 +671,7 @@ impl State5 {
         tracing::info!(%swap_id, "Generating and opening Monero wallet from the extracted keys to redeem the Monero");
 
         let wallet = monero_wallet
-            .open_swap_wallet(
+            .get_swap_wallet(
                 swap_id,
                 spend_key,
                 view_key,

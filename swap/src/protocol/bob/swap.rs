@@ -323,7 +323,7 @@ async fn next_state(
 
             let watch_future = monero_wallet.wait_until_confirmed(
                 watch_request,
-                Some(|confirmations| {
+                Some(move |confirmations| {
                     // Emit an event to notify about the new confirmation
                     event_emitter.emit_swap_progress_event(
                         swap_id,
