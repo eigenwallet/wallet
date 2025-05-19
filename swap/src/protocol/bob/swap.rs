@@ -5,7 +5,7 @@ use crate::cli::api::tauri_bindings::{
     LockBitcoinDetails, TauriEmitter, TauriHandle, TauriSwapProgressEvent,
 };
 use crate::cli::EventLoopHandle;
-use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, Rejected};
+use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fulfilled, Rejected};
 use crate::network::swap_setup::bob::NewSwap;
 use crate::protocol::bob::state::*;
 use crate::protocol::{bob, Database};
@@ -532,7 +532,7 @@ async fn next_state(
             let response = event_loop_handle.request_cooperative_xmr_redeem().await;
 
             match response {
-                Ok(Fullfilled { s_a, .. }) => {
+                Ok(Fulfilled { s_a, .. }) => {
                     tracing::info!(
                         "Alice has accepted our request to cooperatively redeem the XMR"
                     );

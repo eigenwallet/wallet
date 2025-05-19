@@ -89,7 +89,7 @@ The `ASB` depicted in the diagram actually consists of multiple components (prot
 #### Monero Wallet Setup
 
 The ASB uses the running Monero wallet RPC to create / open Monero wallets.
-Currently you cannot connect to an existing Monero wallet, but the ASB will create the wallet `asb-wallet` upon intial startup.
+Currently you cannot connect to an existing Monero wallet, but the ASB will create the wallet `asb-wallet` upon initial startup.
 In order to accept trades with a CLI you will have to send XMR to that wallet.
 The wallet's address is printed upon startup of the ASB.
 Currently the `asb-wallet` does not have a password.

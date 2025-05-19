@@ -74,7 +74,7 @@ async fn alice_manually_punishes_after_bob_dead_and_bob_cancels() {
             .stop_and_resume_bob_from_db(bob_join_handle, bob_swap_id)
             .await;
         assert!(matches!(bob_swap.state, BobState::BtcLocked { .. }));
-        bob_join_handle.abort();
+        bob_join_handle.abort_and_wait().await;
 
         let (_, state) = cli::cancel(bob_swap_id, bob_swap.bitcoin_wallet, bob_swap.db).await?;
         // Bob should be in BtcCancelled state now.

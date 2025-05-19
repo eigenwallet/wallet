@@ -38,7 +38,7 @@ pub struct Request {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Response {
-    Fullfilled {
+    Fulfilled {
         swap_id: Uuid,
         s_a: Scalar,
     },
@@ -93,7 +93,7 @@ impl From<(PeerId, Message)> for cli::OutEvent {
                 response,
                 request_id,
             } => match response {
-                Response::Fullfilled { swap_id, s_a } => Self::CooperativeXmrRedeemFulfilled {
+                Response::Fulfilled { swap_id, s_a } => Self::CooperativeXmrRedeemFulfilled {
                     id: request_id,
                     swap_id,
                     s_a,

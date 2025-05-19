@@ -23,7 +23,7 @@ async fn concurrent_bobs_before_xmr_lock_proof_sent() {
         assert!(matches!(bob_state_1, BobState::BtcLocked { .. }));
 
         // make sure bob_swap_1's event loop is gone
-        bob_join_handle_1.abort();
+        bob_join_handle_1.abort_and_wait().await;
 
         let (bob_swap_2, bob_join_handle_2) = ctx.bob_swap().await;
         let bob_swap_2 = tokio::spawn(bob::run(bob_swap_2));
@@ -45,7 +45,7 @@ async fn concurrent_bobs_before_xmr_lock_proof_sent() {
             .await;
         assert!(matches!(bob_state_1, BobState::BtcLocked { .. }));
 
-        // The 1st (paused) swap is expected to finish successfully because the transfer proof is buffered when it is receives while another swap is running.
+        // The 1st (paused) swap is expected to finish successfully because the transfer proof is buffered when it is received while another swap is running.
 
         let bob_state_1 = bob::run(bob_swap_1).await?;
         assert!(matches!(bob_state_1, BobState::XmrRedeemed { .. }));

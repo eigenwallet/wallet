@@ -227,7 +227,7 @@ impl EventLoop {
                         }
                         SwarmEvent::Behaviour(OutEvent::CooperativeXmrRedeemFulfilled { id, swap_id, s_a }) => {
                             if let Some(responder) = self.inflight_cooperative_xmr_redeem_requests.remove(&id) {
-                                let _ = responder.respond(Ok(Response::Fullfilled { s_a, swap_id }));
+                                let _ = responder.respond(Ok(Response::Fulfilled { s_a, swap_id }));
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::CooperativeXmrRedeemRejected { id, swap_id, reason }) => {
@@ -384,8 +384,8 @@ pub struct EventLoopHandle {
 
     /// When a () is sent into this channel, the EventLoop will:
     /// 1. Request Alice's cooperation in redeeming the Monero
-    /// 2. Return the a response object (Fullfilled or Rejected), if the network request is successful
-    ///    The Fullfilled object contains the keys required to redeem the Monero
+    /// 2. Return the a response object (Fulfilled or Rejected), if the network request is successful
+    ///    The Fulfilled object contains the keys required to redeem the Monero
     /// 3. Return an OutboundFailure error if the network request fails
     cooperative_xmr_redeem_sender: bmrng::RequestSender<
         (),

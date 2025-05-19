@@ -517,6 +517,11 @@ impl BobApplicationHandle {
     pub fn abort(&self) {
         self.0.abort()
     }
+
+    pub async fn abort_and_wait(self) {
+        self.0.abort();
+        let _ = self.0.await;
+    }
 }
 
 pub struct AliceApplicationHandle {
@@ -527,6 +532,11 @@ pub struct AliceApplicationHandle {
 impl AliceApplicationHandle {
     pub fn abort(&self) {
         self.handle.abort()
+    }
+
+    pub async fn abort_and_wait(self) {
+        self.handle.abort();
+        let _ = self.handle.await;
     }
 }
 
@@ -565,7 +575,7 @@ impl TestContext {
     }
 
     pub async fn restart_alice(&mut self) {
-        self.alice_handle.abort();
+        self.alice_handle.abort_and_wait().await;
 
         let (alice_handle, alice_swap_handle) = start_alice(
             &self.alice_seed,
@@ -604,7 +614,7 @@ impl TestContext {
         join_handle: BobApplicationHandle,
         swap_id: Uuid,
     ) -> (bob::Swap, BobApplicationHandle) {
-        join_handle.abort();
+        join_handle.abort_and_wait().await;
 
         let (swap, event_loop) = self.bob_params.new_swap_from_db(swap_id).await.unwrap();
 

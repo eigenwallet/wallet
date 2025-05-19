@@ -1,7 +1,7 @@
 use crate::asb::{Behaviour, OutEvent, Rate};
 use crate::monero::Amount;
 use crate::network::cooperative_xmr_redeem_after_punish::CooperativeXmrRedeemRejectReason;
-use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, Rejected};
+use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fulfilled, Rejected};
 use crate::network::quote::BidQuote;
 use crate::network::swap_setup::alice::WalletSnapshot;
 use crate::network::transfer_proof;
@@ -392,12 +392,12 @@ where
                                 continue;
                             };
 
-                            if self.swarm.behaviour_mut().cooperative_xmr_redeem.send_response(channel, Fullfilled { swap_id, s_a: state3.s_a }).is_err() {
+                            if self.swarm.behaviour_mut().cooperative_xmr_redeem.send_response(channel, Fulfilled { swap_id, s_a: state3.s_a }).is_err() {
                                 tracing::error!(peer = %peer, "Failed to respond to cooperative XMR redeem request");
                                 continue;
                             }
 
-                            tracing::info!(swap_id = %swap_id, peer = %peer, "Fullfilled cooperative XMR redeem request");
+                            tracing::info!(swap_id = %swap_id, peer = %peer, "Fulfilled cooperative XMR redeem request");
                         }
                         SwarmEvent::Behaviour(OutEvent::Rendezvous(libp2p::rendezvous::client::Event::Registered { rendezvous_node, ttl, namespace })) => {
                             tracing::trace!("Successfully registered with rendezvous node: {} with namespace: {} and TTL: {:?}", rendezvous_node, namespace, ttl);

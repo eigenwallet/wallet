@@ -23,7 +23,7 @@ async fn concurrent_bobs_after_xmr_lock_proof_sent() {
         assert!(matches!(bob_state_1, BobState::XmrLocked { .. }));
 
         // make sure bob_swap_1's event loop is gone
-        bob_join_handle_1.abort();
+        bob_join_handle_1.abort_and_wait().await;
 
         let (bob_swap_2, bob_join_handle_2) = ctx.bob_swap().await;
         let bob_swap_2 = tokio::spawn(bob::run(bob_swap_2));

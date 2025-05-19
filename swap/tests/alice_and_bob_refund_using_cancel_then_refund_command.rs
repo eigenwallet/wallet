@@ -49,7 +49,7 @@ async fn given_alice_and_bob_manually_cancel_and_refund_after_funds_locked_both_
         }
 
         // Bob manually cancels and refunds
-        bob_join_handle.abort();
+        bob_join_handle.abort_and_wait().await;
         let bob_state =
             cli::cancel_and_refund(bob_swap.id, bob_swap.bitcoin_wallet, bob_swap.db).await?;
 
