@@ -797,10 +797,6 @@ impl FfiWallet {
 
         wallet.set_daemon_address(&daemon.address)?;
 
-        // TODO: remove this before merging/add a flag or something
-        wallet.allow_mismatched_daemon_version();
-        wallet.set_trusted_daemon(true);
-
         tracing::debug!("Starting auto-refresh");
 
         wallet.start_refresh();
@@ -861,7 +857,7 @@ impl FfiWallet {
             &daemon_username,
             &daemon_password,
             ssl,
-            true,
+            false,
             &proxy_address,
         );
 
