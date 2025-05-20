@@ -908,7 +908,12 @@ impl Wallet {
                 Ok(()) => return Ok(()),
                 Err(error) => {
                     let attempts_left = max_attempts - attempt;
-                    tracing::warn!(attempt, ?error, attempts_left, "Failed to sync Bitcoin wallet");
+                    tracing::warn!(
+                        attempt,
+                        ?error,
+                        attempts_left,
+                        "Failed to sync Bitcoin wallet"
+                    );
 
                     if attempts_left == 0 {
                         return Err(error);
