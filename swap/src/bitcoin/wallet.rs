@@ -290,6 +290,9 @@ impl Wallet {
     /// The number of maximum chunks to use when syncing
     const SCAN_CHUNKS: u32 = 5;
 
+    /// Maximum time we are willing to spend retrying a wallet sync
+    const SYNC_MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
+
     const WALLET_PARENT_DIR_NAME: &str = "wallet";
     const WALLET_DIR_NAME: &str = "wallet-post-bdk-1.0";
     const WALLET_FILE_NAME: &str = "wallet-db.sqlite";
@@ -897,45 +900,26 @@ impl Wallet {
     }
 
     /// Sync the wallet with the blockchain and emit progress events to the UI.
-    /// Retries the sync `max_attempts` times in case of failure.
-    pub async fn sync_with_retry(&self, max_attempts: usize) -> Result<()> {
-        const RETRY_INTERVAL: Duration = Duration::from_secs(1);
-
-        for attempt in 1..=max_attempts {
-            tracing::info!(attempt, "Syncing Bitcoin wallet");
-
-            match self.sync_once().await {
-                Ok(()) => return Ok(()),
-                Err(error) => {
-                    let attempts_left = max_attempts - attempt;
-                    tracing::warn!(
-                        attempt,
-                        ?error,
-                        attempts_left,
-                        "Failed to sync Bitcoin wallet"
-                    );
-
-                    if attempts_left == 0 {
-                        return Err(error);
-                    }
-                }
-            }
-
-            tokio::time::sleep(RETRY_INTERVAL).await;
-        }
-
-        unreachable!("Loop should have returned by now");
-    }
-
-    /// Sync the wallet with the blockchain and emit progress events to the UI.
-    /// This will retry a couple of times to mitigate transient errors.
-    /// TOOD: Find the underlying issue for these transient errors:
-    /// - Made or multiple attempts, all failed... (unexpected EOF in rustls)
-    /// - Made or multiple attempts, all failed... (os error 32)
+    /// Retries the sync if it fails using an exponential backoff.
     pub async fn sync(&self) -> Result<()> {
-        const MAX_ATTEMPTS: usize = 5;
+        let backoff = backoff::ExponentialBackoffBuilder::new()
+            .with_max_elapsed_time(Some(Self::SYNC_MAX_ELAPSED_TIME))
+            .with_max_interval(Duration::from_secs(1))
+            .build();
 
-        self.sync_with_retry(MAX_ATTEMPTS).await
+        backoff::future::retry_notify(
+            backoff,
+            || async { self.sync_once().await.map_err(backoff::Error::transient) },
+            |err, wait_time: Duration| {
+                tracing::warn!(
+                    ?err,
+                    "Failed to sync Bitcoin wallet. We will retry in {} seconds",
+                    wait_time.as_secs()
+                );
+            },
+        )
+        .await
+        .context("Failed to sync Bitcoin wallet after retries")
     }
 
     /// Calculate the fee for a given transaction.

@@ -7,8 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- CLI + GUI: Retry the Bitcoin wallet sync up to three times to
-  avoid transient database lock errors.
+- CLI + GUI + ASB: Retry the Bitcoin wallet sync up to 15 seconds to work around transient errors.
 
 ## [1.1.0] - 2025-05-19
 
