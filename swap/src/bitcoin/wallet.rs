@@ -863,9 +863,9 @@ impl Wallet {
         Ok(())
     }
 
-    /// Sync the wallet with the blockchain
-    /// and emit progress events to the UI
-    pub async fn sync(&self) -> Result<()> {
+    /// Perform a single sync of the wallet with the blockchain
+    /// and emit progress events to the UI.
+    async fn sync_once(&self) -> Result<()> {
         let background_process_handle = self
             .tauri_handle
             .new_background_process_with_initial_progress(
@@ -894,6 +894,40 @@ impl Wallet {
         background_process_handle.finish();
 
         Ok(())
+    }
+
+    /// Sync the wallet with the blockchain and emit progress events to the UI.
+    /// Retries the sync `max_attempts` times in case of failure.
+    pub async fn sync_with_retry(&self, max_attempts: usize) -> Result<()> {
+        const RETRY_INTERVAL: Duration = Duration::from_secs(1);
+
+        for attempt in 1..=max_attempts {
+            tracing::info!(attempt, "Syncing Bitcoin wallet");
+
+            match self.sync_once().await {
+                Ok(()) => return Ok(()),
+                Err(error) => {
+                    let attempts_left = max_attempts - attempt;
+                    tracing::warn!(attempt, ?error, attempts_left, "Failed to sync Bitcoin wallet");
+
+                    if attempts_left == 0 {
+                        return Err(error);
+                    }
+                }
+            }
+
+            tokio::time::sleep(RETRY_INTERVAL).await;
+        }
+
+        unreachable!("Loop should have returned by now");
+    }
+
+    /// Sync the wallet with the blockchain and emit progress events to the UI.
+    /// This will retry a couple of times to mitigate transient errors.
+    pub async fn sync(&self) -> Result<()> {
+        const MAX_ATTEMPTS: usize = 3;
+
+        self.sync_with_retry(MAX_ATTEMPTS).await
     }
 
     /// Calculate the fee for a given transaction.

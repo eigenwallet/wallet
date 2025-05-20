@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- CLI + GUI: Retry the Bitcoin wallet sync up to three times to
+  avoid transient database lock errors.
+
 ## [1.1.0] - 2025-05-19
 
 - GUI: Discourage swapping with makers running `< 1.1.0-rc.3` because the bdk upgrade introduced a breaking change.
