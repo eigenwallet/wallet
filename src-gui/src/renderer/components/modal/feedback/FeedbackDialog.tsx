@@ -13,7 +13,7 @@ import {
     Tooltip,
     Typography,
 } from '@material-ui/core'
-import { Visibility } from '@material-ui/icons'
+import { ErrorOutline, Visibility } from '@material-ui/icons'
 import ExternalLink from 'renderer/components/other/ExternalLink'
 import SwapSelectDropDown from './SwapSelectDropDown'
 import LogViewer from './LogViewer'
@@ -54,10 +54,34 @@ export default function FeedbackDialog({
                         gap: '1.5rem',
                     }}
                 >
+                    {error && (
+                        <Box
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'start',
+                                gap: '0.5rem',
+                                width: '100%',
+                                backgroundColor: 'hsla(0, 45%, 17%, 1)',
+                                padding: '0.5rem',
+                                borderRadius: '0.5rem',
+                                border: '1px solid hsla(0, 61%, 32%, 1)',
+                            }}
+                        >
+                            <ErrorOutline style={{ color: 'hsla(0, 77%, 75%, 1)' }} />
+                            <Typography style={{ color: 'hsla(0, 83%, 91%, 1)' }} noWrap>
+                                {error}
+                            </Typography>
+                        </Box>
+                    )}
                     <Box>
                         <Typography style={{ marginBottom: '0.5rem' }}>
                             Have a question or need assistance? Message us below
-                            or <ExternalLink href="mailto:help@unstoppableswap.net">email us</ExternalLink>!
+                            or{' '}
+                            <ExternalLink href="mailto:help@unstoppableswap.net">
+                                email us
+                            </ExternalLink>
+                            !
                         </Typography>
                         <TextField
                             variant="outlined"

@@ -116,6 +116,11 @@ export function useFeedback() {
     }
 
     const submitFeedback = async () => {
+        if (inputState.bodyText.length === 0) {
+            setError('Please enter a message')
+            throw new Error('User did not enter a message')
+        }
+
         const attachments: AttachmentInput[] = []
         // Add swap logs as an attachment
         if (logsState.swapLogs) {
