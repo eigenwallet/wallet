@@ -929,6 +929,9 @@ impl Wallet {
 
     /// Sync the wallet with the blockchain and emit progress events to the UI.
     /// This will retry a couple of times to mitigate transient errors.
+    /// TOOD: Find the underlying issue for these transient errors:
+    /// - Made or multiple attempts, all failed... (unexpected EOF in rustls)
+    /// - Made or multiple attempts, all failed... (os error 32)
     pub async fn sync(&self) -> Result<()> {
         const MAX_ATTEMPTS: usize = 5;
 
