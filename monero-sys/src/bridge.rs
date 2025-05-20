@@ -157,6 +157,9 @@ pub mod ffi {
         /// Set the daemon address.
         fn setWalletDaemon(wallet: Pin<&mut Wallet>, daemon_address: &CxxString) -> bool;
 
+        /// Set whether the daemon is trusted.
+        fn setTrustedDaemon(self: Pin<&mut Wallet>, trusted: bool);
+
         /// Get the current blockchain height.
         fn blockChainHeight(self: &Wallet) -> u64;
 

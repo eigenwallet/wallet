@@ -22,7 +22,7 @@
 //! Also provides standalone JSON RPC clients for monerod and monero-wallet-rpc.
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use testcontainers::clients::Cli;
 use testcontainers::{Container, RunnableImage};
 use tokio::time;
@@ -131,47 +131,23 @@ impl<'c> Monero {
 
         tracing::info!("Miner address: {}", miner_address);
 
-        // Generate the first 120 blocks in bulk
-        let amount_of_blocks = 120;
+        // Start the daemon's internal miner.
         let monerod = &self.monerod;
-        let res = monerod
-            .client()
-            .generateblocks(amount_of_blocks, miner_address.clone())
-            .await?;
-        tracing::info!("Generated {:?} blocks", res.blocks.len());
+        monerod.start_miner(&miner_address).await?;
 
-        // Make sure to refresh the wallet to see the new balance
-        tracing::info!("Refreshing miner wallet after block generation");
-        miner_wallet.refresh().await?;
-
-        // Debug: Check wallet balance after initial block generation
-        let balance = miner_wallet.balance().await?;
-        tracing::info!(
-            "Miner balance after initial block generation: {} piconero",
-            balance
-        );
-
-        // If balance is still 0, try generating a few more blocks
-        if balance == 0 {
-            tracing::info!("Balance is still 0, generating 10 more blocks");
-            let more_blocks = 10;
-            let more_res = monerod
-                .client()
-                .generateblocks(more_blocks, miner_address.clone())
-                .await?;
-            tracing::info!("Generated {:?} additional blocks", more_res.blocks.len());
-
-            // Refresh wallet again
-            tracing::info!("Refreshing miner wallet after additional block generation");
-            miner_wallet.refresh().await?;
-
-            // Check balance again
-            let new_balance = miner_wallet.balance().await?;
-            tracing::info!(
-                "Miner balance after additional block generation: {} piconero",
-                new_balance
-            );
+        // Wait until at least 130 blocks are mined so coin-base outputs are unlocked
+        loop {
+            let bc_height = monerod.client().get_block_count().await?.count as u64;
+            if bc_height >= 130 {
+                break;
+            }
+            tracing::info!("Waiting for chain height {}, current {}", 130, bc_height);
+            time::sleep(Duration::from_secs(1)).await;
         }
+
+        // Refresh the wallet to pick up the mined blocks
+        tracing::info!("Refreshing miner wallet after background mining");
+        miner_wallet.refresh().await?;
 
         Ok(())
     }
@@ -198,10 +174,15 @@ impl<'c> Monero {
                 assert_eq!(total, expected_total);
                 assert_eq!(unlocked, expected_unlocked);
 
-                monerod
-                    .client()
-                    .generateblocks(10, miner_address.clone())
-                    .await?;
+                // wait for a few additional blocks so the transfer matures
+                let target = monerod.client().get_block_count().await?.count as u64 + 10;
+                loop {
+                    let current = monerod.client().get_block_count().await?.count as u64;
+                    if current >= target {
+                        break;
+                    }
+                    time::sleep(Duration::from_secs(1)).await;
+                }
                 wallet.refresh().await?;
                 expected_unlocked += amount;
 
@@ -221,17 +202,26 @@ impl<'c> Monero {
     pub async fn fund_address(&self, address: &str, amount: u64) -> Result<()> {
         let monerod = &self.monerod;
 
-        // Make sure miner has funds by generating blocks
-        monerod
-            .client()
-            .generateblocks(120, address.to_string())
-            .await?;
+        // Mine until we have at least 120 new blocks
+        let start_height = monerod.client().get_block_count().await?.count as u64;
+        let target_height = start_height + 120;
+        loop {
+            let height = monerod.client().get_block_count().await?.count as u64;
+            if height >= target_height {
+                break;
+            }
+            time::sleep(Duration::from_secs(1)).await;
+        }
 
-        // Mine more blocks to confirm the transaction
-        monerod
-            .client()
-            .generateblocks(10, address.to_string())
-            .await?;
+        // Wait 10 more blocks to confirm
+        let target2 = monerod.client().get_block_count().await?.count as u64 + 10;
+        loop {
+            let height = monerod.client().get_block_count().await?.count as u64;
+            if height >= target2 {
+                break;
+            }
+            time::sleep(Duration::from_secs(1)).await;
+        }
 
         tracing::info!("Successfully funded address with {} piconero", amount);
         Ok(())
@@ -315,12 +305,11 @@ impl<'c> Monerod {
         &self.client
     }
 
-    /// Spawns a task to mine blocks in a regular interval to the provided
-    /// address
+    /// Ask the daemon to start mining (1 thread, foreground).
     pub async fn start_miner(&self, miner_wallet_address: &str) -> Result<()> {
-        let monerod = self.client().clone();
-        tokio::spawn(mine(monerod, miner_wallet_address.to_string()));
-        Ok(())
+        self.client()
+            .start_mining(miner_wallet_address.to_string())
+            .await
     }
 }
 
@@ -362,6 +351,7 @@ impl MoneroWallet {
         .context("Failed to create or open wallet")?;
 
         // Allow mismatched daemon version when running in regtest
+        // Also trusts the daemon.
         wallet
             .__unsafe_never_call_outside_regtests_or_you_will_go_to_hell()
             .await;
@@ -388,7 +378,7 @@ impl MoneroWallet {
         tracing::debug!("Wallet connected to daemon: {}", connected);
 
         // Force a refresh first
-        self.wallet.wait_until_synced(None::<fn(_)>).await?;
+        self.refresh().await?;
 
         let total = self.wallet.total_balance().await.as_pico();
         tracing::info!("Wallet balance: {} piconero", total);
@@ -421,29 +411,20 @@ impl MoneroWallet {
     }
 
     /// Wait until the wallet is fully synced with the daemon.
-    ///
-    /// Note: The internal monero-sys wallet API does not expose the current
-    /// wallet height publicly, so we approximate by waiting until the wallet
-    /// reports that it is synchronized.
     pub async fn wait_for_wallet_height(&self, height: u64) -> Result<()> {
-        tracing::info!("Waiting for wallet to sync to height {}", height);
-        self.wallet
-            .wait_until_synced(Some(move |sync_progress: SyncProgress| {
-                tracing::info!(
-                    current = sync_progress.current_block,
-                    target = sync_progress.target_block,
-                    expected_height = height,
-                    "Sync progress"
-                );
-            }))
-            .await
-    }
-}
+        while let Some(blockheight) = self.wallet.blockchain_height().await {
+            tracing::info!(
+                connected = self.wallet.connected().await,
+                "Waiting for wallet to sync to height {}, currently at {}",
+                height,
+                blockheight
+            );
+            if blockheight >= height {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
 
-/// Mine a block ever BLOCK_TIME_SECS seconds.
-async fn mine(monerod: monerod::Client, reward_address: String) -> Result<()> {
-    loop {
-        time::sleep(Duration::from_secs(BLOCK_TIME_SECS)).await;
-        monerod.generateblocks(1, reward_address.clone()).await?;
+        bail!("Couldn't get block height for wallet {}", self.name);
     }
 }

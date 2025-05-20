@@ -77,13 +77,14 @@ pub struct MonerodArgs {
     pub rpc_bind_ip: String,
     pub fixed_difficulty: u32,
     pub data_dir: String,
+    pub disable_rpc_ban: bool,
 }
 
 impl Default for MonerodArgs {
     fn default() -> Self {
         Self {
             regtest: true,
-            offline: true,
+            offline: false,
             rpc_payment_allow_free_loopback: true,
             confirm_external_bind: true,
             no_igd: true,
@@ -91,6 +92,7 @@ impl Default for MonerodArgs {
             rpc_bind_ip: "0.0.0.0".to_string(),
             fixed_difficulty: 1,
             data_dir: "/monero".to_string(),
+            disable_rpc_ban: true,
         }
     }
 }
@@ -140,6 +142,10 @@ impl IntoIterator for MonerodArgs {
 
         if self.fixed_difficulty != 0 {
             args.push(format!("--fixed-difficulty={}", self.fixed_difficulty));
+        }
+
+        if self.disable_rpc_ban {
+            args.push("--disable-rpc-ban".to_string());
         }
 
         args.into_iter()

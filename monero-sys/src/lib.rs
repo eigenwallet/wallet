@@ -327,11 +327,15 @@ impl WalletHandle {
     }
 
     /// Allow the wallet to connect to a daemon with a different version.
+    /// Also trusts the daemon.
     /// Only used for regtests.
     #[doc(hidden)]
     pub async fn __unsafe_never_call_outside_regtests_or_you_will_go_to_hell(&self) {
-        self.call(move |wallet| wallet.allow_mismatched_daemon_version())
-            .await
+        self.call(move |wallet| {
+            wallet.allow_mismatched_daemon_version();
+            wallet.set_trusted_daemon(true);
+        })
+        .await
     }
 
     pub async fn wait_until_synced(
@@ -793,6 +797,10 @@ impl FfiWallet {
 
         wallet.set_daemon_address(&daemon.address)?;
 
+        // TODO: remove this before merging/add a flag or something
+        wallet.allow_mismatched_daemon_version();
+        wallet.set_trusted_daemon(true);
+
         tracing::debug!("Starting auto-refresh");
 
         wallet.start_refresh();
@@ -853,7 +861,7 @@ impl FfiWallet {
             &daemon_username,
             &daemon_password,
             ssl,
-            false,
+            true,
             &proxy_address,
         );
 
@@ -893,6 +901,15 @@ impl FfiWallet {
                 false
             }
         }
+    }
+
+    /// Set whether the daemon is trusted.
+    ///
+    /// This is needed for regnet compatibility.
+    ///
+    /// _Do not use for anything besides testing._
+    fn set_trusted_daemon(&mut self, trusted: bool) {
+        self.inner.pinned().setTrustedDaemon(trusted);
     }
 
     /// Start the background refresh thread (refreshes every 10 seconds).

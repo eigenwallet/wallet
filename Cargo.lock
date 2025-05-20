@@ -5651,7 +5651,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "futures",
+ "monero",
  "monero-rpc",
+ "monero-sys",
  "rand 0.7.3",
  "testcontainers",
  "tokio",
@@ -5688,7 +5690,6 @@ dependencies = [
  "cxx",
  "cxx-build",
  "monero",
- "monero-harness",
  "tempfile",
  "testcontainers",
  "tokio",

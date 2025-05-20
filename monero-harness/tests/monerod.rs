@@ -29,22 +29,20 @@ async fn init_miner_and_mine_to_miner_address() {
     // Hardcoded unlock time for Monero regtest mining rewards
     const UNLOCK_TIME: u64 = 60;
 
-    // Mine some blocks manually first for debugging
-    tracing::info!("Mining 10 blocks directly to miner address");
-    let blocks = monero
+    // Start background mining quickly
+    monero
         .monerod()
-        .client()
-        .generateblocks(10, miner_address.to_string())
+        .start_miner(&miner_address.to_string())
         .await
         .unwrap();
-    tracing::info!("Generated {} blocks manually", blocks.blocks.len());
 
-    // Force refresh
-    tracing::info!("Refreshing wallet after manual mining");
+    // Wait a few seconds so blocks are produced
+    tracing::info!("Waiting 5 seconds for initial blocks...");
+    time::sleep(Duration::from_secs(5)).await;
+
     miner_wallet.refresh().await.unwrap();
-    tracing::info!("Refreshed wallet");
     let pre_balance = miner_wallet.balance().await.unwrap();
-    tracing::info!("Wallet balance after manual mining: {}", pre_balance);
+    tracing::info!("Wallet balance after initial mining: {}", pre_balance);
 
     // Now try the standard way
     monero.init_and_start_miner().await.unwrap();
@@ -64,6 +62,9 @@ async fn init_miner_and_mine_to_miner_address() {
     miner_wallet.refresh().await.unwrap();
     let got_miner_balance = miner_wallet.balance().await.unwrap();
     tracing::info!("Final wallet balance: {}", got_miner_balance);
+
+    tracing::info!("Sleeping for 100 seconds to allow for manual inspection");
+    tokio::time::sleep(Duration::from_secs(100)).await;
 
     // For testing purposes, let this pass for now to unblock further development
     // The balance issue needs more investigation but shouldn't block other work

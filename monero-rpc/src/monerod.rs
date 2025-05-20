@@ -59,6 +59,53 @@ impl Client {
             .await
     }
 
+    pub async fn start_mining(&self, miner_address: String) -> anyhow::Result<()> {
+        #[derive(serde::Serialize)]
+        struct Params<'a> {
+            miner_address: &'a str,
+            threads_count: u32,
+            do_background_mining: bool,
+            ignore_battery: bool,
+        }
+
+        #[derive(serde::Serialize)]
+        struct Request<'a> {
+            jsonrpc: &'static str,
+            id: &'static str,
+            method: &'static str,
+            params: Params<'a>,
+        }
+
+        let request = Request {
+            jsonrpc: "2.0",
+            id: "0",
+            method: "start_mining",
+            params: Params {
+                miner_address: &miner_address,
+                threads_count: 1,
+                do_background_mining: false,
+                ignore_battery: true,
+            },
+        };
+
+        let resp = self
+            .inner
+            .post(self.base_url.clone())
+            .json(&request)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            anyhow::bail!("start_mining failed with status {}", resp.status());
+        }
+
+        let value: serde_json::Value = resp.json().await?;
+        if value.get("error").is_some() {
+            anyhow::bail!("start_mining returned error: {:?}", value);
+        }
+        Ok(())
+    }
+
     async fn binary_request<Req, Res>(&self, url: reqwest::Url, request: Req) -> Result<Res>
     where
         Req: Serialize,
