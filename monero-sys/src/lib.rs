@@ -788,11 +788,18 @@ impl FfiWallet {
         wallet
             .init(&daemon.address, daemon.ssl)
             .context("Failed to initialize wallet")?;
-        wallet.check_error()?;
+
+        tracing::debug!("Initialized wallet, setting daemon address");
+
         wallet.set_daemon_address(&daemon.address)?;
-        wallet.check_error()?;
+
+        tracing::debug!("Starting auto-refresh");
 
         wallet.start_refresh();
+
+        wallet.refresh_async();
+
+        // Check for errors on general principles
         wallet.check_error()?;
 
         Ok(wallet)

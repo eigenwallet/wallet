@@ -9,7 +9,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 async fn init_miner_and_mine_to_miner_address() {
     let _guard = tracing_subscriber::fmt()
         .with_env_filter(
-            "info,warn,test=debug,monero_harness=debug,monero_rpc=debug,monero_sys=debug",
+            "info,test=debug,monero_harness=debug,monero_rpc=debug,monero_sys=debug,monerod=debug",
         )
         .with_test_writer()
         .init();

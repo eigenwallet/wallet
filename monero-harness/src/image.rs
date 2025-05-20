@@ -83,7 +83,7 @@ impl Default for MonerodArgs {
     fn default() -> Self {
         Self {
             regtest: true,
-            offline: false,
+            offline: true,
             rpc_payment_allow_free_loopback: true,
             confirm_external_bind: true,
             no_igd: true,
