@@ -1,6 +1,6 @@
 mod bridge;
 
-use std::{any::Any, cmp::Ordering, ops::Deref, pin::Pin, str::FromStr};
+use std::{any::Any, cmp::Ordering, fmt::Display, ops::Deref, pin::Pin, str::FromStr};
 
 use anyhow::{bail, Context, Result};
 use cxx::let_cxx_string;
@@ -12,6 +12,7 @@ use tokio::sync::{
 use bridge::ffi;
 
 /// A handle that can communicate with the [`FfiWallet`] object.
+#[derive(Debug)]
 pub struct WalletHandle {
     call_sender: UnboundedSender<Call>,
 }
@@ -371,13 +372,23 @@ impl WalletHandle {
 
         // Keep track of the sync progress to avoid calling
         // the listener twice with the same progress
-        let mut current_progress = SyncProgress::zero();
+        let mut current_progress = self.sync_progress().await;
 
         // Continue polling until the sync is complete
         loop {
             // Get the current sync status (releasing the lock immediately afterwords)
             let (synced, sync_progress) =
                 { (self.synchronized().await, self.sync_progress().await) };
+
+            // It's common in regtest environments for current_block to be greater than target_block
+            // Log it as info, but don't treat it as an error
+            if sync_progress.current_block > sync_progress.target_block {
+                tracing::info!(
+                    current = sync_progress.current_block,
+                    target = sync_progress.target_block,
+                    "Current block is greater than target block, considering wallet synced"
+                );
+            }
 
             // Notify the listener (if it exists)
             if sync_progress > current_progress {
@@ -395,6 +406,7 @@ impl WalletHandle {
             }
 
             tracing::trace!(
+                %sync_progress,
                 "Wallet sync not complete, sleeping for {}ms",
                 POLL_INTERVAL_MILLIS
             );
@@ -834,7 +846,7 @@ impl FfiWallet {
             &daemon_username,
             &daemon_password,
             ssl,
-            true,
+            false,
             &proxy_address,
         );
 
@@ -919,8 +931,30 @@ impl FfiWallet {
     }
 
     /// Check if the wallet is synced with the daemon.
+    ///
+    /// The original implementation trusted `wallet->synchronized()` from the C++
+    /// layer, but in practice this flag is set after the very first refresh and
+    /// does **not** take newly mined blocks into account. This led to false
+    /// positives where the Rust side considered the wallet synced even though
+    /// it still had to scan additional blocks, resulting in `balance == 0`.
+    ///
+    /// We now regard the wallet as synced **only** when the wallet's perceived
+    /// height has caught up with the daemon height.  In regtest environments
+    /// the wallet may occasionally overshoot the target height, therefore we
+    /// accept `current >= target`.
     fn synchronized(&self) -> bool {
-        self.inner.synchronized()
+        let current = self.blockchain_height();
+        let target = self.daemon_blockchain_height().unwrap_or(0);
+
+        // If the daemon height is unknown (0) we definitely aren't synced yet.
+        if target == 0 {
+            return false;
+        }
+
+        // Consider the wallet synced when it has reached (or surpassed) the
+        // daemon height.  This inherently covers the case where the wallet is
+        // fully caught up and avoids relying on the flaky C++ flag.
+        current >= target
     }
 
     /// Set the allow mismatched daemon version flag.
@@ -1159,12 +1193,27 @@ impl SyncProgress {
 
     /// Get the sync progress as a fraction.
     pub fn fraction(&self) -> f32 {
+        if self.target_block == 0 {
+            return 0.0;
+        }
+
+        // Handle the case where current_block is greater than target_block
+        if self.current_block >= self.target_block {
+            return 1.0;
+        }
+
         self.current_block as f32 / self.target_block as f32
     }
 
     /// Get the sync progress as a percentage.
     pub fn percentage(&self) -> f32 {
         100.0 * self.fraction()
+    }
+}
+
+impl Display for SyncProgress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}%", self.percentage())
     }
 }
 
