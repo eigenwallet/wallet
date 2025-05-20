@@ -930,7 +930,7 @@ impl Wallet {
     /// Sync the wallet with the blockchain and emit progress events to the UI.
     /// This will retry a couple of times to mitigate transient errors.
     pub async fn sync(&self) -> Result<()> {
-        const MAX_ATTEMPTS: usize = 3;
+        const MAX_ATTEMPTS: usize = 5;
 
         self.sync_with_retry(MAX_ATTEMPTS).await
     }
