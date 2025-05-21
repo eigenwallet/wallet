@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use super::wallet::Watchable;
 use super::TxLock;
 
+#[derive(Clone)]
 pub struct TxEarlyRefund {
     inner: PartiallySignedTransaction,
     digest: Sighash,

@@ -323,9 +323,8 @@ async fn next_state(
                 },
             );
 
-            let tx_early_refund_status = bitcoin_wallet
-                .subscribe_to(state.construct_tx_early_refund())
-                .await;
+            let tx_early_refund = state.construct_tx_early_refund();
+            let tx_early_refund_status = bitcoin_wallet.subscribe_to(tx_early_refund.clone()).await;
             let tx_lock_status = bitcoin_wallet.subscribe_to(state.tx_lock.clone()).await;
 
             // Check if the cancel timelock has expired
@@ -394,7 +393,7 @@ async fn next_state(
 
                     event_emitter.emit_swap_progress_event(
                         swap_id,
-                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund },
+                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund.txid() },
                     );
 
                     BobState::BtcEarlyRefunded {
