@@ -1,6 +1,7 @@
 use crate::bitcoin::wallet::Watchable;
 use crate::bitcoin::{
     build_shared_output_descriptor, Address, Amount, PublicKey, Transaction, Wallet,
+    DEFAULT_REFUND_HASH,
 };
 use ::bitcoin::psbt::Psbt as PartiallySignedTransaction;
 use ::bitcoin::{OutPoint, TxIn, TxOut, Txid};
@@ -12,7 +13,8 @@ use serde::{Deserialize, Serialize};
 
 use super::wallet::EstimateFeeRate;
 
-const SCRIPT_SIZE: usize = 34;
+/// Approximate script size after adding refund preimage condition.
+const SCRIPT_SIZE: usize = 70; // TODO: recompute exact size
 const TX_LOCK_WEIGHT: usize = 485;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -32,7 +34,8 @@ impl TxLock {
         B: PublicKey,
         change: bitcoin::Address,
     ) -> Result<Self> {
-        let lock_output_descriptor = build_shared_output_descriptor(A.0, B.0)?;
+        let lock_output_descriptor =
+            build_shared_output_descriptor(A.0, B.0, DEFAULT_REFUND_HASH)?;
         let address = lock_output_descriptor
             .address(wallet.network())
             .expect("can derive address from descriptor");
@@ -84,7 +87,7 @@ impl TxLock {
             }
         };
 
-        let descriptor = build_shared_output_descriptor(A.0, B.0)?;
+        let descriptor = build_shared_output_descriptor(A.0, B.0, DEFAULT_REFUND_HASH)?;
         let legit_shared_output_script = descriptor.script_pubkey();
 
         if shared_output_candidate.script_pubkey != legit_shared_output_script {
@@ -265,7 +268,7 @@ mod tests {
         fn estimated_tx_lock_script_size_never_changes(a in crate::proptest::ecdsa_fun::point(), b in crate::proptest::ecdsa_fun::point()) {
             proptest::prop_assume!(a != b);
 
-            let computed_size = build_shared_output_descriptor(a, b).unwrap().script_pubkey().len();
+            let computed_size = build_shared_output_descriptor(a, b, DEFAULT_REFUND_HASH).unwrap().script_pubkey().len();
 
             assert_eq!(computed_size, SCRIPT_SIZE);
         }

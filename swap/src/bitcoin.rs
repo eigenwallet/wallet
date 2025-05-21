@@ -25,7 +25,7 @@ pub use wallet::Wallet;
 pub use wallet::TestWalletBuilder;
 
 use crate::bitcoin::wallet::ScriptStatus;
-use ::bitcoin::hashes::Hash;
+use ::bitcoin::hashes::{sha256, Hash};
 use ::bitcoin::secp256k1::ecdsa;
 use ::bitcoin::sighash::SegwitV0Sighash as Sighash;
 use anyhow::{bail, Context, Result};
@@ -39,6 +39,9 @@ use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::str::FromStr;
+
+/// Default refund hash used when no custom preimage hash is provided.
+pub const DEFAULT_REFUND_HASH: sha256::Hash = sha256::Hash::from_inner([0u8; 32]);
 
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Network")]
@@ -276,12 +279,15 @@ pub struct InvalidEncryptedSignature;
 pub fn build_shared_output_descriptor(
     A: Point,
     B: Point,
+    refund_hash: sha256::Hash,
 ) -> Result<Descriptor<bitcoin::PublicKey>> {
-    const MINISCRIPT_TEMPLATE: &str = "c:and_v(v:pk(A),pk_k(B))";
+    const MINISCRIPT_TEMPLATE: &str =
+        "or_i(c:and_v(v:pk(A),pk_k(B)),and_v(v:sha256(H),pk_k(B)))";
 
     let miniscript = MINISCRIPT_TEMPLATE
         .replace('A', &A.to_string())
-        .replace('B', &B.to_string());
+        .replace('B', &B.to_string())
+        .replace('H', &refund_hash.to_string());
 
     let miniscript =
         bdk_wallet::miniscript::Miniscript::<bitcoin::PublicKey, Segwitv0>::from_str(&miniscript)

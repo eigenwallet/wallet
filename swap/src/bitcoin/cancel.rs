@@ -2,6 +2,7 @@ use crate::bitcoin;
 use crate::bitcoin::wallet::Watchable;
 use crate::bitcoin::{
     build_shared_output_descriptor, Address, Amount, BlockHeight, PublicKey, Transaction, TxLock,
+    DEFAULT_REFUND_HASH,
 };
 use ::bitcoin::sighash::SighashCache;
 use ::bitcoin::transaction::Version;
@@ -123,7 +124,8 @@ impl TxCancel {
         B: PublicKey,
         spending_fee: Amount,
     ) -> Result<Self> {
-        let cancel_output_descriptor = build_shared_output_descriptor(A.0, B.0)?;
+        let cancel_output_descriptor =
+            build_shared_output_descriptor(A.0, B.0, DEFAULT_REFUND_HASH)?;
 
         let tx_in = TxIn {
             previous_output: tx_lock.as_outpoint(),
