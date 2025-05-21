@@ -220,6 +220,9 @@ async fn next_state(
                 },
             );
 
+            let tx_early_refund_status = bitcoin_wallet
+                .subscribe_to(state3.construct_tx_early_refund())
+                .await;
             let tx_lock_status = bitcoin_wallet.subscribe_to(state3.tx_lock.clone()).await;
 
             // Check whether we can cancel the swap, and do so if possible
@@ -267,8 +270,17 @@ async fn next_state(
                 // Stop when the cancel timelock expires
                 status.is_confirmed_with(state3.cancel_timelock)
             });
+            let early_refund_tx_seen = tx_early_refund_status.wait_until_seen();
 
             select! {
+                // Alice published the early refund transaction
+                early_refund_tx = early_refund_tx_seen => {
+                    tracing::info!("Alice unilaterally refunded us our Bitcoin");
+
+                    BobState::BtcEarlyRefunded {
+                        tx_early_refund: state3.tx_early_refund.compute_txid(),
+                    }
+                },
                 // Alice sent us the transfer proof for the Monero she locked
                 transfer_proof = transfer_proof_watcher => {
                     let transfer_proof = transfer_proof?;
@@ -304,6 +316,9 @@ async fn next_state(
                 },
             );
 
+            let tx_early_refund_status = bitcoin_wallet
+                .subscribe_to(state.construct_tx_early_refund())
+                .await;
             let tx_lock_status = bitcoin_wallet.subscribe_to(state.tx_lock.clone()).await;
 
             // Check if the cancel timelock has expired
@@ -366,7 +381,14 @@ async fn next_state(
                 result = tx_lock_status.wait_until_confirmed_with(state.cancel_timelock) => {
                     result?;
                     BobState::CancelTimelockExpired(state.cancel(monero_wallet_restore_blockheight))
-                }
+                },
+                early_refund_tx = tx_early_refund_status.wait_until_seen() => {
+                    tracing::info!("Alice unilaterally refunded us our Bitcoin");
+
+                    BobState::BtcEarlyRefunded {
+                        tx_early_refund: state.tx_early_refund.compute_txid(),
+                    }
+                },
             }
         }
         BobState::XmrLocked(state) => {
@@ -492,6 +514,16 @@ async fn next_state(
                     );
                 }
                 ExpiredTimelocks::Cancel { .. } => {
+                    // Check if Alice has published the early refund transaction already
+                    // We won't be able to refund ourselves then
+                    if let Ok(tx) = state.check_for_tx_early_refund(bitcoin_wallet).await {
+                        tracing::info!("Alice has unilateraly refunded our Bitcoin");
+
+                        return Ok(BobState::BtcEarlyRefunded {
+                            tx_early_refund: tx.compute_txid(),
+                        });
+                    }
+
                     let btc_refund_txid = state.publish_refund_btc(bitcoin_wallet).await?;
 
                     event_emitter.emit_swap_progress_event(

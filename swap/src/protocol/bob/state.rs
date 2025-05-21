@@ -1,6 +1,5 @@
 use crate::bitcoin::address_serde;
 use crate::bitcoin::wallet::{EstimateFeeRate, Subscription};
-use crate::bitcoin::TxEarlyRefund;
 use crate::bitcoin::{
     self, current_epoch, CancelTimelock, ExpiredTimelocks, PunishTimelock, Transaction, TxCancel,
     TxLock, Txid, Wallet,
@@ -47,6 +46,9 @@ pub enum BobState {
     CancelTimelockExpired(State6),
     BtcCancelled(State6),
     BtcRefunded(State6),
+    BtcEarlyRefunded {
+        tx_early_refund: bitcoin::Txid,
+    },
     XmrRedeemed {
         tx_lock_id: bitcoin::Txid,
     },
@@ -74,6 +76,7 @@ impl fmt::Display for BobState {
             BobState::BtcRefunded(..) => write!(f, "btc is refunded"),
             BobState::XmrRedeemed { .. } => write!(f, "xmr is redeemed"),
             BobState::BtcPunished { .. } => write!(f, "btc is punished"),
+            BobState::BtcEarlyRefunded(..) => write!(f, "btc is early refunded"),
             BobState::SafelyAborted => write!(f, "safely aborted"),
         }
     }
@@ -101,9 +104,10 @@ impl BobState {
                 Some(state.expired_timelock(&bitcoin_wallet).await?)
             }
             BobState::BtcPunished { .. } => Some(ExpiredTimelocks::Punish),
-            BobState::BtcRefunded(_) | BobState::BtcRedeemed(_) | BobState::XmrRedeemed { .. } => {
-                None
-            }
+            BobState::BtcRefunded(_)
+            | BobState::BtcEarlyRefunded { .. }
+            | BobState::BtcRedeemed(_)
+            | BobState::XmrRedeemed { .. } => None,
         })
     }
 }
@@ -513,6 +517,7 @@ impl State3 {
             tx_cancel_status,
         ))
     }
+
     pub fn attempt_cooperative_redeem(
         &self,
         s_a: monero::PrivateKey,
@@ -525,6 +530,10 @@ impl State3 {
             tx_lock: self.tx_lock.clone(),
             monero_wallet_restore_blockheight,
         }
+    }
+
+    pub fn construct_tx_early_refund(&self) -> bitcoin::TxEarlyRefund {
+        bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee)
     }
 }
 
@@ -812,5 +821,18 @@ impl State6 {
             tx_lock: self.tx_lock.clone(),
             monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
         }
+    }
+
+    pub async fn check_for_tx_early_refund(
+        &self,
+        bitcoin_wallet: &bitcoin::Wallet,
+    ) -> Result<Arc<Transaction>> {
+        let tx_early_refund = self.construct_tx_early_refund();
+
+        let tx = bitcoin_wallet
+            .get_raw_transaction(tx_early_refund.txid())
+            .await?;
+
+        Ok(tx)
     }
 }
