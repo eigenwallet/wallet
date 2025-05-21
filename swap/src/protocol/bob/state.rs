@@ -1,5 +1,6 @@
 use crate::bitcoin::address_serde;
 use crate::bitcoin::wallet::{EstimateFeeRate, Subscription};
+use crate::bitcoin::TxEarlyRefund;
 use crate::bitcoin::{
     self, current_epoch, CancelTimelock, ExpiredTimelocks, PunishTimelock, Transaction, TxCancel,
     TxLock, Txid, Wallet,
@@ -205,6 +206,7 @@ impl State0 {
             bail!("Alice's dleq proof doesn't verify")
         }
 
+        // Here: Allow TxLock to be spent with both Bobs sig and Alices sig
         let tx_lock = bitcoin::TxLock::new(
             wallet,
             self.btc,
@@ -275,8 +277,12 @@ impl State1 {
             self.b.public(),
             self.tx_cancel_fee,
         )?;
+
         let tx_refund =
             bitcoin::TxRefund::new(&tx_cancel, &self.refund_address, self.tx_refund_fee);
+
+        let tx_early_refund =
+            bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee);
 
         bitcoin::verify_sig(&self.A, &tx_cancel.digest(), &msg.tx_cancel_sig)?;
         bitcoin::verify_encsig(
@@ -359,11 +365,17 @@ impl State2 {
             self.punish_timelock,
             self.tx_punish_fee,
         );
+
+        let tx_early_refund =
+            bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee);
+
         let tx_punish_sig = self.b.sign(tx_punish.digest());
+        let tx_early_refund_sig = self.b.sign(tx_early_refund.digest());
 
         Message4 {
             tx_punish_sig,
             tx_cancel_sig,
+            tx_early_refund_sig,
         }
     }
 

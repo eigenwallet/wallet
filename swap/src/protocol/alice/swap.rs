@@ -107,7 +107,8 @@ where
                         minutes = %env_config.bitcoin_lock_confirmed_timeout.as_secs_f64() / 60.0,
                         "TxLock lock did not get enough confirmations in time",
                     );
-                    AliceState::SafelyAborted
+
+                    AliceState::EarlyRefundable { state3 }
                 }
                 Ok(res) => {
                     res?;
@@ -178,9 +179,18 @@ where
                         swap_id = %swap_id,
                         "We did not manage to lock the Monero funds before the timelock expired. Aborting swap."
                     );
-                    AliceState::SafelyAborted
+                    AliceState::EarlyRefundable { state3 }
                 }
             }
+        }
+        AliceState::EarlyRefundable { state3 } => {
+            let tx_early_refund = state3.signed_early_refund_transaction()?;
+
+            bitcoin_wallet
+                .broadcast(tx_early_refund, "early_refund")
+                .await?;
+
+            AliceState::EarlyRefunded { tx_early_refund }
         }
         AliceState::XmrLockTransactionSent {
             monero_wallet_restore_blockheight,
@@ -509,6 +519,9 @@ where
         AliceState::XmrRefunded => AliceState::XmrRefunded,
         AliceState::BtcRedeemed => AliceState::BtcRedeemed,
         AliceState::BtcPunished { state3 } => AliceState::BtcPunished { state3 },
+        AliceState::EarlyRefunded { early_refund_tx } => {
+            AliceState::EarlyRefunded { early_refund_tx }
+        }
         AliceState::SafelyAborted => AliceState::SafelyAborted,
     })
 }
