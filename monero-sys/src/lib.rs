@@ -329,8 +329,9 @@ impl WalletHandle {
     /// Allow the wallet to connect to a daemon with a different version.
     /// Also trusts the daemon.
     /// Only used for regtests.
+    /// Also forces a full sync, which is only feasible in regtests.
     #[doc(hidden)]
-    pub async fn __unsafe_never_call_outside_regtests_or_you_will_go_to_hell(&self) {
+    pub async fn unsafe_prepare_for_regtest(&self) {
         self.call(move |wallet| {
             wallet.force_full_sync();
             wallet.allow_mismatched_daemon_version();
@@ -348,6 +349,7 @@ impl WalletHandle {
         const POLL_INTERVAL_MILLIS: u64 = 500;
 
         tracing::debug!("Waiting for wallet to sync");
+        return self.call(move |wallet| wallet.refresh_blocking()).await;
 
         // Initiate the sync (make sure to drop the lock right after)
         {
@@ -927,6 +929,19 @@ impl FfiWallet {
         self.inner.pinned().refreshAsync();
     }
 
+    /// Refresh the wallet synchronously.
+    /// No possibility for progress reporting.
+    fn refresh_blocking(&mut self) -> anyhow::Result<()> {
+        let success = self.inner.pinned().refresh();
+
+        if !success {
+            self.check_error().context("Failed to refresh wallet")?;
+            anyhow::bail!("Failed to refresh wallet (no reason given)");
+        }
+
+        Ok(())
+    }
+
     /// Get the current blockchain height.
     fn blockchain_height(&self) -> u64 {
         self.inner.blockChainHeight()
@@ -1063,7 +1078,7 @@ impl FfiWallet {
         // Check for errors (make sure to dispose the transaction)
         if result.is_err() {
             self.dispose_transaction(pending_tx);
-            bail!("Failed to publish transaction");
+            return Err(result.expect_err("result is an error as per the check above"));
         }
 
         // Fetch the tx key from the wallet.

@@ -193,7 +193,7 @@ namespace monero_rust_log
                 level = 4;
                 break;
             default:
-                level = 1; // Default to info.
+                level = 1; // Default to debug.
                 break;
             }
 

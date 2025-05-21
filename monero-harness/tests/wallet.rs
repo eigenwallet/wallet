@@ -8,7 +8,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 async fn fund_transfer_and_check_tx_key() {
     let _guard = tracing_subscriber::fmt()
         .with_env_filter(
-            "info,test=debug,monero_harness=debug,monero_rpc=debug,monero_sys=trace,wallet=debug",
+            "info,test=debug,monero_harness=debug,monero_rpc=debug,monero_sys=trace,wallet=debug,monero_cpp=trace",
         )
         .set_default();
 

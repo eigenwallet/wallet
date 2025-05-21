@@ -176,6 +176,9 @@ pub mod ffi {
         /// Get the total unlocked balance across all accounts in atomic units (piconero).
         fn unlockedBalanceAll(self: &Wallet) -> u64;
 
+        /// Refresh the wallet synchronously.
+        fn refresh(self: Pin<&mut Wallet>) -> bool;
+
         /// Force a specific restore height.
         fn setRefreshFromBlockHeight(self: Pin<&mut Wallet>, height: u64);
 

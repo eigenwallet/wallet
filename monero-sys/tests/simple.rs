@@ -1,3 +1,4 @@
+use monero::Amount;
 use monero_sys::{Daemon, SyncProgress, WalletHandle};
 
 const STAGENET_REMOTE_NODE: &str = "node.sethforprivacy.com:38089";
@@ -46,6 +47,19 @@ async fn main() {
         .expect("Failed to sync wallet");
 
     tracing::info!("Wallet is synchronized!");
+
+    let balance = wallet.total_balance().await;
+    tracing::info!("Balance: {}", balance);
+
+    let unlocked_balance = wallet.unlocked_balance().await;
+    tracing::info!("Unlocked balance: {}", unlocked_balance);
+
+    tracing::info!("Transferring 1 XMR to ourselves");
+
+    wallet
+        .transfer(&wallet.main_address().await, Amount::ONE_XMR)
+        .await
+        .unwrap();
 
     let balance = wallet.total_balance().await;
     tracing::info!("Balance: {}", balance);

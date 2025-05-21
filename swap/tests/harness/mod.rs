@@ -29,7 +29,7 @@ use swap::protocol::bob::BobState;
 use swap::protocol::{alice, bob, Database};
 use swap::seed::Seed;
 use swap::{asb, bitcoin, cli, env, monero};
-use tempfile::NamedTempFile;
+use tempfile::{NamedTempFile, TempDir};
 use testcontainers::clients::Cli;
 use testcontainers::{Container, RunnableImage};
 use tokio::sync::mpsc;
@@ -67,11 +67,14 @@ where
     let electrs_rpc_port = containers.electrs.get_host_port_ipv4(electrs::RPC_PORT);
 
     let alice_seed = Seed::random().unwrap();
+    let alice_db_path = NamedTempFile::new().unwrap().path().to_path_buf();
+    let alice_monero_dir = TempDir::new().unwrap().path().join("alice-monero-wallet");
     let (alice_bitcoin_wallet, alice_monero_wallet) = init_test_wallets(
         MONERO_WALLET_NAME_ALICE,
         containers.bitcoind_url.clone(),
         &monero,
         &containers._monerod_container,
+        alice_monero_dir,
         alice_starting_balances.clone(),
         electrs_rpc_port,
         &alice_seed,
@@ -84,7 +87,6 @@ where
         .parse()
         .expect("failed to parse Alice's address");
 
-    let alice_db_path = NamedTempFile::new().unwrap().path().to_path_buf();
     let (alice_handle, alice_swap_handle) = start_alice(
         &alice_seed,
         alice_db_path.clone(),
@@ -97,12 +99,13 @@ where
 
     let bob_seed = Seed::random().unwrap();
     let bob_starting_balances = StartingBalances::new(btc_amount * 10, monero::Amount::ZERO, None);
-
+    let bob_monero_dir = TempDir::new().unwrap().path().join("bob-monero-wallet");
     let (bob_bitcoin_wallet, bob_monero_wallet) = init_test_wallets(
         MONERO_WALLET_NAME_BOB,
         containers.bitcoind_url,
         &monero,
         &containers._monerod_container,
+        bob_monero_dir,
         bob_starting_balances.clone(),
         electrs_rpc_port,
         &bob_seed,
@@ -286,6 +289,7 @@ async fn init_test_wallets(
     bitcoind_url: Url,
     monero: &Monero,
     monerod_container: &Container<'_, image::Monerod>,
+    monero_wallet_dir: PathBuf,
     starting_balances: StartingBalances,
     electrum_rpc_port: u16,
     seed: &Seed,
@@ -312,7 +316,7 @@ async fn init_test_wallets(
         ssl: false,
     };
 
-    let wallet_dir = datadir.join("monero").join("monero-data");
+    let wallet_dir = monero_wallet_dir.join("monero").join("monero-data");
     let xmr_wallet = monero::Wallets::new(
         wallet_dir,
         name.to_string(),
@@ -330,7 +334,7 @@ async fn init_test_wallets(
         xmr_wallet
             .get_main_wallet()
             .await
-            .__unsafe_never_call_outside_regtests_or_you_will_go_to_hell()
+            .unsafe_prepare_for_regtest()
             .await;
     }
 
