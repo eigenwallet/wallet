@@ -9473,6 +9473,7 @@ dependencies = [
  "monero",
  "monero-harness",
  "monero-rpc",
+ "monero-sys",
  "once_cell",
  "pem",
  "proptest",
