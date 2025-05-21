@@ -1027,7 +1027,6 @@ pub async fn withdraw_btc(
     })
 }
 
-
 #[tracing::instrument(fields(method = "get_balance"), skip(context))]
 pub async fn get_balance(balance: BalanceArgs, context: Arc<Context>) -> Result<BalanceResponse> {
     let BalanceArgs { force_refresh } = balance;

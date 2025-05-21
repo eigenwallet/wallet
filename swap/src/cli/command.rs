@@ -1,8 +1,7 @@
 use crate::bitcoin::{bitcoin_address, Amount};
 use crate::cli::api::request::{
     BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, ExportBitcoinWalletArgs, GetConfigArgs,
-    GetHistoryArgs, ListSellersArgs, MoneroRecoveryArgs, Request, ResumeSwapArgs,
-    WithdrawBtcArgs,
+    GetHistoryArgs, ListSellersArgs, MoneroRecoveryArgs, Request, ResumeSwapArgs, WithdrawBtcArgs,
 };
 use crate::cli::api::Context;
 use crate::monero;
