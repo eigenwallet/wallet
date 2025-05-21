@@ -274,11 +274,11 @@ async fn next_state(
 
             select! {
                 // Alice published the early refund transaction
-                early_refund_tx = early_refund_tx_seen => {
+                _ = early_refund_tx_seen => {
                     tracing::info!("Alice unilaterally refunded us our Bitcoin");
 
                     BobState::BtcEarlyRefunded {
-                        tx_early_refund: state3.tx_early_refund.compute_txid(),
+                        tx_early_refund: state3.construct_tx_early_refund().txid(),
                     }
                 },
                 // Alice sent us the transfer proof for the Monero she locked
@@ -382,11 +382,11 @@ async fn next_state(
                     result?;
                     BobState::CancelTimelockExpired(state.cancel(monero_wallet_restore_blockheight))
                 },
-                early_refund_tx = tx_early_refund_status.wait_until_seen() => {
+                _ = tx_early_refund_status.wait_until_seen() => {
                     tracing::info!("Alice unilaterally refunded us our Bitcoin");
 
                     BobState::BtcEarlyRefunded {
-                        tx_early_refund: state.tx_early_refund.compute_txid(),
+                        tx_early_refund: state.construct_tx_early_refund().txid(),
                     }
                 },
             }
@@ -649,6 +649,9 @@ async fn next_state(
             };
         }
         // TODO: Emit a Tauri event here
+        BobState::BtcEarlyRefunded { tx_early_refund } => {
+            BobState::BtcEarlyRefunded { tx_early_refund }
+        }
         BobState::SafelyAborted => BobState::SafelyAborted,
         BobState::XmrRedeemed { tx_lock_id } => {
             event_emitter.emit_swap_progress_event(

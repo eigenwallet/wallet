@@ -76,7 +76,7 @@ impl fmt::Display for BobState {
             BobState::BtcRefunded(..) => write!(f, "btc is refunded"),
             BobState::XmrRedeemed { .. } => write!(f, "xmr is redeemed"),
             BobState::BtcPunished { .. } => write!(f, "btc is punished"),
-            BobState::BtcEarlyRefunded(..) => write!(f, "btc is early refunded"),
+            BobState::BtcEarlyRefunded { .. } => write!(f, "btc is early refunded"),
             BobState::SafelyAborted => write!(f, "safely aborted"),
         }
     }
@@ -810,9 +810,14 @@ impl State6 {
         Ok(signed_tx_refund)
     }
 
+    pub fn construct_tx_early_refund(&self) -> bitcoin::TxEarlyRefund {
+        bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee)
+    }
+
     pub fn tx_lock_id(&self) -> bitcoin::Txid {
         self.tx_lock.txid()
     }
+
     pub fn attempt_cooperative_redeem(&self, s_a: monero::PrivateKey) -> State5 {
         State5 {
             s_a,
@@ -828,7 +833,6 @@ impl State6 {
         bitcoin_wallet: &bitcoin::Wallet,
     ) -> Result<Arc<Transaction>> {
         let tx_early_refund = self.construct_tx_early_refund();
-
         let tx = bitcoin_wallet
             .get_raw_transaction(tx_early_refund.txid())
             .await?;

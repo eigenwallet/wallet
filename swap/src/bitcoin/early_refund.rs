@@ -4,10 +4,9 @@ use ::bitcoin::sighash::SighashCache;
 use ::bitcoin::{secp256k1, ScriptBuf};
 use ::bitcoin::{sighash::SegwitV0Sighash as Sighash, EcdsaSighashType, Txid};
 use anyhow::{Context, Result};
-use bdk_chain::miniscript::psbt::PsbtExt;
 use bdk_wallet::miniscript::Descriptor;
 use bitcoin::{Address, Amount, Transaction};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use super::wallet::Watchable;
 use super::TxLock;

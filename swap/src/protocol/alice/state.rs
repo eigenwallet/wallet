@@ -84,7 +84,7 @@ pub enum AliceState {
     },
     SafelyAborted,
     EarlyRefunded {
-        tx_early_refund: bitcoin::Transaction,
+        tx_early_refund_txid: bitcoin::Txid,
     },
 }
 
