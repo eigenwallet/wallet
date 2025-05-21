@@ -74,9 +74,36 @@ impl<'c> Monero {
         let containers: Vec<Container<'c, image::MoneroWalletRpc>> = vec![];
         let mut wallets = vec![];
 
+        let daemon = {
+            let monerod_port = monerod_container.get_host_port_ipv4(RPC_PORT);
+            let monerod_url = format!("http://127.0.0.1:{}", monerod_port);
+            Daemon {
+                address: monerod_url,
+                ssl: false,
+            }
+        };
+
+        {
+            let client = reqwest::Client::new();
+            let response = client
+                .get(format!("{}/get_info", &daemon.address))
+                .send()
+                .await?;
+            tracing::info!("Monerod response at /get_info: {:?}", response.status());
+
+            let response = client
+                .get(format!("{}/json_rpc", &daemon.address))
+                .send()
+                .await?;
+            tracing::info!(
+                "Monerod response at /json_rpc: {:?}",
+                response.text().await?
+            );
+        }
+
         let miner = "miner";
         tracing::info!("Creating miner wallet: {}", miner);
-        let miner_wallet = MoneroWallet::new(miner, &monerod, &monerod_container, prefix.clone())
+        let miner_wallet = MoneroWallet::new(miner, daemon.clone(), prefix.clone())
             .await
             .context("Failed to create miner wallet")?;
 
@@ -88,9 +115,7 @@ impl<'c> Monero {
 
             let wallet_instance = tokio::time::timeout(Duration::from_secs(300), async {
                 loop {
-                    match MoneroWallet::new(wallet, &monerod, &monerod_container, prefix.clone())
-                        .await
-                    {
+                    match MoneroWallet::new(wallet, daemon.clone(), prefix.clone()).await {
                         Ok(w) => break w,
                         Err(e) => {
                             tracing::warn!(
@@ -326,30 +351,10 @@ impl<'c> Monerod {
 
 impl MoneroWallet {
     /// Create a new wallet using monero-sys bindings connected to the provided monerod instance.
-    async fn new(
-        name: &str,
-        monerod: &Monerod,
-        monerod_container: &Container<'_, image::Monerod>,
-        prefix: String,
-    ) -> Result<Self> {
+    async fn new(name: &str, daemon: Daemon, prefix: String) -> Result<Self> {
         // Wallet files will be stored in the system temporary directory with the prefix to avoid clashes
         let mut wallet_path = std::env::temp_dir();
         wallet_path.push(format!("{}{}", prefix, name));
-
-        let daemon_address = format!(
-            "127.0.0.1:{}",
-            monerod_container
-                .ports()
-                .map_to_host_port_ipv4(RPC_PORT)
-                .context("Failed to get monerod RPC port")?
-        );
-
-        tracing::info!("Daemon address: {}", daemon_address);
-
-        let daemon = Daemon {
-            address: daemon_address,
-            ssl: false,
-        };
 
         // Use Mainnet network type – regtest daemon accepts mainnet prefixes
         // and this avoids address-parsing errors when calling daemon RPCs.

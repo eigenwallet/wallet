@@ -332,6 +332,7 @@ impl WalletHandle {
     #[doc(hidden)]
     pub async fn __unsafe_never_call_outside_regtests_or_you_will_go_to_hell(&self) {
         self.call(move |wallet| {
+            wallet.force_full_sync();
             wallet.allow_mismatched_daemon_version();
             wallet.set_trusted_daemon(true);
         })
@@ -906,6 +907,12 @@ impl FfiWallet {
     /// _Do not use for anything besides testing._
     fn set_trusted_daemon(&mut self, trusted: bool) {
         self.inner.pinned().setTrustedDaemon(trusted);
+    }
+
+    /// Force a full sync of the wallet.
+    /// Use only for regtest environments, utterly slow otherwise.
+    fn force_full_sync(&mut self) {
+        self.inner.pinned().setRefreshFromBlockHeight(0);
     }
 
     /// Start the background refresh thread (refreshes every 10 seconds).

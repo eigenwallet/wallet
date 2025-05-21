@@ -8,6 +8,7 @@ use cxx::CxxString;
 /// function/type we wish to call.
 #[cxx::bridge(namespace = "Monero")]
 pub mod ffi {
+
     /// The type of the network.
     enum NetworkType {
         #[rust_name = "Mainnet"]
@@ -174,6 +175,9 @@ pub mod ffi {
 
         /// Get the total unlocked balance across all accounts in atomic units (piconero).
         fn unlockedBalanceAll(self: &Wallet) -> u64;
+
+        /// Force a specific restore height.
+        fn setRefreshFromBlockHeight(self: Pin<&mut Wallet>, height: u64);
 
         /// Set whether to allow mismatched daemon versions.
         fn setAllowMismatchedDaemonVersion(self: Pin<&mut Wallet>, allow_mismatch: bool);
