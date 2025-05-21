@@ -20,7 +20,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, Once};
 use tauri_bindings::{
-    PendingCompleted, TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter, TauriHandle
+    PendingCompleted, TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter, TauriHandle,
 };
 use tokio::sync::{broadcast, broadcast::Sender, Mutex as TokioMutex, RwLock};
 use tokio::task::JoinHandle;
@@ -315,10 +315,12 @@ impl ContextBuilder {
         let tasks = PendingTaskList::default().into();
 
         // Initialize the database
-        let db_progress_handle = self.tauri_handle.new_background_process_with_initial_progress(
-            TauriBackgroundProgress::OpeningDatabase,
-            (),
-        );
+        let db_progress_handle = self
+            .tauri_handle
+            .new_background_process_with_initial_progress(
+                TauriBackgroundProgress::OpeningDatabase,
+                (),
+            );
 
         let db = open_db(
             data_dir.join("sqlite"),
@@ -335,14 +337,22 @@ impl ContextBuilder {
                 Some(bitcoin) => {
                     let (url, target_block) = bitcoin.apply_defaults(self.is_testnet)?;
 
-                    let bitcoin_progress_handle = self.tauri_handle.new_background_process_with_initial_progress(
-                        TauriBackgroundProgress::OpeningBitcoinWallet,
-                        (),
-                    );
+                    let bitcoin_progress_handle = self
+                        .tauri_handle
+                        .new_background_process_with_initial_progress(
+                            TauriBackgroundProgress::OpeningBitcoinWallet,
+                            (),
+                        );
 
-                    let wallet =
-                        init_bitcoin_wallet(url, &seed, data_dir.clone(), env_config, target_block)
-                            .await?;
+                    let wallet = init_bitcoin_wallet(
+                        url,
+                        &seed,
+                        data_dir.to_path_buf(),
+                        env_config,
+                        target_block,
+                        self.tauri_handle.clone(),
+                    )
+                    .await?;
 
                     bitcoin_progress_handle.finish();
 
@@ -359,10 +369,12 @@ impl ContextBuilder {
                 return Ok(None);
             };
 
-            let monero_progress_handle = self.tauri_handle.new_background_process_with_initial_progress(
-                TauriBackgroundProgress::OpeningMoneroWallet,
-                (),
-            );
+            let monero_progress_handle = self
+                .tauri_handle
+                .new_background_process_with_initial_progress(
+                    TauriBackgroundProgress::OpeningMoneroWallet,
+                    (),
+                );
 
             let daemon = monero_sys::Daemon {
                 address: monero.monero_node_address.to_string(),
@@ -498,20 +510,27 @@ async fn init_bitcoin_wallet(
     data_dir: PathBuf,
     env_config: EnvConfig,
     bitcoin_target_block: u16,
+    tauri_handle_option: Option<TauriHandle>,
 ) -> Result<bitcoin::Wallet> {
-    let wallet_dir = data_dir.join("wallet");
+    let mut builder = bitcoin::wallet::WalletBuilder::default()
+        .seed(seed.clone())
+        .network(env_config.bitcoin_network)
+        .electrum_rpc_url(electrum_rpc_url.as_str().to_string())
+        .persister(bitcoin::wallet::PersisterConfig::SqliteFile {
+            data_dir: data_dir.to_path_buf(),
+        })
+        .finality_confirmations(env_config.bitcoin_finality_confirmations)
+        .target_block(bitcoin_target_block)
+        .sync_interval(env_config.bitcoin_sync_interval());
 
-    let wallet = bitcoin::Wallet::new(
-        electrum_rpc_url.clone(),
-        &wallet_dir,
-        seed.derive_extended_private_key(env_config.bitcoin_network)?,
-        env_config,
-        bitcoin_target_block,
-    )
-    .await
-    .context("Failed to initialize Bitcoin wallet")?;
+    if let Some(handle) = tauri_handle_option {
+        builder = builder.tauri_handle(handle.clone());
+    }
 
-    wallet.sync().await?;
+    let wallet = builder
+        .build()
+        .await
+        .context("Failed to initialize Bitcoin wallet")?;
 
     Ok(wallet)
 }
