@@ -277,8 +277,15 @@ async fn next_state(
                 _ = early_refund_tx_seen => {
                     tracing::info!("Alice unilaterally refunded us our Bitcoin");
 
+                    let tx_early_refund = state3.construct_tx_early_refund().txid();
+
+                    event_emitter.emit_swap_progress_event(
+                        swap_id,
+                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund },
+                    );
+
                     BobState::BtcEarlyRefunded {
-                        tx_early_refund: state3.construct_tx_early_refund().txid(),
+                        tx_early_refund,
                     }
                 },
                 // Alice sent us the transfer proof for the Monero she locked
@@ -384,6 +391,11 @@ async fn next_state(
                 },
                 _ = tx_early_refund_status.wait_until_seen() => {
                     tracing::info!("Alice unilaterally refunded us our Bitcoin");
+
+                    event_emitter.emit_swap_progress_event(
+                        swap_id,
+                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund },
+                    );
 
                     BobState::BtcEarlyRefunded {
                         tx_early_refund: state.construct_tx_early_refund().txid(),
@@ -519,9 +531,16 @@ async fn next_state(
                     if let Ok(tx) = state.check_for_tx_early_refund(bitcoin_wallet).await {
                         tracing::info!("Alice has unilateraly refunded our Bitcoin");
 
-                        return Ok(BobState::BtcEarlyRefunded {
-                            tx_early_refund: tx.compute_txid(),
-                        });
+                        let tx_early_refund = tx.compute_txid();
+
+                        event_emitter.emit_swap_progress_event(
+                            swap_id,
+                            TauriSwapProgressEvent::BtcRefunded {
+                                btc_refund_txid: tx_early_refund,
+                            },
+                        );
+
+                        return Ok(BobState::BtcEarlyRefunded { tx_early_refund });
                     }
 
                     let btc_refund_txid = state.publish_refund_btc(bitcoin_wallet).await?;
