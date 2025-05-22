@@ -551,6 +551,7 @@ async fn init_monero_wallet(
         DEFAULT_WALLET.to_string(),
         monero_daemon,
         network,
+        false,
     )
     .await
     .context("Failed to initialize Monero wallets")?;

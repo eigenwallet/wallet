@@ -1,7 +1,7 @@
 use monero::Amount;
 use monero_sys::{Daemon, SyncProgress, WalletHandle};
 
-const STAGENET_REMOTE_NODE: &str = "node.sethforprivacy.com:38089";
+const STAGENET_REMOTE_NODE: &str = "http://node.sethforprivacy.com:38089";
 const STAGENET_WALLET_SEED: &str = "echo ourselves ruined oven masterful wives enough addicted future cottage illness adopt lucky movement tiger taboo imbalance antics iceberg hobby oval aloof tuesday uttered oval";
 const STAGENET_WALLET_RESTORE_HEIGHT: u64 = 1728128;
 
@@ -54,8 +54,8 @@ async fn main() {
     let unlocked_balance = wallet.unlocked_balance().await;
     tracing::info!("Unlocked balance: {}", unlocked_balance);
 
-    assert!(balance > 0);
-    assert!(unlocked_balance > 0);
+    assert!(balance > Amount::ZERO);
+    assert!(unlocked_balance > Amount::ZERO);
 
     tracing::info!("Transferring 1 XMR to ourselves");
 

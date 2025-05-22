@@ -1,6 +1,8 @@
 mod bridge;
 
-use std::{any::Any, cmp::Ordering, fmt::Display, ops::Deref, pin::Pin, str::FromStr};
+use std::{
+    any::Any, cmp::Ordering, fmt::Display, ops::Deref, path::PathBuf, pin::Pin, str::FromStr,
+};
 
 use anyhow::{bail, Context, Result};
 use cxx::let_cxx_string;
@@ -59,6 +61,10 @@ pub struct FfiWallet {
 /// This is our own wrapper around a raw C++ wallet pointer.
 struct RawWallet {
     inner: *mut ffi::Wallet,
+}
+
+pub const fn no_listener<T>() -> Option<fn(T)> {
+    Some(|_| {})
 }
 
 /// The progress of synchronization of a wallet with the remote node.
@@ -348,9 +354,6 @@ impl WalletHandle {
         // This is ok because this doesn't involve any blocking calls.
         const POLL_INTERVAL_MILLIS: u64 = 500;
 
-        tracing::debug!("Waiting for wallet to sync");
-        return self.call(move |wallet| wallet.refresh_blocking()).await;
-
         // Initiate the sync (make sure to drop the lock right after)
         {
             self.call(move |wallet| {
@@ -383,19 +386,9 @@ impl WalletHandle {
 
         // Continue polling until the sync is complete
         loop {
-            // Get the current sync status (releasing the lock immediately afterwords)
+            // Get the current sync status
             let (synced, sync_progress) =
                 { (self.synchronized().await, self.sync_progress().await) };
-
-            // It's common in regtest environments for current_block to be greater than target_block
-            // Log it as info, but don't treat it as an error
-            if sync_progress.current_block > sync_progress.target_block {
-                tracing::info!(
-                    current = sync_progress.current_block,
-                    target = sync_progress.target_block,
-                    "Current block is greater than target block, considering wallet synced"
-                );
-            }
 
             // Notify the listener (if it exists)
             if sync_progress > current_progress {
@@ -624,9 +617,24 @@ impl WalletManager {
         if self.wallet_exists(path) {
             tracing::info!(wallet=%path, "Wallet already exists, opening it");
 
-            self.open_wallet(path, password, network, daemon.clone())
-                .context(format!("Failed to open wallet `{}`", &path))?;
+            return self
+                .open_wallet(path, password, network, daemon.clone())
+                .context(format!("Failed to open wallet `{}`", &path));
         }
+
+        let pathbuf = PathBuf::from(path);
+        if let Some(directory) = pathbuf.parent() {
+            tracing::debug!(
+                "Making sure to create wallet directory `{}`",
+                directory.display()
+            );
+            std::fs::create_dir_all(directory).context(format!(
+                "failed to create wallet directory `{}`",
+                directory.display()
+            ))?;
+        }
+
+        let path = pathbuf.display().to_string();
 
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
@@ -654,6 +662,7 @@ impl WalletManager {
         }
 
         let raw_wallet = RawWallet::new(wallet_pointer);
+        tracing::debug!(path=%path, "Created wallet from keys, initializing");
         let wallet = FfiWallet::new(raw_wallet, daemon)
             .context(format!("Failed to initialize wallet `{}`", &path))?;
 
@@ -935,6 +944,8 @@ impl FfiWallet {
         let success = self.inner.pinned().refresh();
 
         if !success {
+            let connected = self.connected();
+            tracing::error!(connected, "Failed to sync Monero wallet");
             self.check_error().context("Failed to refresh wallet")?;
             anyhow::bail!("Failed to refresh wallet (no reason given)");
         }
@@ -961,13 +972,24 @@ impl FfiWallet {
     }
 
     /// Get the total balance across all accounts.
-    fn total_balance(&self) -> monero::Amount {
+    fn total_balance(&mut self) -> monero::Amount {
+        tracing::debug!("Getting total balance, syncing if needed");
+
+        if let Err(err) = self.refresh_blocking().context("Failed to sync wallet") {
+            tracing::error!(%err, "Failed to sync wallet, retrieving balance without syncing");
+        }
+
         let balance = self.inner.balanceAll();
         monero::Amount::from_pico(balance)
     }
 
     /// Get the total unlocked balance across all accounts in atomic units.
-    fn unlocked_balance(&self) -> monero::Amount {
+    fn unlocked_balance(&mut self) -> monero::Amount {
+        tracing::debug!("Getting unlocked balance, syncing if needed");
+        if let Err(err) = self.refresh_blocking().context("Failed to sync wallet") {
+            tracing::error!(%err, "Failed to sync wallet, retrieving balance without syncing");
+        }
+
         let balance = self.inner.unlockedBalanceAll();
         monero::Amount::from_pico(balance)
     }

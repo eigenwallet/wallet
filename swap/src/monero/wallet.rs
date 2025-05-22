@@ -31,6 +31,10 @@ pub struct Wallets {
     network: Network,
     daemon: Daemon,
     main_wallet: Arc<Wallet>,
+    /// Whether we're running in regtest mode.
+    /// Since Network::Regtest isn't a thing we have to use an extra flag.
+    /// When we're in regtest mode, we need to unplug some safty nets to make the Wallet work.
+    regtest: bool,
 }
 
 /// A request to watch for a transfer.
@@ -64,6 +68,7 @@ impl Wallets {
         main_wallet_name: String,
         daemon: Daemon,
         network: Network,
+        regtest: bool,
     ) -> Result<Self> {
         let main_wallet = Wallet::open_or_create(
             wallet_dir.join(&main_wallet_name).display().to_string(),
@@ -72,6 +77,10 @@ impl Wallets {
         )
         .await
         .context("Failed to open main wallet")?;
+
+        if regtest {
+            main_wallet.unsafe_prepare_for_regtest().await;
+        }
 
         let mut wallets = HashMap::new();
         let main_wallet = Arc::new(main_wallet);
@@ -83,6 +92,7 @@ impl Wallets {
             daemon,
             wallets: Mutex::new(wallets),
             main_wallet,
+            regtest,
         };
 
         Ok(wallets)
@@ -90,13 +100,28 @@ impl Wallets {
 
     /// Open the lock wallet of a specific swap.
     /// Used to redeem (Bob) or refund (Alice) the Monero.
-    pub async fn get_swap_wallet(
+    pub async fn swap_wallet(
         &self,
         swap_id: Uuid,
         spend_key: monero::PrivateKey,
         view_key: super::PrivateViewKey,
         restore_height: super::BlockHeight,
     ) -> Result<Arc<Wallet>> {
+        // The wallet's filename is just the swap's uuid as a string
+        let filename = swap_id.to_string();
+        let wallet_path = self.wallet_dir.join(&filename).display().to_string();
+
+        // If we still have a reference to the wallet, return it
+        if let Some(wallet) = self.wallets.lock().await.get(&filename) {
+            if let Some(wallet) = wallet.upgrade() {
+                tracing::debug!(
+                    "Found existing wallet object for swap `{}`, returning it",
+                    filename
+                );
+                return Ok(wallet);
+            }
+        }
+
         // Derive wallet address from the keys
         let address = {
             let pubkey = monero::PublicKey::from_private_key(&view_key.into());
@@ -124,6 +149,10 @@ impl Wallets {
             wallet_path
         ))?;
 
+        if self.regtest {
+            wallet.unsafe_prepare_for_regtest().await;
+        }
+
         let wallet = Arc::new(wallet);
         self.wallets
             .lock()
@@ -134,14 +163,14 @@ impl Wallets {
     }
 
     /// Get the main wallet (specified when initializing the `Wallets` instance).
-    pub async fn get_main_wallet(&self) -> Arc<Wallet> {
+    pub async fn main_wallet(&self) -> Arc<Wallet> {
         self.main_wallet.clone()
     }
 
     /// Get the current blockchain height.
     /// May fail if not connected to a daemon.
     pub async fn blockchain_height(&self) -> Result<BlockHeight> {
-        let wallet = self.get_main_wallet().await;
+        let wallet = self.main_wallet().await;
 
         Ok(BlockHeight {
             height: wallet.blockchain_height().await.context(
@@ -160,7 +189,7 @@ impl Wallets {
         watch_request: WatchRequest,
         listener: Option<impl Fn(u64) + Send + 'static>,
     ) -> Result<()> {
-        let wallet = self.get_main_wallet().await;
+        let wallet = self.main_wallet().await;
 
         let address = Address::standard(
             self.network,

@@ -33,8 +33,7 @@ async fn init_miner_and_mine_to_miner_address() {
     tracing::info!("Mining 10 blocks directly to miner address");
     let blocks = monero
         .monerod()
-        .client()
-        .generateblocks(10, miner_address.to_string())
+        .generate_blocks(10, miner_address.to_string())
         .await
         .unwrap();
     tracing::info!("Generated {} blocks manually", blocks.blocks.len());

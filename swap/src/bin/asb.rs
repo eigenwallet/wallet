@@ -134,11 +134,11 @@ pub async fn main() -> Result<()> {
 
             // Initialize Monero wallet
             let monero_wallet = init_monero_wallet(&config, env_config).await?;
-            let monero_address = monero_wallet.get_main_wallet().await.main_address().await;
+            let monero_address = monero_wallet.main_wallet().await.main_address().await;
             tracing::info!(%monero_address, "Monero wallet address");
 
             // Check Monero balance
-            let wallet = monero_wallet.get_main_wallet().await;
+            let wallet = monero_wallet.main_wallet().await;
 
             let total = wallet.total_balance().await.as_pico();
             let unlocked = wallet.unlocked_balance().await.as_pico();
@@ -333,7 +333,7 @@ pub async fn main() -> Result<()> {
         }
         Command::Balance => {
             let monero_wallet = init_monero_wallet(&config, env_config).await?;
-            let monero_balance = monero_wallet.get_main_wallet().await.total_balance().await;
+            let monero_balance = monero_wallet.main_wallet().await.total_balance().await;
             tracing::info!(%monero_balance);
 
             let bitcoin_wallet = init_bitcoin_wallet(&config, &seed, env_config).await?;
@@ -445,6 +445,7 @@ async fn init_monero_wallet(
         DEFAULT_WALLET_NAME.to_string(),
         daemon,
         env_config.monero_network,
+        false,
     )
     .await
     .context("Failed to initialize Monero wallets")?;

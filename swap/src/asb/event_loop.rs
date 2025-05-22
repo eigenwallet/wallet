@@ -530,10 +530,7 @@ where
 
         let xmr_balance = timeout(
             MAX_WAIT_DURATION,
-            self.monero_wallet
-                .get_main_wallet()
-                .await
-                .unlocked_balance(),
+            self.monero_wallet.main_wallet().await.unlocked_balance(),
         )
         .await
         .context("Timeout while waiting for lock on monero wallet while making quote")?;

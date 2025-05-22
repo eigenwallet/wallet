@@ -539,7 +539,7 @@ impl State3 {
 
         tracing::debug!("Refunding Monero");
         let swap_wallet = monero_wallet
-            .get_swap_wallet(
+            .swap_wallet(
                 swap_id,
                 spend_key,
                 view_key,
@@ -548,7 +548,7 @@ impl State3 {
             .await
             .context(format!("Failed to open/create swap wallet `{}`", swap_id))?;
 
-        let main_address = monero_wallet.get_main_wallet().await.main_address().await;
+        let main_address = monero_wallet.main_wallet().await.main_address().await;
 
         swap_wallet
             .sweep(&main_address)

@@ -59,11 +59,11 @@ impl WalletSnapshot {
         external_redeem_address: &Option<bitcoin::Address>,
         transfer_amount: bitcoin::Amount,
     ) -> Result<Self> {
-        let unlocked_balance = monero_wallet
-            .get_main_wallet()
-            .await
-            .unlocked_balance()
-            .await;
+        let unlocked_balance = monero_wallet.main_wallet().await.unlocked_balance().await;
+        let total_balance = monero_wallet.main_wallet().await.total_balance().await;
+
+        tracing::info!(%unlocked_balance, %total_balance, "Capturing monero wallet snapshot");
+
         let redeem_address = external_redeem_address
             .clone()
             .unwrap_or(bitcoin_wallet.new_address().await?);
@@ -380,7 +380,13 @@ where
 
                         let unlocked = wallet_snapshot.unlocked_balance;
 
-                        if unlocked.as_piconero() < (xmr + wallet_snapshot.lock_fee).as_piconero() {
+                        let needed_balance = xmr + wallet_snapshot.lock_fee;
+                        if unlocked.as_piconero() < needed_balance.as_piconero() {
+                            tracing::warn!(
+                                unlocked_balance = %unlocked,
+                                needed_balance = %needed_balance,
+                                "Rejecting swap, unlocked balance too low"
+                            );
                             return Err(Error::BalanceTooLow {
                                 balance: wallet_snapshot.unlocked_balance,
                                 buy: btc,

@@ -152,7 +152,7 @@ where
 
                     // Lock the Monero
                     let receipt = monero_wallet
-                        .get_main_wallet()
+                        .main_wallet()
                         .await
                         .transfer(&address, amount)
                         .await

@@ -39,9 +39,6 @@ pub mod image;
 /// How often we mine a block.
 const BLOCK_TIME_SECS: u64 = 1;
 
-/// Poll interval when checking if the wallet has synced with monerod.
-const WAIT_WALLET_SYNC_MILLIS: u64 = 1000;
-
 #[derive(Debug)]
 
 pub struct Monero {
@@ -202,16 +199,28 @@ impl<'c> Monero {
     }
 
     pub async fn init_wallet(&self, name: &str, amount_in_outputs: Vec<u64>) -> Result<()> {
+        let wallet = self.wallet(name)?;
+
+        self.init_external_wallet(name, &wallet.wallet, amount_in_outputs)
+            .await
+    }
+
+    pub async fn init_external_wallet(
+        &self,
+        name: &str,
+        wallet: &WalletHandle,
+        amount_in_outputs: Vec<u64>,
+    ) -> Result<()> {
         let miner_wallet = self.wallet("miner")?;
         let miner_address = miner_wallet.address().await?.to_string();
         let monerod = &self.monerod;
 
-        let wallet = self.wallet(name)?;
-        let address = wallet.address().await?;
+        if amount_in_outputs.is_empty() || amount_in_outputs.iter().sum::<u64>() == 0 {
+            tracing::info!(address=%wallet.main_address().await, "Initializing wallet `{}` with {}", name, Amount::ZERO);
+            return Ok(());
+        }
 
         let mut expected_total = 0;
-        let mut expected_unlocked = 0;
-        let mut unlocked = 0;
 
         tracing::info!("Syncing miner wallet");
         miner_wallet.refresh().await?;
@@ -219,35 +228,49 @@ impl<'c> Monero {
         for amount in amount_in_outputs {
             if amount > 0 {
                 miner_wallet
-                    .transfer(&address, amount)
+                    .transfer(&wallet.main_address().await, amount)
                     .await
                     .context("Miner could not transfer funds to wallet")?;
                 expected_total += amount;
-                tracing::info!(
+                tracing::debug!(
                     "Funded wallet `{}` with {}",
-                    wallet.name,
+                    name,
                     Amount::from_pico(amount)
                 );
-
-                tracing::info!("Waiting for wallet to catch up to blockchain");
-                wallet.refresh().await?;
-
-                // sanity checks for total/unlocked balance
-                let total = wallet.balance().await?;
-                assert_eq!(total, expected_total);
-                assert_eq!(unlocked, expected_unlocked);
-
-                monerod.generate_blocks(10, miner_address.clone()).await?;
-                expected_unlocked += amount;
-
-                tracing::info!("Waiting for wallet to catch up to blockchain");
-                wallet.refresh().await?;
-
-                unlocked = wallet.unlocked_balance().await?;
-                assert_eq!(unlocked, expected_unlocked);
-                assert_eq!(total, expected_total);
             }
         }
+
+        tracing::info!(
+            address=%wallet.main_address().await,
+            "Funding wallet `{}` with {}. Generating 10 blocks to unlock.",
+            name,
+            Amount::from_pico(expected_total)
+        );
+        monerod.generate_blocks(10, miner_address.clone()).await?;
+        tracing::info!("Generated 10 blocks to unlock. Waiting for wallet to catch up.");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        let cloned_name = name.to_owned();
+        wallet
+            .wait_until_synced(Some(move |sync_progress: SyncProgress| {
+                tracing::debug!(
+                    current = sync_progress.current_block,
+                    target = sync_progress.target_block,
+                    "Synching wallet {}",
+                    &cloned_name
+                );
+            }))
+            .await
+            .context("Failed to sync Monero wallet up to new 10 blocks")?;
+        let total = wallet.total_balance().await.as_pico();
+
+        assert_eq!(total, expected_total);
+
+        tracing::info!(
+            "Wallet `{}` has received {} (unlocked)",
+            &name,
+            Amount::from_pico(total)
+        );
 
         Ok(())
     }
@@ -412,8 +435,6 @@ impl MoneroWallet {
     }
 
     pub async fn balance(&self) -> Result<u64> {
-        tracing::info!("Checking balance for wallet: {}", self.name);
-
         // First make sure we're connected to the daemon
         let connected = self.wallet.connected().await;
         tracing::debug!("Wallet connected to daemon: {}", connected);
@@ -422,7 +443,7 @@ impl MoneroWallet {
         self.refresh().await?;
 
         let total = self.wallet.total_balance().await.as_pico();
-        tracing::info!("Wallet balance: {} piconero", total);
+        tracing::debug!("Wallet balance (total): {}", Amount::from_pico(total));
         Ok(total)
     }
 
@@ -431,12 +452,15 @@ impl MoneroWallet {
     }
 
     pub async fn refresh(&self) -> Result<()> {
+        let name = self.name.clone();
+
         self.wallet
-            .wait_until_synced(Some(|sync_progress: SyncProgress| {
-                tracing::info!(
+            .wait_until_synced(Some(move |sync_progress: SyncProgress| {
+                tracing::debug!(
                     current = sync_progress.current_block,
                     target = sync_progress.target_block,
-                    "Sync progress"
+                    "Synching wallet {}",
+                    &name
                 );
             }))
             .await?;
