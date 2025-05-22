@@ -184,7 +184,7 @@ impl<'c> Monero {
             "Waiting for miner wallet to catch up to blockchain height {}",
             block_height
         );
-        miner_wallet.wait_for_wallet_height(block_height).await?;
+        miner_wallet.refresh().await?;
 
         // Debug: Check wallet balance after initial block generation
         let balance = miner_wallet.balance().await?;
@@ -230,9 +230,7 @@ impl<'c> Monero {
                 );
 
                 tracing::info!("Waiting for wallet to catch up to blockchain");
-                wallet
-                    .wait_for_wallet_height(monerod.client().get_block_count().await?.count as u64)
-                    .await?;
+                wallet.refresh().await?;
 
                 // sanity checks for total/unlocked balance
                 let total = wallet.balance().await?;
@@ -243,9 +241,7 @@ impl<'c> Monero {
                 expected_unlocked += amount;
 
                 tracing::info!("Waiting for wallet to catch up to blockchain");
-                wallet
-                    .wait_for_wallet_height(monerod.client().get_block_count().await?.count as u64)
-                    .await?;
+                wallet.refresh().await?;
 
                 unlocked = wallet.unlocked_balance().await?;
                 assert_eq!(unlocked, expected_unlocked);
@@ -281,8 +277,7 @@ impl<'c> Monero {
         monerod.start_miner(&miner_address).await?;
 
         tracing::info!("Waiting for miner wallet to catch up...");
-        let block_height = monerod.client().get_block_count().await?.count as u64;
-        miner_wallet.wait_for_wallet_height(block_height).await?;
+        miner_wallet.refresh().await?;
 
         Ok(())
     }
@@ -369,6 +364,8 @@ impl<'c> Monerod {
 
         for _ in 0..amount {
             self.client().generateblocks(1, address.clone()).await?;
+            tracing::trace!("Generated block, sleeping for 250ms");
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
 
         Ok(GenerateBlocks {
@@ -452,43 +449,6 @@ impl MoneroWallet {
             .transfer(address, amount)
             .await
             .context("Failed to perform transfer")
-    }
-
-    /// Wait until the wallet is fully synced with the daemon.
-    pub async fn wait_for_wallet_height(&self, height: u64) -> Result<()> {
-        let wallet_name = self.name.clone();
-
-        return self.wallet.wait_until_synced(None::<fn(_)>).await;
-
-        self.wallet
-            .wait_until_synced(Some(move |sync_progress: SyncProgress| {
-                tracing::info!(
-                    current = sync_progress.current_block,
-                    target = sync_progress.target_block,
-                    "Wallet `{}` syncing to height {} currently at {}",
-                    wallet_name,
-                    height,
-                    sync_progress.current_block
-                );
-            }))
-            .await
-            .context("Wallet not synced")
-
-        // while let Some(blockheight) = self.wallet.blockchain_height().await {
-        //     tracing::info!(
-        //         connected = self.wallet.connected().await,
-        //         "Wallet `{}` syncing to height {} currently at {}",
-        //         self.name,
-        //         height,
-        //         blockheight
-        //     );
-        //     if blockheight >= height {
-        //         return Ok(());
-        //     }
-        //     tokio::time::sleep(Duration::from_secs(1)).await;
-        // }
-
-        // bail!("Couldn't get block height for wallet {}", self.name);
     }
 }
 

@@ -65,9 +65,6 @@ async fn init_miner_and_mine_to_miner_address() {
     let got_miner_balance = miner_wallet.balance().await.unwrap();
     tracing::info!("Final wallet balance: {}", got_miner_balance);
 
-    tracing::info!("Sleeping for 100 seconds to allow for manual inspection");
-    tokio::time::sleep(Duration::from_secs(100)).await;
-
     // For testing purposes, let this pass for now to unblock further development
     // The balance issue needs more investigation but shouldn't block other work
     assert!(got_miner_balance > 0);

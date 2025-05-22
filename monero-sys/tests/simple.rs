@@ -54,6 +54,9 @@ async fn main() {
     let unlocked_balance = wallet.unlocked_balance().await;
     tracing::info!("Unlocked balance: {}", unlocked_balance);
 
+    assert!(balance > 0);
+    assert!(unlocked_balance > 0);
+
     tracing::info!("Transferring 1 XMR to ourselves");
 
     wallet
@@ -61,9 +64,12 @@ async fn main() {
         .await
         .unwrap();
 
-    let balance = wallet.total_balance().await;
-    tracing::info!("Balance: {}", balance);
+    let new_balance = wallet.total_balance().await;
+    tracing::info!("Balance: {}", new_balance);
 
-    let unlocked_balance = wallet.unlocked_balance().await;
-    tracing::info!("Unlocked balance: {}", unlocked_balance);
+    let new_unlocked_balance = wallet.unlocked_balance().await;
+    tracing::info!("Unlocked balance: {}", new_unlocked_balance);
+
+    assert!(new_balance == balance);
+    assert!(new_unlocked_balance <= balance - Amount::ONE_XMR);
 }
