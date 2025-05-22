@@ -636,8 +636,10 @@ impl WalletManager {
 
         let path = pathbuf.display().to_string();
 
+        tracing::debug!(restore_height, %address, "Creating wallet from keys");
+
         let_cxx_string!(path = path);
-        let_cxx_string!(password = password.unwrap_or(""));
+        let_cxx_string!(password = password.unwrap_or("test"));
         let_cxx_string!(language = "English");
         let network_type = network.into();
         let_cxx_string!(address = address.to_string());
@@ -797,9 +799,11 @@ impl FfiWallet {
         }
 
         let mut wallet = Self { inner };
-        wallet.check_error()?;
+        wallet
+            .check_error()
+            .context("Something went wrong while creating the wallet (not null pointer, though)")?;
 
-        tracing::debug!("Initializing wallet");
+        tracing::debug!(address=%wallet.main_address(), "Initializing wallet");
 
         wallet
             .init(&daemon.address, daemon.ssl)

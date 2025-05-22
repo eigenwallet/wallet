@@ -124,10 +124,10 @@ impl Wallets {
 
         // Derive wallet address from the keys
         let address = {
-            let pubkey = monero::PublicKey::from_private_key(&view_key.into());
-            let view_key = monero::PublicKey::from_private_key(&spend_key);
+            let public_spend_key = monero::PublicKey::from_private_key(&spend_key);
+            let public_view_key = monero::PublicKey::from_private_key(&view_key.into());
 
-            monero::Address::standard(self.network, pubkey, view_key)
+            monero::Address::standard(self.network, public_spend_key, public_view_key)
         };
         // The wallet's filename is just the swap's uuid as a string
         let filename = swap_id.to_string();
