@@ -284,6 +284,58 @@ impl WalletHandle {
         Ok(wallet)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub async fn open_or_create_from_keys_with_txids(
+        path: String,
+        password: Option<String>,
+        network: monero::Network,
+        address: monero::Address,
+        view_key: monero::PrivateKey,
+        spend_key: monero::PrivateKey,
+        txids: Vec<String>,
+        daemon: Daemon,
+    ) -> anyhow::Result<Self> {
+        let (call_sender, call_receiver) = unbounded_channel();
+
+        std::thread::spawn(move || {
+            let mut manager =
+                WalletManager::new(daemon.clone()).expect("wallet manager to be created");
+
+            let mut wallet = manager
+                .open_or_create_wallet_from_keys(
+                    &path,
+                    password.as_deref(),
+                    network,
+                    &address,
+                    view_key,
+                    spend_key,
+                    0,
+                    daemon.clone(),
+                )
+                .expect("wallet to be opened or created from keys");
+
+            if let Some(height) = wallet.daemon_blockchain_height() {
+                wallet.set_refresh_from_block_height(height);
+            }
+
+            wallet
+                .scan_transactions(&txids)
+                .expect("scan transactions to succeed");
+
+            let mut wrapped_wallet = Wallet::new(wallet, manager, call_receiver);
+
+            wrapped_wallet.run();
+        });
+
+        let wallet = WalletHandle { call_sender };
+        wallet
+            .check_wallet()
+            .await
+            .context("Failed to create wallet")?;
+
+        Ok(wallet)
+    }
+
     pub async fn path(&self) -> String {
         self.call(move |wallet| wallet.path()).await
     }
@@ -930,6 +982,10 @@ impl FfiWallet {
         self.inner.pinned().setRefreshFromBlockHeight(0);
     }
 
+    fn set_refresh_from_block_height(&mut self, height: u64) {
+        self.inner.pinned().setRefreshFromBlockHeight(height);
+    }
+
     /// Start the background refresh thread (refreshes every 10 seconds).
     fn start_refresh(&mut self) {
         self.inner.pinned().startRefresh();
@@ -996,6 +1052,26 @@ impl FfiWallet {
 
         let balance = self.inner.unlockedBalanceAll();
         monero::Amount::from_pico(balance)
+    }
+
+    fn scan_transaction(&mut self, txid: &str) -> anyhow::Result<()> {
+        let_cxx_string!(txid = txid);
+        let success = ffi::scanTransaction(self.inner.pinned(), &txid);
+
+        if !success {
+            self.check_error().context("Failed to scan transaction")?;
+            anyhow::bail!("Failed to scan transaction");
+        }
+
+        Ok(())
+    }
+
+    fn scan_transactions(&mut self, txids: &[String]) -> anyhow::Result<()> {
+        for txid in txids {
+            self.scan_transaction(txid)?;
+        }
+
+        Ok(())
     }
 
     /// Check if the wallet is synced with the daemon.

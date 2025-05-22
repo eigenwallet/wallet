@@ -162,6 +162,60 @@ impl Wallets {
         Ok(wallet)
     }
 
+    /// Open the lock wallet of a specific swap and manually scan the provided transactions.
+    /// This is used when redeeming the Monero without scanning the full chain.
+    pub async fn swap_wallet_manual(
+        &self,
+        swap_id: Uuid,
+        spend_key: monero::PrivateKey,
+        view_key: super::PrivateViewKey,
+        txids: Vec<String>,
+    ) -> Result<Arc<Wallet>> {
+        let filename = swap_id.to_string();
+        let wallet_path = self.wallet_dir.join(&filename).display().to_string();
+
+        if let Some(wallet) = self.wallets.lock().await.get(&filename) {
+            if let Some(wallet) = wallet.upgrade() {
+                return Ok(wallet);
+            }
+        }
+
+        let address = {
+            let public_spend_key = monero::PublicKey::from_private_key(&spend_key);
+            let public_view_key = monero::PublicKey::from_private_key(&view_key.into());
+
+            monero::Address::standard(self.network, public_spend_key, public_view_key)
+        };
+
+        let wallet = Wallet::open_or_create_from_keys_with_txids(
+            wallet_path.clone(),
+            None,
+            self.network,
+            address,
+            view_key.into(),
+            spend_key,
+            txids,
+            self.daemon.clone(),
+        )
+        .await
+        .context(format!(
+            "Failed to open or create wallet `{}` from the specified keys",
+            wallet_path
+        ))?;
+
+        if self.regtest {
+            wallet.unsafe_prepare_for_regtest().await;
+        }
+
+        let wallet = Arc::new(wallet);
+        self.wallets
+            .lock()
+            .await
+            .insert(filename, Arc::downgrade(&wallet));
+
+        Ok(wallet)
+    }
+
     /// Get the main wallet (specified when initializing the `Wallets` instance).
     pub async fn main_wallet(&self) -> Arc<Wallet> {
         self.main_wallet.clone()

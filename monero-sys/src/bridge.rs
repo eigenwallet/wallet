@@ -233,6 +233,9 @@ pub mod ffi {
 
         /// Dispose of a pending transaction object.
         unsafe fn disposeTransaction(self: Pin<&mut Wallet>, tx: *mut PendingTransaction);
+
+        /// Scan a specific transaction id without syncing the whole chain.
+        fn scanTransaction(self: Pin<&mut Wallet>, txid: &CxxString) -> bool;
     }
 }
 
