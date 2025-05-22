@@ -12,6 +12,7 @@ use crate::network::rendezvous::XmrBtcNamespace;
 use crate::protocol::Database;
 use crate::seed::Seed;
 use crate::{bitcoin, common, monero};
+use crate::monero::wallet_rpc;
 use anyhow::{bail, Context as AnyContext, Error, Result};
 use arti_client::TorClient;
 use futures::future::try_join_all;
@@ -20,7 +21,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, Once};
 use tauri_bindings::{
-    PendingCompleted, TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter, TauriHandle,
+    TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter, TauriHandle,
 };
 use tokio::sync::{broadcast, broadcast::Sender, Mutex as TokioMutex, RwLock};
 use tokio::task::JoinHandle;
@@ -376,9 +377,18 @@ impl ContextBuilder {
                     (),
                 );
 
-            let daemon = monero_sys::Daemon {
-                address: monero.monero_node_address.to_string(),
-                ssl: monero.monero_node_address.to_string().contains("https"),
+            let daemon = if let Some(addr) = monero.monero_node_address {
+                monero_sys::Daemon {
+                    address: addr.to_string(),
+                    ssl: addr.to_string().contains("https"),
+                }
+            } else {
+                let node = wallet_rpc::choose_monero_node(env_config.monero_network).await?;
+                tracing::debug!(%node, "Automatically selected monero node");
+                monero_sys::Daemon {
+                    address: node.to_string(),
+                    ssl: false,
+                }
             };
 
             let manager =
