@@ -21,7 +21,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, Once};
 use tauri_bindings::{
-    PendingCompleted, TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter, TauriHandle,
+    TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter, TauriHandle,
 };
 use tokio::sync::{broadcast, broadcast::Sender, Mutex as TokioMutex, RwLock};
 use tokio::task::JoinHandle;
@@ -384,6 +384,7 @@ impl ContextBuilder {
                 }
             } else {
                 let node = wallet_rpc::choose_monero_node(env_config.monero_network).await?;
+                tracing::debug!(%node, "Automatically selected monero node");
                 monero_sys::Daemon {
                     address: node.to_string(),
                     ssl: false,
