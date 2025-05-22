@@ -501,7 +501,7 @@ pub struct Monero {
         long = "monero-node-address",
         help = "Specify to connect to a monero node of your choice: <host>:<port>"
     )]
-    pub monero_node_address: Url,
+    pub monero_node_address: Option<Url>,
 }
 
 #[derive(structopt::StructOpt, Debug)]
