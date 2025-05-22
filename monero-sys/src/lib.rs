@@ -639,7 +639,7 @@ impl WalletManager {
         tracing::debug!(restore_height, %address, "Creating wallet from keys");
 
         let_cxx_string!(path = path);
-        let_cxx_string!(password = password.unwrap_or("test"));
+        let_cxx_string!(password = password.unwrap_or(""));
         let_cxx_string!(language = "English");
         let network_type = network.into();
         let_cxx_string!(address = address.to_string());
@@ -1084,6 +1084,15 @@ impl FfiWallet {
         let_cxx_string!(address = address.to_string());
         let amount = amount.as_pico();
 
+        tracing::info!(
+            "Transferring {} to {}, refreshing wallet first",
+            amount,
+            address
+        );
+        if let Err(err) = self.refresh_blocking() {
+            tracing::error!(%err, "Failed to refresh wallet, attempting transfer anyway");
+        }
+
         // First we need to create a pending transaction.
         let mut pending_tx = PendingTransaction(ffi::createTransaction(
             self.inner.pinned(),
@@ -1127,6 +1136,10 @@ impl FfiWallet {
     /// Sweep all funds from the wallet to a specified address.
     /// Returns a list of transaction ids of the created transactions.
     fn sweep(&mut self, address: &monero::Address) -> anyhow::Result<Vec<String>> {
+        tracing::info!("Sweeping funds to {}, refreshing wallet first", address);
+
+        self.refresh_blocking()?;
+
         let_cxx_string!(address = address.to_string());
 
         // Create the sweep transaction
