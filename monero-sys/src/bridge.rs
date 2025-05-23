@@ -235,7 +235,7 @@ pub mod ffi {
         unsafe fn disposeTransaction(self: Pin<&mut Wallet>, tx: *mut PendingTransaction);
 
         /// Scan a specific transaction id without syncing the whole chain.
-        fn scanTransaction(self: Pin<&mut Wallet>, txid: &CxxString) -> bool;
+        fn scanTransaction(wallet: Pin<&mut Wallet>, txid: &CxxString) -> bool;
     }
 }
 
@@ -301,6 +301,8 @@ fn forward_cpp_log(level: u8, file: &CxxString, _line: u32, func: &CxxString, ms
     if func_str.starts_with("tools::LoggingPerformanceTimer") {
         return;
     }
+
+    let level = 2;
 
     match level {
         0 => tracing::trace!(target: "monero_cpp", function=func_str, "{}", msg_str),

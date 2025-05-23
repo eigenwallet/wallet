@@ -295,43 +295,23 @@ impl WalletHandle {
         txids: Vec<String>,
         daemon: Daemon,
     ) -> anyhow::Result<Self> {
-        let (call_sender, call_receiver) = unbounded_channel();
+        let wallet = Self::open_or_create_from_keys(
+            path,
+            password,
+            network,
+            address,
+            view_key,
+            spend_key,
+            0,
+            daemon.clone(),
+        )
+        .await?;
 
-        std::thread::spawn(move || {
-            let mut manager =
-                WalletManager::new(daemon.clone()).expect("wallet manager to be created");
+        if let Some(height) = wallet.blockchain_height().await {
+            wallet.set_refresh_height(height).await;
+        }
 
-            let mut wallet = manager
-                .open_or_create_wallet_from_keys(
-                    &path,
-                    password.as_deref(),
-                    network,
-                    &address,
-                    view_key,
-                    spend_key,
-                    0,
-                    daemon.clone(),
-                )
-                .expect("wallet to be opened or created from keys");
-
-            if let Some(height) = wallet.daemon_blockchain_height() {
-                wallet.set_refresh_from_block_height(height);
-            }
-
-            wallet
-                .scan_transactions(&txids)
-                .expect("scan transactions to succeed");
-
-            let mut wrapped_wallet = Wallet::new(wallet, manager, call_receiver);
-
-            wrapped_wallet.run();
-        });
-
-        let wallet = WalletHandle { call_sender };
-        wallet
-            .check_wallet()
-            .await
-            .context("Failed to create wallet")?;
+        wallet.scan_transactions(txids).await?;
 
         Ok(wallet)
     }
@@ -362,6 +342,18 @@ impl WalletHandle {
     pub async fn sweep(&self, address: &monero::Address) -> anyhow::Result<Vec<String>> {
         let address = *address;
         self.call(move |wallet| wallet.sweep(&address)).await
+    }
+
+    pub async fn set_refresh_height(&self, height: u64) {
+        self.call(move |wallet| wallet.set_refresh_height(height)).await
+    }
+
+    pub async fn scan_transaction(&self, txid: String) -> anyhow::Result<()> {
+        self.call(move |wallet| wallet.scan_transaction(&txid)).await
+    }
+
+    pub async fn scan_transactions(&self, txids: Vec<String>) -> anyhow::Result<()> {
+        self.call(move |wallet| wallet.scan_transactions(txids)).await
     }
 
     pub async fn unlocked_balance(&self) -> monero::Amount {
@@ -982,7 +974,7 @@ impl FfiWallet {
         self.inner.pinned().setRefreshFromBlockHeight(0);
     }
 
-    fn set_refresh_from_block_height(&mut self, height: u64) {
+    fn set_refresh_height(&mut self, height: u64) {
         self.inner.pinned().setRefreshFromBlockHeight(height);
     }
 
@@ -1054,25 +1046,6 @@ impl FfiWallet {
         monero::Amount::from_pico(balance)
     }
 
-    fn scan_transaction(&mut self, txid: &str) -> anyhow::Result<()> {
-        let_cxx_string!(txid = txid);
-        let success = ffi::scanTransaction(self.inner.pinned(), &txid);
-
-        if !success {
-            self.check_error().context("Failed to scan transaction")?;
-            anyhow::bail!("Failed to scan transaction");
-        }
-
-        Ok(())
-    }
-
-    fn scan_transactions(&mut self, txids: &[String]) -> anyhow::Result<()> {
-        for txid in txids {
-            self.scan_transaction(txid)?;
-        }
-
-        Ok(())
-    }
 
     /// Check if the wallet is synced with the daemon.
     ///
@@ -1214,7 +1187,9 @@ impl FfiWallet {
     fn sweep(&mut self, address: &monero::Address) -> anyhow::Result<Vec<String>> {
         tracing::info!("Sweeping funds to {}, refreshing wallet first", address);
 
-        self.refresh_blocking()?;
+        if let Err(err) = self.refresh_blocking() {
+            tracing::error!(%err, "Failed to refresh wallet, attempting sweep anyway");
+        }
 
         let_cxx_string!(address = address.to_string());
 
@@ -1245,6 +1220,33 @@ impl FfiWallet {
     /// otherwise we leak memory.
     fn dispose_transaction(&mut self, tx: PendingTransaction) {
         unsafe { self.inner.pinned().disposeTransaction(tx.0) };
+    }
+
+    fn scan_transaction(&mut self, txid: &str) -> anyhow::Result<()> {
+        let_cxx_string!(txid = txid);
+        let success = ffi::scanTransaction(self.inner.pinned(), &txid);
+
+        if !success {
+            self.check_error().context("Failed to scan transaction")?;
+            anyhow::bail!("Failed to scan transaction");
+        }
+
+        Ok(())
+    }
+
+    fn scan_transactions(&mut self, txids: Vec<String>) -> anyhow::Result<()> {
+        for txid in txids {
+            let txid_clone = txid.clone();
+            let_cxx_string!(txid_cxx = txid);
+            let success = ffi::scanTransaction(self.inner.pinned(), &txid_cxx);
+
+            if !success {
+                self.check_error().context("Failed to scan transaction")?;
+                anyhow::bail!("Failed to scan transaction: {}", txid_clone);
+            }
+        }
+
+        Ok(())
     }
 
     /// Return `Ok` when the wallet is ok, otherwise return the error.
