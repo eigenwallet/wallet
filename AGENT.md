@@ -7,7 +7,7 @@ This repository hosts the core of the UnstoppableSwap project. The code base is 
 - **swap/** – contains the main Rust crate with two binaries:
   - `swap` – command line interface for performing swaps.
   - `asb` – Automated Swap Backend for market makers.
-    It also hosts library code shared between the binaries and integration tests.
+  It also hosts library code shared between the binaries and integration tests.
 - **src-tauri/** – Rust crate that exposes the `swap` functionality to the Tauri front end and bundles the application.
 - **src-gui/** – The front‑end written in TypeScript/React and bundled by Tauri. Communicates with `src-tauri` via Tauri commands.
 - **monero-rpc/** and **monero-wallet/** – helper crates for interacting with the Monero ecosystem.

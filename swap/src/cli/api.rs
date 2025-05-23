@@ -18,11 +18,9 @@ use arti_client::TorClient;
 use futures::future::try_join_all;
 use std::fmt;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Once};
-use tauri_bindings::{
-    TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter, TauriHandle,
-};
+use tauri_bindings::{TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter, TauriHandle};
 use tokio::sync::{broadcast, broadcast::Sender, Mutex as TokioMutex, RwLock};
 use tokio::task::JoinHandle;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
@@ -282,9 +280,9 @@ impl ContextBuilder {
     /// Takes the builder, initializes the context by initializing the wallets and other components and returns the Context.
     pub async fn build(self) -> Result<Context> {
         // These are needed for everything else, and are blocking calls
-        let data_dir = data::data_dir_from(self.data, self.is_testnet)?;
+        let data_dir = &data::data_dir_from(self.data, self.is_testnet)?;
         let env_config = env_config_from(self.is_testnet);
-        let seed = Seed::from_file_or_generate(data_dir.as_path())
+        let seed = &Seed::from_file_or_generate(data_dir.as_path())
             .context("Failed to read seed in file")?;
 
         // Initialize logging
@@ -316,7 +314,7 @@ impl ContextBuilder {
         let tasks = PendingTaskList::default().into();
 
         // Initialize the database
-        let db_progress_handle = self
+        let database_progress_handle = self
             .tauri_handle
             .new_background_process_with_initial_progress(
                 TauriBackgroundProgress::OpeningDatabase,
@@ -330,16 +328,16 @@ impl ContextBuilder {
         )
         .await?;
 
-        db_progress_handle.finish();
+        database_progress_handle.finish();
 
-        // Initialize these components concurrently
+        let tauri_handle = &self.tauri_handle.clone();
+
         let initialize_bitcoin_wallet = async {
             match self.bitcoin {
                 Some(bitcoin) => {
                     let (url, target_block) = bitcoin.apply_defaults(self.is_testnet)?;
 
-                    let bitcoin_progress_handle = self
-                        .tauri_handle
+                    let bitcoin_progress_handle = tauri_handle
                         .new_background_process_with_initial_progress(
                             TauriBackgroundProgress::OpeningBitcoinWallet,
                             (),
@@ -347,8 +345,8 @@ impl ContextBuilder {
 
                     let wallet = init_bitcoin_wallet(
                         url,
-                        &seed,
-                        data_dir.to_path_buf(),
+                        seed,
+                        data_dir,
                         env_config,
                         target_block,
                         self.tauri_handle.clone(),
@@ -366,36 +364,28 @@ impl ContextBuilder {
         };
 
         let initialize_monero_wallet = async {
-            let Some(monero) = self.monero else {
-                return Ok(None);
-            };
+            match self.monero {
+                Some(monero) => {
+                    let monero_progress_handle = tauri_handle
+                        .new_background_process_with_initial_progress(
+                            TauriBackgroundProgress::OpeningMoneroWallet,
+                            (),
+                        );
 
-            let monero_progress_handle = self
-                .tauri_handle
-                .new_background_process_with_initial_progress(
-                    TauriBackgroundProgress::OpeningMoneroWallet,
-                    (),
-                );
+                    let wallets = init_monero_wallet(
+                        data_dir.as_path(),
+                        monero.monero_node_address.map(|url| url.to_string()),
+                        env_config,
+                        tauri_handle.clone(),
+                    )
+                    .await?;
 
-            let daemon = if let Some(addr) = monero.monero_node_address {
-                monero_sys::Daemon {
-                    address: addr.to_string(),
-                    ssl: addr.to_string().contains("https"),
+                    monero_progress_handle.finish();
+
+                    Ok(Some(wallets))
                 }
-            } else {
-                let node = wallet_rpc::choose_monero_node(env_config.monero_network).await?;
-                tracing::debug!(%node, "Automatically selected monero node");
-                monero_sys::Daemon {
-                    address: node.to_string(),
-                    ssl: false,
-                }
-            };
-
-            let manager =
-                init_monero_wallet(data_dir.clone(), daemon, env_config.monero_network).await?;
-
-            monero_progress_handle.finish();
-            Ok(Some(manager))
+                None => Ok(None),
+            }
         };
 
         let initialize_tor_client = async {
@@ -405,10 +395,7 @@ impl ContextBuilder {
                 return Ok(None);
             }
 
-            // No need to create a progress handle here, because the init_tor_client function
-            // already emits progress events.
-
-            let maybe_tor_client = init_tor_client(&data_dir, self.tauri_handle.clone())
+            let maybe_tor_client = init_tor_client(data_dir, tauri_handle.clone())
                 .await
                 .inspect_err(|err| {
                     tracing::warn!(%err, "Failed to create Tor client. We will continue without Tor");
@@ -437,8 +424,7 @@ impl ContextBuilder {
             }
         }
 
-        self.tauri_handle
-            .emit_context_init_progress_event(TauriContextStatusEvent::Available);
+        tauri_handle.emit_context_init_progress_event(TauriContextStatusEvent::Available);
 
         let context = Context {
             db,
@@ -447,11 +433,11 @@ impl ContextBuilder {
             config: Config {
                 namespace: XmrBtcNamespace::from_is_testnet(self.is_testnet),
                 env_config,
-                seed: seed.into(),
+                seed: seed.clone().into(),
                 debug: self.debug,
                 json: self.json,
                 is_testnet: self.is_testnet,
-                data_dir,
+                data_dir: data_dir.clone(),
             },
             swap_lock,
             tasks,
@@ -517,7 +503,7 @@ impl fmt::Debug for Context {
 async fn init_bitcoin_wallet(
     electrum_rpc_url: Url,
     seed: &Seed,
-    data_dir: PathBuf,
+    data_dir: &Path,
     env_config: EnvConfig,
     bitcoin_target_block: u16,
     tauri_handle_option: Option<TauriHandle>,
@@ -546,20 +532,37 @@ async fn init_bitcoin_wallet(
 }
 
 async fn init_monero_wallet(
-    data_dir: PathBuf,
-    monero_daemon: monero::Daemon,
-    network: monero::Network,
+    data_dir: &Path,
+    monero_daemon_address: impl Into<Option<String>>,
+    env_config: EnvConfig,
+    _tauri_handle: Option<TauriHandle>,
 ) -> Result<Arc<Wallets>> {
-    // This is the name of a wallet we only use for blockchain monitoring
-    const DEFAULT_WALLET: &str = "swap-tool-blockchain-monitoring-wallet";
+    let network = env_config.monero_network;
 
     // Use the ./monero/monero-data directory for backwards compatibility
     let wallet_dir = data_dir.join("monero").join("monero-data");
 
+    let daemon = if let Some(addr) = monero_daemon_address.into() {
+        monero_sys::Daemon {
+            address: addr,
+            ssl: false,
+        }
+    } else {
+        let node = wallet_rpc::choose_monero_node(env_config.monero_network).await?;
+        tracing::debug!(%node, "Automatically selected monero node");
+        monero_sys::Daemon {
+            address: node.to_string(),
+            ssl: false,
+        }
+    };
+
+    // This is the name of a wallet we only use for blockchain monitoring
+    const DEFAULT_WALLET: &str = "swap-tool-blockchain-monitoring-wallet";
+
     let wallets = monero::Wallets::new(
         wallet_dir,
         DEFAULT_WALLET.to_string(),
-        monero_daemon,
+        daemon,
         network,
         false,
     )
