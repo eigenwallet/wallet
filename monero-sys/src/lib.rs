@@ -284,6 +284,38 @@ impl WalletHandle {
         Ok(wallet)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub async fn open_or_create_from_keys_with_txids(
+        path: String,
+        password: Option<String>,
+        network: monero::Network,
+        address: monero::Address,
+        view_key: monero::PrivateKey,
+        spend_key: monero::PrivateKey,
+        txids: Vec<String>,
+        daemon: Daemon,
+    ) -> anyhow::Result<Self> {
+        let wallet = Self::open_or_create_from_keys(
+            path,
+            password,
+            network,
+            address,
+            view_key,
+            spend_key,
+            0,
+            daemon.clone(),
+        )
+        .await?;
+
+        if let Some(height) = wallet.blockchain_height().await {
+            wallet.set_refresh_height(height).await;
+        }
+
+        wallet.scan_transactions(txids).await?;
+
+        Ok(wallet)
+    }
+
     pub async fn path(&self) -> String {
         self.call(move |wallet| wallet.path()).await
     }
@@ -310,6 +342,18 @@ impl WalletHandle {
     pub async fn sweep(&self, address: &monero::Address) -> anyhow::Result<Vec<String>> {
         let address = *address;
         self.call(move |wallet| wallet.sweep(&address)).await
+    }
+
+    pub async fn set_refresh_height(&self, height: u64) {
+        self.call(move |wallet| wallet.set_refresh_height(height)).await
+    }
+
+    pub async fn scan_transaction(&self, txid: String) -> anyhow::Result<()> {
+        self.call(move |wallet| wallet.scan_transaction(&txid)).await
+    }
+
+    pub async fn scan_transactions(&self, txids: Vec<String>) -> anyhow::Result<()> {
+        self.call(move |wallet| wallet.scan_transactions(txids)).await
     }
 
     pub async fn unlocked_balance(&self) -> monero::Amount {
@@ -930,6 +974,10 @@ impl FfiWallet {
         self.inner.pinned().setRefreshFromBlockHeight(0);
     }
 
+    fn set_refresh_height(&mut self, height: u64) {
+        self.inner.pinned().setRefreshFromBlockHeight(height);
+    }
+
     /// Start the background refresh thread (refreshes every 10 seconds).
     fn start_refresh(&mut self) {
         self.inner.pinned().startRefresh();
@@ -1169,6 +1217,19 @@ impl FfiWallet {
     /// otherwise we leak memory.
     fn dispose_transaction(&mut self, tx: PendingTransaction) {
         unsafe { self.inner.pinned().disposeTransaction(tx.0) };
+    }
+
+    fn scan_transaction(&mut self, txid: &str) -> anyhow::Result<()> {
+        let_cxx_string!(txid = txid);
+        ffi::scanTransaction(self.inner.pinned(), &txid);
+        self.check_error().context("Failed to scan transaction")
+    }
+
+    fn scan_transactions(&mut self, txids: Vec<String>) -> anyhow::Result<()> {
+        for txid in txids {
+            self.scan_transaction(&txid)?;
+        }
+        Ok(())
     }
 
     /// Return `Ok` when the wallet is ok, otherwise return the error.

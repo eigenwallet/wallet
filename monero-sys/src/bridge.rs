@@ -231,6 +231,9 @@ pub mod ffi {
             overwrite: bool,
         ) -> bool;
 
+        /// Scan a single transaction by id.
+        fn scanTransaction(self: Pin<&mut Wallet>, txid: &CxxString);
+    
         /// Dispose of a pending transaction object.
         unsafe fn disposeTransaction(self: Pin<&mut Wallet>, tx: *mut PendingTransaction);
     }
