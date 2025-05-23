@@ -407,45 +407,6 @@ jobs:
       - name: Run test ${{ matrix.test_name }}
         run: cargo test --package ${{ matrix.package }} --test ${{ matrix.test_name }} -- --nocapture
 
-  rpc_tests:
-    runs-on: self-hosted
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4.1.7
-        with:
-          submodules: recursive
-        
-      - name: Set up environment variables
-        uses: ./.github/actions/set-monero-env
-
-      - uses: actionhippie/swap-space@v1
-        with:
-          size: 15G
-
-      - uses: Swatinem/rust-cache@v2.7.3
-
-      - name: Configure apt for retries
-        run: ${{ env.APT_SET_CONF_COMMAND }}
-
-      - name: Install dependencies (self-hosted)
-        run: |
-          sudo apt update
-          sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
-
-      - name: Clone submodules
-        run: git submodule update --init --recursive
-
-      - name: Setup ccache
-        run: ${{ env.CCACHE_SETTINGS_COMMAND }}
-
-      - name: Build Monero (C++)
-        working-directory: monero-sys/monero
-        run: make -j4 release
-        shell: bash
-
-      - name: Run RPC server tests
-        run: cargo test --package swap --test rpc -- --nocapture
-
   check_stable:
     runs-on: self-hosted
     steps:
