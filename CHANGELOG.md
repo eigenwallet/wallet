@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docs: Document `external_bitcoin_address` option for using a specific
   Bitcoin address when redeeming or punishing swaps.
 - Removed the JSON-RPC daemon and the `start-daemon` CLI command.
+- Increased the max Bitcoin fee to up to 20% of the value of the transaction. This mitigates an issue where the Bitcoin lock transaction would not get confirmed in time on the blockchain.
 
 ## [1.1.1] - 2025-05-20
 
