@@ -38,6 +38,7 @@ use sync_ext::{CumulativeProgressHandle, InnerSyncCallback, SyncCallbackExt};
 use tokio::sync::watch;
 use tokio::sync::Mutex as TokioMutex;
 use tracing::{debug_span, Instrument};
+use serde::Deserialize;
 
 use super::bitcoin_address::revalidate_network;
 use super::BlockHeight;
@@ -975,6 +976,26 @@ where
     <Persister as WalletPersister>::Error: std::error::Error + Send + Sync + 'static,
     C: EstimateFeeRate + Send + Sync + 'static,
 {
+    async fn combined_fee_rate(&self, client: &C) -> Result<FeeRate> {
+        let electrum_rate = client.estimate_feerate(self.target_block);
+        let mempool_rate = mempool_fee_rate(self.network, self.target_block).await;
+
+        match (electrum_rate, mempool_rate) {
+            (Ok(electrum), Ok(mempool)) => Ok(std::cmp::max(electrum, mempool)),
+            (Ok(electrum), Err(e)) => {
+                tracing::warn!(error = ?e, "Failed to fetch mempool fee rate");
+                Ok(electrum)
+            }
+            (Err(e), Ok(mempool)) => {
+                tracing::warn!(error = ?e, "Failed to fetch electrum fee rate");
+                Ok(mempool)
+            }
+            (Err(e1), Err(e2)) => Err(anyhow!(
+                "Failed to estimate fee via electrum ({e1}) and mempool ({e2})"
+            )),
+        }
+    }
+
     pub async fn sign_and_finalize(&self, mut psbt: bitcoin::psbt::Psbt) -> Result<Transaction> {
         // Acquire the wallet lock once here for efficiency within the non-finalized block
         let wallet_guard = self.wallet.lock().await;
@@ -1039,7 +1060,7 @@ where
 
         let mut wallet = self.wallet.lock().await;
         let client = self.client.lock().await;
-        let fee_rate = client.estimate_feerate(self.target_block)?;
+        let fee_rate = self.combined_fee_rate(&*client).await?;
         let script = address.script_pubkey();
 
         // Build the transaction.
@@ -1098,7 +1119,7 @@ where
             return Ok(Amount::ZERO);
         }
 
-        let fee_rate = client.estimate_feerate(self.target_block)?;
+        let fee_rate = self.combined_fee_rate(&*client).await?;
 
         let mut tx_builder = wallet.build_tx();
 
@@ -1132,7 +1153,7 @@ where
         transfer_amount: bitcoin::Amount,
     ) -> Result<bitcoin::Amount> {
         let client = self.client.lock().await;
-        let fee_rate = client.estimate_feerate(self.target_block)?;
+        let fee_rate = self.combined_fee_rate(&*client).await?;
         let min_relay_fee = client.min_relay_fee()?;
 
         estimate_fee(weight, transfer_amount, fee_rate, min_relay_fee)
@@ -1635,6 +1656,34 @@ fn estimate_fee(
         .context("Could not estimate tranasction fee.")?;
 
     Ok(amount)
+}
+
+#[derive(Deserialize)]
+struct MempoolFees {
+    #[serde(rename = "fastestFee")]
+    fastest_fee: u64,
+    #[serde(rename = "halfHourFee")]
+    half_hour_fee: u64,
+    #[serde(rename = "hourFee")]
+    hour_fee: u64,
+}
+
+async fn mempool_fee_rate(network: Network, target_block: u32) -> Result<FeeRate> {
+    let base_url = match network {
+        Network::Bitcoin => "https://mempool.space/api/v1/fees/recommended".to_string(),
+        Network::Testnet => "https://mempool.space/testnet/api/v1/fees/recommended".to_string(),
+        Network::Signet => "https://mempool.space/signet/api/v1/fees/recommended".to_string(),
+        _ => return Err(anyhow!("mempool fee estimation unsupported for network")),
+    };
+
+    let response = reqwest::get(base_url).await?;
+    let fees: MempoolFees = response.json().await?;
+    let sat_per_vb = match target_block {
+        0 | 1 => fees.fastest_fee,
+        2 | 3 => fees.half_hour_fee,
+        _ => fees.hour_fee,
+    };
+    FeeRate::from_sat_per_vb(sat_per_vb).ok_or_else(|| anyhow!("invalid mempool fee rate"))
 }
 
 impl Watchable for (Txid, ScriptBuf) {
