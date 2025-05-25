@@ -78,7 +78,7 @@ export default function FeedbackDialog({
                         <Typography style={{ marginBottom: '0.5rem' }}>
                             Have a question or need assistance? Message us below
                             or{' '}
-                            <ExternalLink href="mailto:help@unstoppableswap.net">
+                            <ExternalLink href="https://docs.unstoppableswap.net/send_feedback#email-support">
                                 email us
                             </ExternalLink>
                             !
@@ -233,6 +233,7 @@ export default function FeedbackDialog({
             <DialogActions>
                 <Button onClick={handleClose}>Cancel</Button>
                 <PromiseInvokeButton
+                    requiresContext={false}
                     color="primary"
                     variant="contained"
                     onInvoke={submitFeedback}
