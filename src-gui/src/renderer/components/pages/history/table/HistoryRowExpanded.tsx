@@ -129,7 +129,8 @@ export default function HistoryRowExpanded({
           variant="outlined"
           size="small"
         />
-        <ExportLogsButton swap_id={swap.swap_id} />
+        <ExportLogsButton swap_id={swap.swap_id} variant="outlined"
+          size="small"/>
       </Box>
     </Box>
   );
