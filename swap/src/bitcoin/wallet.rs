@@ -880,11 +880,7 @@ impl Wallet {
         let current_span = tracing::Span::current();
         let res = tokio::task::spawn_blocking(move || {
             current_span.in_scope(|| {
-                let spk_count = sync_request.progress().total_spks();
-                let result =
-                    electrum_client.sync(sync_request, Self::SCAN_BATCH_SIZE as usize, true);
-                tracing::info!("Synced chunk of Bitcoin wallet with {} spks", spk_count);
-                result
+                electrum_client.sync(sync_request, Self::SCAN_BATCH_SIZE as usize, true)
             })
         })
         .await??;
@@ -1019,21 +1015,21 @@ where
 
         match (electrum_result, mempool_result) {
             // If both sources are successful, we use the higher one
-            (Ok(electrum_rate), Ok(Some(mempool_rate))) => {
+            (Ok(electrum_rate), Ok(Some(mempool_space_rate))) => {
                 tracing::debug!(
                     electrum_rate_sat_vb = electrum_rate.to_sat_per_vb_ceil(),
-                    mempool_rate_sat_vb = mempool_rate.to_sat_per_vb_ceil(),
-                    "Successfully fetched fee rates from both Electrum and Mempool. We will use the higher one"
+                    mempool_space_rate_sat_vb = mempool_space_rate.to_sat_per_vb_ceil(),
+                    "Successfully fetched fee rates from both Electrum and mempool.space. We will use the higher one"
 
                 );
-                Ok(std::cmp::max(electrum_rate, mempool_rate))
+                Ok(std::cmp::max(electrum_rate, mempool_space_rate))
             }
             // If the Electrum source is successful
             // but we don't have a mempool client, we use the Electrum rate
             (Ok(electrum_rate), Ok(None)) => {
                 tracing::warn!(
                     electrum_rate_sat_vb = electrum_rate.to_sat_per_vb_ceil(),
-                    "No mempool client available or it failed, using Electrum rate"
+                    "No mempool.space client available or it failed, using Electrum rate"
                 );
                 Ok(electrum_rate.with_safety_margin(SAFETY_MARGIN_TX_FEE))
             }
@@ -1043,7 +1039,7 @@ where
                 tracing::warn!(
                     ?mempool_error,
                     electrum_rate_sat_vb = electrum_rate.to_sat_per_vb_ceil(),
-                    "Failed to fetch mempool fee rate, using Electrum rate"
+                    "Failed to fetch mempool.space fee rate, using Electrum rate"
                 );
                 Ok(electrum_rate.with_safety_margin(SAFETY_MARGIN_TX_FEE))
             }
@@ -1053,7 +1049,7 @@ where
                 tracing::warn!(
                     ?electrum_error,
                     mempool_rate_sat_vb = mempool_rate.to_sat_per_vb_ceil(),
-                    "Electrum fee rate failed, using mempool rate"
+                    "Electrum fee rate failed, using mempool.space rate"
                 );
                 Ok(mempool_rate.with_safety_margin(SAFETY_MARGIN_TX_FEE))
             }
@@ -1062,7 +1058,7 @@ where
                 tracing::error!(
                     ?electrum_error,
                     ?mempool_error,
-                    "Failed to fetch fee rates from both sources"
+                    "Failed to fetch fee rates from both Electrum and mempool.space"
                 );
 
                 Err(electrum_error)
@@ -1071,13 +1067,16 @@ where
             (Err(electrum_error), Ok(None)) => {
                 tracing::warn!(
                     ?electrum_error,
-                    "Electrum failed and mempool client is not available"
+                    "Electrum failed and mempool.space client is not available"
                 );
                 Err(electrum_error)
             }
         }
     }
 
+    /// Returns the minimum relay fee from the Electrum and Mempool clients.
+    ///
+    /// Only fails if both sources fail. Always choses the higher value.
     async fn combined_min_relay_fee(&self) -> Result<bitcoin::Amount> {
         let electrum_client = self.electrum_client.lock().await;
         let electrum_future = electrum_client.min_relay_fee();
@@ -1091,13 +1090,13 @@ where
         let (electrum_result, mempool_result) = tokio::join!(electrum_future, mempool_future);
 
         match (electrum_result, mempool_result) {
-            (Ok(electrum_fee), Ok(Some(mempool_fee))) => {
+            (Ok(electrum_fee), Ok(Some(mempool_space_fee))) => {
                 tracing::debug!(
                     electrum_fee = ?electrum_fee,
-                    mempool_fee = ?mempool_fee,
-                    "Successfully fetched min relay fee from both Electrum and Mempool. We will use the higher one"
+                    mempool_space_fee = ?mempool_space_fee,
+                    "Successfully fetched min relay fee from both Electrum and mempool.space. We will use the higher value"
                 );
-                Ok(std::cmp::max(electrum_fee, mempool_fee))
+                Ok(std::cmp::max(electrum_fee, mempool_space_fee))
             }
             (Ok(electrum_fee), Ok(None)) => {
                 tracing::warn!(
@@ -1106,27 +1105,27 @@ where
                 );
                 Ok(electrum_fee)
             }
-            (Ok(electrum_fee), Err(mempool_error)) => {
+            (Ok(electrum_fee), Err(mempool_space_error)) => {
                 tracing::warn!(
-                    ?mempool_error,
+                    ?mempool_space_error,
                     ?electrum_fee,
                     "Failed to fetch mempool min relay fee, using Electrum rate"
                 );
                 Ok(electrum_fee)
             }
-            (Err(electrum_error), Ok(Some(mempool_fee))) => {
+            (Err(electrum_error), Ok(Some(mempool_space_fee))) => {
                 tracing::warn!(
                     ?electrum_error,
-                    ?mempool_fee,
+                    ?mempool_space_fee,
                     "Failed to fetch mempool min relay fee, using Electrum rate"
                 );
-                Ok(mempool_fee)
+                Ok(mempool_space_fee)
             }
             (Err(electrum_error), Ok(None)) => Err(electrum_error.context(
                 "Failed to fetch min relay fee from Electrum, and no mempool client available",
             )),
-            (Err(electrum_error), Err(mempool_error)) => Err(electrum_error
-                .context(mempool_error)
+            (Err(electrum_error), Err(mempool_space_error)) => Err(electrum_error
+                .context(mempool_space_error)
                 .context("Failed to fetch min relay fee from both sources")),
         }
     }
@@ -1241,11 +1240,22 @@ where
     pub async fn max_giveable(&self, locking_script_size: usize) -> Result<Amount> {
         let mut wallet = self.wallet.lock().await;
         let balance = wallet.balance();
+
+        // If the balance is less than the dust amount, we can't send any funds.
         if balance.total() < DUST_AMOUNT {
             return Ok(Amount::ZERO);
         }
+
+        let min_relay_fee = self.combined_min_relay_fee().await?;
+
+        // If the balance is less than the min relay fee, we can't send any funds.
+        if balance.total() < min_relay_fee {
+            return Ok(Amount::ZERO);
+        }
+
         let fee_rate = self.combined_fee_rate().await?;
 
+        // Construct a dummy drain transaction to figure out the max giveable amount.
         let mut tx_builder = wallet.build_tx();
 
         let dummy_script = ScriptBuf::from(vec![0u8; locking_script_size]);
@@ -1257,6 +1267,7 @@ where
             .finish()
             .context("Failed to build transaction to figure out max giveable")?;
 
+        // Extract the amount from the drain transaction.
         let max_giveable = psbt
             .unsigned_tx
             .output
@@ -1264,7 +1275,7 @@ where
             .map(|o| o.value)
             .sum::<Amount>();
 
-        tracing::debug!(fee=?psbt.fee_amount().map(|a| a.to_sat()), "Calculated max giveable");
+        tracing::trace!(fee=?psbt.fee_amount().map(|a| a.to_sat()), "Calculated max giveable");
 
         Ok(max_giveable)
     }
@@ -1526,41 +1537,44 @@ impl EstimateFeeRate for Client {
     async fn estimate_feerate(&self, target_block: u32) -> Result<FeeRate> {
         // Run both fee rate estimation methods in sequence
         // TOOD: Once the Electrum client is async, use tokio::join! here to parallelize the calls
-        let conservative_fee_rate = self.estimate_fee_rate(target_block);
-        let mempool_fee_rate = self.estimate_fee_rate_from_mempool(target_block);
+        let electrum_conservative_fee_rate = self.estimate_fee_rate(target_block);
+        let electrum_mempool_fee_rate = self.estimate_fee_rate_from_mempool(target_block);
 
-        match (conservative_fee_rate, mempool_fee_rate) {
+        match (electrum_conservative_fee_rate, electrum_mempool_fee_rate) {
             // If both the mempool and conservative fee rate are successful, we use the higher one
-            (Ok(conservative_fee_rate), Ok(mempool_fee_rate)) => {
+            (Ok(electrum_conservative_fee_rate), Ok(electrum_mempool_fee_rate)) => {
                 tracing::debug!(
-                    conservative_fee_rate_sat_vb = conservative_fee_rate.to_sat_per_vb_ceil(),
-                    mempool_fee_rate_sat_vb = mempool_fee_rate.to_sat_per_vb_ceil(),
+                    electrum_conservative_fee_rate_sat_vb =
+                        electrum_conservative_fee_rate.to_sat_per_vb_ceil(),
+                    electrum_mempool_fee_rate_sat_vb =
+                        electrum_mempool_fee_rate.to_sat_per_vb_ceil(),
                     "Successfully fetched fee rates from both sources. We will use the higher one"
                 );
-                Ok(conservative_fee_rate.max(mempool_fee_rate))
+
+                Ok(electrum_conservative_fee_rate.max(electrum_mempool_fee_rate))
             }
             // If the conservative fee rate fails, we use the mempool fee rate
-            (Err(conservative_fee_rate_error), Ok(mempool_fee_rate)) => {
+            (Err(electrum_conservative_fee_rate_error), Ok(electrum_mempool_fee_rate)) => {
                 tracing::debug!(
-                    conservative_fee_rate_error = ?conservative_fee_rate_error,
-                    mempool_fee_rate_sat_vb = mempool_fee_rate.to_sat_per_vb_ceil(),
+                    electrum_conservative_fee_rate_error = ?electrum_conservative_fee_rate_error,
+                    electrum_mempool_fee_rate_sat_vb = electrum_mempool_fee_rate.to_sat_per_vb_ceil(),
                     "Failed to fetch conservative fee rate, using mempool fee rate"
                 );
-                Ok(mempool_fee_rate)
+                Ok(electrum_mempool_fee_rate)
             }
             // If the mempool fee rate fails, we use the conservative fee rate
-            (Ok(conservative_fee_rate), Err(mempool_fee_rate_error)) => {
+            (Ok(electrum_conservative_fee_rate), Err(electrum_mempool_fee_rate_error)) => {
                 tracing::debug!(
-                    mempool_fee_rate_error = ?mempool_fee_rate_error,
-                    conservative_fee_rate_sat_vb = conservative_fee_rate.to_sat_per_vb_ceil(),
+                    electrum_mempool_fee_rate_error = ?electrum_mempool_fee_rate_error,
+                    electrum_conservative_fee_rate_sat_vb = electrum_conservative_fee_rate.to_sat_per_vb_ceil(),
                     "Failed to fetch mempool fee rate, using conservative fee rate"
                 );
-                Ok(conservative_fee_rate)
+                Ok(electrum_conservative_fee_rate)
             }
             // If both the mempool and conservative fee rate fail, we return an error
-            (Err(conservative_fee_rate_error), Err(mempool_fee_rate_error)) => {
-                Err(conservative_fee_rate_error
-                    .context(mempool_fee_rate_error)
+            (Err(electrum_conservative_fee_rate_error), Err(electrum_mempool_fee_rate_error)) => {
+                Err(electrum_conservative_fee_rate_error
+                    .context(electrum_mempool_fee_rate_error)
                     .context("Failed to fetch fee rates from both sources"))
             }
         }

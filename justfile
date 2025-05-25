@@ -46,7 +46,7 @@ update_submodules:
 	cd monero-sys && git submodule update --init --recursive --force
 
 # Run clippy checks
-clippy_check:
+clippy:
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Check the bindings for the Tauri API
