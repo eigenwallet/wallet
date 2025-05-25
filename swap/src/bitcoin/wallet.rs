@@ -24,7 +24,6 @@ use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt;
@@ -1273,19 +1272,23 @@ where
     /// Estimate total tx fee for a pre-defined target block based on the
     /// transaction weight. The max fee cannot be more than MAX_PERCENTAGE_FEE
     /// of amount
+    ///
+    /// This uses different techniques to estimate the fee under the hood:
+    /// 1. `estimate_fee_rate` from Electrum which calls `estimatesmartfee` from Bitcoin Core
+    /// 2. `estimate_fee_rate_from_mempool` which calls `mempool.get_fee_histogram` from Electrum. It calculates the distance to the tip of the mempool.
+    ///    it can adapt faster to sudden spikes in the mempool.
+    /// 3. `MempoolClient::estimate_feerate` which uses the mempool.space API for fee estimation
+    ///
+    /// To compute the min relay fee we fetch from both the Electrum server and the MempoolClient.
+    ///
+    /// In all cases, if have multiple sources, we use the higher one.
     pub async fn estimate_fee(
         &self,
         weight: usize,
         transfer_amount: bitcoin::Amount,
     ) -> Result<bitcoin::Amount> {
         let fee_rate = self.combined_fee_rate().await?;
-        let min_relay_fee = self.electrum_client.lock().await.min_relay_fee().await?;
-
-        // If we have a mempool client, also fetch the min relay fee from there.
-        // if let Arc(Some(mempool_client)) = &self.mempool_client {
-        //     let mempool_fee_rate = mempool_client.min_relay_fee().await?;
-        //     min_relay_fee = std::cmp::max(min_relay_fee, mempool_fee_rate);
-        // }
+        let min_relay_fee = self.combined_min_relay_fee().await?;
 
         estimate_fee(weight, transfer_amount, fee_rate, min_relay_fee)
     }
@@ -1498,6 +1501,7 @@ impl Client {
 
         // Estimate block size (typically ~1MB = 1,000,000 vbytes)
         let estimated_block_size = 1_000_000u64;
+        #[allow(clippy::cast_precision_loss)]
         let target_distance_from_tip =
             (estimated_block_size * target_block as u64) as f32 * SAFETY_MARGIN;
 
@@ -1505,7 +1509,9 @@ impl Client {
         let mut cumulative_vsize = 0u64;
         for (fee_rate, vsize) in histogram {
             cumulative_vsize += vsize;
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             if cumulative_vsize >= target_distance_from_tip as u64 {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                 let sat_per_vb = fee_rate.ceil() as u64;
                 return FeeRate::from_sat_per_vb(sat_per_vb)
                     .context("Failed to create fee rate from mempool histogram");
@@ -1936,7 +1942,7 @@ mod mempool_client {
 
             // Match the target block to the correct fee rate
             let sat_per_vb = match target_block {
-                0 | 1 | 2 => fees.fastest_fee,
+                0..=2 => fees.fastest_fee,
                 3 => fees.half_hour_fee,
                 _ => fees.hour_fee,
             };
