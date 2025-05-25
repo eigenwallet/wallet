@@ -78,7 +78,7 @@ pub struct Wallet<Persister = Connection, C = Client> {
     /// The electrum client.
     electrum_client: Arc<TokioMutex<C>>,
     /// The mempool client.
-    mempool_client: Arc<Option<MempoolClient>>,
+    mempool_client: Arc<Option<mempool_client::MempoolClient>>,
     /// The network this wallet is on.
     network: Network,
     /// The number of confirmations (blocks) we require for a transaction
@@ -295,7 +295,7 @@ pub trait EstimateFeeRate {
         target_block: u32,
     ) -> impl std::future::Future<Output = Result<FeeRate>> + Send;
     /// Get the minimum relay fee.
-    fn min_relay_fee(&self) -> Result<bitcoin::Amount>;
+    fn min_relay_fee(&self) -> impl std::future::Future<Output = Result<bitcoin::Amount>> + Send;
 }
 
 impl Wallet {
@@ -541,12 +541,14 @@ impl Wallet {
         tracing::trace!("Initial Bitcoin wallet scan completed");
 
         // Create the mempool client
-        let mempool_client = MempoolClient::new(network)?;
+        let mempool_client = mempool_client::MempoolClient::new(network).inspect_err(|e| {
+            tracing::warn!("Failed to create mempool client: {:?}. We will only use the Electrum server for fee estimation.", e);
+        }).ok();
 
         Ok(Wallet {
             wallet: wallet.into_arc_mutex_async(),
             electrum_client: client.into_arc_mutex_async(),
-            mempool_client: Arc::new(Some(mempool_client)),
+            mempool_client: Arc::new(mempool_client),
             persister: persister.into_arc_mutex_async(),
             tauri_handle,
             network,
@@ -588,12 +590,14 @@ impl Wallet {
             .context("No wallet found in database")?;
 
         // Create the mempool client
-        let mempool_client = MempoolClient::new(network)?;
+        let mempool_client = mempool_client::MempoolClient::new(network).inspect_err(|e| {
+            tracing::warn!("Failed to create mempool client: {:?}. We will only use the Electrum server for fee estimation.", e);
+        }).ok();
 
         let wallet = Wallet {
             wallet: wallet.into_arc_mutex_async(),
             electrum_client: client.into_arc_mutex_async(),
-            mempool_client: Arc::new(Some(mempool_client)),
+            mempool_client: Arc::new(mempool_client),
             persister: persister.into_arc_mutex_async(),
             tauri_handle,
             network,
@@ -877,7 +881,11 @@ impl Wallet {
         let current_span = tracing::Span::current();
         let res = tokio::task::spawn_blocking(move || {
             current_span.in_scope(|| {
-                electrum_client.sync(sync_request, Self::SCAN_BATCH_SIZE as usize, true)
+                let spk_count = sync_request.progress().total_spks();
+                let result =
+                    electrum_client.sync(sync_request, Self::SCAN_BATCH_SIZE as usize, true);
+                tracing::info!("Synced chunk of Bitcoin wallet with {} spks", spk_count);
+                result
             })
         })
         .await??;
@@ -995,24 +1003,27 @@ where
     /// If the mempool client is available, we use the higher of the two.
     /// If either of the clients fail but the other is successful, we use the successful one.
     /// If both clients fail, we return an error
-    async fn combined_fee_rate(&self, client: &C) -> Result<FeeRate> {
-        let (electrum_result, mempool_result) =
-            tokio::join!(client.estimate_feerate(self.target_block), async {
-                match self.mempool_client.as_ref() {
-                    Some(mempool_client) => mempool_client
-                        .estimate_feerate(self.target_block)
-                        .await
-                        .map(Some),
-                    None => Ok(None),
-                }
-            });
+    async fn combined_fee_rate(&self) -> Result<FeeRate> {
+        let electrum_client = self.electrum_client.lock().await;
+        let electrum_future = electrum_client.estimate_feerate(self.target_block);
+        let mempool_future = async {
+            match self.mempool_client.as_ref() {
+                Some(mempool_client) => mempool_client
+                    .estimate_feerate(self.target_block)
+                    .await
+                    .map(Some),
+                None => Ok(None),
+            }
+        };
+
+        let (electrum_result, mempool_result) = tokio::join!(electrum_future, mempool_future);
 
         match (electrum_result, mempool_result) {
             // If both sources are successful, we use the higher one
             (Ok(electrum_rate), Ok(Some(mempool_rate))) => {
                 tracing::debug!(
-                    electrum_rate = ?electrum_rate,
-                    mempool_rate = ?mempool_rate,
+                    electrum_rate_sat_vb = electrum_rate.to_sat_per_vb_ceil(),
+                    mempool_rate_sat_vb = mempool_rate.to_sat_per_vb_ceil(),
                     "Successfully fetched fee rates from both Electrum and Mempool. We will use the higher one"
 
                 );
@@ -1022,7 +1033,7 @@ where
             // but we don't have a mempool client, we use the Electrum rate
             (Ok(electrum_rate), Ok(None)) => {
                 tracing::warn!(
-                    ?electrum_rate,
+                    electrum_rate_sat_vb = electrum_rate.to_sat_per_vb_ceil(),
                     "No mempool client available or it failed, using Electrum rate"
                 );
                 Ok(electrum_rate.with_safety_margin(SAFETY_MARGIN_TX_FEE))
@@ -1032,7 +1043,7 @@ where
             (Ok(electrum_rate), Err(mempool_error)) => {
                 tracing::warn!(
                     ?mempool_error,
-                    ?electrum_rate,
+                    electrum_rate_sat_vb = electrum_rate.to_sat_per_vb_ceil(),
                     "Failed to fetch mempool fee rate, using Electrum rate"
                 );
                 Ok(electrum_rate.with_safety_margin(SAFETY_MARGIN_TX_FEE))
@@ -1042,7 +1053,7 @@ where
             (Err(electrum_error), Ok(Some(mempool_rate))) => {
                 tracing::warn!(
                     ?electrum_error,
-                    ?mempool_rate,
+                    mempool_rate_sat_vb = mempool_rate.to_sat_per_vb_ceil(),
                     "Electrum fee rate failed, using mempool rate"
                 );
                 Ok(mempool_rate.with_safety_margin(SAFETY_MARGIN_TX_FEE))
@@ -1065,6 +1076,59 @@ where
                 );
                 Err(electrum_error)
             }
+        }
+    }
+
+    async fn combined_min_relay_fee(&self) -> Result<bitcoin::Amount> {
+        let electrum_client = self.electrum_client.lock().await;
+        let electrum_future = electrum_client.min_relay_fee();
+        let mempool_future = async {
+            match self.mempool_client.as_ref() {
+                Some(mempool_client) => mempool_client.min_relay_fee().await.map(Some),
+                None => Ok(None),
+            }
+        };
+
+        let (electrum_result, mempool_result) = tokio::join!(electrum_future, mempool_future);
+
+        match (electrum_result, mempool_result) {
+            (Ok(electrum_fee), Ok(Some(mempool_fee))) => {
+                tracing::debug!(
+                    electrum_fee = ?electrum_fee,
+                    mempool_fee = ?mempool_fee,
+                    "Successfully fetched min relay fee from both Electrum and Mempool. We will use the higher one"
+                );
+                Ok(std::cmp::max(electrum_fee, mempool_fee))
+            }
+            (Ok(electrum_fee), Ok(None)) => {
+                tracing::warn!(
+                    ?electrum_fee,
+                    "No mempool client available or it failed, using Electrum rate"
+                );
+                Ok(electrum_fee)
+            }
+            (Ok(electrum_fee), Err(mempool_error)) => {
+                tracing::warn!(
+                    ?mempool_error,
+                    ?electrum_fee,
+                    "Failed to fetch mempool min relay fee, using Electrum rate"
+                );
+                Ok(electrum_fee)
+            }
+            (Err(electrum_error), Ok(Some(mempool_fee))) => {
+                tracing::warn!(
+                    ?electrum_error,
+                    ?mempool_fee,
+                    "Failed to fetch mempool min relay fee, using Electrum rate"
+                );
+                Ok(mempool_fee)
+            }
+            (Err(electrum_error), Ok(None)) => Err(electrum_error.context(
+                "Failed to fetch min relay fee from Electrum, and no mempool client available",
+            )),
+            (Err(electrum_error), Err(mempool_error)) => Err(electrum_error
+                .context(mempool_error)
+                .context("Failed to fetch min relay fee from both sources")),
         }
     }
 
@@ -1131,8 +1195,7 @@ where
             .context("Change address is not on the correct network")?;
 
         let mut wallet = self.wallet.lock().await;
-        let client = self.electrum_client.lock().await;
-        let fee_rate = self.combined_fee_rate(&*client).await?;
+        let fee_rate = self.combined_fee_rate().await?;
         let script = address.script_pubkey();
 
         // Build the transaction.
@@ -1177,21 +1240,12 @@ where
     /// already accounting for the fees we need to spend to get the
     /// transaction confirmed.
     pub async fn max_giveable(&self, locking_script_size: usize) -> Result<Amount> {
-        tracing::debug!(locking_script_size, "Calculating max giveable");
-
         let mut wallet = self.wallet.lock().await;
         let balance = wallet.balance();
         if balance.total() < DUST_AMOUNT {
             return Ok(Amount::ZERO);
         }
-        let client = self.electrum_client.lock().await;
-        let min_relay_fee = client.min_relay_fee()?;
-
-        if balance.total() < min_relay_fee {
-            return Ok(Amount::ZERO);
-        }
-
-        let fee_rate = self.combined_fee_rate(&*client).await?;
+        let fee_rate = self.combined_fee_rate().await?;
 
         let mut tx_builder = wallet.build_tx();
 
@@ -1224,9 +1278,8 @@ where
         weight: usize,
         transfer_amount: bitcoin::Amount,
     ) -> Result<bitcoin::Amount> {
-        let client = self.electrum_client.lock().await;
-        let fee_rate = self.combined_fee_rate(&*client).await?;
-        let min_relay_fee = client.min_relay_fee()?;
+        let fee_rate = self.combined_fee_rate().await?;
+        let min_relay_fee = self.electrum_client.lock().await.min_relay_fee().await?;
 
         // If we have a mempool client, also fetch the min relay fee from there.
         // if let Arc(Some(mempool_client)) = &self.mempool_client {
@@ -1382,10 +1435,13 @@ impl Client {
             .fetch_tx(txid)
             .context("Failed to get transaction from the Electrum server")
     }
-}
 
-impl EstimateFeeRate for Client {
-    async fn estimate_feerate(&self, target_block: u32) -> Result<FeeRate> {
+    /// Estimate the fee rate to be included in a block at the given offset.
+    /// Calls: https://electrum-protocol.readthedocs.io/en/latest/protocol-methods.html#blockchain.estimatefee
+    /// Calls under the hood: https://developer.bitcoin.org/reference/rpc/estimatesmartfee.html
+    ///
+    /// This uses estimatesmartfee of bitcoind
+    pub fn estimate_fee_rate(&self, target_block: u32) -> Result<FeeRate> {
         // Get the fee rate in Bitcoin per kilobyte
         let btc_per_kvb = self.electrum.inner.estimate_fee(target_block as usize)?;
 
@@ -1419,7 +1475,92 @@ impl EstimateFeeRate for Client {
         Ok(fee_rate)
     }
 
-    fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
+    /// Calculates the fee_rate needed to be included in a block at the given offset.
+    /// We calculate how many vMB we are away from the tip of the mempool.
+    /// This method adapts faster to sudden spikes in the mempool.
+    fn estimate_fee_rate_from_mempool(&self, target_block: u32) -> Result<FeeRate> {
+        // Assume we want to get into the next block:
+        // We want to be 80% of the block size away from the tip of the mempool.
+        const SAFETY_MARGIN: f32 = 0.8;
+
+        // First we fetch the fee histogram from the Electrum server
+        let fee_histogram = self
+            .electrum
+            .inner
+            .raw_call("mempool.get_fee_histogram", vec![])?;
+
+        // Parse the histogram as array of [fee, vsize] pairs
+        let histogram: Vec<(f64, u64)> = serde_json::from_value(fee_histogram)?;
+
+        // Sort the histogram by fee rate
+        let mut histogram = histogram;
+        histogram.sort_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Estimate block size (typically ~1MB = 1,000,000 vbytes)
+        let estimated_block_size = 1_000_000u64;
+        let target_distance_from_tip =
+            (estimated_block_size * target_block as u64) as f32 * SAFETY_MARGIN;
+
+        // Find cumulative vsize and corresponding fee rate
+        let mut cumulative_vsize = 0u64;
+        for (fee_rate, vsize) in histogram {
+            cumulative_vsize += vsize;
+            if cumulative_vsize >= target_distance_from_tip as u64 {
+                let sat_per_vb = fee_rate.ceil() as u64;
+                return FeeRate::from_sat_per_vb(sat_per_vb)
+                    .context("Failed to create fee rate from mempool histogram");
+            }
+        }
+
+        bail!("Failed to find a suitable fee rate from the mempool histogram");
+    }
+}
+
+impl EstimateFeeRate for Client {
+    async fn estimate_feerate(&self, target_block: u32) -> Result<FeeRate> {
+        // Run both fee rate estimation methods in sequence
+        // TOOD: Once the Electrum client is async, use tokio::join! here to parallelize the calls
+        let conservative_fee_rate = self.estimate_fee_rate(target_block);
+        let mempool_fee_rate = self.estimate_fee_rate_from_mempool(target_block);
+
+        match (conservative_fee_rate, mempool_fee_rate) {
+            // If both the mempool and conservative fee rate are successful, we use the higher one
+            (Ok(conservative_fee_rate), Ok(mempool_fee_rate)) => {
+                tracing::debug!(
+                    conservative_fee_rate_sat_vb = conservative_fee_rate.to_sat_per_vb_ceil(),
+                    mempool_fee_rate_sat_vb = mempool_fee_rate.to_sat_per_vb_ceil(),
+                    "Successfully fetched fee rates from both sources. We will use the higher one"
+                );
+                Ok(conservative_fee_rate.max(mempool_fee_rate))
+            }
+            // If the conservative fee rate fails, we use the mempool fee rate
+            (Err(conservative_fee_rate_error), Ok(mempool_fee_rate)) => {
+                tracing::debug!(
+                    conservative_fee_rate_error = ?conservative_fee_rate_error,
+                    mempool_fee_rate_sat_vb = mempool_fee_rate.to_sat_per_vb_ceil(),
+                    "Failed to fetch conservative fee rate, using mempool fee rate"
+                );
+                Ok(mempool_fee_rate)
+            }
+            // If the mempool fee rate fails, we use the conservative fee rate
+            (Ok(conservative_fee_rate), Err(mempool_fee_rate_error)) => {
+                tracing::debug!(
+                    mempool_fee_rate_error = ?mempool_fee_rate_error,
+                    conservative_fee_rate_sat_vb = conservative_fee_rate.to_sat_per_vb_ceil(),
+                    "Failed to fetch mempool fee rate, using conservative fee rate"
+                );
+                Ok(conservative_fee_rate)
+            }
+            // If both the mempool and conservative fee rate fail, we return an error
+            (Err(conservative_fee_rate_error), Err(mempool_fee_rate_error)) => {
+                Err(conservative_fee_rate_error
+                    .context(mempool_fee_rate_error)
+                    .context("Failed to fetch fee rates from both sources"))
+            }
+        }
+    }
+
+    async fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
         let relay_fee_btc = self.electrum.inner.relay_fee()?;
 
         Amount::from_btc(relay_fee_btc).context("relay fee out of range")
@@ -1734,65 +1875,89 @@ fn estimate_fee(
     Ok(amount)
 }
 
-struct MempoolClient {
-    client: reqwest::Client,
-    base_url: String,
-}
+mod mempool_client {
+    static BASE_URL: &str = "https://mempool.space";
 
-impl MempoolClient {
-    pub fn new(network: Network) -> Result<Self> {
-        let base_url = match network {
-            Network::Bitcoin => "https://mempool.space".to_string(),
-            Network::Testnet => "https://mempool.space/testnet".to_string(),
-            Network::Signet => "https://mempool.space/signet".to_string(),
-            _ => bail!("mempool.space fee estimation unsupported for network"),
-        };
+    use super::EstimateFeeRate;
+    use anyhow::{bail, Context, Result};
+    use bitcoin::{FeeRate, Network};
+    use serde::Deserialize;
 
-        Ok(MempoolClient {
-            client: reqwest::Client::new(),
-            base_url,
-        })
-    }
-}
-
-impl EstimateFeeRate for MempoolClient {
-    async fn estimate_feerate(&self, target_block: u32) -> Result<FeeRate> {
-        // Determine the URL to use
-        let url = format!("{}/api/v1/fees/recommended", self.base_url);
-
-        tracing::debug!("Estimating fee rate at {}", url);
-
-        // Send the request, de-serialize the response
-        let response = self.client.get(url).send().await?;
-        let fees: MempoolFees = response.json().await?;
-
-        // Match the target block to the correct fee rate
-        let sat_per_vb = match target_block {
-            0 | 1 => fees.fastest_fee,
-            2 | 3 => fees.half_hour_fee,
-            _ => fees.hour_fee,
-        };
-
-        // Construct the fee rate
-        FeeRate::from_sat_per_vb(sat_per_vb).ok_or_else(|| anyhow!("invalid mempool fee rate"))
+    /// A client for the mempool.space API.
+    ///
+    /// This client is used to estimate the fee rate for a transaction.
+    pub struct MempoolClient {
+        client: reqwest::Client,
+        base_url: String,
     }
 
-    fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
-        // The mempool.space API doesn't return a minimum relay fee, so we use a fixed value
-        const MIN_RELAY_FEE_BITCOIND_SATS: u64 = 1000;
-
-        Ok(bitcoin::Amount::from_sat(MIN_RELAY_FEE_BITCOIND_SATS))
+    #[derive(Deserialize)]
+    struct MempoolFees {
+        #[serde(rename = "fastestFee")]
+        fastest_fee: u64,
+        #[serde(rename = "halfHourFee")]
+        half_hour_fee: u64,
+        #[serde(rename = "hourFee")]
+        hour_fee: u64,
+        #[serde(rename = "minimumFee")]
+        minimum_fee: u64,
     }
-}
 
-#[derive(Deserialize)]
-struct MempoolFees {
-    #[serde(rename = "fastestFee")]
-    fastest_fee: u64,
-    #[serde(rename = "halfHourFee")]
-    half_hour_fee: u64,
-    #[serde(rename = "hourFee")]
-    hour_fee: u64,
+    impl MempoolClient {
+        pub fn new(network: Network) -> Result<Self> {
+            let base_url = match network {
+                Network::Bitcoin => BASE_URL.to_string(),
+                Network::Testnet => format!("{}/testnet", BASE_URL),
+                Network::Signet => format!("{}/signet", BASE_URL),
+                _ => bail!("mempool.space fee estimation unsupported for network"),
+            };
+
+            Ok(MempoolClient {
+                client: reqwest::Client::new(),
+                base_url,
+            })
+        }
+
+        /// Fetch the fees (`fees/recommended` endpoint) from the mempool.space API
+        async fn fetch_fees(&self) -> Result<MempoolFees> {
+            let url = format!("{}/api/v1/fees/recommended", self.base_url);
+
+            let response = self.client.get(url).send().await?;
+
+            let fees: MempoolFees = response.json().await?;
+
+            Ok(fees)
+        }
+    }
+
+    impl EstimateFeeRate for MempoolClient {
+        async fn estimate_feerate(&self, target_block: u32) -> Result<FeeRate> {
+            let fees = self.fetch_fees().await?;
+
+            // Match the target block to the correct fee rate
+            let sat_per_vb = match target_block {
+                0 | 1 | 2 => fees.fastest_fee,
+                3 => fees.half_hour_fee,
+                _ => fees.hour_fee,
+            };
+
+            // Construct the fee rate
+            FeeRate::from_sat_per_vb(sat_per_vb).context("Failed to parse mempool fee rate")
+        }
+
+        async fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
+            let fees = self.fetch_fees().await?;
+
+            let minimum_sat_per_vb = fees.minimum_fee;
+
+            // Convert the minimum fee rate to an amount for a standard transaction size
+            // Using 250 vbytes as a typical transaction size
+            let typical_tx_size_vb = 250;
+            let min_fee_sats = minimum_sat_per_vb * typical_tx_size_vb;
+
+            Ok(bitcoin::Amount::from_sat(min_fee_sats))
+        }
+    }
 }
 
 trait FeeRateExt {
@@ -2061,7 +2226,7 @@ impl EstimateFeeRate for StaticFeeRate {
         Ok(self.fee_rate)
     }
 
-    fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
+    async fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
         Ok(self.min_relay_fee)
     }
 }
