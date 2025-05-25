@@ -1,4 +1,5 @@
 use anyhow::Context as AnyhowContext;
+use std::collections::HashMap;
 use std::io::Write;
 use std::result::Result;
 use std::sync::Arc;
@@ -281,7 +282,7 @@ async fn get_data_dir(
 }
 
 #[tauri::command]
-async fn save_txt_files(app: tauri::AppHandle, content: Vec<String>) -> Result<(), String> {
+async fn save_txt_files(app: tauri::AppHandle, content: HashMap<String, String>) -> Result<(), String> {
     // Step 1: Get the owned PathBuf from the dialog
     let path_buf_from_dialog: tauri_plugin_dialog::FilePath = app
         .dialog()
@@ -301,8 +302,7 @@ async fn save_txt_files(app: tauri::AppHandle, content: Vec<String>) -> Result<(
 
     let mut zip = ZipWriter::new(zip_file);
 
-    for (index, file_content_str) in content.iter().enumerate() {
-        let filename = format!("log_{}.txt", index + 1);
+    for (filename, file_content_str) in content.iter() {
         zip.start_file(filename.as_str(), SimpleFileOptions::default()) // Pass &str to start_file
             .map_err(|e| format!("Failed to start file {}: {}", &filename, e))?; // Use &filename
 
