@@ -196,6 +196,9 @@ pub mod ffi {
             confirmations: &mut u64,
         ) -> bool;
 
+        /// Scan for a specified list of transactions.
+        fn scanTransaction(wallet: Pin<&mut Wallet>, tx_id: &CxxString) -> bool;
+
         /// Create a new transaction.
         fn createTransaction(
             wallet: Pin<&mut Wallet>,

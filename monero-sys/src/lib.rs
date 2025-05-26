@@ -1,3 +1,15 @@
+//! A wrapper around the Monero C++ API.
+//!
+//! This crate provides a safe wrapper around the Monero C++ API.
+//! It is used to create and manage Monero wallets, and to interact with the
+//! Monero network.
+//!
+//! The intended use is to create a [`WalletHandle`], which will create a dedicated thread
+//! for the wallet being opened.
+//!
+//! The wallet thread will be running in the background, and the [`WalletHandle`] will
+//! internally communicate with the wallet thread.
+
 mod bridge;
 
 use std::{
@@ -5,7 +17,7 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use cxx::let_cxx_string;
+use cxx::{let_cxx_string, CxxVector};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     oneshot,
@@ -13,8 +25,7 @@ use tokio::sync::{
 
 use bridge::ffi;
 
-/// A handle that can communicate with the [`FfiWallet`] object.
-#[derive(Debug)]
+/// A handle which can communicate with the wallet thread via channels.
 pub struct WalletHandle {
     call_sender: UnboundedSender<Call>,
 }
@@ -105,53 +116,7 @@ pub struct Daemon {
 pub struct PendingTransaction(*mut ffi::PendingTransaction);
 
 impl WalletHandle {
-    async fn check_wallet(&self) -> anyhow::Result<()> {
-        let (sender, receiver) = oneshot::channel();
-
-        self.call_sender
-            .send(Call {
-                function: Box::new(move |wallet| {
-                    Box::new(wallet.check_error()) as Box<dyn Any + Send>
-                }),
-                sender,
-            })
-            .map_err(|_| anyhow::anyhow!("failed to send check_wallet call"))?;
-
-        receiver
-            .await
-            .context("wallet channel closed unexpectedly")?;
-
-        Ok(())
-    }
-
-    /// Execute a function on the wallet thread and return the result.
-    /// Necessary because every interaction with the wallet must run on a single thread.
-    /// Panics if the channel is closed unexpectedly.
-    pub async fn call<F, R>(&self, function: F) -> R
-    where
-        F: FnOnce(&mut FfiWallet) -> R + Send + 'static,
-        R: Sized + Send + 'static,
-    {
-        // Create a oneshot channel for the result
-        let (sender, receiver) = oneshot::channel();
-
-        // Send the function call to the wallet thread (wrapped in a Box)
-        self.call_sender
-            .send(Call {
-                function: Box::new(move |wallet| Box::new(function(wallet)) as Box<dyn Any + Send>),
-                sender,
-            })
-            .inspect_err(|e| tracing::error!(error=%e, "failed to send call"))
-            .expect("channel to be open");
-
-        // Wait for the result and cast back to the expected type
-        *receiver
-            .await
-            .expect("channel to be open")
-            .downcast::<R>() // We know that F returns R
-            .expect("return type to be consistent")
-    }
-
+    /// Open an existing wallet or create a new one, with a random seed.
     pub async fn open_or_create(
         path: String,
         daemon: Daemon,
@@ -284,14 +249,48 @@ impl WalletHandle {
         Ok(wallet)
     }
 
+    /// Execute a function on the wallet thread and return the result.
+    /// Necessary because every interaction with the wallet must run on a single thread.
+    /// Panics if the channel is closed unexpectedly.
+    pub async fn call<F, R>(&self, function: F) -> R
+    where
+        F: FnOnce(&mut FfiWallet) -> R + Send + 'static,
+        R: Sized + Send + 'static,
+    {
+        // Create a oneshot channel for the result
+        let (sender, receiver) = oneshot::channel();
+
+        // Send the function call to the wallet thread (wrapped in a Box)
+        self.call_sender
+            .send(Call {
+                function: Box::new(move |wallet| Box::new(function(wallet)) as Box<dyn Any + Send>),
+                sender,
+            })
+            .inspect_err(|e| tracing::error!(error=%e, "failed to send call"))
+            .expect("channel to be open");
+
+        // Wait for the result and cast back to the expected type
+        *receiver
+            .await
+            .expect("channel to be open")
+            .downcast::<R>() // We know that F returns R
+            .expect("return type to be consistent")
+    }
+
+    /// Get the file system path to the wallet.
     pub async fn path(&self) -> String {
         self.call(move |wallet| wallet.path()).await
     }
 
+    /// Get the main address of the wallet.
+    /// The main address is the first address of the first account.
     pub async fn main_address(&self) -> monero::Address {
         self.call(move |wallet| wallet.main_address()).await
     }
 
+    /// Get the current height of the blockchain.
+    /// May involve an RPC call to the daemon.
+    /// Returns `None` if the wallet is not connected to a daemon.
     pub async fn blockchain_height(&self) -> Option<u64> {
         self.call(move |wallet| wallet.daemon_blockchain_height())
             .await
@@ -330,6 +329,27 @@ impl WalletHandle {
 
     pub async fn connected(&self) -> bool {
         self.call(move |wallet| wallet.connected()).await
+    }
+
+    /// Check that the wallet is created and ready to use.
+    /// Call this after creating a wallet to make sure the wallet thread responds correctly.
+    async fn check_wallet(&self) -> anyhow::Result<()> {
+        let (sender, receiver) = oneshot::channel();
+
+        self.call_sender
+            .send(Call {
+                function: Box::new(move |wallet| {
+                    Box::new(wallet.check_error()) as Box<dyn Any + Send>
+                }),
+                sender,
+            })
+            .map_err(|_| anyhow::anyhow!("failed to send check_wallet call"))?;
+
+        receiver
+            .await
+            .context("wallet channel closed unexpectedly")?;
+
+        Ok(())
     }
 
     /// Allow the wallet to connect to a daemon with a different version.
@@ -429,6 +449,12 @@ impl WalletHandle {
         let destination_address = *destination_address;
         self.call(move |wallet| wallet.check_tx_status(&txid, tx_key, &destination_address))
             .await
+    }
+
+    /// Scan a transaction for the wallet.
+    /// This makes a transaction visible to the wallet without requiring a full sync.
+    pub async fn scan_transaction(&self, txid: String) -> anyhow::Result<()> {
+        self.call(move |wallet| wallet.scan_transaction(txid)).await
     }
 
     pub async fn wait_until_confirmed(
@@ -1071,6 +1097,24 @@ impl FfiWallet {
             in_pool,
             confirmations,
         })
+    }
+
+    /// Scan for a specified transaction.
+    /// We use this to import the Monero tx_lock without having to do a
+    /// full sync.
+    /// This is much faster than a full sync.
+    fn scan_transaction(&mut self, tx_id: String) -> anyhow::Result<()> {
+        let_cxx_string!(tx_id = tx_id);
+
+        let raw_wallet = &mut self.inner;
+        let success = ffi::scanTransaction(raw_wallet.pinned(), &tx_id);
+
+        if !success {
+            self.check_error().context("Failed to scan transaction")?;
+            anyhow::bail!("Failed to scan transaction (no reason given)");
+        }
+
+        Ok(())
     }
 
     /// Transfer a specified amount of monero to a specified address and return a receipt containing

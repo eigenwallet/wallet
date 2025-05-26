@@ -95,6 +95,13 @@ namespace Monero
         return wallet.checkTxKey(txid, tx_key, address, received, in_pool, confirmations);
     }
 
+    inline bool scanTransaction(Wallet &wallet, const std::string &txid)
+    {
+        std::vector<std::string> txids;
+        txids.push_back(txid.c_str());
+        return wallet.scanTransactions(txids);
+    }
+
     /**
      * Get the path of the wallet.
      */

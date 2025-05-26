@@ -330,10 +330,15 @@ pub struct Monerod {
     rpc_port: u16,
 }
 
-#[derive(Debug)]
 pub struct MoneroWallet {
     name: String,
     wallet: WalletHandle,
+}
+
+impl std::fmt::Debug for MoneroWallet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MoneroWallet {{ name: {} }}", self.name)
+    }
 }
 
 // Old symbol kept as alias so dependant crates/tests can be migrated gradually.
