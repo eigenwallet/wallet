@@ -1279,9 +1279,6 @@ where
             .finish()
             .context("Failed to build transaction to figure out max giveable")?;
 
-        // We got the final weight now
-        let weight = psbt.unsigned_tx.weight();
-
         // Ensure the dummy transaction only has a single output
         // We drain to a single script so this should always be true
         if psbt.unsigned_tx.output.len() != 1 {
@@ -1300,19 +1297,31 @@ where
             .fee_amount()
             .context("Failed to calculate fee amount of the dummy transaction")?;
 
+        // The weight WILL NOT change, even if we change the fee
+        // because we are draining the wallet (using all inputs) and
+        // always have one output of constant size
+        //
+        // The only changable part is the amount of the output.
+        // If we increase the fee, the output amount will decrease because
+        // Bitcoin fees are defined by the difference between the input and outputs.
+        //
+        // The inputs are constant, so only the output amount changes.
+        let dummy_weight = psbt.unsigned_tx.weight();
+
         // Estimate the fee rate using our real fee rate estimation
         let fee_rate_estimation = self.combined_fee_rate().await?;
-
         let min_relay_fee_rate = self.combined_min_relay_fee().await?;
 
         let fee = estimate_fee(
-            weight,
+            dummy_weight,
             dummy_max_giveable,
             fee_rate_estimation,
             min_relay_fee_rate,
         )?;
 
-        // Subtract the difference between the fee we calculated and the fee bdk chose
+        // Calculate the difference between the fee we calculated and the fee bdk chose
+        // How much more we need to pay to get the transaction confirmed in time?
+        // How much was the minimum fee off?
         let dummy_fee_diff = fee.checked_sub(dummy_fee).context(
             "Fee we choose was less than the minimum relay fee. Something has gone wrong",
         )?;
@@ -1334,7 +1343,10 @@ where
             return Ok(Amount::ZERO);
         }
 
-        tracing::trace!(fee=?psbt.fee_amount().map(|a| a.to_sat()), "Calculated max giveable");
+        tracing::trace!(
+            inputs_count = psbt.unsigned_tx.input.len(),
+            "Calculated max giveable"
+        );
 
         Ok(max_giveable)
     }
@@ -1942,6 +1954,8 @@ impl Subscription {
 /// - We never use a fee rate higher than MAX_TX_FEE_RATE (100M sat/vbyte)
 /// - We never go below 1000 sats (absolute minimum relay fee)
 /// - We never go below the minimum relay fee rate (from the fee estimation source)
+///
+/// We also add a constant safety margin to the fee
 fn estimate_fee(
     weight: Weight,
     transfer_amount: Amount,
