@@ -915,7 +915,7 @@ impl Wallet {
 
         // We throttle the tracing logging to 10% increments
         let tracing_callback = sync_ext::InnerSyncCallback::new(move |consumed, total| {
-            tracing::trace!("Syncing Bitcoin wallet ({}/{})", consumed, total);
+            tracing::debug!("Syncing Bitcoin wallet ({}/{})", consumed, total);
         })
         .throttle_callback(10.0);
 
