@@ -1091,7 +1091,7 @@ where
 
         match (electrum_result, mempool_result) {
             (Ok(electrum_fee), Ok(Some(mempool_space_fee))) => {
-                tracing::debug!(
+                tracing::trace!(
                     electrum_fee = ?electrum_fee,
                     mempool_space_fee = ?mempool_space_fee,
                     "Successfully fetched min relay fee from both Electrum and mempool.space. We will use the higher value"
@@ -1101,7 +1101,7 @@ where
             (Ok(electrum_fee), Ok(None)) => {
                 tracing::warn!(
                     ?electrum_fee,
-                    "No mempool client available or it failed, using Electrum rate"
+                    "No mempool.space client available or it failed, using Electrum min relay fee"
                 );
                 Ok(electrum_fee)
             }
@@ -1109,7 +1109,7 @@ where
                 tracing::warn!(
                     ?mempool_space_error,
                     ?electrum_fee,
-                    "Failed to fetch mempool min relay fee, using Electrum rate"
+                    "Failed to fetch mempool.space min relay fee, using Electrum min relay fee"
                 );
                 Ok(electrum_fee)
             }
@@ -1117,16 +1117,16 @@ where
                 tracing::warn!(
                     ?electrum_error,
                     ?mempool_space_fee,
-                    "Failed to fetch mempool min relay fee, using Electrum rate"
+                    "Failed to fetch Electrum min relay fee, using mempool.space min relay fee"
                 );
                 Ok(mempool_space_fee)
             }
             (Err(electrum_error), Ok(None)) => Err(electrum_error.context(
-                "Failed to fetch min relay fee from Electrum, and no mempool client available",
+                "Failed to fetch min relay fee from Electrum, and no mempool.space client available",
             )),
             (Err(electrum_error), Err(mempool_space_error)) => Err(electrum_error
                 .context(mempool_space_error)
-                .context("Failed to fetch min relay fee from both sources")),
+                .context("Failed to fetch min relay fee from both Electrum and mempool.space")),
         }
     }
 
