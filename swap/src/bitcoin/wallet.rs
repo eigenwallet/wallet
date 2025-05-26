@@ -1031,7 +1031,7 @@ where
                     electrum_rate_sat_vb = electrum_rate.to_sat_per_vb_ceil(),
                     "No mempool.space client available or it failed, using Electrum rate"
                 );
-                Ok(electrum_rate.with_safety_margin(SAFETY_MARGIN_TX_FEE))
+                Ok(electrum_rate)
             }
             // If the Electrum source is successful
             // but the mempool source fails, we use the Electrum rate
@@ -1041,7 +1041,7 @@ where
                     electrum_rate_sat_vb = electrum_rate.to_sat_per_vb_ceil(),
                     "Failed to fetch mempool.space fee rate, using Electrum rate"
                 );
-                Ok(electrum_rate.with_safety_margin(SAFETY_MARGIN_TX_FEE))
+                Ok(electrum_rate)
             }
             // If the mempool source is successful
             // but the Electrum source fails, we use the mempool rate
@@ -1051,7 +1051,7 @@ where
                     mempool_rate_sat_vb = mempool_rate.to_sat_per_vb_ceil(),
                     "Electrum fee rate failed, using mempool.space rate"
                 );
-                Ok(mempool_rate.with_safety_margin(SAFETY_MARGIN_TX_FEE))
+                Ok(mempool_rate)
             }
             // If both sources fail, we return the error
             (Err(electrum_error), Err(mempool_error)) => {
@@ -1253,7 +1253,7 @@ where
             return Ok(Amount::ZERO);
         }
 
-        let fee_rate = self.combined_fee_rate().await?;
+        let fee_rate = self.combined_fee_rate().await?.with_safety_margin(SAFETY_MARGIN_TX_FEE);
 
         // Construct a dummy drain transaction to figure out the max giveable amount.
         let mut tx_builder = wallet.build_tx();
@@ -1286,7 +1286,7 @@ where
     ///
     /// This uses different techniques to estimate the fee under the hood:
     /// 1. `estimate_fee_rate` from Electrum which calls `estimatesmartfee` from Bitcoin Core
-    /// 2. `estimate_fee_rate_from_mempool` which calls `mempool.get_fee_histogram` from Electrum. It calculates the distance to the tip of the mempool.
+    /// 2. `estimate_fee_rate_from_histogram` which calls `mempool.get_fee_histogram` from Electrum. It calculates the distance to the tip of the mempool.
     ///    it can adapt faster to sudden spikes in the mempool.
     /// 3. `MempoolClient::estimate_feerate` which uses the mempool.space API for fee estimation
     ///
@@ -1298,7 +1298,7 @@ where
         weight: usize,
         transfer_amount: bitcoin::Amount,
     ) -> Result<bitcoin::Amount> {
-        let fee_rate = self.combined_fee_rate().await?;
+        let fee_rate = self.combined_fee_rate().await?.with_safety_margin(SAFETY_MARGIN_TX_FEE);
         let min_relay_fee = self.combined_min_relay_fee().await?;
 
         estimate_fee(weight, transfer_amount, fee_rate, min_relay_fee)
@@ -1492,10 +1492,10 @@ impl Client {
     /// Calculates the fee_rate needed to be included in a block at the given offset.
     /// We calculate how many vMB we are away from the tip of the mempool.
     /// This method adapts faster to sudden spikes in the mempool.
-    fn estimate_fee_rate_from_mempool(&self, target_block: u32) -> Result<FeeRate> {
+    fn estimate_fee_rate_from_histogram(&self, target_block: u32) -> Result<FeeRate> {
         // Assume we want to get into the next block:
         // We want to be 80% of the block size away from the tip of the mempool.
-        const SAFETY_MARGIN: f32 = 0.8;
+        const HISTOGRAM_SAFETY_MARGIN: f32 = 0.8;
 
         // First we fetch the fee histogram from the Electrum server
         let fee_histogram = self
@@ -1506,6 +1506,13 @@ impl Client {
         // Parse the histogram as array of [fee, vsize] pairs
         let histogram: Vec<(f64, u64)> = serde_json::from_value(fee_histogram)?;
 
+        // If the histogram is empty, we return an error
+        if histogram.is_empty() {
+            return Err(anyhow!(
+                "The mempool seems to be empty therefore we cannot estimate the fee rate from the histogram"
+            ));
+        }
+
         // Sort the histogram by fee rate
         let mut histogram = histogram;
         histogram.sort_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -1514,11 +1521,11 @@ impl Client {
         let estimated_block_size = 1_000_000u64;
         #[allow(clippy::cast_precision_loss)]
         let target_distance_from_tip =
-            (estimated_block_size * target_block as u64) as f32 * SAFETY_MARGIN;
+            (estimated_block_size * target_block as u64) as f32 * HISTOGRAM_SAFETY_MARGIN;
 
         // Find cumulative vsize and corresponding fee rate
         let mut cumulative_vsize = 0u64;
-        for (fee_rate, vsize) in histogram {
+        for (fee_rate, vsize) in histogram.clone() {
             cumulative_vsize += vsize;
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             if cumulative_vsize >= target_distance_from_tip as u64 {
@@ -1529,7 +1536,12 @@ impl Client {
             }
         }
 
-        bail!("Failed to find a suitable fee rate from the mempool histogram");
+        // If we get here, the entire mempool is less than the target distance from the tip.
+        // We return the lowest fee rate in the histogram.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let sat_per_vb = histogram.first().unwrap().0.ceil() as u64;
+        FeeRate::from_sat_per_vb(sat_per_vb)
+            .context("Failed to create fee rate from mempool histogram (all mempool is less than the target distance from the tip)")
     }
 }
 
@@ -1538,43 +1550,43 @@ impl EstimateFeeRate for Client {
         // Run both fee rate estimation methods in sequence
         // TOOD: Once the Electrum client is async, use tokio::join! here to parallelize the calls
         let electrum_conservative_fee_rate = self.estimate_fee_rate(target_block);
-        let electrum_mempool_fee_rate = self.estimate_fee_rate_from_mempool(target_block);
+        let electrum_histogram_fee_rate = self.estimate_fee_rate_from_histogram(target_block);
 
-        match (electrum_conservative_fee_rate, electrum_mempool_fee_rate) {
-            // If both the mempool and conservative fee rate are successful, we use the higher one
-            (Ok(electrum_conservative_fee_rate), Ok(electrum_mempool_fee_rate)) => {
+        match (electrum_conservative_fee_rate, electrum_histogram_fee_rate) {
+            // If both the histogram and conservative fee rate are successful, we use the higher one
+            (Ok(electrum_conservative_fee_rate), Ok(electrum_histogram_fee_rate)) => {
                 tracing::debug!(
                     electrum_conservative_fee_rate_sat_vb =
                         electrum_conservative_fee_rate.to_sat_per_vb_ceil(),
-                    electrum_mempool_fee_rate_sat_vb =
-                        electrum_mempool_fee_rate.to_sat_per_vb_ceil(),
+                    electrum_histogram_fee_rate_sat_vb =
+                        electrum_histogram_fee_rate.to_sat_per_vb_ceil(),
                     "Successfully fetched fee rates from both sources. We will use the higher one"
                 );
 
-                Ok(electrum_conservative_fee_rate.max(electrum_mempool_fee_rate))
+                Ok(electrum_conservative_fee_rate.max(electrum_histogram_fee_rate))
             }
-            // If the conservative fee rate fails, we use the mempool fee rate
-            (Err(electrum_conservative_fee_rate_error), Ok(electrum_mempool_fee_rate)) => {
+            // If the conservative fee rate fails, we use the histogram fee rate
+            (Err(electrum_conservative_fee_rate_error), Ok(electrum_histogram_fee_rate)) => {
                 tracing::debug!(
                     electrum_conservative_fee_rate_error = ?electrum_conservative_fee_rate_error,
-                    electrum_mempool_fee_rate_sat_vb = electrum_mempool_fee_rate.to_sat_per_vb_ceil(),
-                    "Failed to fetch conservative fee rate, using mempool fee rate"
+                    electrum_histogram_fee_rate_sat_vb = electrum_histogram_fee_rate.to_sat_per_vb_ceil(),
+                    "Failed to fetch conservative fee rate, using histogram fee rate"
                 );
-                Ok(electrum_mempool_fee_rate)
+                Ok(electrum_histogram_fee_rate)
             }
-            // If the mempool fee rate fails, we use the conservative fee rate
-            (Ok(electrum_conservative_fee_rate), Err(electrum_mempool_fee_rate_error)) => {
+            // If the histogram fee rate fails, we use the conservative fee rate
+            (Ok(electrum_conservative_fee_rate), Err(electrum_histogram_fee_rate_error)) => {
                 tracing::debug!(
-                    electrum_mempool_fee_rate_error = ?electrum_mempool_fee_rate_error,
+                    electrum_histogram_fee_rate_error = ?electrum_histogram_fee_rate_error,
                     electrum_conservative_fee_rate_sat_vb = electrum_conservative_fee_rate.to_sat_per_vb_ceil(),
-                    "Failed to fetch mempool fee rate, using conservative fee rate"
+                    "Failed to fetch histogram fee rate, using conservative fee rate"
                 );
                 Ok(electrum_conservative_fee_rate)
             }
-            // If both the mempool and conservative fee rate fail, we return an error
-            (Err(electrum_conservative_fee_rate_error), Err(electrum_mempool_fee_rate_error)) => {
+            // If both the histogram and conservative fee rate fail, we return an error
+            (Err(electrum_conservative_fee_rate_error), Err(electrum_histogram_fee_rate_error)) => {
                 Err(electrum_conservative_fee_rate_error
-                    .context(electrum_mempool_fee_rate_error)
+                    .context(electrum_histogram_fee_rate_error)
                     .context("Failed to fetch fee rates from both sources"))
             }
         }
@@ -1896,12 +1908,14 @@ fn estimate_fee(
 }
 
 mod mempool_client {
+    static HTTP_TIMEOUT: Duration = Duration::from_secs(15);
     static BASE_URL: &str = "https://mempool.space";
 
     use super::EstimateFeeRate;
     use anyhow::{bail, Context, Result};
     use bitcoin::{FeeRate, Network};
     use serde::Deserialize;
+    use std::time::Duration;
 
     /// A client for the mempool.space API.
     ///
@@ -1932,8 +1946,13 @@ mod mempool_client {
                 _ => bail!("mempool.space fee estimation unsupported for network"),
             };
 
+            let client = reqwest::Client::builder()
+                .timeout(HTTP_TIMEOUT)
+                .build()
+                .context("Failed to build mempool.space HTTP client")?;
+
             Ok(MempoolClient {
-                client: reqwest::Client::new(),
+                client,
                 base_url,
             })
         }
