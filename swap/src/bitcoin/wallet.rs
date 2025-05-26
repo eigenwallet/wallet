@@ -1874,7 +1874,7 @@ fn estimate_fee(
     transfer_amount: Amount,
     fee_rate_estimation: FeeRate,
     min_relay_fee_rate: FeeRate,
-) -> Result<FeeRate> {
+) -> Result<Amount> {
     static ABSOLUTE_MIN_RELAY_FEE: Amount = Amount::from_sat(1000);
 
     // We cannot transfer less than the dust amount
@@ -1904,7 +1904,13 @@ fn estimate_fee(
 
     // We never want to spend more than specific percentage of the transfer amount
     // on fees
-    let absolute_max_allowed_fee = Amount::from_sat(transfer_amount.to_sat() * MAX_RELATIVE_TX_FEE);
+    let absolute_max_allowed_fee = Amount::from_sat(
+        MAX_RELATIVE_TX_FEE
+            .saturating_mul(Decimal::from(transfer_amount.to_sat()))
+            .ceil()
+            .to_u64()
+            .expect("Max relative tx fee to fit into u64"),
+    );
     let max_allowed_fee_rate =
         FeeRate::from_sat_per_kwu(absolute_max_allowed_fee.to_sat() / weight.to_wu());
 
@@ -1926,7 +1932,7 @@ fn estimate_fee(
         MAX_TX_FEE_RATE
     } else if recommended_fee_absolute_sats > absolute_max_allowed_fee {
         let max_relative_tx_fee_percentage = MAX_RELATIVE_TX_FEE
-            .saturating_mul(100.0)
+            .saturating_mul(Decimal::from(100))
             .ceil()
             .to_u64()
             .expect("Max relative tx fee to fit into u64");
@@ -1942,7 +1948,9 @@ fn estimate_fee(
         recommended_fee_rate
     };
 
-    Ok(recommended_fee_rate)
+    Ok(recommended_fee_rate
+        .checked_mul_by_weight(weight)
+        .context("Failed to compute absolute fee from fee rate")?)
 }
 
 mod mempool_client {
@@ -2490,7 +2498,7 @@ mod tests {
     #[test]
     fn given_one_BTC_and_100k_sats_per_vb_fees_should_not_hit_max() {
         // 400 weight = 100 vbyte
-        let weight = 400;
+        let weight = Weight::from_wu(400);
         let amount = bitcoin::Amount::from_sat(100_000_000);
 
         let sat_per_vb = 100;
@@ -2507,7 +2515,7 @@ mod tests {
     #[test]
     fn given_1BTC_and_1_sat_per_vb_fees_and_100ksat_min_relay_fee_should_hit_min() {
         // 400 weight = 100 vbyte
-        let weight = 400;
+        let weight = Weight::from_wu(400);
         let amount = bitcoin::Amount::from_sat(100_000_000);
 
         let sat_per_vb = 1;
@@ -2525,7 +2533,7 @@ mod tests {
     #[test]
     fn given_1mio_sat_and_1k_sats_per_vb_fees_should_hit_relative_max() {
         // 400 weight = 100 vbyte
-        let weight = 400;
+        let weight = Weight::from_wu(400);
         let amount = bitcoin::Amount::from_sat(1_000_000);
 
         let sat_per_vb = 1_000;
@@ -2544,7 +2552,7 @@ mod tests {
     fn given_1BTC_and_4mio_sats_per_vb_fees_should_hit_total_max() {
         // Even if we send 1BTC we don't want to pay 0.2BTC in fees. This would be
         // $1,650 at the moment.
-        let weight = 400;
+        let weight = Weight::from_wu(400);
         let amount = bitcoin::Amount::from_sat(100_000_000);
 
         let sat_per_vb = 4_000_000;
@@ -2565,7 +2573,7 @@ mod tests {
             sat_per_vb in 1u64..100_000_000,
             relay_fee in 0u64..100_000_000u64
         ) {
-            let weight = 400;
+            let weight = Weight::from_wu(400);
             let amount = bitcoin::Amount::from_sat(amount);
 
             let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
@@ -2581,7 +2589,7 @@ mod tests {
         fn given_amount_in_range_fix_fee_fix_relay_rate_fix_weight_fee_always_smaller_max(
             amount in 1u64..100_000_000,
         ) {
-            let weight = 400;
+            let weight = Weight::from_wu(400);
             let amount = bitcoin::Amount::from_sat(amount);
 
             let sat_per_vb = 100;
@@ -2600,7 +2608,7 @@ mod tests {
         fn given_amount_high_fix_fee_fix_relay_rate_fix_weight_fee_always_max(
             amount in 100_000_000u64..,
         ) {
-            let weight = 400;
+            let weight = Weight::from_wu(400);
             let amount = bitcoin::Amount::from_sat(amount);
 
             let sat_per_vb = 1_000;
@@ -2619,7 +2627,7 @@ mod tests {
         fn given_fee_above_max_should_always_errors(
             sat_per_vb in 100_000_000u64..(u64::MAX / 250),
         ) {
-            let weight = 400;
+            let weight = Weight::from_wu(400);
             let amount = bitcoin::Amount::from_sat(547u64);
 
             let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
@@ -2635,7 +2643,7 @@ mod tests {
         fn given_relay_fee_above_max_should_always_errors(
             relay_fee in 100_000_000u64..
         ) {
-            let weight = 400;
+            let weight = Weight::from_wu(400);
             let amount = bitcoin::Amount::from_sat(547u64);
 
             let fee_rate = FeeRate::from_sat_per_vb(1).unwrap();
