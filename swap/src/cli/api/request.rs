@@ -1226,7 +1226,7 @@ where
             let max_deposit_until_maximum_amount_is_reached = maximum_amount
                 .checked_sub(max_giveable)
                 .and_then(|amount| amount.checked_add(min_bitcoin_lock_tx_fee))
-                .unwrap_or(bitcoin::Amount::MAX);
+                .context("Overflow when calculating max_deposit_until_maximum_amount_is_reached")?;
 
             tracing::info!(
                 "Deposit at least {} to cover the min quantity with fee!",
