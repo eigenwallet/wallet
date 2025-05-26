@@ -29,6 +29,7 @@ async fn main() {
         STAGENET_WALLET_SEED.to_string(),
         monero::Network::Stagenet,
         STAGENET_WALLET_RESTORE_HEIGHT,
+        true,
         daemon,
     )
     .await

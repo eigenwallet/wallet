@@ -416,6 +416,7 @@ impl MoneroWallet {
             wallet_path.display().to_string(),
             daemon,
             monero::Network::Mainnet,
+            true,
         )
         .await
         .context("Failed to create or open wallet")?;

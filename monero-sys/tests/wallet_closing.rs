@@ -20,6 +20,7 @@ async fn main() {
             temp_dir.path().join("test_wallet").display().to_string(),
             daemon.clone(),
             monero::Network::Stagenet,
+            true,
         )
         .await
         .expect("Failed to create wallet");
@@ -39,6 +40,7 @@ async fn main() {
             temp_dir.path().join("test_wallet").display().to_string(),
             daemon.clone(),
             monero::Network::Stagenet,
+            true,
         )
         .await
         .expect("Failed to create wallet");

@@ -3,7 +3,6 @@ use monero_rpc::monerod::MonerodRpc as _;
 use std::time::Duration;
 use testcontainers::clients::Cli;
 use tokio::time;
-use tracing_subscriber::util::SubscriberInitExt;
 
 #[tokio::test]
 async fn init_miner_and_mine_to_miner_address() {
@@ -15,7 +14,7 @@ async fn init_miner_and_mine_to_miner_address() {
         .init();
 
     let tc = Cli::default();
-    let (monero, monerod_container, _wallet_containers) = Monero::new(&tc, vec![]).await.unwrap();
+    let (monero, _monerod_container, _wallet_containers) = Monero::new(&tc, vec![]).await.unwrap();
 
     // Get the miner wallet and print its main address
     let miner_wallet = monero.wallet("miner").unwrap();
@@ -27,7 +26,7 @@ async fn init_miner_and_mine_to_miner_address() {
     tracing::info!("Miner wallet address: {}", miner_address);
 
     // Hardcoded unlock time for Monero regtest mining rewards
-    const UNLOCK_TIME: u64 = 60;
+    const _UNLOCK_TIME: u64 = 60;
 
     // Mine some blocks manually first for debugging
     tracing::info!("Mining 10 blocks directly to miner address");

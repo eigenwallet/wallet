@@ -18,16 +18,12 @@ use tokio::sync::Mutex;
 pub use monero_sys::{Daemon, WalletHandle as Wallet};
 use uuid::Uuid;
 
-use super::{BlockHeight, TransferProof};
+use super::{BlockHeight, TransferProof, TxHash};
 
 /// Entrance point to the Monero blockchain.
 /// You can use this struct to open specific wallets and monitor the blockchain.
 pub struct Wallets {
     wallet_dir: PathBuf,
-    /// We keep a map of all open wallets,
-    /// but we use weak references to make sure they're not kept alive
-    /// by the `Wallets` struct.
-    wallets: Mutex<HashMap<String, Weak<Wallet>>>,
     network: Network,
     daemon: Daemon,
     main_wallet: Arc<Wallet>,
@@ -74,6 +70,7 @@ impl Wallets {
             wallet_dir.join(&main_wallet_name).display().to_string(),
             daemon.clone(),
             network,
+            true,
         )
         .await
         .context("Failed to open main wallet")?;
@@ -90,7 +87,6 @@ impl Wallets {
             wallet_dir,
             network,
             daemon,
-            wallets: Mutex::new(wallets),
             main_wallet,
             regtest,
         };
@@ -105,23 +101,8 @@ impl Wallets {
         swap_id: Uuid,
         spend_key: monero::PrivateKey,
         view_key: super::PrivateViewKey,
-        restore_height: super::BlockHeight,
+        tx_lock_id: TxHash,
     ) -> Result<Arc<Wallet>> {
-        // The wallet's filename is just the swap's uuid as a string
-        let filename = swap_id.to_string();
-        let wallet_path = self.wallet_dir.join(&filename).display().to_string();
-
-        // If we still have a reference to the wallet, return it
-        if let Some(wallet) = self.wallets.lock().await.get(&filename) {
-            if let Some(wallet) = wallet.upgrade() {
-                tracing::debug!(
-                    "Found existing wallet object for swap `{}`, returning it",
-                    filename
-                );
-                return Ok(wallet);
-            }
-        }
-
         // Derive wallet address from the keys
         let address = {
             let public_spend_key = monero::PublicKey::from_private_key(&spend_key);
@@ -129,9 +110,16 @@ impl Wallets {
 
             monero::Address::standard(self.network, public_spend_key, public_view_key)
         };
+
         // The wallet's filename is just the swap's uuid as a string
         let filename = swap_id.to_string();
         let wallet_path = self.wallet_dir.join(&filename).display().to_string();
+
+        let blockheight = self
+            .main_wallet
+            .blockchain_height()
+            .await
+            .context("Couldn't fetch blockchain height")?;
 
         let wallet = Wallet::open_or_create_from_keys(
             wallet_path.clone(),
@@ -140,7 +128,8 @@ impl Wallets {
             address,
             view_key.into(),
             spend_key,
-            restore_height.height,
+            blockheight,
+            false, // We don't sync the swap wallet, just import the transaction
             self.daemon.clone(),
         )
         .await
@@ -153,13 +142,17 @@ impl Wallets {
             wallet.unsafe_prepare_for_regtest().await;
         }
 
-        let wallet = Arc::new(wallet);
-        self.wallets
-            .lock()
-            .await
-            .insert(filename, Arc::downgrade(&wallet));
+        tracing::debug!(
+            %swap_id,
+            "Opened temporary Monero wallet, loading lock transaction"
+        );
 
-        Ok(wallet)
+        wallet
+            .scan_transaction(tx_lock_id.0.clone())
+            .await
+            .context("Couldn't import Monero lock transaction")?;
+
+        Ok(Arc::new(wallet))
     }
 
     /// Get the main wallet (specified when initializing the `Wallets` instance).
@@ -207,14 +200,6 @@ impl Wallets {
                 listener,
             )
             .await
-    }
-
-    /// Close all open wallets.
-    pub async fn close_all_wallets(&self) -> Result<()> {
-        let mut wallets = self.wallets.lock().await;
-        wallets.clear();
-
-        Ok(())
     }
 }
 

@@ -121,6 +121,7 @@ impl WalletHandle {
         path: String,
         daemon: Daemon,
         network: monero::Network,
+        background_sync: bool,
     ) -> anyhow::Result<Self> {
         let (call_sender, call_receiver) = unbounded_channel();
 
@@ -128,7 +129,7 @@ impl WalletHandle {
             let mut manager =
                 WalletManager::new(daemon.clone()).expect("wallet manager to be created");
             let wallet = manager
-                .open_or_create_wallet(&path, None, network, daemon.clone())
+                .open_or_create_wallet(&path, None, network, background_sync, daemon.clone())
                 .expect("wallet to be created");
 
             let mut wrapped_wallet = Wallet::new(wallet, manager, call_receiver);
@@ -154,6 +155,7 @@ impl WalletHandle {
         mnemonic: String,
         network: monero::Network,
         restore_height: u64,
+        background_sync: bool,
         daemon: Daemon,
     ) -> anyhow::Result<Self> {
         let (call_sender, call_receiver) = unbounded_channel();
@@ -170,7 +172,7 @@ impl WalletHandle {
             let wallet = if manager.wallet_exists(&path) {
                 // Existing wallet – open it.
                 manager
-                    .open_or_create_wallet(&path, None, network, daemon.clone())
+                    .open_or_create_wallet(&path, None, network, background_sync, daemon.clone())
                     .expect("wallet to be opened")
             } else {
                 // Wallet does not exist – recover it from the seed.
@@ -181,6 +183,7 @@ impl WalletHandle {
                         &mnemonic,
                         network,
                         restore_height,
+                        background_sync,
                         daemon.clone(),
                     )
                     .expect("wallet to be recovered from seed")
@@ -213,6 +216,7 @@ impl WalletHandle {
         view_key: monero::PrivateKey,
         spend_key: monero::PrivateKey,
         restore_height: u64,
+        background_sync: bool,
         daemon: Daemon,
     ) -> anyhow::Result<Self> {
         let (call_sender, call_receiver) = unbounded_channel();
@@ -230,6 +234,7 @@ impl WalletHandle {
                     view_key,
                     spend_key,
                     restore_height,
+                    background_sync,
                     daemon.clone(),
                 )
                 .expect("wallet to be opened or created from keys");
@@ -584,6 +589,7 @@ impl WalletManager {
         path: &str,
         password: Option<&str>,
         network: monero::Network,
+        background_sync: bool,
         daemon: Daemon,
     ) -> anyhow::Result<FfiWallet> {
         // If we haven't loaded the wallet, but it already exists, open it.
@@ -591,7 +597,7 @@ impl WalletManager {
             tracing::debug!(wallet=%path, "Wallet already exists, opening it");
 
             return self
-                .open_wallet(path, password, network, daemon)
+                .open_wallet(path, password, network, background_sync, daemon)
                 .context(format!("Failed to open wallet `{}`", &path));
         }
 
@@ -621,7 +627,7 @@ impl WalletManager {
         }
 
         let raw_wallet = RawWallet::new(wallet_pointer);
-        let wallet = FfiWallet::new(raw_wallet, daemon)
+        let wallet = FfiWallet::new(raw_wallet, background_sync, daemon)
             .context(format!("Failed to initialize wallet `{}`", &path))?;
 
         Ok(wallet)
@@ -638,13 +644,14 @@ impl WalletManager {
         view_key: monero::PrivateKey,
         spend_key: monero::PrivateKey,
         restore_height: u64,
+        background_sync: bool,
         daemon: Daemon,
     ) -> Result<FfiWallet> {
         if self.wallet_exists(path) {
             tracing::info!(wallet=%path, "Wallet already exists, opening it");
 
             return self
-                .open_wallet(path, password, network, daemon.clone())
+                .open_wallet(path, password, network, background_sync, daemon.clone())
                 .context(format!("Failed to open wallet `{}`", &path));
         }
 
@@ -691,7 +698,7 @@ impl WalletManager {
 
         let raw_wallet = RawWallet::new(wallet_pointer);
         tracing::debug!(path=%path, "Created wallet from keys, initializing");
-        let wallet = FfiWallet::new(raw_wallet, daemon)
+        let wallet = FfiWallet::new(raw_wallet, background_sync, daemon)
             .context(format!("Failed to initialize wallet `{}`", &path))?;
 
         Ok(wallet)
@@ -706,6 +713,7 @@ impl WalletManager {
         mnemonic: &str,
         network: monero::Network,
         restore_height: u64,
+        background_sync: bool,
         daemon: Daemon,
     ) -> anyhow::Result<FfiWallet> {
         let_cxx_string!(path = path);
@@ -725,7 +733,7 @@ impl WalletManager {
         );
 
         let raw_wallet = RawWallet::new(wallet_pointer);
-        let wallet = FfiWallet::new(raw_wallet, daemon)
+        let wallet = FfiWallet::new(raw_wallet, background_sync, daemon)
             .context(format!("Failed to initialize wallet `{}`", &path))?;
 
         Ok(wallet)
@@ -751,6 +759,7 @@ impl WalletManager {
         path: &str,
         password: Option<&str>,
         network_type: monero::Network,
+        background_sync: bool,
         daemon: Daemon,
     ) -> anyhow::Result<FfiWallet> {
         let_cxx_string!(path = path);
@@ -774,7 +783,8 @@ impl WalletManager {
 
         let raw_wallet = RawWallet::new(wallet_pointer);
 
-        let wallet = FfiWallet::new(raw_wallet, daemon).context("Failed to initialize wallet")?;
+        let wallet = FfiWallet::new(raw_wallet, background_sync, daemon)
+            .context("Failed to initialize wallet")?;
 
         Ok(wallet)
     }
@@ -819,7 +829,7 @@ impl FfiWallet {
     const MAIN_ACCOUNT_INDEX: u32 = 0;
 
     /// Create and initialize new wallet from a raw C++ wallet pointer.
-    fn new(inner: RawWallet, daemon: Daemon) -> anyhow::Result<Self> {
+    fn new(inner: RawWallet, background_sync: bool, daemon: Daemon) -> anyhow::Result<Self> {
         if inner.inner.is_null() {
             anyhow::bail!("Failed to create wallet: got null pointer");
         }
@@ -839,11 +849,12 @@ impl FfiWallet {
 
         wallet.set_daemon_address(&daemon.address)?;
 
-        tracing::debug!("Starting auto-refresh");
+        if background_sync {
+            tracing::debug!("Background sync enabled, starting refresh thread");
 
-        wallet.start_refresh();
-
-        wallet.refresh_async();
+            wallet.start_refresh();
+            wallet.refresh_async();
+        }
 
         // Check for errors on general principles
         wallet.check_error()?;
