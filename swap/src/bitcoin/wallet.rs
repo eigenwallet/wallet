@@ -1964,14 +1964,11 @@ mod mempool_client {
     }
 
     #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct MempoolFees {
-        #[serde(rename = "fastestFee")]
         fastest_fee: u64,
-        #[serde(rename = "halfHourFee")]
         half_hour_fee: u64,
-        #[serde(rename = "hourFee")]
         hour_fee: u64,
-        #[serde(rename = "minimumFee")]
         minimum_fee: u64,
     }
 
