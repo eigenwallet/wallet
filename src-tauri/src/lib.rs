@@ -282,13 +282,13 @@ async fn get_data_dir(
 }
 
 #[tauri::command]
-async fn save_txt_files(app: tauri::AppHandle, content: HashMap<String, String>) -> Result<(), String> {
+async fn save_txt_files(app: tauri::AppHandle, zip_file_name: String, content: HashMap<String, String>) -> Result<(), String> {
     // Step 1: Get the owned PathBuf from the dialog
     let path_buf_from_dialog: tauri_plugin_dialog::FilePath = app
         .dialog()
         .file()
-        .set_file_name("logs.zip")
-        .add_filter("logs", &["zip"])
+        .set_file_name(format!("{}.zip", &zip_file_name).as_str())
+        .add_filter(&zip_file_name, &["zip"])
         .blocking_save_file() // This returns Option<PathBuf>
         .ok_or_else(|| "Dialog cancelled or file path not selected".to_string())?; // Converts to Result<PathBuf, String> and unwraps to PathBuf
 
@@ -303,7 +303,7 @@ async fn save_txt_files(app: tauri::AppHandle, content: HashMap<String, String>)
     let mut zip = ZipWriter::new(zip_file);
 
     for (filename, file_content_str) in content.iter() {
-        zip.start_file(filename.as_str(), SimpleFileOptions::default()) // Pass &str to start_file
+        zip.start_file(format!("{}.txt", filename).as_str(), SimpleFileOptions::default()) // Pass &str to start_file
             .map_err(|e| format!("Failed to start file {}: {}", &filename, e))?; // Use &filename
 
         zip.write_all(file_content_str.as_bytes())

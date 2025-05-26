@@ -314,6 +314,6 @@ export async function resolveApproval(requestId: string, accept: boolean): Promi
   await invoke<ResolveApprovalArgs, ResolveApprovalResponse>("resolve_approval_request", { request_id: requestId, accept });
 }
 
-export async function saveLogFiles(content: Record<string, string>): Promise<void> {
-  await invokeUnsafe<void>("save_txt_files", { content });
+export async function saveLogFiles(zipFileName: string, content: Record<string, string>): Promise<void> {
+  await invokeUnsafe<void>("save_txt_files", { zipFileName, content });
 }
