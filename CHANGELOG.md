@@ -7,7 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- We add a safety margin of 25% to the Bitcoin fee estimation. This ensures pre-signed transactions will get confirmed in time.
+
+## [1.1.2] - 2025-05-24
+
+- Docs: Document `external_bitcoin_address` option for using a specific
+  Bitcoin address when redeeming or punishing swaps.
+- Removed the JSON-RPC daemon and the `start-daemon` CLI command.
+- Increased the max Bitcoin fee to up to 20% of the value of the transaction. This mitigates an issue where the Bitcoin lock transaction would not get confirmed in time on the blockchain.
+
+## [1.1.1] - 2025-05-20
+
+- CLI + GUI + ASB: Retry the Bitcoin wallet sync up to 15 seconds to work around transient errors.
+
+## [1.1.0] - 2025-05-19
+
+- GUI: Discourage swapping with makers running `< 1.1.0-rc.3` because the bdk upgrade introduced a breaking change.
+- GUI: Fix an issue where the auto updater would incorrectly throw an error
+
+## [1.1.0-rc.3] - 2025-05-18
+
+- Breaking Change(Makers): Please complete all pending swaps, then upgrade as soon as possible. Takers might not be able to taker your offers until you upgrade your asb instance.
+- CLI + ASB + GUI: We upgraded dependencies related to the Bitcoin wallet. When you boot up the new version for the first time, a migration process will be run to convert the old wallet format to the new one. This might take a few minutes. We also fixed a bug where we would generate too many unused addresses in the Bitcoin wallet which would cause the wallet to take longer to start up as time goes on.
+- GUI: We display detailed progress about running background tasks (Tor bootstrapping, Bitcoin wallet sync progress, etc.)
+
+## [1.0.0-rc.21] - 2025-05-15
+
+## [1.0.0-rc.20] - 2025-05-14
+
 - GUI: Added introduction flow for first-time users
+- CLI + GUI: Update monero-wallet-rpc to v0.18.4.0
 
 ## [1.0.0-rc.19] - 2025-04-28
 
@@ -460,7 +489,15 @@ It is possible to migrate critical data from the old db to the sqlite but there 
 - Fixed an issue where Alice would not verify if Bob's Bitcoin lock transaction is semantically correct, i.e. pays the agreed upon amount to an output owned by both of them.
   Fixing this required a **breaking change** on the network layer and hence old versions are not compatible with this version.
 
-[unreleased]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.19...HEAD
+[unreleased]: https://github.com/UnstoppableSwap/core/compare/1.1.2...HEAD
+[1.1.2]: https://github.com/UnstoppableSwap/core/compare/1.1.1...1.1.2
+[1.1.1]: https://github.com/UnstoppableSwap/core/compare/1.1.0...1.1.1
+[1.1.0]: https://github.com/UnstoppableSwap/core/compare/1.1.0-rc.3...1.1.0
+[1.1.0-rc.3]: https://github.com/UnstoppableSwap/core/compare/1.1.0-rc.2...1.1.0-rc.3
+[1.1.0-rc.2]: https://github.com/UnstoppableSwap/core/compare/1.1.0-rc.1...1.1.0-rc.2
+[1.1.0-rc.1]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.21...1.1.0-rc.1
+[1.0.0-rc.21]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.20...1.0.0-rc.21
+[1.0.0-rc.20]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.19...1.0.0-rc.20
 [1.0.0-rc.19]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.18...1.0.0-rc.19
 [1.0.0-rc.18]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.17...1.0.0-rc.18
 [1.0.0-rc.17]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.16...1.0.0-rc.17

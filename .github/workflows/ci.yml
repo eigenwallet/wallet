@@ -6,6 +6,10 @@ on:
     branches:
       - "master" # Always build head of master for the badge in the README
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   static_analysis:
     runs-on: ubuntu-latest
@@ -15,7 +19,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.80"
+          toolchain: "1.82"
           components: clippy,rustfmt
 
       - uses: Swatinem/rust-cache@v2.7.3
@@ -123,7 +127,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.80"
+          toolchain: "1.82"
           targets: armv7-unknown-linux-gnueabihf
 
       - name: Install dependencies required by Tauri v2 (ubuntu only)
@@ -258,29 +262,6 @@ jobs:
       - name: Run test ${{ matrix.test_name }}
         run: cargo test --package swap --test ${{ matrix.test_name }} -- --nocapture
 
-  rpc_tests:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4.1.7
-
-      - uses: Swatinem/rust-cache@v2.7.3
-
-      - name: Install dependencies required by Tauri v2 (ubuntu only)
-        run: |
-          sudo apt update
-          sudo apt install libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-
-      - name: Run RPC server tests
-        run: cargo test --package swap --test rpc -- --nocapture
 
   check_stable:
     runs-on: ubuntu-latest

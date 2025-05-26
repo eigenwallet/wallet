@@ -1,16 +1,15 @@
 use crate::bitcoin::{bitcoin_address, Amount};
 use crate::cli::api::request::{
     BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, ExportBitcoinWalletArgs, GetConfigArgs,
-    GetHistoryArgs, ListSellersArgs, MoneroRecoveryArgs, Request, ResumeSwapArgs, StartDaemonArgs,
-    WithdrawBtcArgs,
+    GetHistoryArgs, ListSellersArgs, MoneroRecoveryArgs, Request, ResumeSwapArgs, WithdrawBtcArgs,
 };
 use crate::cli::api::Context;
 use crate::monero;
 use crate::monero::monero_address;
 use anyhow::Result;
+use bitcoin::address::NetworkUnchecked;
 use libp2p::core::Multiaddr;
 use std::ffi::OsString;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -74,8 +73,9 @@ where
                 monero_address::validate_is_testnet(monero_receive_address, is_testnet)?;
 
             let bitcoin_change_address = bitcoin_change_address
-                .map(|address| bitcoin_address::validate_is_testnet(address, is_testnet))
-                .transpose()?;
+                .map(|address| bitcoin_address::validate(address, is_testnet))
+                .transpose()?
+                .map(|address| address.into_unchecked());
 
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
@@ -170,36 +170,12 @@ where
 
             Ok(context)
         }
-        CliCommand::StartDaemon {
-            server_address,
-            bitcoin,
-            monero,
-            tor,
-        } => {
-            let context = Arc::new(
-                ContextBuilder::new(is_testnet)
-                    .with_tor(tor.enable_tor)
-                    .with_bitcoin(bitcoin)
-                    .with_monero(monero)
-                    .with_data_dir(data)
-                    .with_debug(debug)
-                    .with_json(json)
-                    .build()
-                    .await?,
-            );
-
-            StartDaemonArgs { server_address }
-                .request(context.clone())
-                .await?;
-
-            Ok(context)
-        }
         CliCommand::WithdrawBtc {
             bitcoin,
             amount,
             address,
         } => {
-            let address = bitcoin_address::validate_is_testnet(address, is_testnet)?;
+            let address = bitcoin_address::validate(address, is_testnet)?;
 
             let context = Arc::new(
                 ContextBuilder::new(is_testnet)
@@ -369,7 +345,7 @@ enum CliCommand {
             help = "The bitcoin address where any form of change or excess funds should be sent to. If omitted they will be sent to the internal wallet.",
             parse(try_from_str = bitcoin_address::parse)
         )]
-        bitcoin_change_address: Option<bitcoin::Address>,
+        bitcoin_change_address: Option<bitcoin::Address<NetworkUnchecked>>,
 
         #[structopt(flatten)]
         monero: Monero,
@@ -421,29 +397,12 @@ enum CliCommand {
             help = "The address to receive the Bitcoin.",
             parse(try_from_str = bitcoin_address::parse)
         )]
-        address: bitcoin::Address,
+        address: bitcoin::Address<NetworkUnchecked>,
     },
     #[structopt(about = "Prints the Bitcoin balance.")]
     Balance {
         #[structopt(flatten)]
         bitcoin: Bitcoin,
-    },
-    #[structopt(about = "Starts a JSON-RPC server")]
-    StartDaemon {
-        #[structopt(flatten)]
-        bitcoin: Bitcoin,
-
-        #[structopt(flatten)]
-        monero: Monero,
-
-        #[structopt(
-            long = "server-address",
-            help = "The socket address the server should use"
-        )]
-        server_address: Option<SocketAddr>,
-
-        #[structopt(flatten)]
-        tor: Tor,
     },
     /// Resume a swap
     Resume {
