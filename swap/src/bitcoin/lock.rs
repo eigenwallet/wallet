@@ -177,8 +177,8 @@ impl TxLock {
         }
     }
 
-    pub fn weight() -> usize {
-        TX_LOCK_WEIGHT
+    pub fn weight() -> ::bitcoin::Weight {
+        ::bitcoin::Weight::from_wu(TX_LOCK_WEIGHT as u64)
     }
 }
 
