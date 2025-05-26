@@ -1253,7 +1253,10 @@ where
             return Ok(Amount::ZERO);
         }
 
-        let fee_rate = self.combined_fee_rate().await?.with_safety_margin(SAFETY_MARGIN_TX_FEE);
+        let fee_rate = self
+            .combined_fee_rate()
+            .await?
+            .with_safety_margin(SAFETY_MARGIN_TX_FEE);
 
         // Construct a dummy drain transaction to figure out the max giveable amount.
         let mut tx_builder = wallet.build_tx();
@@ -1298,7 +1301,10 @@ where
         weight: usize,
         transfer_amount: bitcoin::Amount,
     ) -> Result<bitcoin::Amount> {
-        let fee_rate = self.combined_fee_rate().await?.with_safety_margin(SAFETY_MARGIN_TX_FEE);
+        let fee_rate = self
+            .combined_fee_rate()
+            .await?
+            .with_safety_margin(SAFETY_MARGIN_TX_FEE);
         let min_relay_fee = self.combined_min_relay_fee().await?;
 
         estimate_fee(weight, transfer_amount, fee_rate, min_relay_fee)
@@ -1951,10 +1957,7 @@ mod mempool_client {
                 .build()
                 .context("Failed to build mempool.space HTTP client")?;
 
-            Ok(MempoolClient {
-                client,
-                base_url,
-            })
+            Ok(MempoolClient { client, base_url })
         }
 
         /// Fetch the fees (`fees/recommended` endpoint) from the mempool.space API
