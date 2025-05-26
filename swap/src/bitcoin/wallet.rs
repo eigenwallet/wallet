@@ -1538,16 +1538,20 @@ impl Client {
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                 let sat_per_vb = fee_rate.ceil() as u64;
                 return FeeRate::from_sat_per_vb(sat_per_vb)
-                    .context("Failed to create fee rate from mempool histogram");
+                    .context("Failed to create fee rate from histogram");
             }
         }
 
         // If we get here, the entire mempool is less than the target distance from the tip.
         // We return the lowest fee rate in the histogram.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let sat_per_vb = histogram.first().unwrap().0.ceil() as u64;
+        let sat_per_vb = histogram
+            .first()
+            .expect("The histogram should not be empty")
+            .0
+            .ceil() as u64;
         FeeRate::from_sat_per_vb(sat_per_vb)
-            .context("Failed to create fee rate from mempool histogram (all mempool is less than the target distance from the tip)")
+            .context("Failed to create fee rate from histogram (all mempool is less than the target distance from the tip)")
     }
 }
 
