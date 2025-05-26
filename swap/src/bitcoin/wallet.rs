@@ -19,8 +19,8 @@ use bdk_wallet::SignOptions;
 use bdk_wallet::WalletPersister;
 use bdk_wallet::{Balance, PersistedWallet};
 use bitcoin::bip32::Xpriv;
-use bitcoin::ScriptBuf;
 use bitcoin::{psbt::Psbt as PartiallySignedTransaction, Txid};
+use bitcoin::{ScriptBuf, Weight};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -46,7 +46,7 @@ use derive_builder::Builder;
 /// We allow transaction fees of up to 20% of the transferred amount to ensure
 /// that lock transactions can always be published, even when fees are high.
 const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.20);
-const MAX_ABSOLUTE_TX_FEE: Decimal = dec!(100_000);
+const MAX_TX_FEE_RATE: FeeRate = FeeRate::from_sat_per_kwu(100_000);
 const DUST_AMOUNT: Amount = Amount::from_sat(546);
 
 // We add a safety margin on top of the estimation by the Electrum server
@@ -294,7 +294,7 @@ pub trait EstimateFeeRate {
         target_block: u32,
     ) -> impl std::future::Future<Output = Result<FeeRate>> + Send;
     /// Get the minimum relay fee.
-    fn min_relay_fee(&self) -> impl std::future::Future<Output = Result<bitcoin::Amount>> + Send;
+    fn min_relay_fee(&self) -> impl std::future::Future<Output = Result<FeeRate>> + Send;
 }
 
 impl Wallet {
@@ -1077,7 +1077,7 @@ where
     /// Returns the minimum relay fee from the Electrum and Mempool clients.
     ///
     /// Only fails if both sources fail. Always chooses the higher value.
-    async fn combined_min_relay_fee(&self) -> Result<bitcoin::Amount> {
+    async fn combined_min_relay_fee(&self) -> Result<FeeRate> {
         let electrum_client = self.electrum_client.lock().await;
         let electrum_future = electrum_client.min_relay_fee();
         let mempool_future = async {
@@ -1246,13 +1246,6 @@ where
             return Ok(Amount::ZERO);
         }
 
-        let min_relay_fee = self.combined_min_relay_fee().await?;
-
-        // If the balance is less than the min relay fee, we can't send any funds.
-        if balance.total() < min_relay_fee {
-            return Ok(Amount::ZERO);
-        }
-
         let fee_rate = self
             .combined_fee_rate()
             .await?
@@ -1278,6 +1271,10 @@ where
             .map(|o| o.value)
             .sum::<Amount>();
 
+        if max_giveable < DUST_AMOUNT {
+            return Ok(Amount::ZERO);
+        }
+
         tracing::trace!(fee=?psbt.fee_amount().map(|a| a.to_sat()), "Calculated max giveable");
 
         Ok(max_giveable)
@@ -1298,7 +1295,7 @@ where
     /// In all cases, if have multiple sources, we use the higher one.
     pub async fn estimate_fee(
         &self,
-        weight: usize,
+        weight: Weight,
         transfer_amount: bitcoin::Amount,
     ) -> Result<bitcoin::Amount> {
         let fee_rate = self
@@ -1553,6 +1550,30 @@ impl Client {
         FeeRate::from_sat_per_vb(sat_per_vb)
             .context("Failed to create fee rate from histogram (all mempool is less than the target distance from the tip)")
     }
+
+    /// Get the minimum relay fee rate from the Electrum server.
+    async fn min_relay_fee(&self) -> Result<FeeRate> {
+        let min_relay_btc_per_kvb = self.electrum.inner.relay_fee()?;
+
+        // Convert to sat / kB without ever constructing an Amount from the float
+        // Simply by multiplying the float with the satoshi value of 1 BTC.
+        // Truncation is allowed here because we are converting to sats and rounding down sats will
+        // not lose us any precision (because there is no fractional satoshi).
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
+        let sats_per_kvb = (min_relay_btc_per_kvb * Amount::ONE_BTC.to_sat() as f64).ceil() as u64;
+
+        // Convert to sat / kwu (kwu = kB × 4)
+        let sat_per_kwu = sats_per_kvb / 4;
+
+        // Construct the fee rate
+        let fee_rate = FeeRate::from_sat_per_kwu(sat_per_kwu);
+
+        Ok(fee_rate)
+    }
 }
 
 impl EstimateFeeRate for Client {
@@ -1602,10 +1623,8 @@ impl EstimateFeeRate for Client {
         }
     }
 
-    async fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
-        let relay_fee_btc = self.electrum.inner.relay_fee()?;
-
-        Amount::from_btc(relay_fee_btc).context("relay fee out of range")
+    async fn min_relay_fee(&self) -> Result<FeeRate> {
+        self.min_relay_fee().await
     }
 }
 
@@ -1851,70 +1870,79 @@ impl Subscription {
 }
 
 fn estimate_fee(
-    weight: usize,
+    weight: Weight,
     transfer_amount: Amount,
-    fee_rate: FeeRate,
-    min_relay_fee: Amount,
-) -> Result<Amount> {
-    if transfer_amount.to_sat() <= 546 {
-        bail!("Amounts needs to be greater than Bitcoin dust amount.")
-    }
-    let fee_rate_svb = fee_rate.to_sat_per_vb_ceil();
+    fee_rate_estimation: FeeRate,
+    min_relay_fee_rate: FeeRate,
+) -> Result<FeeRate> {
+    static ABSOLUTE_MIN_RELAY_FEE: Amount = Amount::from_sat(1000);
 
-    if fee_rate_svb > 100_000_000 || min_relay_fee.to_sat() > 100_000_000 {
+    // We cannot transfer less than the dust amount
+    if transfer_amount <= DUST_AMOUNT {
+        bail!("Transfer amount needs to be greater than Bitcoin dust amount.")
+    }
+
+    // Sanity checks
+    if fee_rate_estimation.to_sat_per_vb_ceil() > 100_000_000
+        || min_relay_fee_rate.to_sat_per_vb_ceil() > 100_000_000
+    {
         bail!("A fee_rate or min_relay_fee of > 1BTC does not make sense")
     }
 
-    let min_relay_fee = if min_relay_fee.to_sat() == 0 {
-        // if min_relay_fee is 0 we don't fail, we just set it to 1 satoshi;
-        Amount::ONE_SAT
-    } else {
-        min_relay_fee
-    };
+    // Choose the highest fee rate of:
+    // - The fee rate provided by the user
+    // - The minimum relay fee rate (by Electrum / Mempool Space)
+    // - The broadcast minimum fee rate (hardcoded in the Bitcoin library)
+    let recommended_fee_rate = fee_rate_estimation
+        .max(min_relay_fee_rate)
+        .max(FeeRate::BROADCAST_MIN);
 
-    let weight = Decimal::from(weight);
-    let weight_factor = dec!(4.0);
-    let fee_rate = Decimal::from_u64(fee_rate_svb).context("Failed to parse fee rate")?;
-    let sats_per_vbyte = weight / weight_factor * fee_rate;
+    // Compute the absolute fee in satoshis for the given weight
+    let recommended_fee_absolute_sats = fee_rate_estimation
+        .checked_mul_by_weight(weight)
+        .context("Failed to compute recommended fee rate")?;
+
+    // We never want to spend more than specific percentage of the transfer amount
+    // on fees
+    let absolute_max_allowed_fee = Amount::from_sat(transfer_amount.to_sat() * MAX_RELATIVE_TX_FEE);
+    let max_allowed_fee_rate =
+        FeeRate::from_sat_per_kwu(absolute_max_allowed_fee.to_sat() / weight.to_wu());
 
     tracing::debug!(
+        %transfer_amount,
         %weight,
-        %fee_rate,
-        %sats_per_vbyte,
+        %fee_rate_estimation,
+        %recommended_fee_rate,
+        %recommended_fee_absolute_sats,
         "Estimated fee for transaction",
     );
 
-    let transfer_amount = Decimal::from(transfer_amount.to_sat());
-    let max_allowed_fee = transfer_amount * MAX_RELATIVE_TX_FEE;
-    let min_relay_fee = Decimal::from(min_relay_fee.to_sat());
+    let recommended_fee_rate = if recommended_fee_rate > MAX_TX_FEE_RATE {
+        tracing::warn!(
+            "Hard bound of transaction fee rate reached. Falling back to: {} sats/vbyte",
+            MAX_TX_FEE_RATE.to_sat_per_vb_ceil()
+        );
 
-    let recommended_fee = if sats_per_vbyte < min_relay_fee {
+        MAX_TX_FEE_RATE
+    } else if recommended_fee_absolute_sats > absolute_max_allowed_fee {
+        let max_relative_tx_fee_percentage = MAX_RELATIVE_TX_FEE
+            .saturating_mul(100.0)
+            .ceil()
+            .to_u64()
+            .expect("Max relative tx fee to fit into u64");
+
         tracing::warn!(
-            "Estimated fee of {} is smaller than the min relay fee, defaulting to min relay fee {}",
-            sats_per_vbyte,
-            min_relay_fee
+            "Relative bound of transaction fees reached. We don't want to spend more than {}% of our transfer amount on fees. Falling back to: {} sats",
+            max_relative_tx_fee_percentage,
+            absolute_max_allowed_fee.to_sat()
         );
-        min_relay_fee.to_u64()
-    } else if sats_per_vbyte > max_allowed_fee && sats_per_vbyte > MAX_ABSOLUTE_TX_FEE {
-        tracing::warn!(
-            "Hard bound of transaction fees reached. Falling back to: {} sats",
-            MAX_ABSOLUTE_TX_FEE
-        );
-        MAX_ABSOLUTE_TX_FEE.to_u64()
-    } else if sats_per_vbyte > max_allowed_fee {
-        tracing::warn!(
-            "Relative bound of transaction fees reached. Falling back to: {} sats",
-            max_allowed_fee
-        );
-        max_allowed_fee.to_u64()
+
+        max_allowed_fee_rate
     } else {
-        sats_per_vbyte.to_u64()
+        recommended_fee_rate
     };
-    let amount = recommended_fee
-        .map(bitcoin::Amount::from_sat)
-        .context("Could not estimate tranasction fee.")?;
 
-    Ok(amount)
+    Ok(recommended_fee_rate)
 }
 
 mod mempool_client {
@@ -1988,20 +2016,19 @@ mod mempool_client {
             };
 
             // Construct the fee rate
-            FeeRate::from_sat_per_vb(sat_per_vb).context("Failed to parse mempool fee rate")
+            FeeRate::from_sat_per_vb(sat_per_vb)
+                .context("Failed to parse mempool fee rate (out of range)")
         }
 
-        async fn min_relay_fee(&self) -> Result<bitcoin::Amount> {
+        async fn min_relay_fee(&self) -> Result<FeeRate> {
             let fees = self.fetch_fees().await?;
 
-            let minimum_sat_per_vb = fees.minimum_fee;
+            // Match the target block to the correct fee rate
+            let minimum_relay_fee = fees.minimum_fee;
 
-            // Convert the minimum fee rate to an amount for a standard transaction size
-            // Using 250 vbytes as a typical transaction size
-            let typical_tx_size_vb = 250;
-            let min_fee_sats = minimum_sat_per_vb * typical_tx_size_vb;
-
-            Ok(bitcoin::Amount::from_sat(min_fee_sats))
+            // Construct the fee rate
+            FeeRate::from_sat_per_vb(minimum_relay_fee)
+                .context("Failed to parse mempool min relay fee (out of range)")
         }
     }
 }
@@ -2531,7 +2558,7 @@ mod tests {
 
         // weight / 4.0 *  sat_per_vb would be greater than 20% hence we take total
         // max allowed fee.
-        assert_eq!(is_fee.to_sat(), MAX_ABSOLUTE_TX_FEE.to_u64().unwrap());
+        assert_eq!(is_fee.to_sat(), MAX_TX_FEE_RATE.to_u64().unwrap());
     }
 
     proptest! {
@@ -2567,7 +2594,7 @@ mod tests {
             let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
 
             // weight / 4 * 1_000 is always lower than MAX_ABSOLUTE_TX_FEE
-            assert!(is_fee.to_sat() < MAX_ABSOLUTE_TX_FEE.to_u64().unwrap());
+            assert!(is_fee.to_sat() < MAX_TX_FEE_RATE.to_u64().unwrap());
         }
     }
 
@@ -2586,7 +2613,7 @@ mod tests {
             let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
 
             // weight / 4 * 1_000  is always higher than MAX_ABSOLUTE_TX_FEE
-            assert!(is_fee.to_sat() >= MAX_ABSOLUTE_TX_FEE.to_u64().unwrap());
+            assert!(is_fee.to_sat() >= MAX_TX_FEE_RATE.to_u64().unwrap());
         }
     }
 
