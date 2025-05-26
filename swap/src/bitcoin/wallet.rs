@@ -1027,7 +1027,7 @@ where
             // If the Electrum source is successful
             // but we don't have a mempool client, we use the Electrum rate
             (Ok(electrum_rate), Ok(None)) => {
-                tracing::warn!(
+                tracing::trace!(
                     electrum_rate_sat_vb = electrum_rate.to_sat_per_vb_ceil(),
                     "No mempool.space client available, using Electrum rate"
                 );
@@ -1099,9 +1099,9 @@ where
                 Ok(std::cmp::max(electrum_fee, mempool_space_fee))
             }
             (Ok(electrum_fee), Ok(None)) => {
-                tracing::warn!(
+                tracing::trace!(
                     ?electrum_fee,
-                    "No mempool.space client available or it failed, using Electrum min relay fee"
+                    "No mempool.space client available, using Electrum min relay fee"
                 );
                 Ok(electrum_fee)
             }

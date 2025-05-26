@@ -1223,8 +1223,10 @@ where
             let min_outstanding = bid_quote.min_quantity - max_giveable;
             let min_bitcoin_lock_tx_fee = estimate_fee(min_outstanding).await?;
             let min_deposit_until_swap_will_start = min_outstanding + min_bitcoin_lock_tx_fee;
-            let max_deposit_until_maximum_amount_is_reached =
-                maximum_amount - max_giveable + min_bitcoin_lock_tx_fee;
+            let max_deposit_until_maximum_amount_is_reached = maximum_amount
+                .checked_sub(max_giveable)
+                .and_then(|amount| amount.checked_add(min_bitcoin_lock_tx_fee))
+                .unwrap_or(bitcoin::Amount::MAX);
 
             tracing::info!(
                 "Deposit at least {} to cover the min quantity with fee!",
