@@ -420,6 +420,7 @@ async fn init_bitcoin_wallet(
         })
         .finality_confirmations(env_config.bitcoin_finality_confirmations)
         .target_block(config.bitcoin.target_block)
+        .use_mempool_space_fee_estimation(config.bitcoin.use_mempool_space_fee_estimation)
         .sync_interval(env_config.bitcoin_sync_interval())
         .build()
         .await

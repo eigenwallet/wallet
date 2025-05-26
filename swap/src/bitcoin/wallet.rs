@@ -46,7 +46,8 @@ use derive_builder::Builder;
 /// We allow transaction fees of up to 20% of the transferred amount to ensure
 /// that lock transactions can always be published, even when fees are high.
 const MAX_RELATIVE_TX_FEE: Decimal = dec!(0.20);
-const MAX_TX_FEE_RATE: FeeRate = FeeRate::from_sat_per_kwu(100_000);
+const MAX_ABSOLUTE_TX_FEE: Amount = Amount::from_sat(100_000);
+const MIN_ABSOLUTE_TX_FEE: Amount = Amount::from_sat(1000);
 const DUST_AMOUNT: Amount = Amount::from_sat(546);
 
 // We add a safety margin on top of the estimation by the Electrum server
@@ -132,6 +133,8 @@ pub struct WalletConfig {
     sync_interval: Duration,
     #[builder(default)]
     tauri_handle: Option<TauriHandle>,
+    #[builder(default = "true")]
+    use_mempool_space_fee_estimation: bool,
 }
 
 impl WalletBuilder {
@@ -180,6 +183,7 @@ impl WalletBuilder {
                         config.finality_confirmations,
                         config.target_block,
                         config.tauri_handle.clone(),
+                        config.use_mempool_space_fee_estimation,
                     )
                     .await
                     .context("Failed to load existing wallet")
@@ -201,6 +205,7 @@ impl WalletBuilder {
                         config.target_block,
                         old_wallet_export,
                         config.tauri_handle.clone(),
+                        config.use_mempool_space_fee_estimation,
                     )
                     .await
                     .context("Failed to create new wallet")
@@ -224,6 +229,7 @@ impl WalletBuilder {
                     config.target_block,
                     None,
                     config.tauri_handle.clone(),
+                    config.use_mempool_space_fee_estimation,
                 )
                 .await
                 .context("Failed to create new in-memory wallet")
@@ -395,6 +401,7 @@ impl Wallet {
                 finality_confirmations,
                 target_block,
                 tauri_handle,
+                true, // default to true for mempool space fee estimation
             )
             .await
         } else {
@@ -411,6 +418,7 @@ impl Wallet {
                 target_block,
                 export,
                 tauri_handle,
+                true, // default to true for mempool space fee estimation
             )
             .await
         }
@@ -440,6 +448,7 @@ impl Wallet {
             target_block,
             None,
             tauri_handle,
+            true, // default to true for mempool space fee estimation
         )
         .await
     }
@@ -456,6 +465,7 @@ impl Wallet {
         target_block: u32,
         old_wallet: Option<pre_1_0_0_bdk::Export>,
         tauri_handle: Option<TauriHandle>,
+        use_mempool_space_fee_estimation: bool,
     ) -> Result<Wallet<Persister>>
     where
         Persister: WalletPersister + Sized,
@@ -540,9 +550,13 @@ impl Wallet {
         tracing::trace!("Initial Bitcoin wallet scan completed");
 
         // Create the mempool client
-        let mempool_client = mempool_client::MempoolClient::new(network).inspect_err(|e| {
-            tracing::warn!("Failed to create mempool client: {:?}. We will only use the Electrum server for fee estimation.", e);
-        }).ok();
+        let mempool_client = if use_mempool_space_fee_estimation {
+            mempool_client::MempoolClient::new(network).inspect_err(|e| {
+                tracing::warn!("Failed to create mempool client: {:?}. We will only use the Electrum server for fee estimation.", e);
+            }).ok()
+        } else {
+            None
+        };
 
         Ok(Wallet {
             wallet: wallet.into_arc_mutex_async(),
@@ -557,6 +571,7 @@ impl Wallet {
     }
 
     /// Load existing wallet data from the database
+    #[allow(clippy::too_many_arguments)]
     async fn create_existing<Persister>(
         xprivkey: Xpriv,
         network: Network,
@@ -565,6 +580,7 @@ impl Wallet {
         finality_confirmations: u32,
         target_block: u32,
         tauri_handle: Option<TauriHandle>,
+        use_mempool_space_fee_estimation: bool,
     ) -> Result<Wallet<Persister>>
     where
         Persister: WalletPersister + Sized,
@@ -589,9 +605,13 @@ impl Wallet {
             .context("No wallet found in database")?;
 
         // Create the mempool client
-        let mempool_client = mempool_client::MempoolClient::new(network).inspect_err(|e| {
-            tracing::warn!("Failed to create mempool client: {:?}. We will only use the Electrum server for fee estimation.", e);
-        }).ok();
+        let mempool_client = if use_mempool_space_fee_estimation {
+            mempool_client::MempoolClient::new(network).inspect_err(|e| {
+                tracing::warn!("Failed to create mempool client: {:?}. We will only use the Electrum server for fee estimation.", e);
+            }).ok()
+        } else {
+            None
+        };
 
         let wallet = Wallet {
             wallet: wallet.into_arc_mutex_async(),
@@ -1964,26 +1984,25 @@ fn estimate_fee(
     // regardless of the transaction size
     // Essentially this is an extension of the minimum relay fee rate
     // but some nodes ceil the transaction size to 1000 vbytes
-    const ABSOLUTE_MIN_RELAY_FEE: Amount = Amount::from_sat(1000);
-    if recommended_fee_absolute_sats < ABSOLUTE_MIN_RELAY_FEE {
+
+    if recommended_fee_absolute_sats < MIN_ABSOLUTE_TX_FEE {
         tracing::warn!(
             "Recommended fee rate is below the absolute minimum relay fee. Falling back to: {} sats",
-            ABSOLUTE_MIN_RELAY_FEE.to_sat()
+            MIN_ABSOLUTE_TX_FEE.to_sat()
         );
 
-        return Ok(ABSOLUTE_MIN_RELAY_FEE);
+        return Ok(MIN_ABSOLUTE_TX_FEE);
     }
 
-    let recommended_fee_rate = if recommended_fee_rate > MAX_TX_FEE_RATE {
+    // We have a hard limit of 100M sats on the absolute fee
+    if recommended_fee_absolute_sats > MAX_ABSOLUTE_TX_FEE {
         tracing::warn!(
-            "Hard bound of transaction fee rate reached. Falling back to: {} sats/vbyte",
-            MAX_TX_FEE_RATE.to_sat_per_vb_ceil()
+            "Hard bound of transaction fee reached. Falling back to: {} sats",
+            MAX_ABSOLUTE_TX_FEE.to_sat()
         );
 
-        MAX_TX_FEE_RATE
-    } else {
-        recommended_fee_rate
-    };
+        return Ok(MAX_ABSOLUTE_TX_FEE);
+    }
 
     recommended_fee_rate
         .checked_mul_by_weight(weight)
@@ -2582,10 +2601,8 @@ mod tests {
         let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
 
         // fee_rate (1000 sat/vb) * 100 vbytes = 100_000 sats
-        // But 1000 sat/vb = 4000 sat/kwu, which exceeds MAX_TX_FEE_RATE (100,000 sat/kwu)
-        // So it gets capped at MAX_TX_FEE_RATE * weight = 100,000 sat/kwu * 0.4 kwu = 40,000 sats
-        let max_fee = MAX_TX_FEE_RATE.checked_mul_by_weight(weight).unwrap();
-        assert_eq!(is_fee, max_fee);
+        // This equals exactly our MAX_ABSOLUTE_TX_FEE
+        assert_eq!(is_fee, MAX_ABSOLUTE_TX_FEE);
     }
 
     #[test]
@@ -2626,7 +2643,7 @@ mod tests {
         }
     }
 
-    proptest! {
+            proptest! {
         #[test]
         fn given_amount_in_range_fix_fee_fix_relay_rate_fix_weight_fee_always_smaller_max(
             amount in 1u64..100_000_000,
@@ -2640,9 +2657,8 @@ mod tests {
             let relay_fee = FeeRate::from_sat_per_vb(1).unwrap();
             let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
 
-            // weight / 4 * 1_000 is always lower than MAX_ABSOLUTE_TX_FEE
-            let max_fee = MAX_TX_FEE_RATE.checked_mul_by_weight(weight).unwrap();
-            assert!(is_fee < max_fee);
+            // weight / 4 * 100 = 10,000 sats which is always lower than MAX_ABSOLUTE_TX_FEE
+            assert!(is_fee <= MAX_ABSOLUTE_TX_FEE);
         }
     }
 
@@ -2660,9 +2676,8 @@ mod tests {
             let relay_fee = FeeRate::from_sat_per_vb(1).unwrap();
             let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
 
-            // weight / 4 * 1_000  is always higher than MAX_ABSOLUTE_TX_FEE
-            let max_fee = MAX_TX_FEE_RATE.checked_mul_by_weight(weight).unwrap();
-            assert!(is_fee >= max_fee);
+            // weight / 4 * 1_000 = 100_000 sats which hits our MAX_ABSOLUTE_TX_FEE
+            assert_eq!(is_fee, MAX_ABSOLUTE_TX_FEE);
         }
     }
 
