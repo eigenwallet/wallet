@@ -1029,7 +1029,7 @@ where
             (Ok(electrum_rate), Ok(None)) => {
                 tracing::warn!(
                     electrum_rate_sat_vb = electrum_rate.to_sat_per_vb_ceil(),
-                    "No mempool.space client available or it failed, using Electrum rate"
+                    "No mempool.space client available, using Electrum rate"
                 );
                 Ok(electrum_rate)
             }
@@ -1076,7 +1076,7 @@ where
 
     /// Returns the minimum relay fee from the Electrum and Mempool clients.
     ///
-    /// Only fails if both sources fail. Always choses the higher value.
+    /// Only fails if both sources fail. Always chooses the higher value.
     async fn combined_min_relay_fee(&self) -> Result<bitcoin::Amount> {
         let electrum_client = self.electrum_client.lock().await;
         let electrum_future = electrum_client.min_relay_fee();
@@ -1577,7 +1577,7 @@ impl EstimateFeeRate for Client {
             }
             // If the conservative fee rate fails, we use the histogram fee rate
             (Err(electrum_conservative_fee_rate_error), Ok(electrum_histogram_fee_rate)) => {
-                tracing::debug!(
+                tracing::warn!(
                     electrum_conservative_fee_rate_error = ?electrum_conservative_fee_rate_error,
                     electrum_histogram_fee_rate_sat_vb = electrum_histogram_fee_rate.to_sat_per_vb_ceil(),
                     "Failed to fetch conservative fee rate, using histogram fee rate"
@@ -1586,7 +1586,7 @@ impl EstimateFeeRate for Client {
             }
             // If the histogram fee rate fails, we use the conservative fee rate
             (Ok(electrum_conservative_fee_rate), Err(electrum_histogram_fee_rate_error)) => {
-                tracing::debug!(
+                tracing::warn!(
                     electrum_histogram_fee_rate_error = ?electrum_histogram_fee_rate_error,
                     electrum_conservative_fee_rate_sat_vb = electrum_conservative_fee_rate.to_sat_per_vb_ceil(),
                     "Failed to fetch histogram fee rate, using conservative fee rate"
@@ -1597,7 +1597,7 @@ impl EstimateFeeRate for Client {
             (Err(electrum_conservative_fee_rate_error), Err(electrum_histogram_fee_rate_error)) => {
                 Err(electrum_conservative_fee_rate_error
                     .context(electrum_histogram_fee_rate_error)
-                    .context("Failed to fetch fee rates from both sources"))
+                    .context("Failed to fetch both the conservative and histogram fee rates from Electrum"))
             }
         }
     }
