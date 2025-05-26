@@ -3,6 +3,7 @@ import { useAppSelector } from "store/hooks";
 import TruncatedText from "renderer/components/other/TruncatedText";
 import { PiconeroAmount } from "../../other/Units";
 import { parseDateString } from "utils/parseUtils";
+import { useEffect } from "react";
 
 interface SwapSelectDropDownProps {
   selectedSwap: string | null;
@@ -16,6 +17,12 @@ export default function SwapSelectDropDown({
   const swaps = useAppSelector((state) =>
     Object.values(state.rpc.state.swapInfos),
   );
+
+  useEffect(() => {
+    if (swaps.length > 0) {
+      setSelectedSwap(swaps[0].swap_id);
+    }
+  }, []);
 
   return (
     <Select
