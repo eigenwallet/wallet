@@ -1266,30 +1266,69 @@ where
             return Ok(Amount::ZERO);
         }
 
-        let fee_rate = self
-            .combined_fee_rate()
-            .await?
-            .with_safety_margin(SAFETY_MARGIN_TX_FEE);
+        // Construct a dummy drain transaction
+        let dummy_script = ScriptBuf::from(vec![0u8; locking_script_size]);
 
-        // Construct a dummy drain transaction to figure out the max giveable amount.
         let mut tx_builder = wallet.build_tx();
 
-        let dummy_script = ScriptBuf::from(vec![0u8; locking_script_size]);
-        tx_builder.drain_to(dummy_script);
-        tx_builder.fee_rate(fee_rate);
+        tx_builder.drain_to(dummy_script.clone());
+        tx_builder.fee_rate(FeeRate::BROADCAST_MIN);
         tx_builder.drain_wallet();
 
         let psbt = tx_builder
             .finish()
             .context("Failed to build transaction to figure out max giveable")?;
 
+        // We got the final weight now
+        let weight = psbt.unsigned_tx.weight();
+
+        // Ensure the dummy transaction only has a single output
+        // We drain to a single script so this should always be true
+        if psbt.unsigned_tx.output.len() != 1 {
+            bail!("Expected a single output in the dummy transaction");
+        }
+
         // Extract the amount from the drain transaction.
-        let max_giveable = psbt
+        let dummy_max_giveable = psbt
             .unsigned_tx
             .output
-            .iter()
-            .map(|o| o.value)
-            .sum::<Amount>();
+            .first()
+            .expect("Expected a single output in the dummy transaction")
+            .value;
+
+        let dummy_fee = psbt
+            .fee_amount()
+            .context("Failed to calculate fee amount of the dummy transaction")?;
+
+        // Estimate the fee rate using our real fee rate estimation
+        let fee_rate_estimation = self.combined_fee_rate().await?;
+
+        let min_relay_fee_rate = self.combined_min_relay_fee().await?;
+
+        let fee = estimate_fee(
+            weight,
+            dummy_max_giveable,
+            fee_rate_estimation,
+            min_relay_fee_rate,
+        )?;
+
+        // Subtract the difference between the fee we calculated and the fee bdk chose
+        let dummy_fee_diff = fee.checked_sub(dummy_fee).context(
+            "Fee we choose was less than the minimum relay fee. Something has gone wrong",
+        )?;
+
+        let max_giveable = match dummy_max_giveable.checked_sub(dummy_fee_diff) {
+            Some(max_giveable) => max_giveable,
+            // Let's say we have 2000 sats in the wallet
+            // The dummy script choses 1000 sats as a fee (minimum relay fee)
+            // and drains the 1000 sats
+            //
+            // Our smart fee estimation says we need 2500 sats to get the transaction confirmed
+            // dummy_fee_diff = 1500
+            // dummy_max_giveable = 1000
+            // max_giveable is < 0, so we return 0 since we don't have enough funds to cover the fee
+            None => Amount::ZERO,
+        };
 
         if max_giveable < DUST_AMOUNT {
             return Ok(Amount::ZERO);
@@ -1318,10 +1357,7 @@ where
         weight: Weight,
         transfer_amount: bitcoin::Amount,
     ) -> Result<bitcoin::Amount> {
-        let fee_rate = self
-            .combined_fee_rate()
-            .await?
-            .with_safety_margin(SAFETY_MARGIN_TX_FEE);
+        let fee_rate = self.combined_fee_rate().await?;
         let min_relay_fee = self.combined_min_relay_fee().await?;
 
         estimate_fee(weight, transfer_amount, fee_rate, min_relay_fee)
@@ -1984,7 +2020,6 @@ fn estimate_fee(
     // regardless of the transaction size
     // Essentially this is an extension of the minimum relay fee rate
     // but some nodes ceil the transaction size to 1000 vbytes
-
     if recommended_fee_absolute_sats < MIN_ABSOLUTE_TX_FEE {
         tracing::warn!(
             "Recommended fee rate is below the absolute minimum relay fee. Falling back to: {} sats",
@@ -2004,7 +2039,10 @@ fn estimate_fee(
         return Ok(MAX_ABSOLUTE_TX_FEE);
     }
 
+    // We add the safety margin to the fee rate
+    // and then we multiply by the weight to get the absolute fee
     recommended_fee_rate
+        .with_safety_margin(SAFETY_MARGIN_TX_FEE)
         .checked_mul_by_weight(weight)
         .context("Failed to compute absolute fee from fee rate")
 }
