@@ -2643,7 +2643,7 @@ mod tests {
         }
     }
 
-            proptest! {
+    proptest! {
         #[test]
         fn given_amount_in_range_fix_fee_fix_relay_rate_fix_weight_fee_always_smaller_max(
             amount in 1u64..100_000_000,
