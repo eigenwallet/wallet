@@ -375,7 +375,7 @@ impl WalletRpc {
                 let daemon = choose_monero_node(network).await?;
                 tracing::debug!(%daemon, "Automatically selected monero node");
                 daemon
-            },
+            }
         };
 
         let daemon_address = daemon.to_string();
