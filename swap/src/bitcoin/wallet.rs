@@ -974,10 +974,14 @@ impl Wallet {
     ///
     /// Will fail if the transaction inputs are not owned by this wallet.
     pub async fn transaction_fee(&self, txid: Txid) -> Result<Amount> {
+        // Ensure wallet is synced before getting transaction
+        self.sync().await?;
+        
         let transaction = self
             .get_tx(txid)
             .await
             .context("Could not find tx in bdk wallet when trying to determine fees")?;
+        
         let fee = self.wallet.lock().await.calculate_fee(&transaction)?;
 
         Ok(fee)
