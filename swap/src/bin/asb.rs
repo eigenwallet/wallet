@@ -12,7 +12,6 @@
 #![forbid(unsafe_code)]
 #![allow(non_snake_case)]
 
-use ::bitcoin::Weight;
 use anyhow::{bail, Context, Result};
 use comfy_table::Table;
 use libp2p::Swarm;
@@ -315,7 +314,7 @@ pub async fn main() -> Result<()> {
                 Some(amount) => {
                     bitcoin_wallet
                         .send_to_address_dynamic_fee(address, amount, None)
-                        .await?;
+                        .await?
                 }
                 None => {
                     // If no amount specified, use max_giveable which gives us both amount and fee
@@ -325,7 +324,7 @@ pub async fn main() -> Result<()> {
 
                     bitcoin_wallet
                         .send_to_address(address, amount, fee, None)
-                        .await?;
+                        .await?
                 }
             };
 

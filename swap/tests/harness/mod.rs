@@ -486,6 +486,7 @@ impl BobParams {
             self.monero_wallet.lock().await.get_main_address(),
             self.bitcoin_wallet.new_address().await?,
             btc_amount,
+            bitcoin::Amount::from_sat(1000), // Fixed fee of 1000 satoshis for now
         );
 
         Ok((swap, event_loop))
