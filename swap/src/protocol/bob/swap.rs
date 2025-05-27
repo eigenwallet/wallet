@@ -524,7 +524,11 @@ async fn next_state(
             let response = event_loop_handle.request_cooperative_xmr_redeem().await;
 
             match response {
-                Ok(Fullfilled { s_a, .. }) => {
+                Ok(Fullfilled {
+                    s_a,
+                    lock_transfer_proof,
+                    ..
+                }) => {
                     tracing::info!(
                         "Alice has accepted our request to cooperatively redeem the XMR"
                     );
@@ -536,7 +540,7 @@ async fn next_state(
 
                     let s_a = monero::PrivateKey { scalar: s_a };
 
-                    let state5 = state.attempt_cooperative_redeem(s_a);
+                    let state5 = state.attempt_cooperative_redeem(s_a, lock_transfer_proof);
 
                     match state5
                         .redeem_xmr(&monero_wallet, swap_id, monero_receive_address)

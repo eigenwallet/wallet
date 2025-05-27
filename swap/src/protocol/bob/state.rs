@@ -828,17 +828,18 @@ impl State6 {
     pub fn tx_lock_id(&self) -> bitcoin::Txid {
         self.tx_lock.txid()
     }
-    pub fn attempt_cooperative_redeem(&self, s_a: monero::PrivateKey) -> State5 {
+    pub fn attempt_cooperative_redeem(
+        &self,
+        s_a: monero::PrivateKey,
+        lock_transfer_proof: TransferProof,
+    ) -> State5 {
         State5 {
             s_a,
             s_b: self.s_b,
             v: self.v,
             tx_lock: self.tx_lock.clone(),
             monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
-            lock_transfer_proof: self
-                .lock_transfer_proof
-                .clone()
-                .expect("monero lock proof to be there"),
+            lock_transfer_proof,
         }
     }
 }
