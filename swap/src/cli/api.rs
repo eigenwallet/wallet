@@ -538,7 +538,7 @@ async fn init_monero_wallet(
     _tauri_handle: Option<TauriHandle>,
 ) -> Result<Arc<Wallets>> {
     let network = env_config.monero_network;
-
+  
     // Use the ./monero/monero-data directory for backwards compatibility
     let wallet_dir = data_dir.join("monero").join("monero-data");
 
@@ -559,6 +559,27 @@ async fn init_monero_wallet(
     // This is the name of a wallet we only use for blockchain monitoring
     const DEFAULT_WALLET: &str = "swap-tool-blockchain-monitoring-wallet";
 
+    // Remove the monitoring wallet if it exists
+    // It doesn't contain any coins
+    // Deleting it ensures we never have issues at startup
+    // And we reset the restore height
+    let wallet_path = monero_wallet_rpc_dir.join(DEFAULT_WALLET);
+    if wallet_path.exists() {
+        tracing::debug!(
+            wallet_path = %wallet_path.display(),
+            "Removing monitoring wallet"
+        );
+        let _ = tokio::fs::remove_file(&wallet_path).await;
+    }
+    let keys_path = wallet_path.with_extension("keys");
+    if keys_path.exists() {
+        tracing::debug!(
+            keys_path = %keys_path.display(),
+            "Removing monitoring wallet keys"
+        );
+        let _ = tokio::fs::remove_file(keys_path).await;
+    }
+  
     let wallets = monero::Wallets::new(
         wallet_dir,
         DEFAULT_WALLET.to_string(),
