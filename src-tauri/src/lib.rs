@@ -1,4 +1,7 @@
-use anyhow::Context as AnyhowContext;
+use anyhow::{anyhow, Context as AnyhowContext};
+use http_body_util::Empty;
+use hyper::{body::Bytes, Request, Uri};
+use hyper_util::rt::TokioIo;
 use std::collections::HashMap;
 use std::io::Write;
 use std::result::Result;
@@ -192,7 +195,8 @@ pub fn run() {
             get_data_dir,
             resolve_approval_request,
             redact,
-            save_txt_files
+            save_txt_files,
+            fetch,
         ])
         .setup(setup)
         .build(tauri::generate_context!())
@@ -249,6 +253,51 @@ tauri_command!(get_monero_addresses, GetMoneroAddressesArgs, no_args);
 async fn is_context_available(context: tauri::State<'_, RwLock<State>>) -> Result<bool, String> {
     // TODO: Here we should return more information about status of the context (e.g. initializing, failed)
     Ok(context.read().await.try_get_context().is_ok())
+}
+
+#[tauri::command]
+async fn fetch(context: tauri::State<'_, RwLock<State>>, uri: String) -> Result<(), String> {
+    let url = uri.parse::<Uri>().to_string_result()?;
+
+    let context = context.read().await.try_get_context()?;
+    let tor = context
+        .tor_client
+        .clone()
+        .ok_or_else(|| anyhow!("No tor client available"))
+        .to_string_result()?;
+
+    let host = url.host().expect("url has host");
+    let port = url.port_u16().unwrap_or(80);
+
+    let tor_stream = TokioIo::new(
+        tor.connect((host, port))
+            .await
+            .context("Failed to connect to tor")
+            .to_string_result()?,
+    );
+
+    let (mut sender, conn) = hyper::client::conn::http1::handshake(tor_stream)
+        .await
+        .to_string_result()?;
+
+    tokio::task::spawn(async move {
+        if let Err(e) = conn.await {
+            tracing::error!(error=%e, "Error communicating over tor");
+        }
+    });
+
+    // Create an HTTP request with an empty body and a HOST header
+    let req = Request::builder()
+        .uri(url)
+        .header(hyper::header::HOST, "api.unstoppableswap.net")
+        .body(Empty::<Bytes>::new())
+        .to_string_result()?;
+
+    let res = sender.send_request(req).await.to_string_result()?;
+
+    tracing::info!("Response status: {:?}", res.status().as_u16());
+
+    Ok(())
 }
 
 #[tauri::command]

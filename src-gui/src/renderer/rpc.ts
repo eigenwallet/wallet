@@ -71,6 +71,10 @@ async function invokeNoArgs<RESPONSE>(command: string): Promise<RESPONSE> {
   return invokeUnsafe(command) as Promise<RESPONSE>;
 }
 
+export async function fetchTor() {
+  await invokeNoArgs<void>("fetch");
+}
+
 export async function checkBitcoinBalance() {
   // If we are already syncing, don't start a new sync
   if (Object.values(store.getState().rpc?.state.background ?? {}).some(progress => progress.componentName === "SyncingBitcoinWallet" && progress.progress.type === "Pending")) {
@@ -250,6 +254,9 @@ export async function initializeContext() {
     settings: tauriSettings,
     testnet,
   });
+
+  await fetchTor();
+  console.info("Tor fetched");
 }
 
 export async function getWalletDescriptor() {
