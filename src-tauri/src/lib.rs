@@ -282,7 +282,11 @@ async fn get_data_dir(
 }
 
 #[tauri::command]
-async fn save_txt_files(app: tauri::AppHandle, zip_file_name: String, content: HashMap<String, String>) -> Result<(), String> {
+async fn save_txt_files(
+    app: tauri::AppHandle,
+    zip_file_name: String,
+    content: HashMap<String, String>,
+) -> Result<(), String> {
     // Step 1: Get the owned PathBuf from the dialog
     let path_buf_from_dialog: tauri_plugin_dialog::FilePath = app
         .dialog()
@@ -295,19 +299,25 @@ async fn save_txt_files(app: tauri::AppHandle, zip_file_name: String, content: H
     // Step 2: Now get a &Path reference from the owned PathBuf.
     // The user's code structure implied an .as_path().ok_or_else(...) chain which was incorrect for &Path.
     // We'll directly use the PathBuf, or if &Path is strictly needed:
-    let selected_file_path: &std::path::Path = path_buf_from_dialog.as_path().ok_or_else(|| "Could not convert file path".to_string())?;
+    let selected_file_path: &std::path::Path = path_buf_from_dialog
+        .as_path()
+        .ok_or_else(|| "Could not convert file path".to_string())?;
 
-    let zip_file =
-        std::fs::File::create(selected_file_path).map_err(|e| format!("Failed to create file: {}", e))?;
+    let zip_file = std::fs::File::create(selected_file_path)
+        .map_err(|e| format!("Failed to create file: {}", e))?;
 
     let mut zip = ZipWriter::new(zip_file);
 
     for (filename, file_content_str) in content.iter() {
-        zip.start_file(format!("{}.txt", filename).as_str(), SimpleFileOptions::default()) // Pass &str to start_file
-            .map_err(|e| format!("Failed to start file {}: {}", &filename, e))?; // Use &filename
+        zip.start_file(
+            format!("{}.txt", filename).as_str(),
+            SimpleFileOptions::default(),
+        ) // Pass &str to start_file
+        .map_err(|e| format!("Failed to start file {}: {}", &filename, e))?; // Use &filename
 
         zip.write_all(file_content_str.as_bytes())
-            .map_err(|e| format!("Failed to write to file {}: {}", &filename, e))?; // Use &filename
+            .map_err(|e| format!("Failed to write to file {}: {}", &filename, e))?;
+        // Use &filename
     }
 
     zip.finish()
