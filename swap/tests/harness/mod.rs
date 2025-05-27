@@ -656,12 +656,16 @@ impl TestContext {
     }
 
     pub async fn assert_alice_punished(&self, state: AliceState) {
-        assert!(matches!(state, AliceState::BtcPunished { .. }));
+        let (cancel_fee, punish_fee) = match state {
+            AliceState::BtcPunished { state3 } => (state3.tx_cancel_fee, state3.tx_punish_fee),
+            _ => panic!("Alice is not in btc punished state: {:?}", state),
+        };
 
         assert_eventual_balance(
             self.alice_bitcoin_wallet.as_ref(),
             Ordering::Equal,
-            self.alice_punished_btc_balance().await,
+            self.alice_punished_btc_balance(cancel_fee, punish_fee)
+                .await,
         )
         .await
         .unwrap();
@@ -802,17 +806,11 @@ impl TestContext {
         self.alice_starting_balances.xmr - self.xmr_amount
     }
 
-    async fn alice_punished_btc_balance(&self) -> bitcoin::Amount {
-        let cancel_fee = self
-            .alice_bitcoin_wallet
-            .estimate_fee(TxCancel::weight(), self.btc_amount)
-            .await
-            .expect("To estimate fee correctly");
-        let punish_fee = self
-            .alice_bitcoin_wallet
-            .estimate_fee(TxPunish::weight(), self.btc_amount)
-            .await
-            .expect("To estimate fee correctly");
+    async fn alice_punished_btc_balance(
+        &self,
+        cancel_fee: bitcoin::Amount,
+        punish_fee: bitcoin::Amount,
+    ) -> bitcoin::Amount {
         self.alice_starting_balances.btc + self.btc_amount - cancel_fee - punish_fee
     }
 
