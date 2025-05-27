@@ -7,12 +7,12 @@ use crate::common::tracing_util::Format;
 use crate::database::{open_db, AccessMode};
 use crate::env::{Config as EnvConfig, GetConfig, Mainnet, Testnet};
 use crate::fs::system_data_dir;
+use crate::monero::wallet_rpc;
 use crate::monero::Wallets;
 use crate::network::rendezvous::XmrBtcNamespace;
 use crate::protocol::Database;
 use crate::seed::Seed;
 use crate::{bitcoin, common, monero};
-use crate::monero::wallet_rpc;
 use anyhow::{bail, Context as AnyContext, Error, Result};
 use arti_client::TorClient;
 use futures::future::try_join_all;
@@ -538,7 +538,7 @@ async fn init_monero_wallet(
     _tauri_handle: Option<TauriHandle>,
 ) -> Result<Arc<Wallets>> {
     let network = env_config.monero_network;
-  
+
     // Use the ./monero/monero-data directory for backwards compatibility
     let wallet_dir = data_dir.join("monero").join("monero-data");
 
@@ -563,7 +563,7 @@ async fn init_monero_wallet(
     // It doesn't contain any coins
     // Deleting it ensures we never have issues at startup
     // And we reset the restore height
-    let wallet_path = monero_wallet_rpc_dir.join(DEFAULT_WALLET);
+    let wallet_path = wallet_dir.join(DEFAULT_WALLET);
     if wallet_path.exists() {
         tracing::debug!(
             wallet_path = %wallet_path.display(),
@@ -579,7 +579,7 @@ async fn init_monero_wallet(
         );
         let _ = tokio::fs::remove_file(keys_path).await;
     }
-  
+
     let wallets = monero::Wallets::new(
         wallet_dir,
         DEFAULT_WALLET.to_string(),
