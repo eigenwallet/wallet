@@ -439,7 +439,7 @@ impl State3 {
     pub fn xmr_locked(
         self,
         monero_wallet_restore_blockheight: BlockHeight,
-        monero_lock_proof: TransferProof,
+        lock_transfer_proof: TransferProof,
     ) -> State4 {
         State4 {
             A: self.A,
@@ -455,7 +455,7 @@ impl State3 {
             tx_cancel_sig_a: self.tx_cancel_sig_a,
             tx_refund_encsig: self.tx_refund_encsig,
             monero_wallet_restore_blockheight,
-            monero_lock_proof,
+            lock_transfer_proof,
             tx_redeem_fee: self.tx_redeem_fee,
             tx_refund_fee: self.tx_refund_fee,
             tx_cancel_fee: self.tx_cancel_fee,
@@ -465,7 +465,7 @@ impl State3 {
     pub fn cancel(
         &self,
         monero_wallet_restore_blockheight: BlockHeight,
-        monero_lock_proof: Option<TransferProof>,
+        lock_transfer_proof: Option<TransferProof>,
     ) -> State6 {
         State6 {
             A: self.A,
@@ -473,7 +473,7 @@ impl State3 {
             s_b: self.s_b,
             v: self.v,
             monero_wallet_restore_blockheight,
-            monero_lock_proof,
+            lock_transfer_proof,
             cancel_timelock: self.cancel_timelock,
             punish_timelock: self.punish_timelock,
             refund_address: self.refund_address.clone(),
@@ -515,7 +515,7 @@ impl State3 {
         &self,
         s_a: monero::PrivateKey,
         monero_wallet_restore_blockheight: BlockHeight,
-        monero_lock_proof: TransferProof,
+        lock_transfer_proof: TransferProof,
     ) -> State5 {
         State5 {
             s_a,
@@ -523,7 +523,7 @@ impl State3 {
             v: self.v,
             tx_lock: self.tx_lock.clone(),
             monero_wallet_restore_blockheight,
-            monero_lock_proof,
+            lock_transfer_proof,
         }
     }
 }
@@ -545,7 +545,7 @@ pub struct State4 {
     tx_cancel_sig_a: Signature,
     tx_refund_encsig: bitcoin::EncryptedSignature,
     monero_wallet_restore_blockheight: BlockHeight,
-    monero_lock_proof: TransferProof,
+    lock_transfer_proof: TransferProof,
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_redeem_fee: bitcoin::Amount,
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
@@ -573,7 +573,7 @@ impl State4 {
             v: self.v,
             tx_lock: self.tx_lock.clone(),
             monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
-            monero_lock_proof: self.monero_lock_proof.clone(),
+            lock_transfer_proof: self.lock_transfer_proof.clone(),
         })
     }
 
@@ -607,7 +607,7 @@ impl State4 {
             v: self.v,
             tx_lock: self.tx_lock.clone(),
             monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
-            monero_lock_proof: self.monero_lock_proof.clone(),
+            lock_transfer_proof: self.lock_transfer_proof.clone(),
         })
     }
 
@@ -641,7 +641,7 @@ impl State4 {
             s_b: self.s_b,
             v: self.v,
             monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
-            monero_lock_proof: Some(self.monero_lock_proof),
+            lock_transfer_proof: Some(self.lock_transfer_proof),
             cancel_timelock: self.cancel_timelock,
             punish_timelock: self.punish_timelock,
             refund_address: self.refund_address,
@@ -662,7 +662,7 @@ pub struct State5 {
     v: monero::PrivateViewKey,
     tx_lock: bitcoin::TxLock,
     pub monero_wallet_restore_blockheight: BlockHeight,
-    pub monero_lock_proof: TransferProof,
+    pub lock_transfer_proof: TransferProof,
 }
 
 impl State5 {
@@ -694,7 +694,7 @@ impl State5 {
                 swap_id,
                 spend_key,
                 view_key,
-                self.monero_lock_proof.tx_hash(),
+                self.lock_transfer_proof.tx_hash(),
             )
             .await
             .context("Failed to open Monero wallet")?;
@@ -727,7 +727,7 @@ pub struct State6 {
     s_b: monero::Scalar,
     v: monero::PrivateViewKey,
     pub monero_wallet_restore_blockheight: BlockHeight,
-    pub monero_lock_proof: Option<TransferProof>,
+    pub lock_transfer_proof: Option<TransferProof>,
     cancel_timelock: CancelTimelock,
     punish_timelock: PunishTimelock,
     #[serde(with = "address_serde")]
@@ -835,8 +835,8 @@ impl State6 {
             v: self.v,
             tx_lock: self.tx_lock.clone(),
             monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
-            monero_lock_proof: self
-                .monero_lock_proof
+            lock_transfer_proof: self
+                .lock_transfer_proof
                 .clone()
                 .expect("monero lock proof to be there"),
         }
