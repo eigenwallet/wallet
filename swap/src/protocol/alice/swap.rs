@@ -453,10 +453,10 @@ where
             }
         }
         AliceState::BtcRefunded {
-            monero_wallet_restore_blockheight,
             transfer_proof,
             spend_key,
             state3,
+            ..
         } => {
             // We retry indefinitely to refund the Monero funds, until the refund transaction is confirmed
             let backoff = backoff::ExponentialBackoffBuilder::new()
@@ -470,7 +470,6 @@ where
                     state3
                         .refund_xmr(
                             monero_wallet.clone(),
-                            monero_wallet_restore_blockheight,
                             swap_id,
                             spend_key,
                             transfer_proof.clone(),

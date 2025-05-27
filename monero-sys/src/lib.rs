@@ -13,12 +13,11 @@
 mod bridge;
 
 use std::{
-    any::Any, cmp::Ordering, fmt::Display, num::NonZeroU64, ops::Deref, path::PathBuf, pin::Pin,
-    str::FromStr,
+    any::Any, cmp::Ordering, fmt::Display, ops::Deref, path::PathBuf, pin::Pin, str::FromStr,
 };
 
 use anyhow::{bail, Context, Result};
-use cxx::{let_cxx_string, CxxVector};
+use cxx::let_cxx_string;
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     oneshot,

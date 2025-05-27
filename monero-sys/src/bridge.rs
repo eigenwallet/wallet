@@ -7,6 +7,7 @@ use cxx::CxxString;
 /// Basically, we just write a corresponding rust function/type header for every c++
 /// function/type we wish to call.
 #[cxx::bridge(namespace = "Monero")]
+#[allow(dead_code)]
 pub mod ffi {
 
     /// The type of the network.

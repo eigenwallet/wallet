@@ -516,7 +516,6 @@ impl State3 {
     pub async fn refund_xmr(
         &self,
         monero_wallet: Arc<monero::Wallets>,
-        monero_wallet_restore_blockheight: BlockHeight,
         swap_id: Uuid,
         spend_key: monero::PrivateKey,
         transfer_proof: TransferProof,

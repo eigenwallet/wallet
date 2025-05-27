@@ -9,7 +9,6 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use monero::{Address, Network};
-use tokio::sync::Mutex;
 
 pub use monero_sys::{Daemon, WalletHandle as Wallet};
 use uuid::Uuid;

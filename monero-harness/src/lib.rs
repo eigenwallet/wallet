@@ -323,6 +323,7 @@ fn random_prefix() -> String {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct Monerod {
     name: String,
     network: String,
