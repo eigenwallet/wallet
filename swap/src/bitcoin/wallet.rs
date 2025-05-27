@@ -1218,8 +1218,7 @@ where
 
         let fee = self.estimate_fee(weight, amount).await?;
 
-        self
-            .send_to_address(address, amount, fee, change_override)
+        self.send_to_address(address, amount, fee, change_override)
             .await
     }
 
