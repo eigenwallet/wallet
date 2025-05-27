@@ -11,7 +11,6 @@ use bdk_electrum::BdkElectrumClient;
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::export::FullyNodedExport;
-use bdk_wallet::psbt::PsbtUtils;
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::template::{Bip84, DescriptorTemplate};
 use bdk_wallet::KeychainKind;
@@ -976,12 +975,12 @@ impl Wallet {
     pub async fn transaction_fee(&self, txid: Txid) -> Result<Amount> {
         // Ensure wallet is synced before getting transaction
         self.sync().await?;
-        
+
         let transaction = self
             .get_tx(txid)
             .await
             .context("Could not find tx in bdk wallet when trying to determine fees")?;
-        
+
         let fee = self.wallet.lock().await.calculate_fee(&transaction)?;
 
         Ok(fee)
@@ -1196,12 +1195,10 @@ where
         Ok(address)
     }
 
-    /// Builds a partially signed transaction
-    ///
-    /// Ensures that the address script is at output index `0`
-    /// for the partially signed transaction.
-    ///
-    /// Calculates the fee based on the weight of the transaction
+    /// Builds a partially signed transaction that sends
+    /// the given amount to the given address.
+    /// The fee is calculated based on the weight of the transaction
+    /// and the state of the current mempool.
     pub async fn send_to_address_dynamic_fee(
         &self,
         address: Address,
@@ -1225,19 +1222,34 @@ where
         // send_to_address(...) takes an absolute fee
         let mut tx_builder = wallet.build_tx();
         tx_builder.add_recipient(script.clone(), amount);
-        tx_builder.fee_rate(FeeRate::BROADCAST_MIN);
+        tx_builder.fee_absolute(Amount::ZERO);
 
         let psbt = tx_builder.finish()?;
 
         let weight = psbt.unsigned_tx.weight();
-
         let fee = self.estimate_fee(weight, amount).await?;
 
         self.send_to_address(address, amount, fee, change_override)
             .await
     }
 
-    /// Builds a partially signed transaction
+    /// Builds a partially signed transaction that sweeps our entire balance
+    /// to a single address.
+    ///
+    /// The fee is calculated based on the weight of the transaction
+    /// and the state of the current mempool.
+    pub async fn sweep_balance_to_address_dynamic_fee(
+        &self,
+        address: Address,
+    ) -> Result<PartiallySignedTransaction> {
+        let (max_giveable, fee) = self.max_giveable(address.script_pubkey().len()).await?;
+
+        self.send_to_address(address, max_giveable, fee, None).await
+    }
+
+    /// Builds a partially signed transaction that sends
+    /// the given amount to the given address with the given
+    /// absolute fee.
     ///
     /// Ensures that the address script is at output index `0`
     /// for the partially signed transaction.
@@ -1319,7 +1331,7 @@ where
         let mut tx_builder = wallet.build_tx();
 
         tx_builder.drain_to(dummy_script.clone());
-        tx_builder.fee_rate(FeeRate::BROADCAST_MIN);
+        tx_builder.fee_absolute(Amount::ZERO);
         tx_builder.drain_wallet();
 
         let psbt = tx_builder
@@ -1339,10 +1351,6 @@ where
             .first()
             .expect("Expected a single output in the dummy transaction")
             .value;
-
-        let dummy_fee = psbt
-            .fee_amount()
-            .context("Failed to calculate fee amount of the dummy transaction")?;
 
         // The weight WILL NOT change, even if we change the fee
         // because we are draining the wallet (using all inputs) and
@@ -1366,22 +1374,15 @@ where
             min_relay_fee_rate,
         )?;
 
-        // Calculate the difference between the fee we calculated and the fee bdk chose
-        // How much more we need to pay to get the transaction confirmed in time?
-        // How much was the minimum fee off?
-        let dummy_fee_diff = fee.checked_sub(dummy_fee).context(
-            "Fee we choose was less than the minimum relay fee. Something has gone wrong",
-        )?;
-
-        let max_giveable = match dummy_max_giveable.checked_sub(dummy_fee_diff) {
+        let max_giveable = match dummy_max_giveable.checked_sub(fee) {
             Some(max_giveable) => max_giveable,
             // Let's say we have 2000 sats in the wallet
-            // The dummy script choses 1000 sats as a fee (minimum relay fee)
-            // and drains the 1000 sats
+            // The dummy script choses 0 sats as a fee
+            // and drains the 2000 sats
             //
             // Our smart fee estimation says we need 2500 sats to get the transaction confirmed
-            // dummy_fee_diff = 1500
-            // dummy_max_giveable = 1000
+            // fee = 2500
+            // dummy_max_giveable = 2000
             // max_giveable is < 0, so we return 0 since we don't have enough funds to cover the fee
             None => Amount::ZERO,
         };

@@ -317,13 +317,8 @@ pub async fn main() -> Result<()> {
                         .await?
                 }
                 None => {
-                    // If no amount specified, use max_giveable which gives us both amount and fee
-                    let (amount, fee) = bitcoin_wallet
-                        .max_giveable(address.script_pubkey().len())
-                        .await?;
-
                     bitcoin_wallet
-                        .send_to_address(address, amount, fee, None)
+                        .sweep_balance_to_address_dynamic_fee(address)
                         .await?
                 }
             };

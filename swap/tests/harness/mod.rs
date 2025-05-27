@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use swap::asb::FixedRate;
-use swap::bitcoin::{CancelTimelock, PunishTimelock, TxCancel, TxPunish, TxRedeem, TxRefund};
+use swap::bitcoin::{CancelTimelock, PunishTimelock};
 use swap::cli::api;
 use swap::database::{AccessMode, SqliteDatabase};
 use swap::env::{Config, GetConfig};
