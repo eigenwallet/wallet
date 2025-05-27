@@ -2,23 +2,33 @@ import { getLogsOfSwap, saveLogFiles } from 'renderer/rpc'
 import PromiseInvokeButton from 'renderer/components/PromiseInvokeButton'
 import { store } from 'renderer/store/storeRenderer'
 import { ButtonProps } from '@material-ui/core'
+import { logsToRawString } from 'utils/parseUtils'
 
-export default function ExportLogsButton(props: { swap_id: string } & ButtonProps) {
-    async function exportLogs() {
-        const swap_logs = await getLogsOfSwap(props.swap_id, false)
-        const daemon_logs = store.getState().rpc?.logs
+interface ExportLogsButtonProps extends ButtonProps {
+    swap_id: string
+}
+
+export default function ExportLogsButton({ swap_id, ...buttonProps }: ExportLogsButtonProps) {
+    async function handleExportLogs() {
+        const swapLogs = await getLogsOfSwap(swap_id, false)
+        const daemonLogs = store.getState().rpc?.logs
+
+        const logContent = {
+            swap_logs: logsToRawString(swapLogs.logs),
+            daemon_logs: logsToRawString(daemonLogs),
+        }
 
         await saveLogFiles(
-            `swap_${props.swap_id}_logs.zip`,
-            {
-                swap_logs: swap_logs.logs.join('\n'),
-                daemon_logs: daemon_logs?.join('\n'),
-            }
+            `swap_${swap_id}_logs.zip`,
+            logContent
         )
     }
 
     return (
-        <PromiseInvokeButton onInvoke={() => exportLogs()} {...props}>
+        <PromiseInvokeButton 
+            onInvoke={handleExportLogs} 
+            {...buttonProps}
+        >
             Export Logs
         </PromiseInvokeButton>
     )
