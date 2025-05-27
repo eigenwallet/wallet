@@ -666,6 +666,17 @@ impl Wallet {
             .with_context(|| format!("Could not get raw tx with id: {}", txid))
     }
 
+    // Returns the TxId of the last published Bitcoin transaction
+    pub async fn last_published_txid(&self) -> Result<Txid> {
+        let wallet = self.wallet.lock().await;
+        let txs = wallet.transactions();
+        let mut txs: Vec<_> = txs.collect();
+        txs.sort_by(|tx1, tx2| tx2.chain_position.cmp(&tx1.chain_position));
+        let tx = txs.first().context("No transactions found")?;
+
+        Ok(tx.tx_node.txid)
+    }
+
     pub async fn status_of_script<T>(&self, tx: &T) -> Result<ScriptStatus>
     where
         T: Watchable,

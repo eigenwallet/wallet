@@ -703,10 +703,13 @@ impl TestContext {
     pub async fn assert_bob_refunded(&self, state: BobState) {
         self.bob_bitcoin_wallet.sync().await.unwrap();
 
-        let lock_tx_id = if let BobState::BtcRefunded(state4) = state {
-            state4.tx_lock_id()
-        } else {
-            panic!("Bob is not in btc refunded state: {:?}", state);
+        let (lock_tx_id, cancel_fee, refund_fee) = match state {
+            BobState::BtcRefunded(state6) => (
+                state6.tx_lock_id(),
+                state6.tx_cancel_fee,
+                state6.tx_refund_fee,
+            ),
+            _ => panic!("Bob is not in btc refunded state: {:?}", state),
         };
         let lock_tx_bitcoin_fee = self
             .bob_bitcoin_wallet
@@ -715,17 +718,6 @@ impl TestContext {
             .unwrap();
 
         let btc_balance_after_swap = self.bob_bitcoin_wallet.balance().await.unwrap();
-
-        let cancel_fee = self
-            .alice_bitcoin_wallet
-            .estimate_fee(TxCancel::weight(), self.btc_amount)
-            .await
-            .expect("To estimate fee correctly");
-        let refund_fee = self
-            .alice_bitcoin_wallet
-            .estimate_fee(TxRefund::weight(), self.btc_amount)
-            .await
-            .expect("To estimate fee correctly");
 
         let bob_cancelled_and_refunded = btc_balance_after_swap
             == self.bob_starting_balances.btc - lock_tx_bitcoin_fee - cancel_fee - refund_fee;
@@ -764,11 +756,21 @@ impl TestContext {
     }
 
     async fn alice_redeemed_btc_balance(&self) -> bitcoin::Amount {
+        // Get the last transaction Alice published
+        // This should be btc_redeem
+        let txid = self
+            .alice_bitcoin_wallet
+            .last_published_txid()
+            .await
+            .unwrap();
+
+        // Get the fee for the last transaction
         let fee = self
             .alice_bitcoin_wallet
-            .estimate_fee(TxRedeem::weight(), self.btc_amount)
+            .transaction_fee(txid)
             .await
             .expect("To estimate fee correctly");
+
         self.alice_starting_balances.btc + self.btc_amount - fee
     }
 
