@@ -50,18 +50,6 @@ const MAX_ABSOLUTE_TX_FEE: Amount = Amount::from_sat(100_000);
 const MIN_ABSOLUTE_TX_FEE: Amount = Amount::from_sat(1000);
 const DUST_AMOUNT: Amount = Amount::from_sat(546);
 
-// We add a safety margin on top of the estimation by the Electrum server
-//
-// If we don't get confirmed in time, the user will have to refund which takes another two
-// Bitcoin transactions (which cost money)
-//
-// Therefore it's worth overpaying a bit to ensure that the transaction is confirmed in time
-// and we don't have to refund.
-//
-// Some of the pre signed transactions won't be published for 6h-36h
-// The mempool might fill up by then which is another reason to overpay here.
-const SAFETY_MARGIN_TX_FEE: Decimal = dec!(0.25);
-
 /// This is our wrapper around a bdk wallet and a corresponding
 /// bdk electrum client.
 /// It unifies all the functionality we need when interacting
@@ -1197,7 +1185,9 @@ where
     ///
     /// Ensures that the address script is at output index `0`
     /// for the partially signed transaction.
-    pub async fn send_to_address(
+    ///
+    /// Calculates the fee based on the weight of the transaction
+    pub async fn send_to_address_dynamic_fee(
         &self,
         address: Address,
         amount: Amount,
@@ -1213,13 +1203,54 @@ where
             .context("Change address is not on the correct network")?;
 
         let mut wallet = self.wallet.lock().await;
-        let fee_rate = self.combined_fee_rate().await?;
         let script = address.script_pubkey();
 
-        // Build the transaction.
+        // Build the transaction with a dummy fee rate
+        // just to figure out the final weight of the transaction
+        // send_to_address(...) takes an absolute fee
         let mut tx_builder = wallet.build_tx();
         tx_builder.add_recipient(script.clone(), amount);
-        tx_builder.fee_rate(fee_rate);
+        tx_builder.fee_rate(FeeRate::BROADCAST_MIN);
+
+        let psbt = tx_builder.finish()?;
+
+        let weight = psbt.unsigned_tx.weight();
+
+        let fee = self.estimate_fee(weight, amount).await?;
+
+        self
+            .send_to_address(address, amount, fee, change_override)
+            .await
+    }
+
+    /// Builds a partially signed transaction
+    ///
+    /// Ensures that the address script is at output index `0`
+    /// for the partially signed transaction.
+    pub async fn send_to_address(
+        &self,
+        address: Address,
+        amount: Amount,
+        spending_fee: Amount,
+        change_override: Option<Address>,
+    ) -> Result<PartiallySignedTransaction> {
+        // Check address and change address for network equality.
+        let address = revalidate_network(address, self.network)?;
+
+        change_override
+            .as_ref()
+            .map(|a| revalidate_network(a.clone(), self.network))
+            .transpose()
+            .context("Change address is not on the correct network")?;
+
+        let mut wallet = self.wallet.lock().await;
+        let script = address.script_pubkey();
+
+        // Build the transaction with a manual fee
+        let mut tx_builder = wallet.build_tx();
+        tx_builder.add_recipient(script.clone(), amount);
+        tx_builder.fee_absolute(spending_fee);
+
         let mut psbt = tx_builder.finish()?;
 
         match psbt.unsigned_tx.output.as_mut_slice() {
@@ -1257,13 +1288,15 @@ where
     /// We define this as the maximum amount we can pay to a single output,
     /// already accounting for the fees we need to spend to get the
     /// transaction confirmed.
-    pub async fn max_giveable(&self, locking_script_size: usize) -> Result<Amount> {
+    ///
+    /// Returns a tuple of (max_giveable_amount, spending_fee).
+    pub async fn max_giveable(&self, locking_script_size: usize) -> Result<(Amount, Amount)> {
         let mut wallet = self.wallet.lock().await;
         let balance = wallet.balance();
 
         // If the balance is less than the dust amount, we can't send any funds.
         if balance.total() < DUST_AMOUNT {
-            return Ok(Amount::ZERO);
+            return Ok((Amount::ZERO, Amount::ZERO));
         }
 
         // Construct a dummy drain transaction
@@ -1340,7 +1373,7 @@ where
         };
 
         if max_giveable < DUST_AMOUNT {
-            return Ok(Amount::ZERO);
+            return Ok((Amount::ZERO, fee));
         }
 
         tracing::trace!(
@@ -1348,7 +1381,7 @@ where
             "Calculated max giveable"
         );
 
-        Ok(max_giveable)
+        Ok((max_giveable, fee))
     }
 
     /// Estimate total tx fee for a pre-defined target block based on the
@@ -1978,9 +2011,14 @@ fn estimate_fee(
     // 1. The fee rate provided by the user (comes from fee estimation source)
     // 2. The minimum relay fee rate (comes from fee estimation source, might vary depending on mempool congestion)
     // 3. The broadcast minimum fee rate (hardcoded in the Bitcoin library)
-    let recommended_fee_rate = fee_rate_estimation
-        .max(min_relay_fee_rate)
-        .max(FeeRate::BROADCAST_MIN);
+    // We round up to the next sat/vbyte
+    let recommended_fee_rate = FeeRate::from_sat_per_vb(
+        fee_rate_estimation
+            .to_sat_per_vb_ceil()
+            .max(min_relay_fee_rate.to_sat_per_vb_ceil())
+            .max(FeeRate::BROADCAST_MIN.to_sat_per_vb_ceil()),
+    )
+    .context("Failed to compute recommended fee rate")?;
 
     if recommended_fee_rate > fee_rate_estimation {
         tracing::warn!(
@@ -2008,7 +2046,7 @@ fn estimate_fee(
         %transfer_amount,
         %weight,
         %fee_rate_estimation,
-        %recommended_fee_rate,
+        recommended_fee_rate = %recommended_fee_rate.to_sat_per_vb_ceil(),
         %recommended_fee_absolute_sats,
         "Estimated fee for transaction",
     );
@@ -2053,12 +2091,8 @@ fn estimate_fee(
         return Ok(MAX_ABSOLUTE_TX_FEE);
     }
 
-    // We add the safety margin to the fee rate
-    // and then we multiply by the weight to get the absolute fee
-    recommended_fee_rate
-        .with_safety_margin(SAFETY_MARGIN_TX_FEE)
-        .checked_mul_by_weight(weight)
-        .context("Failed to compute absolute fee from fee rate")
+    // Return the recommended fee without any safety margin
+    Ok(recommended_fee_absolute_sats)
 }
 
 mod mempool_client {
@@ -2143,27 +2177,6 @@ mod mempool_client {
             FeeRate::from_sat_per_vb(minimum_relay_fee)
                 .context("Failed to parse mempool min relay fee (out of range)")
         }
-    }
-}
-
-trait FeeRateExt {
-    fn with_safety_margin(self, safety_margin: Decimal) -> Self;
-}
-
-impl FeeRateExt for FeeRate {
-    // Adds safety margin to the fee rate.
-    fn with_safety_margin(self, safety_margin: Decimal) -> Self {
-        // Original sat/kwu
-        let sat_per_kwu = self.to_sat_per_kwu();
-
-        // Now we add the safety margin
-        let sat_per_kwu_with_margin = sat_per_kwu
-            + (safety_margin * Decimal::from(sat_per_kwu))
-                .ceil()
-                .to_u64()
-                .expect("Safety margin to fit into u64");
-
-        FeeRate::from_sat_per_kwu(sat_per_kwu_with_margin)
     }
 }
 
@@ -2422,7 +2435,7 @@ impl EstimateFeeRate for StaticFeeRate {
 pub struct TestWalletBuilder {
     utxo_amount: u64,
     sats_per_vb: u64,
-    min_relay_fee_sats: u64,
+    min_relay_sats_per_vb: u64,
     key: bitcoin::bip32::Xpriv,
     num_utxos: u8,
 }
@@ -2437,7 +2450,7 @@ impl TestWalletBuilder {
         TestWalletBuilder {
             utxo_amount: amount,
             sats_per_vb: 1,
-            min_relay_fee_sats: 1000,
+            min_relay_sats_per_vb: 1,
             key: "tprv8ZgxMBicQKsPeZRHk4rTG6orPS2CRNFX3njhUXx5vj9qGog5ZMH4uGReDWN5kCkY3jmWEtWause41CDvBRXD1shKknAMKxT99o9qUTRVC6m".parse().unwrap(),
             num_utxos: 1,
         }
@@ -2446,15 +2459,15 @@ impl TestWalletBuilder {
     pub fn with_zero_fees(self) -> Self {
         Self {
             sats_per_vb: 0,
-            min_relay_fee_sats: 0,
+            min_relay_sats_per_vb: 0,
             ..self
         }
     }
 
-    pub fn with_fees(self, sats_per_vb: u64, min_relay_fee_sats: u64) -> Self {
+    pub fn with_fees(self, sats_per_vb: u64, min_relay_sats_per_vb: u64) -> Self {
         Self {
             sats_per_vb,
-            min_relay_fee_sats,
+            min_relay_sats_per_vb,
             ..self
         }
     }
@@ -2493,7 +2506,7 @@ impl TestWalletBuilder {
 
         let client = StaticFeeRate::new(
             FeeRate::from_sat_per_vb(self.sats_per_vb).unwrap(),
-            bitcoin::Amount::from_sat(self.min_relay_fee_sats),
+            bitcoin::Amount::from_sat(self.min_relay_sats_per_vb),
         );
 
         let wallet = Wallet {
@@ -2770,18 +2783,15 @@ mod tests {
     #[tokio::test]
     async fn given_no_balance_returns_amount_0() {
         let wallet = TestWalletBuilder::new(0).with_fees(1, 1).build().await;
-        let amount = wallet.max_giveable(TxLock::script_size()).await.unwrap();
+        let (amount, _fee) = wallet.max_giveable(TxLock::script_size()).await.unwrap();
 
         assert_eq!(amount, Amount::ZERO);
     }
 
     #[tokio::test]
     async fn given_balance_below_min_relay_fee_returns_amount_0() {
-        let wallet = TestWalletBuilder::new(1000)
-            .with_fees(1, 1001)
-            .build()
-            .await;
-        let amount = wallet.max_giveable(TxLock::script_size()).await.unwrap();
+        let wallet = TestWalletBuilder::new(1000).with_fees(1, 1).build().await;
+        let (amount, _fee) = wallet.max_giveable(TxLock::script_size()).await.unwrap();
 
         // The wallet can still create a transaction even if the balance is below the min relay fee
         // because BDK's transaction builder will use whatever fee rate is possible
@@ -2793,7 +2803,7 @@ mod tests {
     #[tokio::test]
     async fn given_balance_above_relay_fee_returns_amount_greater_0() {
         let wallet = TestWalletBuilder::new(10_000).build().await;
-        let amount = wallet.max_giveable(TxLock::script_size()).await.unwrap();
+        let (amount, _fee) = wallet.max_giveable(TxLock::script_size()).await.unwrap();
 
         assert!(amount.to_sat() > 0);
     }
@@ -2822,9 +2832,17 @@ mod tests {
         for amount in above_dust..(balance - (above_dust - 1)) {
             let (A, B) = (PublicKey::random(), PublicKey::random());
             let change = wallet.new_address().await.unwrap();
-            let txlock = TxLock::new(&wallet, bitcoin::Amount::from_sat(amount), A, B, change)
-                .await
-                .unwrap();
+            let spending_fee = Amount::from_sat(300); // Use a fixed fee for testing
+            let txlock = TxLock::new(
+                &wallet,
+                bitcoin::Amount::from_sat(amount),
+                spending_fee,
+                A,
+                B,
+                change,
+            )
+            .await
+            .unwrap();
             let txlock_output = txlock.script_pubkey();
 
             let tx = wallet.sign_and_finalize(txlock.into()).await.unwrap();
@@ -2846,10 +2864,12 @@ mod tests {
             .unwrap()
             .assume_checked();
 
+        let spending_fee = Amount::from_sat(1000); // Use a fixed spending fee
         let psbt = wallet
             .send_to_address(
                 wallet.new_address().await.unwrap(),
                 Amount::from_sat(10_000),
+                spending_fee,
                 Some(custom_change.clone()),
             )
             .await
@@ -2921,12 +2941,12 @@ TRACE swap::bitcoin::wallet: Bitcoin transaction status changed txid=00000000000
                 let wallet = TestWalletBuilder::new(funding_amount as u64)
                     .with_key(key)
                     .with_num_utxos(num_utxos)
-                    .with_fees(sats_per_vb, 1000)
+                    .with_fees(sats_per_vb, 1)
                     .build()
                     .await;
 
-                let amount = wallet.max_giveable(TxLock::script_size()).await.unwrap();
-                let psbt: PartiallySignedTransaction = TxLock::new(&wallet, amount, PublicKey::from(alice), PublicKey::from(bob), wallet.new_address().await.unwrap()).await.unwrap().into();
+                let (amount, spending_fee) = wallet.max_giveable(TxLock::script_size()).await.unwrap();
+                let psbt: PartiallySignedTransaction = TxLock::new(&wallet, amount, spending_fee, PublicKey::from(alice), PublicKey::from(bob), wallet.new_address().await.unwrap()).await.unwrap().into();
                 let result = wallet.sign_and_finalize(psbt).await;
 
                 result.expect("transaction to be signed");

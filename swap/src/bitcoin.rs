@@ -574,6 +574,11 @@ mod tests {
             .estimate_fee(TxPunish::weight(), btc_amount)
             .await
             .unwrap();
+        let tx_lock_fee = alice_wallet
+            .estimate_fee(TxLock::weight(), btc_amount)
+            .await
+            .unwrap();
+
         let redeem_address = alice_wallet.new_address().await.unwrap();
         let punish_address = alice_wallet.new_address().await.unwrap();
 
@@ -600,6 +605,7 @@ mod tests {
             config.monero_finality_confirmations,
             spending_fee,
             spending_fee,
+            tx_lock_fee,
         );
 
         let message0 = bob_state0.next_message();
