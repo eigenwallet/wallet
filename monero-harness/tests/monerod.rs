@@ -6,7 +6,7 @@ use tokio::time;
 
 #[tokio::test]
 async fn init_miner_and_mine_to_miner_address() {
-    let _guard = tracing_subscriber::fmt()
+    tracing_subscriber::fmt()
         .with_env_filter(
             "info,test=debug,monero_harness=debug,monero_rpc=debug,monero_sys=debug,monerod=debug",
         )

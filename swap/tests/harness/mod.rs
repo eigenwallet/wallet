@@ -48,7 +48,7 @@ where
 {
     let cli = Cli::default();
 
-    let _guard = tracing_subscriber::fmt()
+    tracing_subscriber::fmt()
         .with_env_filter("info,swap=debug,monero_harness=debug,monero_rpc=debug,bitcoin_harness=info,testcontainers=info,monero_cpp=info,monero_sys=debug") // add `reqwest::connect::verbose=trace` if you want to logs of the RPC clients
         .with_test_writer()
         .init();
@@ -927,20 +927,20 @@ trait Wallet {
 impl Wallet for monero::Wallet {
     type Amount = monero::Amount;
 
-    fn refresh(&self) -> impl Future<Output = Result<()>> {
-        async move { self.wait_until_synced(no_listener()).await }
+    async fn refresh(&self) -> Result<()> {
+        self.wait_until_synced(no_listener()).await
     }
 
-    fn get_balance(&self) -> impl Future<Output = Result<Self::Amount>> {
-        async move { Ok(self.total_balance().await.into()) }
+    async fn get_balance(&self) -> Result<Self::Amount> {
+        Ok(self.total_balance().await.into())
     }
 }
 
 impl Wallet for bitcoin::Wallet {
     type Amount = bitcoin::Amount;
 
-    fn refresh(&self) -> impl Future<Output = Result<()>> {
-        async move { self.sync().await }
+    async fn refresh(&self) -> Result<()> {
+        self.sync().await
     }
 
     async fn get_balance(&self) -> Result<Self::Amount> {

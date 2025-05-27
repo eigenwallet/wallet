@@ -165,7 +165,7 @@ impl<'c> Monero {
             res.blocks.len(),
             miner_address
         );
-        if res.blocks.len() < amount_of_blocks as usize {
+        if res.blocks.len() < amount_of_blocks.try_into().unwrap() {
             tracing::error!(
                 "Expected to generate {} blocks, but only generated {}",
                 amount_of_blocks,
@@ -398,8 +398,8 @@ impl<'c> Monerod {
         }
 
         Ok(GenerateBlocks {
-            blocks: vec!["".to_string(); amount as usize],
-            height: amount as u32,
+            blocks: vec!["".to_string(); amount.try_into().unwrap()],
+            height: u32::try_from(amount).unwrap(),
         })
     }
 }
