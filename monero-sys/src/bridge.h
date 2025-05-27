@@ -167,6 +167,10 @@ namespace Monero
  */
 namespace monero_rust_log
 {
+    // static variable to make sure we don't install twice.
+    bool installed = false;
+    std::string span_name;
+
     /**
      * A dispatch callback that forwards all log messages to Rust.
      */
@@ -206,6 +210,7 @@ namespace monero_rust_log
 
             // Call the rust function to forward the log message.
             monero_rust_log::forward_cpp_log(
+                span_name.c_str(),
                 level,
                 m->file().length() > 0 ? m->file() : "",
                 m->line(),
@@ -214,18 +219,16 @@ namespace monero_rust_log
         }
     };
 
-    // static variable to make sure we don't install twice.
-    bool installed = false;
-
     /**
      * Install a callback to the easylogging++ logging system that forwards all log
      * messages to Rust.
      */
-    inline void install_log_callback()
+    inline void install_log_callback(const std::string &name)
     {
         if (installed)
             return;
         installed = true;
+        span_name = std::string(name);
 
         // Pass all log messages to the RustDispatch callback above.
         el::Helpers::installLogDispatchCallback<RustDispatch>("rust-forward");

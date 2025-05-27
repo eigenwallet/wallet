@@ -126,8 +126,13 @@ impl WalletHandle {
         let (call_sender, call_receiver) = unbounded_channel();
 
         std::thread::spawn(move || {
-            let mut manager =
-                WalletManager::new(daemon.clone()).expect("wallet manager to be created");
+            let wallet_name = path
+                .split('/')
+                .last()
+                .map(ToString::to_string)
+                .unwrap_or(path.clone());
+            let mut manager = WalletManager::new(daemon.clone(), &wallet_name)
+                .expect("wallet manager to be created");
             let wallet = manager
                 .open_or_create_wallet(&path, None, network, background_sync, daemon.clone())
                 .expect("wallet to be created");
@@ -163,9 +168,15 @@ impl WalletHandle {
         // Spawn the wallet thread – all interactions with the wallet must
         // happen on the same OS thread.
         std::thread::spawn(move || {
+            let wallet_name = path
+                .split('/')
+                .last()
+                .map(ToString::to_string)
+                .unwrap_or(path.clone());
+
             // Create the wallet manager in this thread first.
-            let mut manager =
-                WalletManager::new(daemon.clone()).expect("wallet manager to be created");
+            let mut manager = WalletManager::new(daemon.clone(), &wallet_name)
+                .expect("wallet manager to be created");
 
             // Decide whether we have to open an existing wallet or recover it
             // from the mnemonic.
@@ -222,8 +233,14 @@ impl WalletHandle {
         let (call_sender, call_receiver) = unbounded_channel();
 
         std::thread::spawn(move || {
-            let mut manager =
-                WalletManager::new(daemon.clone()).expect("wallet manager to be created");
+            let wallet_name = path
+                .split('/')
+                .last()
+                .map(ToString::to_string)
+                .unwrap_or(path.clone());
+
+            let mut manager = WalletManager::new(daemon.clone(), &wallet_name)
+                .expect("wallet manager to be created");
 
             let wallet = manager
                 .open_or_create_wallet_from_keys(
@@ -596,9 +613,10 @@ impl WalletManager {
     /// Get the wallet manager instance.
     /// You can optionally pass a daemon with which the wallet manager and
     /// all wallets opened by the manager will connect.
-    pub fn new(daemon: Daemon) -> anyhow::Result<Self> {
+    pub fn new(daemon: Daemon, span_name: &str) -> anyhow::Result<Self> {
         // Install the log callback to route c++ logs to tracing.
-        bridge::log::install_log_callback();
+        let_cxx_string!(span_name = span_name);
+        bridge::log::install_log_callback(&span_name);
 
         let manager = ffi::getWalletManager();
         if manager.is_null() {

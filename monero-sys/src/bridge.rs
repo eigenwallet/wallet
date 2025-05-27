@@ -275,6 +275,7 @@ impl From<ffi::NetworkType> for monero::Network {
 pub mod log {
     extern "Rust" {
         fn forward_cpp_log(
+            span_name: &CxxString,
             level: u8,
             file: &CxxString,
             line: u32,
@@ -287,13 +288,20 @@ pub mod log {
         include!("easylogging++.h");
         include!("bridge.h");
 
-        fn install_log_callback();
+        fn install_log_callback(span_name: &CxxString);
     }
 }
 
 /// This is the actual rust function that forwards the c++ log messages to tracing.
 /// Just calls e.g. `tracing::info!` with the appropriate log level and message.
-fn forward_cpp_log(level: u8, file: &CxxString, _line: u32, func: &CxxString, msg: &CxxString) {
+fn forward_cpp_log(
+    span_name: &CxxString,
+    level: u8,
+    file: &CxxString,
+    _line: u32,
+    func: &CxxString,
+    msg: &CxxString,
+) {
     let _file_str = file.to_string();
     let msg_str = msg.to_string();
     let func_str = func.to_string();
@@ -302,17 +310,28 @@ fn forward_cpp_log(level: u8, file: &CxxString, _line: u32, func: &CxxString, ms
     if func_str.starts_with("tools::LoggingPerformanceTimer")
         || msg_str.starts_with("Processed block: <")
         || msg_str.starts_with("Found new pool tx: <")
-        || msg_str.starts_with("")
     {
         return;
     }
 
     match level {
-        0 => tracing::trace!(target: "monero_cpp", function=func_str, "{}", msg_str),
-        1 => tracing::debug!(target: "monero_cpp", function=func_str, "{}", msg_str),
-        2 => tracing::info!(target: "monero_cpp", function=func_str, "{}", msg_str),
-        3 => tracing::warn!(target: "monero_cpp", function=func_str, "{}", msg_str),
-        4 => tracing::error!(target: "monero_cpp", function=func_str, "{}", msg_str),
-        _ => tracing::info!(target: "monero_cpp", function=func_str, "{}", msg_str),
-    }
+        0 => {
+            tracing::trace!(target: "monero_cpp", wallet=%span_name, function=func_str, "{}", msg_str)
+        }
+        1 => {
+            tracing::debug!(target: "monero_cpp", wallet=%span_name, function=func_str, "{}", msg_str)
+        }
+        2 => {
+            tracing::info!(target: "monero_cpp", wallet=%span_name, function=func_str, "{}", msg_str)
+        }
+        3 => {
+            tracing::warn!(target: "monero_cpp", wallet=%span_name, function=func_str, "{}", msg_str)
+        }
+        4 => {
+            tracing::error!(target: "monero_cpp", wallet=%span_name, function=func_str, "{}", msg_str)
+        }
+        _ => {
+            tracing::info!(target: "monero_cpp", wallet=%span_name, function=func_str, "{}", msg_str)
+        }
+    };
 }

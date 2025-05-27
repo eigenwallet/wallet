@@ -535,7 +535,6 @@ pub struct BackgroundRefundProgress {
 #[serde(tag = "componentName", content = "progress")]
 pub enum TauriBackgroundProgress {
     OpeningBitcoinWallet(PendingCompleted<()>),
-    DownloadingMoneroWalletRpc(PendingCompleted<DownloadProgress>),
     OpeningMoneroWallet(PendingCompleted<()>),
     OpeningDatabase(PendingCompleted<()>),
     EstablishingTorCircuits(PendingCompleted<TorBootstrapStatus>),

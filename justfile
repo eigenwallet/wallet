@@ -29,8 +29,14 @@ gui_install:
 	cd src-gui && yarn install
 
 # Start the GUI Dev Server
-gui:
+web:
 	cd src-gui && yarn dev
+
+gui:
+	just web & just tauri
+
+gui-mainnet:
+	just web & just tauri-mainnet
 
 # Build the GUI
 gui_build:
@@ -53,20 +59,12 @@ update_submodules:
 	cd monero-sys && git submodule update --init --recursive --force
 
 # Run clippy checks
-clippy_check:
+clippy:
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-# Check the bindings for the Tauri API
-check_bindings:
-	cd src-gui && yarn run check-bindings
 
 # Generate the bindings for the Tauri API
 bindings:
 	cd src-gui && yarn run gen-bindings
-
-# Kill all instances of monero-wallet-rpc running in the background
-kill_monero_wallet_rpc:
-	killall monero-wallet-rpc && pkill -f monero-wallet-rpc
 
 # Format the code
 fmt:
