@@ -13,7 +13,8 @@
 mod bridge;
 
 use std::{
-    any::Any, cmp::Ordering, fmt::Display, ops::Deref, path::PathBuf, pin::Pin, str::FromStr,
+    any::Any, cmp::Ordering, fmt::Display, num::NonZeroU64, ops::Deref, path::PathBuf, pin::Pin,
+    str::FromStr,
 };
 
 use anyhow::{bail, Context, Result};
@@ -296,11 +297,28 @@ impl WalletHandle {
     /// Get the current height of the blockchain.
     /// May involve an RPC call to the daemon.
     /// Returns `None` if the wallet is not connected to a daemon.
-    pub async fn blockchain_height(&self) -> Option<u64> {
-        self.call(move |wallet| wallet.daemon_blockchain_height())
-            .await
+    ///
+    /// Retries at most 5 times with a 500ms delay between attempts.
+    pub async fn blockchain_height(&self) -> anyhow::Result<u64> {
+        const MAX_RETRIES: u64 = 5;
+
+        for _ in 0..MAX_RETRIES {
+            if let Some(height) = self
+                .call(move |wallet| wallet.daemon_blockchain_height())
+                .await
+            {
+                return Ok(height);
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+
+        self.check_wallet().await?;
+
+        bail!("Failed to get blockchain height after 5 attempts");
     }
 
+    /// Transfer funds to an address.
     pub async fn transfer(
         &self,
         address: &monero::Address,
@@ -311,27 +329,33 @@ impl WalletHandle {
             .await
     }
 
+    /// Sweep all funds to an address.
     pub async fn sweep(&self, address: &monero::Address) -> anyhow::Result<Vec<String>> {
         let address = *address;
         self.call(move |wallet| wallet.sweep(&address)).await
     }
 
+    /// Get the unlocked balance of the wallet.
     pub async fn unlocked_balance(&self) -> monero::Amount {
         self.call(move |wallet| wallet.unlocked_balance()).await
     }
 
+    /// Get the total balance of the wallet.
     pub async fn total_balance(&self) -> monero::Amount {
         self.call(move |wallet| wallet.total_balance()).await
     }
 
+    /// Check if the wallet is synchronized.
     async fn synchronized(&self) -> bool {
         self.call(move |wallet| wallet.synchronized()).await
     }
 
+    /// Get the sync progress of the wallet.
     async fn sync_progress(&self) -> SyncProgress {
         self.call(move |wallet| wallet.sync_progress()).await
     }
 
+    /// Check if the wallet is connected to a daemon.
     pub async fn connected(&self) -> bool {
         self.call(move |wallet| wallet.connected()).await
     }
@@ -371,6 +395,11 @@ impl WalletHandle {
         .await
     }
 
+    /// Wait until the wallet is synchronized.
+    ///
+    /// Polls the wallet's sync status every 500ms until the wallet is synchronized.
+    ///
+    /// If a listener is provided, it will be called with the sync progress.
     pub async fn wait_until_synced(
         &self,
         listener: Option<impl Fn(SyncProgress) + Send + 'static>,
@@ -445,6 +474,7 @@ impl WalletHandle {
         Ok(())
     }
 
+    /// Check the status of a transaction.
     async fn check_tx_status(
         &self,
         txid: String,
@@ -462,6 +492,7 @@ impl WalletHandle {
         self.call(move |wallet| wallet.scan_transaction(txid)).await
     }
 
+    /// Wait until a transaction is confirmed.
     pub async fn wait_until_confirmed(
         &self,
         txid: String,
@@ -1004,6 +1035,8 @@ impl FfiWallet {
     /// Returns the height of the blockchain, if connected.
     /// Returns None if not connected.
     fn daemon_blockchain_height(&self) -> Option<u64> {
+        tracing::debug!(connected=%self.connected(), "Getting daemon blockchain height");
+
         // Here we actually use the _target_ height -- incase the remote node is
         // currently catching up we want to work with the height it ends up at.
         match self.inner.daemonBlockChainTargetHeight() {

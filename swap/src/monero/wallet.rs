@@ -5,11 +5,7 @@
 //!  - wait for transactions to be confirmed
 //!  - send money from one wallet to another.
 
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::{Arc, Weak},
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use monero::{Address, Network};

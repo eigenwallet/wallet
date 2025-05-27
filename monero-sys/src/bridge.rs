@@ -298,7 +298,11 @@ fn forward_cpp_log(level: u8, file: &CxxString, _line: u32, func: &CxxString, ms
     let func_str = func.to_string();
 
     // We don't want to log the performance timer.
-    if func_str.starts_with("tools::LoggingPerformanceTimer") {
+    if func_str.starts_with("tools::LoggingPerformanceTimer")
+        || msg_str.starts_with("Processed block: <")
+        || msg_str.starts_with("Found new pool tx: <")
+        || msg_str.starts_with("")
+    {
         return;
     }
 

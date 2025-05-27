@@ -187,7 +187,7 @@ namespace monero_rust_log
                 level = 0;
                 break;
             case el::Level::Debug:
-                level = 1;
+                level = 0; // monero prints a LOT of debug messages, so we mark them as trace logs as well
                 break;
             case el::Level::Info:
                 level = 2;
