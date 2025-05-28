@@ -44,11 +44,6 @@ jobs:
       - name: Clone submodules
         run: git submodule update --init --recursive
 
-      - name: Build Monero (C++)
-        working-directory: monero-sys/monero
-        run: make -j4 release
-        shell: bash
-
       - name: Check formatting
         uses: dprint/check@v2.2
         with:
@@ -88,11 +83,6 @@ jobs:
       - name: Clone submodules
         run: git submodule update --init --recursive
         
-      - name: Build Monero (C++)
-        working-directory: monero-sys/monero
-        run: make -j4 release
-        shell: bash
-
       - name: Build swap
         run: cargo build --bin swap
 
@@ -126,11 +116,6 @@ jobs:
 
       - name: Clone submodules
         run: git submodule update --init --recursive
-
-      - name: Build Monero (C++)
-        working-directory: monero-sys/monero
-        run: make -j4 release
-        shell: bash
 
       - name: Install sqlx-cli
         run: cargo install --locked --version 0.6.3 sqlx-cli
@@ -201,18 +186,6 @@ jobs:
         with:
           update: true
           install: ${{ env.DEPS_MONERO_WINDOWS_MSYS2 }}
-
-      - name: Build Monero (C++)
-        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
-        working-directory: monero-sys/monero
-        run: make -j4 release
-        shell: bash
-
-      - name: Build Monero (C++) - Windows
-        if: matrix.os == 'windows-latest'
-        working-directory: monero-sys/monero
-        run: make -j4 release
-        shell: msys2 {0}
 
       - name: Build binary
         if: matrix.target != 'armv7-unknown-linux-gnueabihf'
@@ -288,12 +261,6 @@ jobs:
 
       - name: Clone submodules
         run: git submodule update --init --recursive
-
-      - name: Build Monero (C++)
-        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
-        working-directory: monero-sys/monero
-        run: make -j4 release
-        shell: bash
 
       - uses: Swatinem/rust-cache@v2.7.3
 
@@ -374,11 +341,6 @@ jobs:
       - name: Clone submodules
         run: git submodule update --init --recursive
 
-      - name: Build Monero (C++)
-        working-directory: monero-sys/monero
-        run: make -j4 release
-        shell: bash
-
       - name: Run test ${{ matrix.test_name }}
         run: cargo test --package ${{ matrix.package }} --test ${{ matrix.test_name }} -- --nocapture
 
@@ -411,11 +373,6 @@ jobs:
 
       - name: Clone submodules
         run: git submodule update --init --recursive
-
-      - name: Build Monero (C++)
-        working-directory: monero-sys/monero
-        run: make -j4 release
-        shell: bash
 
       - name: Run cargo check on stable rust
         run: cargo check --all-targets
