@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context as AnyhowContext};
-use http_body_util::Empty;
+use http_body_util::{BodyExt, Empty};
 use hyper::{body::Bytes, Request, Uri};
 use hyper_util::rt::TokioIo;
 use std::collections::HashMap;
@@ -12,9 +12,9 @@ use swap::cli::{
         request::{
             BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, CheckElectrumNodeArgs,
             CheckElectrumNodeResponse, CheckMoneroNodeArgs, CheckMoneroNodeResponse,
-            ExportBitcoinWalletArgs, GetDataDirArgs, GetHistoryArgs, GetLogsArgs,
-            GetMoneroAddressesArgs, GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs,
-            MoneroRecoveryArgs, RedactArgs, ResolveApprovalArgs, ResumeSwapArgs,
+            ExportBitcoinWalletArgs, FetchArgs, FetchResponse, GetDataDirArgs, GetHistoryArgs,
+            GetLogsArgs, GetMoneroAddressesArgs, GetSwapInfoArgs, GetSwapInfosAllArgs,
+            ListSellersArgs, MoneroRecoveryArgs, RedactArgs, ResolveApprovalArgs, ResumeSwapArgs,
             SuspendCurrentSwapArgs, WithdrawBtcArgs,
         },
         tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle, TauriSettings},
@@ -256,8 +256,11 @@ async fn is_context_available(context: tauri::State<'_, RwLock<State>>) -> Resul
 }
 
 #[tauri::command]
-async fn fetch(context: tauri::State<'_, RwLock<State>>, uri: String) -> Result<(), String> {
-    let url = uri.parse::<Uri>().to_string_result()?;
+async fn fetch(
+    context: tauri::State<'_, RwLock<State>>,
+    args: FetchArgs,
+) -> Result<FetchResponse, String> {
+    let url = args.url.parse::<Uri>().to_string_result()?;
 
     let context = context.read().await.try_get_context()?;
     let tor = context
@@ -286,18 +289,36 @@ async fn fetch(context: tauri::State<'_, RwLock<State>>, uri: String) -> Result<
         }
     });
 
+    let authority = url.authority().unwrap().clone();
+
     // Create an HTTP request with an empty body and a HOST header
     let req = Request::builder()
         .uri(url)
-        .header(hyper::header::HOST, "api.unstoppableswap.net")
+        .header(hyper::header::HOST, authority.as_str())
         .body(Empty::<Bytes>::new())
         .to_string_result()?;
 
-    let res = sender.send_request(req).await.to_string_result()?;
+    let mut res = sender.send_request(req).await.to_string_result()?;
 
     tracing::info!("Response status: {:?}", res.status().as_u16());
 
-    Ok(())
+    let mut bytes = Vec::new();
+
+    while let Some(next) = res.frame().await {
+        let frame = next.to_string_result()?;
+        let Some(chunk) = frame.data_ref() else {
+            tracing::error!("No data in chunk");
+            continue;
+        };
+
+        bytes.extend_from_slice(&chunk);
+    }
+
+    let response = String::from_utf8(bytes)
+        .map_err(|e| format!("Response isn't valid utf-8: {}", e))
+        .to_string_result()?;
+
+    Ok(FetchResponse { response })
 }
 
 #[tauri::command]

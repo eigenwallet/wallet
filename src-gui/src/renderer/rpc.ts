@@ -27,6 +27,8 @@ import {
   ResolveApprovalResponse,
   RedactArgs,
   RedactResponse,
+  FetchArgs,
+  FetchResponse,
 } from "models/tauriModel";
 import {
   rpcSetBalance,
@@ -71,8 +73,10 @@ async function invokeNoArgs<RESPONSE>(command: string): Promise<RESPONSE> {
   return invokeUnsafe(command) as Promise<RESPONSE>;
 }
 
-export async function fetchTor() {
-  await invokeNoArgs<void>("fetch");
+export async function fetch(url: string): Promise<string> {
+  const response = await invoke<FetchArgs, FetchResponse>("fetch", { url });
+
+  return response.response;
 }
 
 export async function checkBitcoinBalance() {
@@ -240,7 +244,6 @@ export async function initializeContext() {
   }),
   );
 
-
   // Initialize Tauri settings with null values
   const tauriSettings: TauriSettings = {
     electrum_rpc_url: bitcoinNode,
@@ -255,8 +258,8 @@ export async function initializeContext() {
     testnet,
   });
 
-  await fetchTor();
-  console.info("Tor fetched");
+  let response = await fetch("api.unstoppableswap.net/api/list");
+  console.info("Tor fetched", response);
 }
 
 export async function getWalletDescriptor() {
