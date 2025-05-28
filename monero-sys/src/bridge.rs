@@ -147,6 +147,9 @@ pub mod ffi {
             proxy_address: &CxxString,
         ) -> bool;
 
+        /// Get the seed of the wallet.
+        fn walletSeed(wallet: &Wallet, seed_offset: &CxxString) -> UniquePtr<CxxString>;
+
         /// Check whether the wallet is connected to the daemon.
         fn connected(self: &Wallet) -> ConnectionStatus;
 

@@ -151,6 +151,15 @@ namespace Monero
         return std::make_unique<std::string>(key);
     }
 
+    /**
+     * Get the seed of the wallet.
+     */
+    inline std::unique_ptr<std::string> walletSeed(const Wallet &wallet, const std::string &seed_offset)
+    {
+        auto seed = wallet.seed(seed_offset);
+        return std::make_unique<std::string>(seed);
+    }
+
     inline std::unique_ptr<std::vector<std::string>> pendingTransactionTxIds(const PendingTransaction &tx)
     {
         return std::make_unique<std::vector<std::string>>(tx.txid());
