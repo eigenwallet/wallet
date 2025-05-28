@@ -69,6 +69,13 @@ jobs:
         run: |
           sudo apt update;
           sudo apt install -y ${{ env.DEPS_MONERO_LINUX }} ${{ env.DEPS_GUI_UBUNTU_SPECIFIC }} git
+          
+      - name: Get OpenSSL location
+        if: matrix.platform == env.UBUNTU_PLATFORM_ID
+        run: |
+          which openssl
+          openssl version
+          echo "OPENSSL_PATH=$(which openssl)" >> $GITHUB_ENV
 
       - name: Install Monero build dependencies (macOS)
         if: startsWith(matrix.platform, 'macos')
