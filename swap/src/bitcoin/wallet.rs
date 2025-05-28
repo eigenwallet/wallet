@@ -1425,15 +1425,7 @@ where
         }.context("Failed to build transaction to figure out max giveable")?;
 
         // Estimate the fee rate using our real fee rate estimation
-        let fee_rate_estimation = self.combined_fee_rate().await?;
-        let min_relay_fee_rate = self.combined_min_relay_fee().await?;
-
-        let fee = estimate_fee(
-            dummy_weight,
-            dummy_max_giveable,
-            fee_rate_estimation,
-            min_relay_fee_rate,
-        )?;
+        let fee = self.estimate_fee(dummy_weight, dummy_max_giveable).await?;
 
         Ok(match dummy_max_giveable {
             // If the max giveable is less than the dust amount, we return 0
@@ -2712,7 +2704,7 @@ mod tests {
         let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
         let relay_fee = FeeRate::from_sat_per_vb(1).unwrap();
-        let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
+        let is_fee = estimate_fee(weight, Some(amount), fee_rate, relay_fee).unwrap();
 
         // weight / 4.0 *  sat_per_vb
         let should_fee = bitcoin::Amount::from_sat(10_000);
@@ -2729,7 +2721,7 @@ mod tests {
         let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
         let relay_fee = FeeRate::from_sat_per_vb(250_000).unwrap(); // 100k sats for 400 weight units
-        let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
+        let is_fee = estimate_fee(weight, Some(amount), fee_rate, relay_fee).unwrap();
 
         // The function now uses the higher of fee_rate and relay_fee, then multiplies by weight
         // relay_fee (250_000 sat/vb) is higher than fee_rate (1 sat/vb)
@@ -2749,7 +2741,7 @@ mod tests {
         let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
         let relay_fee = FeeRate::from_sat_per_vb(1).unwrap();
-        let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
+        let is_fee = estimate_fee(weight, Some(amount), fee_rate, relay_fee).unwrap();
 
         // fee_rate (1000 sat/vb) * 100 vbytes = 100_000 sats
         // This equals exactly our MAX_ABSOLUTE_TX_FEE
@@ -2767,7 +2759,7 @@ mod tests {
         let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
         let relay_fee = FeeRate::from_sat_per_vb(1).unwrap();
-        let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
+        let is_fee = estimate_fee(weight, Some(amount), fee_rate, relay_fee).unwrap();
 
         // With such a high fee rate (4M sat/vb), the calculated fee would be enormous
         // But it gets capped by the relative maximum (20% of transfer amount)
@@ -2789,7 +2781,7 @@ mod tests {
             let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
             let relay_fee = FeeRate::from_sat_per_vb(relay_fee.min(1_000_000)).unwrap();
-            let _is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
+            let _is_fee = estimate_fee(weight, Some(amount), fee_rate, relay_fee).unwrap();
 
         }
     }
@@ -2806,7 +2798,7 @@ mod tests {
             let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
             let relay_fee = FeeRate::from_sat_per_vb(1).unwrap();
-            let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
+            let is_fee = estimate_fee(weight, Some(amount), fee_rate, relay_fee).unwrap();
 
             // weight / 4 * 100 = 10,000 sats which is always lower than MAX_ABSOLUTE_TX_FEE
             assert!(is_fee <= MAX_ABSOLUTE_TX_FEE);
@@ -2825,7 +2817,7 @@ mod tests {
             let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
             let relay_fee = FeeRate::from_sat_per_vb(1).unwrap();
-            let is_fee = estimate_fee(weight, amount, fee_rate, relay_fee).unwrap();
+            let is_fee = estimate_fee(weight, Some(amount), fee_rate, relay_fee).unwrap();
 
             // weight / 4 * 1_000 = 100_000 sats which hits our MAX_ABSOLUTE_TX_FEE
             assert_eq!(is_fee, MAX_ABSOLUTE_TX_FEE);
@@ -2843,7 +2835,7 @@ mod tests {
             let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb).unwrap();
 
             let relay_fee = FeeRate::from_sat_per_vb(1).unwrap();
-            assert!(estimate_fee(weight, amount, fee_rate, relay_fee).is_err());
+            assert!(estimate_fee(weight, Some(amount), fee_rate, relay_fee).is_err());
 
         }
     }
@@ -2862,7 +2854,7 @@ mod tests {
             // The function now has a sanity check that errors if fee rates > 100M sat/vb
             // Since we're capping relay_fee at 1M, it should not error
             // Instead, it should succeed and return a reasonable fee
-            assert!(estimate_fee(weight, amount, fee_rate, relay_fee).is_ok());
+            assert!(estimate_fee(weight, Some(amount), fee_rate, relay_fee).is_ok());
         }
     }
 
@@ -2895,7 +2887,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn given_balance_below_dust_returns_amount_0_with_sensible_fee() {
+    async fn given_balance_below_dust_returns_amount_0_but_with_sensible_fee() {
         let wallet = TestWalletBuilder::new(0).build().await;
         let (amount, fee) = wallet.max_giveable(TxLock::script_size()).await.unwrap();
 
