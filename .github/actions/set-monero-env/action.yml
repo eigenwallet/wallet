@@ -30,12 +30,6 @@ runs:
         APTEOF
         EOF' >> $GITHUB_ENV
         
-        # Ccache settings
-        echo 'CCACHE_SETTINGS_COMMAND<<EOF
-        ccache --max-size=15G
-        ccache --set-config=compression=true
-        EOF' >> $GITHUB_ENV
-
     - name: Set platform identifiers
       shell: bash
       run: |

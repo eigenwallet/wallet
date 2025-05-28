@@ -43,9 +43,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actionhippie/swap-space@v1
+      - uses: actions/cache@v4
         with:
-          size: 15G
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Create Draft Release
         uses: crabnebula-dev/cloud-release@v0
@@ -73,17 +79,20 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: actionhippie/swap-space@v1
-        if: matrix.platform == env.UBUNTU
+      - uses: actions/cache@v4
         with:
-          size: 15G
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
-
-      - uses: Swatinem/rust-cache@v2.7.3
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@1.80

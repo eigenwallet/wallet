@@ -31,7 +31,15 @@ jobs:
           toolchain: "1.82"
           components: clippy,rustfmt
 
-      - uses: Swatinem/rust-cache@v2.7.3
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
@@ -70,7 +78,15 @@ jobs:
         with:
           size: 15G
 
-      - uses: Swatinem/rust-cache@v2.7.3
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
@@ -104,7 +120,15 @@ jobs:
         with:
           size: 15G
 
-      - uses: Swatinem/rust-cache@v2.7.3
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
@@ -154,7 +178,15 @@ jobs:
         with:
           size: 15G
 
-      - uses: Swatinem/rust-cache@v2.7.3
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -262,7 +294,15 @@ jobs:
       - name: Clone submodules
         run: git submodule update --init --recursive
 
-      - uses: Swatinem/rust-cache@v2.7.3
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build tests
         run: cargo build --tests --workspace --all-features
@@ -328,7 +368,15 @@ jobs:
         with:
           size: 15G
 
-      - uses: Swatinem/rust-cache@v2.7.3
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
@@ -361,7 +409,15 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: Swatinem/rust-cache@v2.7.3
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
