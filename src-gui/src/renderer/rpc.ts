@@ -150,7 +150,7 @@ export async function buyXmr(
     bitcoin_change_address == null
       ? {
         seller: providerToConcatenatedMultiAddr(seller),
-        monero_receive_address: [
+        monero_receive_pool: [
           {
             address: monero_receive_address,
             percentage: DONATE_PERCENTAGE,
@@ -165,7 +165,7 @@ export async function buyXmr(
       }
       : {
         seller: providerToConcatenatedMultiAddr(seller),
-        monero_receive_address: [
+        monero_receive_pool: [
           {
             address: monero_receive_address,
             percentage: 1 - DONATE_PERCENTAGE,
