@@ -97,31 +97,27 @@ pub fn init(
         .json()
         .with_filter(env_filter(level_filter, ALL_CRATES.clone())?);
 
-    // We only log the bare minimum to the terminal
-    // Crates: swap, asb
-    // Level: Passed in
-    let env_filtered = env_filter(level_filter, OUR_CRATES.clone())?;
-
-    // Apply the environment filter and box the layer for the terminal
+    // If trace_stdout is true, we log all messages to the terminal
+    // Otherwise, we only log the bare minimum
+    let terminal_layer_env_filter = match trace_stdout {
+        true => env_filter(LevelFilter::TRACE, ALL_CRATES.clone())?,
+        false => env_filter(level_filter, OUR_CRATES.clone())?,
+    };
     let final_terminal_layer = match format {
-        Format::Json => terminal_layer.json().with_filter(env_filtered).boxed(),
-        Format::Raw => terminal_layer.with_filter(env_filtered).boxed(),
+        Format::Json => terminal_layer
+            .json()
+            .with_filter(terminal_layer_env_filter)
+            .boxed(),
+        Format::Raw => terminal_layer
+            .with_filter(terminal_layer_env_filter)
+            .boxed(),
     };
 
-    let mut subscriber = tracing_subscriber::registry()
+    let subscriber = tracing_subscriber::registry()
         .with(file_layer)
         .with(tracing_file_layer)
         .with(final_terminal_layer)
         .with(tauri_layer);
-
-    if trace_stdout {
-        let trace_env_filtered = env_filter(LevelFilter::TRACE, ALL_CRATES.clone())?;
-        let trace_terminal_layer = match format {
-            Format::Json => terminal_layer.clone().json().with_filter(trace_env_filtered).boxed(),
-            Format::Raw => terminal_layer.clone().with_filter(trace_env_filtered).boxed(),
-        };
-        subscriber = subscriber.with(trace_terminal_layer);
-    }
 
     subscriber.try_init()?;
 

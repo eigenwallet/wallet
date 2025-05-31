@@ -246,10 +246,7 @@ pub struct RawArguments {
     )]
     pub json: bool,
 
-    #[structopt(
-        long = "trace",
-        help = "Also output verbose tracing logs to stdout"
-    )]
+    #[structopt(long = "trace", help = "Also output verbose tracing logs to stdout")]
     pub trace: bool,
 
     #[structopt(
