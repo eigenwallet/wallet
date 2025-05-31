@@ -330,7 +330,7 @@ fn forward_cpp_log(
     std::panic::set_hook(default_hook);
 
     if result.is_err() {
-        println!("Tracing is no longer functional, skipping log: {msg}");
+        eprintln!("Tracing is no longer functional, skipping log: {msg}");
         return;
     }
 

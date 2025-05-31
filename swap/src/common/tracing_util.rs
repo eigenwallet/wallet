@@ -81,7 +81,7 @@ pub fn init(
     // Level: Passed in
     let is_terminal = atty::is(atty::Stream::Stderr);
     let terminal_layer = fmt::layer()
-        .with_writer(std::io::stdout)
+        .with_writer(std::io::stderr)
         .with_ansi(is_terminal)
         .with_timer(UtcTime::rfc_3339())
         .with_target(true);
