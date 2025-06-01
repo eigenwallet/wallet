@@ -30,6 +30,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy,rustfmt
+          rustflags: ""
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
@@ -152,6 +153,8 @@ jobs:
           size: 15G
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
       
       - name: Configure apt for retries
         if: matrix.os == 'ubuntu-latest-m'
@@ -237,6 +240,8 @@ jobs:
           size: 15G
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
 
       - name: Configure apt for retries
         if: matrix.os == 'ubuntu-latest-m'
@@ -353,6 +358,8 @@ jobs:
           size: 15G
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
