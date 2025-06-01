@@ -165,7 +165,7 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
           - target: x86_64-pc-windows-msvc
-            os: windows-latest
+            os: windows-latest-l
     runs-on: ${{ matrix.os }}
     if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
@@ -217,7 +217,7 @@ jobs:
           brew install ${{ env.DEPS_MONERO_MACOS }}
 
       - name: Install Monero build dependencies (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest-l'
         uses: msys2/setup-msys2@v2
         with:
           update: true
