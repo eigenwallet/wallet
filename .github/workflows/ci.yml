@@ -12,7 +12,8 @@ concurrency:
 
 jobs:
   static_analysis:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-m
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -44,7 +45,7 @@ jobs:
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (ubuntu-latest-m)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }} git
@@ -64,7 +65,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   bdk_test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-m
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -91,7 +93,7 @@ jobs:
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (ubuntu-latest-m)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -106,7 +108,8 @@ jobs:
         run: ./swap/tests/bdk.sh
 
   sqlx_test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-m
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -133,7 +136,7 @@ jobs:
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (ubuntu-latest-m)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -154,9 +157,9 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-latest-m
           - target: armv7-unknown-linux-gnueabihf
-            os: ubuntu-latest
+            os: ubuntu-latest-m
           - target: x86_64-apple-darwin
             os: macos-13
           - target: aarch64-apple-darwin
@@ -164,6 +167,7 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
     runs-on: ${{ matrix.os }}
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -174,7 +178,7 @@ jobs:
         uses: ./.github/actions/set-monero-env
 
       - uses: actionhippie/swap-space@v1
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest-m'
         with:
           size: 15G
 
@@ -194,11 +198,11 @@ jobs:
           targets: armv7-unknown-linux-gnueabihf
 
       - name: Configure apt for retries
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest-m'
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
-        if: matrix.os == 'ubuntu-latest' # This must match the platform value defined above.
+      - name: Install dependencies (ubuntu-latest-m)
+        if: matrix.os == 'ubuntu-latest-m' # This must match the platform value defined above.
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }} git
@@ -246,11 +250,12 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest-m, macos-latest]
     runs-on: ${{ matrix.os }}
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: (Free disk space on Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest-m'
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
         with:
           # removing all of these takes ~10 mins, so just do as needed
@@ -271,16 +276,16 @@ jobs:
         uses: ./.github/actions/set-monero-env
 
       - uses: actionhippie/swap-space@v1
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest-m'
         with:
           size: 15G
 
       - name: Configure apt for retries
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest-m'
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install dependencies (ubuntu-latest-m)
+        if: matrix.os == 'ubuntu-latest-m'
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -308,7 +313,7 @@ jobs:
         run: cargo build --tests --workspace --all-features
 
       - name: Run monero-harness tests
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest-m'
         run: cargo test --package monero-harness --all-features
 
       - name: Run library tests for swap
@@ -354,7 +359,8 @@ jobs:
             test_name: happy_path_bob_offline_while_alice_redeems_btc
           - package: monero-sys
             test_name: harness_test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-m
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -381,7 +387,7 @@ jobs:
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (ubuntu-latest-m)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -393,7 +399,8 @@ jobs:
         run: cargo test --package ${{ matrix.package }} --test ${{ matrix.test_name }} -- --nocapture
 
   check_stable:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-m
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -422,7 +429,7 @@ jobs:
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (ubuntu-latest-m)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
