@@ -31,16 +31,6 @@ jobs:
         with:
           components: clippy,rustfmt
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo
-
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
@@ -79,16 +69,6 @@ jobs:
         with:
           size: 15G
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo
-
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
@@ -121,16 +101,6 @@ jobs:
       - uses: actionhippie/swap-space@v1
         with:
           size: 15G
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
@@ -180,16 +150,6 @@ jobs:
         if: matrix.os == 'ubuntu-latest-m'
         with:
           size: 15G
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       
@@ -276,6 +236,8 @@ jobs:
         with:
           size: 15G
 
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
       - name: Configure apt for retries
         if: matrix.os == 'ubuntu-latest-m'
         run: ${{ env.APT_SET_CONF_COMMAND }}
@@ -294,16 +256,6 @@ jobs:
 
       - name: Clone submodules
         run: git submodule update --init --recursive
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo
 
       - name: Build tests
         run: cargo build --tests --workspace --all-features
@@ -370,16 +322,6 @@ jobs:
         with:
           size: 15G
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo
-
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
@@ -410,17 +352,7 @@ jobs:
         with:
           size: 15G
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
