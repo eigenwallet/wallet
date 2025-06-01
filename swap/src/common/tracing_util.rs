@@ -106,7 +106,7 @@ pub fn init(
         false => env_filter(level_filter, OUR_CRATES.clone())?,
     };
 
-  let final_terminal_layer = match format {
+    let final_terminal_layer = match format {
         Format::Json => terminal_layer
             .json()
             .with_filter(terminal_layer_env_filter)
