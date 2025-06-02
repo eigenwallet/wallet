@@ -1,10 +1,5 @@
 # Rust build artifacts
 target/
-**/*.rs.bk
-
-# Git directory
-.git/
-.gitignore
 
 # IDE files
 .vscode/
