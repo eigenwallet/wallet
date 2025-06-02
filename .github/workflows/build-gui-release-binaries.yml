@@ -44,16 +44,6 @@ jobs:
         with:
           node-version: lts/*
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo
-
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@1.80
         with:

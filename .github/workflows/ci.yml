@@ -27,10 +27,28 @@ jobs:
         with:
           size: 15G
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Restore Rust/Cargo cache from S3
+        uses: whywaita/actions-cache-s3@v2
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          aws-s3-bucket: ${{ secrets.S3_BUCKET_NAME }}
+          aws-region: eu-central-1
+          aws-endpoint: ${{ secrets.S3_ENDPOINT_URL }}
+          aws-s3-force-path-style: true
+          aws-access-key-id: ${{ secrets.S3_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+
+      - name: Install Rust toolchain (no internal cache)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy,rustfmt
           rustflags: ""
+          cache-directories: ""
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
@@ -53,6 +71,23 @@ jobs:
 
       - name: Run clippy with all features enabled
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Save Rust/Cargo cache to S3
+        if: ${{ always() }}
+        uses: whywaita/actions-cache-s3@v2
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          aws-s3-bucket: ${{ secrets.S3_BUCKET_NAME }}
+          aws-region: eu-central-1
+          aws-endpoint: ${{ secrets.S3_ENDPOINT_URL }}
+          aws-s3-force-path-style: true
+          aws-access-key-id: ${{ secrets.S3_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
 
   bdk_test:
     runs-on: ubuntu-latest-m
@@ -152,9 +187,27 @@ jobs:
         with:
           size: 15G
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Restore Rust/Cargo cache from S3
+        uses: whywaita/actions-cache-s3@v2
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          aws-s3-bucket: ${{ secrets.S3_BUCKET_NAME }}
+          aws-region: eu-central-1
+          aws-endpoint: ${{ secrets.S3_ENDPOINT_URL }}
+          aws-s3-force-path-style: true
+          aws-access-key-id: ${{ secrets.S3_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+
+      - name: Install Rust toolchain (no internal cache)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
+          cache-directories: ""
       
       - name: Configure apt for retries
         if: matrix.os == 'ubuntu-latest-m'
@@ -206,6 +259,23 @@ jobs:
           name: asb-${{ matrix.target }}
           path: target/${{ matrix.target }}/debug/asb
 
+      - name: Save Rust/Cargo cache to S3
+        if: ${{ always() }}
+        uses: whywaita/actions-cache-s3@v2
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          aws-s3-bucket: ${{ secrets.S3_BUCKET_NAME }}
+          aws-region: eu-central-1
+          aws-endpoint: ${{ secrets.S3_ENDPOINT_URL }}
+          aws-s3-force-path-style: true
+          aws-access-key-id: ${{ secrets.S3_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+
   test:
     strategy:
       matrix:
@@ -239,9 +309,27 @@ jobs:
         with:
           size: 15G
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Restore Rust/Cargo cache from S3
+        uses: whywaita/actions-cache-s3@v2
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          aws-s3-bucket: ${{ secrets.S3_BUCKET_NAME }}
+          aws-region: eu-central-1
+          aws-endpoint: ${{ secrets.S3_ENDPOINT_URL }}
+          aws-s3-force-path-style: true
+          aws-access-key-id: ${{ secrets.S3_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+
+      - name: Install Rust toolchain (no internal cache)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
+          cache-directories: ""
 
       - name: Configure apt for retries
         if: matrix.os == 'ubuntu-latest-m'
@@ -271,6 +359,23 @@ jobs:
 
       - name: Run library tests for swap
         run: cargo test --package swap --lib
+
+      - name: Save Rust/Cargo cache to S3
+        if: ${{ always() }}
+        uses: whywaita/actions-cache-s3@v2
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          aws-s3-bucket: ${{ secrets.S3_BUCKET_NAME }}
+          aws-region: eu-central-1
+          aws-endpoint: ${{ secrets.S3_ENDPOINT_URL }}
+          aws-s3-force-path-style: true
+          aws-access-key-id: ${{ secrets.S3_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
 
   docker_tests:
     strategy:
@@ -357,9 +462,27 @@ jobs:
         with:
           size: 15G
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Restore Rust/Cargo cache from S3
+        uses: whywaita/actions-cache-s3@v2
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          aws-s3-bucket: ${{ secrets.S3_BUCKET_NAME }}
+          aws-region: eu-central-1
+          aws-endpoint: ${{ secrets.S3_ENDPOINT_URL }}
+          aws-s3-force-path-style: true
+          aws-access-key-id: ${{ secrets.S3_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+
+      - name: Install Rust toolchain (no internal cache)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ""
+          cache-directories: ""
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
@@ -374,3 +497,20 @@ jobs:
 
       - name: Run cargo check on stable rust
         run: cargo check --all-targets
+
+      - name: Save Rust/Cargo cache to S3
+        if: ${{ always() }}
+        uses: whywaita/actions-cache-s3@v2
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          aws-s3-bucket: ${{ secrets.S3_BUCKET_NAME }}
+          aws-region: eu-central-1
+          aws-endpoint: ${{ secrets.S3_ENDPOINT_URL }}
+          aws-s3-force-path-style: true
+          aws-access-key-id: ${{ secrets.S3_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
