@@ -14,8 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ```bash
   $ asb export-monero-wallet > wallet.txt
   $ cat wallet.txt
-  Seed          : <seed>
-  Restore height: <restore-height>
+  Seed          : novelty deodorant aloof serving fuel vipers awful segments siblings bite exquisite quick snout rising hobby trash amply recipe cinema ritual problems pram getting playful novelty
+  Restore height: 3403755
   $
   ```
 
