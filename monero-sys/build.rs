@@ -196,10 +196,16 @@ fn main() {
         // Minimum OS version you already add:
         println!("cargo:rustc-link-arg=-mmacosx-version-min=11.0");
     }
+    
     // Build the CXX bridge
     let mut build = cxx_build::bridge("src/bridge.rs");
+    
+    #[cfg(target_os = "macos")]
+    {
+        build.flag_if_supported("-mmacosx-version-min=11.0");
+    }
+
     build
-        .flag("-mmacosx-version-min=11.0")
         .flag_if_supported("-std=c++17")
         .include("src") // Include the bridge.h file
         .include("monero/src") // Includes the monero headers
