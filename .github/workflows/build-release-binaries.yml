@@ -79,11 +79,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo
 
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.82"
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Configure apt for retries
         if: matrix.os == 'ubuntu-latest'

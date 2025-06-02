@@ -12,7 +12,8 @@ concurrency:
 
 jobs:
   static_analysis:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest-m
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -26,25 +27,15 @@ jobs:
         with:
           size: 15G
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: "1.82"
           components: clippy,rustfmt
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          rustflags: ""
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (ubuntu-latest-m)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }} git
@@ -64,7 +55,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   bdk_test:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest-m
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -78,20 +70,10 @@ jobs:
         with:
           size: 15G
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (ubuntu-latest-m)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -106,7 +88,8 @@ jobs:
         run: ./swap/tests/bdk.sh
 
   sqlx_test:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest-m
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -120,20 +103,10 @@ jobs:
         with:
           size: 15G
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (ubuntu-latest-m)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -154,16 +127,17 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            os: self-hosted
+            os: ubuntu-latest-m
           - target: armv7-unknown-linux-gnueabihf
-            os: self-hosted
+            os: ubuntu-latest-m
           - target: x86_64-apple-darwin
             os: macos-13
           - target: aarch64-apple-darwin
             os: macos-latest
           - target: x86_64-pc-windows-msvc
-            os: windows-latest
+            os: windows-latest-l
     runs-on: ${{ matrix.os }}
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -174,31 +148,20 @@ jobs:
         uses: ./.github/actions/set-monero-env
 
       - uses: actionhippie/swap-space@v1
-        if: matrix.os == 'self-hosted'
+        if: matrix.os == 'ubuntu-latest-m'
         with:
           size: 15G
 
-      - uses: actions/cache@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.82"
-          targets: armv7-unknown-linux-gnueabihf
-
+          rustflags: ""
+      
       - name: Configure apt for retries
-        if: matrix.os == 'self-hosted'
+        if: matrix.os == 'ubuntu-latest-m'
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
-        if: matrix.os == 'self-hosted' # This must match the platform value defined above.
+      - name: Install dependencies (ubuntu-latest-m)
+        if: matrix.os == 'ubuntu-latest-m' # This must match the platform value defined above.
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }} git
@@ -213,7 +176,7 @@ jobs:
           brew install ${{ env.DEPS_MONERO_MACOS }}
 
       - name: Install Monero build dependencies (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest-l'
         uses: msys2/setup-msys2@v2
         with:
           update: true
@@ -246,11 +209,12 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [self-hosted, macos-latest]
+        os: [ubuntu-latest-m, macos-latest]
     runs-on: ${{ matrix.os }}
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: (Free disk space on Ubuntu)
-        if: matrix.os == 'self-hosted'
+        if: matrix.os == 'ubuntu-latest-m'
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
         with:
           # removing all of these takes ~10 mins, so just do as needed
@@ -271,16 +235,20 @@ jobs:
         uses: ./.github/actions/set-monero-env
 
       - uses: actionhippie/swap-space@v1
-        if: matrix.os == 'self-hosted'
+        if: matrix.os == 'ubuntu-latest-m'
         with:
           size: 15G
 
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+
       - name: Configure apt for retries
-        if: matrix.os == 'self-hosted'
+        if: matrix.os == 'ubuntu-latest-m'
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
-        if: matrix.os == 'self-hosted'
+      - name: Install dependencies (ubuntu-latest-m)
+        if: matrix.os == 'ubuntu-latest-m'
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -294,21 +262,11 @@ jobs:
       - name: Clone submodules
         run: git submodule update --init --recursive
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Build tests
         run: cargo build --tests --workspace --all-features
 
       - name: Run monero-harness tests
-        if: matrix.os == 'self-hosted'
+        if: matrix.os == 'ubuntu-latest-m'
         run: cargo test --package monero-harness --all-features
 
       - name: Run library tests for swap
@@ -354,7 +312,8 @@ jobs:
             test_name: happy_path_bob_offline_while_alice_redeems_btc
           - package: monero-sys
             test_name: harness_test
-    runs-on: self-hosted
+    runs-on: ubuntu-latest-m
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -368,20 +327,10 @@ jobs:
         with:
           size: 15G
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (ubuntu-latest-m)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
@@ -393,7 +342,8 @@ jobs:
         run: cargo test --package ${{ matrix.package }} --test ${{ matrix.test_name }} -- --nocapture
 
   check_stable:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest-m
+    if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4.1.7
@@ -407,22 +357,14 @@ jobs:
         with:
           size: 15G
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/cache@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          rustflags: ""
 
       - name: Configure apt for retries
         run: ${{ env.APT_SET_CONF_COMMAND }}
 
-      - name: Install dependencies (ubuntu-latest)
+      - name: Install dependencies (ubuntu-latest-m)
         run: |
           sudo apt update
           sudo apt install -y ${{ env.DEPS_TAURI_LINUX }} ${{ env.DEPS_MONERO_LINUX }}
