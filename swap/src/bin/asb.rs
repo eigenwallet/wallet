@@ -410,8 +410,8 @@ pub async fn main() -> Result<()> {
             let seed = main_wallet.seed().await;
             let creation_height = main_wallet.creation_height().await;
 
-            println!("Seed: {seed}");
-            println!("Creation height: {creation_height}");
+            println!("Seed          : {seed}");
+            println!("Restore height: {creation_height}");
         }
     }
 
