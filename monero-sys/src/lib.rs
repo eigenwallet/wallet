@@ -1116,23 +1116,12 @@ impl FfiWallet {
 
     /// Get the total balance across all accounts.
     fn total_balance(&mut self) -> monero::Amount {
-        tracing::debug!("Getting total balance, syncing if needed");
-
-        if let Err(err) = self.refresh_blocking().context("Failed to sync wallet") {
-            tracing::error!(%err, "Failed to sync wallet, retrieving balance without syncing");
-        }
-
         let balance = self.inner.balanceAll();
         monero::Amount::from_pico(balance)
     }
 
     /// Get the total unlocked balance across all accounts in atomic units.
     fn unlocked_balance(&mut self) -> monero::Amount {
-        tracing::debug!("Getting unlocked balance, syncing if needed");
-        if let Err(err) = self.refresh_blocking().context("Failed to sync wallet") {
-            tracing::error!(%err, "Failed to sync wallet, retrieving balance without syncing");
-        }
-
         let balance = self.inner.unlockedBalanceAll();
         monero::Amount::from_pico(balance)
     }

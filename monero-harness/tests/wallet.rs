@@ -55,6 +55,7 @@ async fn wait_for_wallet_to_catch_up(wallet: &MoneroWalletRpc, expected_balance:
         if balance == expected_balance || max_retry == retry {
             break;
         }
+        wallet.refresh().await.unwrap();
         sleep(Duration::from_secs(1)).await;
     }
 }

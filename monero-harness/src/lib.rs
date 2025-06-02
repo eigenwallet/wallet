@@ -30,7 +30,7 @@ use tokio::time;
 use monero::{Address, Amount};
 use monero_rpc::monerod::MonerodRpc as _;
 use monero_rpc::monerod::{self, GenerateBlocks};
-use monero_sys::{Daemon, SyncProgress, TxReceipt, WalletHandle};
+use monero_sys::{no_listener, Daemon, SyncProgress, TxReceipt, WalletHandle};
 
 use crate::image::{MONEROD_DAEMON_CONTAINER_NAME, MONEROD_DEFAULT_NETWORK, RPC_PORT};
 
@@ -262,6 +262,11 @@ impl<'c> Monero {
             }))
             .await
             .context("Failed to sync Monero wallet up to new 10 blocks")?;
+
+        tokio::time::sleep(Duration::from_secs(10)).await;
+
+        wallet.wait_until_synced(no_listener()).await?;
+
         let total = wallet.total_balance().await.as_pico();
 
         assert_eq!(total, expected_total);
