@@ -71,17 +71,27 @@ jobs:
         with:
           size: 15G
 
-      - uses: actions/cache@v4
+      - name: Restore Rust/Cargo cache from S3
+        uses: whywaita/actions-cache-s3@v2
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          aws-s3-bucket: ${{ secrets.S3_BUCKET_NAME }}
+          aws-region: eu-central-1
+          aws-endpoint: ${{ secrets.S3_ENDPOINT_URL }}
+          aws-s3-force-path-style: true
+          aws-access-key-id: ${{ secrets.S3_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install Rust toolchain (no internal cache)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
+          cache-directories: ""
 
       - name: Configure apt for retries
         if: matrix.os == 'ubuntu-latest'
@@ -169,6 +179,24 @@ jobs:
           asset_path: ./${{ steps.create-archive-name.outputs.archive }}
           asset_name: ${{ steps.create-archive-name.outputs.archive }}
           asset_content_type: application/gzip
+
+      - name: Save Rust/Cargo cache to S3
+        if: ${{ always() }}
+        uses: whywaita/actions-cache-s3@v2
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-rust-${{ hashFiles('**/Cargo.lock') }}
+          aws-s3-bucket: ${{ secrets.S3_BUCKET_NAME }}
+          aws-region: eu-central-1
+          aws-endpoint: ${{ secrets.S3_ENDPOINT_URL }}
+          aws-s3-force-path-style: true
+          aws-access-key-id: ${{ secrets.S3_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+
   build_and_push_docker:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
