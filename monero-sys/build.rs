@@ -11,7 +11,7 @@ fn main() {
         .build_target("wallet_api")
         .define("CMAKE_RELEASE_TYPE", "Release")
         .define("STATIC", "ON")
-        .build_arg("-j")
+        .build_arg("-j1")
         .build();
 
     let monero_build_dir = output_directory.join("build");
