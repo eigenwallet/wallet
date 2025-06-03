@@ -11,6 +11,12 @@ fn main() {
         .build_target("wallet_api")
         .define("CMAKE_RELEASE_TYPE", "Release")
         .define("STATIC", "ON")
+        // Do not build tests
+        .define("BUILD_TESTS", "OFF")
+        .define("TREZOR_DEBUG", "OFF") 
+        .define("USE_DEVICE_TREZOR", "OFF")
+        .define("HIDAPI_FOUND", "OFF")
+        .define("GTEST_HAS_ABSL", "OFF")
         .build_arg("-j1")
         .build();
 
