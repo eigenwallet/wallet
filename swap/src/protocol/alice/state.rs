@@ -50,6 +50,7 @@ pub enum AliceState {
         state3: Box<State3>,
     },
     BtcRedeemTransactionPublished {
+        transfer_proof: TransferProof,
         state3: Box<State3>,
     },
     BtcRedeemed,
@@ -77,6 +78,7 @@ pub enum AliceState {
     },
     BtcPunished {
         state3: Box<State3>,
+        transfer_proof: TransferProof,
     },
     SafelyAborted,
 }

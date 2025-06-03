@@ -379,31 +379,12 @@ where
                             // If we are in either of these states, the punish timelock has expired
                             // Bob cannot refund the Bitcoin anymore. We can publish tx_punish to redeem the Bitcoin.
                             // Therefore it is safe to reveal s_a to let him redeem the Monero
-                            let State::Alice (AliceState::BtcPunished { state3 } | AliceState::BtcPunishable { state3, .. }) = swap_state else {
+                            let State::Alice (AliceState::BtcPunished { state3, transfer_proof, .. } | AliceState::BtcPunishable { state3, transfer_proof, .. }) = swap_state else {
                                 tracing::warn!(
                                     swap_id = %swap_id,
                                     reason = "swap is in invalid state",
                                     "Rejecting cooperative Monero redeem request"
                                 );
-                                if self.swarm.behaviour_mut().cooperative_xmr_redeem.send_response(channel, Rejected { swap_id, reason: CooperativeXmrRedeemRejectReason::SwapInvalidState }).is_err() {
-                                    tracing::error!(swap_id = %swap_id, "Failed to send rejection for cooperative Monero redeem request");
-                                }
-                                continue;
-                            };
-
-                            // Retrieve the monero transfer proof from an earlier state
-                            let Ok(states) = self.db.get_states(swap_id).await else {
-                                tracing::error!(swap_id = %swap_id, "Failed to get states for swap, rejecting cooperative Monero redeem request");
-                                if self.swarm.behaviour_mut().cooperative_xmr_redeem.send_response(channel, Rejected { swap_id, reason: CooperativeXmrRedeemRejectReason::UnknownSwap }).is_err() {
-                                    tracing::error!(swap_id = %swap_id, "Failed to send rejection for cooperative Monero redeem request");
-                                }
-                                continue;
-                            };
-                            let Some(transfer_proof) = states.into_iter().filter_map(|state| match state {
-                                State::Alice(AliceState::XmrLockTransactionSent { transfer_proof, .. }) => Some(transfer_proof),
-                                _ => None,
-                            }).next() else {
-                                tracing::error!(swap_id = %swap_id, "No transfer proof found for swap, rejecting cooperative Monero redeem request");
                                 if self.swarm.behaviour_mut().cooperative_xmr_redeem.send_response(channel, Rejected { swap_id, reason: CooperativeXmrRedeemRejectReason::SwapInvalidState }).is_err() {
                                     tracing::error!(swap_id = %swap_id, "Failed to send rejection for cooperative Monero redeem request");
                                 }

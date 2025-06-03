@@ -694,7 +694,7 @@ impl TestContext {
 
     pub async fn assert_alice_punished(&self, state: AliceState) {
         let (cancel_fee, punish_fee) = match state {
-            AliceState::BtcPunished { state3 } => (state3.tx_cancel_fee, state3.tx_punish_fee),
+            AliceState::BtcPunished { state3, .. } => (state3.tx_cancel_fee, state3.tx_punish_fee),
             _ => panic!("Alice is not in btc punished state: {:?}", state),
         };
 

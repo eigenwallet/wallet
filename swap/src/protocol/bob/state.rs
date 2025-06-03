@@ -4,7 +4,6 @@ use crate::bitcoin::{
     self, current_epoch, CancelTimelock, ExpiredTimelocks, PunishTimelock, Transaction, TxCancel,
     TxLock, Txid, Wallet,
 };
-use crate::common::retry;
 use crate::monero::wallet::WatchRequest;
 use crate::monero::{self, TxHash};
 use crate::monero::{monero_private_key, TransferProof};
@@ -21,7 +20,6 @@ use sha2::Sha256;
 use sigma_fun::ext::dl_secp256k1_ed25519_eq::CrossCurveDLEQProof;
 use std::fmt;
 use std::sync::Arc;
-use std::time::Duration;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

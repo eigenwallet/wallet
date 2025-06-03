@@ -364,7 +364,7 @@ where
                 // We successfully published the redeem transaction
                 // We wait until we see the transaction in the mempool before transitioning to the next state
                 Some((txid, subscription)) => match subscription.wait_until_seen().await {
-                    Ok(_) => AliceState::BtcRedeemTransactionPublished { state3 },
+                    Ok(_) => AliceState::BtcRedeemTransactionPublished { state3, transfer_proof },
                     Err(e) => {
                         // We extract the txid and the hex representation of the transaction
                         // this'll allow the user to manually re-publish the transaction
@@ -386,7 +386,7 @@ where
                 }
             }
         }
-        AliceState::BtcRedeemTransactionPublished { state3 } => {
+        AliceState::BtcRedeemTransactionPublished { state3, .. } => {
             let subscription = bitcoin_wallet.subscribe_to(state3.tx_redeem()).await;
 
             match subscription.wait_until_final().await {
@@ -490,7 +490,10 @@ where
             let punish = state3.punish_btc(bitcoin_wallet).await;
 
             match punish {
-                Ok(_) => AliceState::BtcPunished { state3 },
+                Ok(_) => AliceState::BtcPunished {
+                    state3,
+                    transfer_proof,
+                },
                 Err(error) => {
                     tracing::warn!("Failed to publish punish transaction: {:#}", error);
 
@@ -521,7 +524,13 @@ where
         }
         AliceState::XmrRefunded => AliceState::XmrRefunded,
         AliceState::BtcRedeemed => AliceState::BtcRedeemed,
-        AliceState::BtcPunished { state3 } => AliceState::BtcPunished { state3 },
+        AliceState::BtcPunished {
+            state3,
+            transfer_proof,
+        } => AliceState::BtcPunished {
+            state3,
+            transfer_proof,
+        },
         AliceState::SafelyAborted => AliceState::SafelyAborted,
     })
 }
