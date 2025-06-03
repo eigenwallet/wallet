@@ -18,6 +18,7 @@ fn main() {
         .define("HIDAPI_FOUND", "OFF")
         .define("GTEST_HAS_ABSL", "OFF")
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
+        .define("USE_DEVICE_TREZOR", "0")
         .build_arg("-j1")
         .build();
 
