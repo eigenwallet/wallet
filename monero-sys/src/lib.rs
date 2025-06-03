@@ -70,6 +70,7 @@ pub struct FfiWallet {
 }
 
 /// This is our own wrapper around a raw C++ wallet pointer.
+/// Do not use for anything except passing it to [`FfiWallet::new`].
 struct RawWallet {
     inner: *mut ffi::Wallet,
 }
@@ -794,7 +795,7 @@ impl WalletManager {
         let raw_wallet = RawWallet::new(wallet_pointer);
         tracing::debug!(path=%path, "Created wallet from keys, initializing");
         let wallet = FfiWallet::new(raw_wallet, background_sync, daemon)
-            .context(format!("Failed to initialize wallet `{}`", &path))?;
+            .context(format!("Failed to initialize wallet `{}` from keys", &path))?;
 
         Ok(wallet)
     }
@@ -829,7 +830,7 @@ impl WalletManager {
 
         let raw_wallet = RawWallet::new(wallet_pointer);
         let wallet = FfiWallet::new(raw_wallet, background_sync, daemon)
-            .context(format!("Failed to initialize wallet `{}`", &path))?;
+            .context(format!("Failed to initialize wallet `{}` from seed", &path))?;
 
         Ok(wallet)
     }
@@ -879,7 +880,7 @@ impl WalletManager {
         let raw_wallet = RawWallet::new(wallet_pointer);
 
         let wallet = FfiWallet::new(raw_wallet, background_sync, daemon)
-            .context("Failed to initialize wallet")?;
+            .context("Failed to initialize re-opened wallet")?;
 
         Ok(wallet)
     }
