@@ -11,7 +11,13 @@ fn main() {
         .build_target("wallet_api")
         .define("CMAKE_RELEASE_TYPE", "Release")
         .define("STATIC", "ON")
-        .build_arg("-j")
+        // Do not build tests
+        .define("BUILD_TESTS", "OFF")
+        .define("TREZOR_DEBUG", "OFF") 
+        .define("USE_DEVICE_TREZOR", "OFF")
+        .define("HIDAPI_FOUND", "OFF")
+        .define("GTEST_HAS_ABSL", "OFF")
+        .build_arg("-j1")
         .build();
 
     let monero_build_dir = output_directory.join("build");
@@ -196,10 +202,16 @@ fn main() {
         // Minimum OS version you already add:
         println!("cargo:rustc-link-arg=-mmacosx-version-min=11.0");
     }
+    
     // Build the CXX bridge
     let mut build = cxx_build::bridge("src/bridge.rs");
+    
+    #[cfg(target_os = "macos")]
+    {
+        build.flag_if_supported("-mmacosx-version-min=11.0");
+    }
+
     build
-        .flag("-mmacosx-version-min=11.0")
         .flag_if_supported("-std=c++17")
         .include("src") // Include the bridge.h file
         .include("monero/src") // Includes the monero headers

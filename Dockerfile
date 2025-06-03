@@ -34,7 +34,7 @@ RUN apt-get update && \
 COPY . .
 
 # Update submodules recursively
-RUN git submodule update --init --recursive
+RUN git submodule sync --recursive && git submodule update --init --recursive
 
 WORKDIR /build/swap
 
