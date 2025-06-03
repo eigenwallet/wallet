@@ -1,7 +1,7 @@
 import { getLogsOfSwap, saveLogFiles } from 'renderer/rpc'
 import PromiseInvokeButton from 'renderer/components/PromiseInvokeButton'
 import { store } from 'renderer/store/storeRenderer'
-import { ButtonProps } from '@material-ui/core'
+import { ButtonProps } from '@mui/material'
 import { logsToRawString } from 'utils/parseUtils'
 
 interface ExportLogsButtonProps extends ButtonProps {

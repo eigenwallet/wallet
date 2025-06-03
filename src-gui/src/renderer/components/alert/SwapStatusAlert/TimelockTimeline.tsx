@@ -1,4 +1,4 @@
-import { useTheme, Tooltip, Typography, Box, LinearProgress, Paper } from "@material-ui/core";
+import { useTheme, Tooltip, Typography, Box, LinearProgress, Paper } from "@mui/material";
 import { ExpiredTimelocks } from "models/tauriModel";
 import { GetSwapInfoResponseExt, getAbsoluteBlock } from "models/tauriModelExt";
 import HumanizedBitcoinBlockDuration from "renderer/components/other/HumanizedBitcoinBlockDuration";

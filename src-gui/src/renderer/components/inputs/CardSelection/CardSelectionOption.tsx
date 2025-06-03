@@ -1,5 +1,5 @@
-import { Box } from "@material-ui/core";
-import CheckIcon from '@material-ui/icons/Check'
+import { Box } from "@mui/material";
+import CheckIcon from '@mui/icons-material/Check'
 import { useCardSelection } from './CardSelectionContext'
 
 // The value prop is used by the parent CardSelectionGroup to determine which option is selected

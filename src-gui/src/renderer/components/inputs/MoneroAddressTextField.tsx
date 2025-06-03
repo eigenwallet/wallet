@@ -1,10 +1,10 @@
-import { Box, Button, Dialog, DialogActions, DialogContent, IconButton, List, ListItem, ListItemText, TextField } from "@material-ui/core";
-import { TextFieldProps } from "@material-ui/core/TextField/TextField";
+import { Box, Button, Dialog, DialogActions, DialogContent, IconButton, List, ListItem, ListItemText, TextField } from "@mui/material";
+import { TextFieldProps } from "@mui/material/TextField/TextField";
 import { useEffect, useState } from "react";
 import { getMoneroAddresses } from "renderer/rpc";
 import { isTestnet } from "store/config";
 import { isXmrAddressValid } from "utils/conversionUtils";
-import ImportContactsIcon from '@material-ui/icons/ImportContacts';
+import ImportContactsIcon from '@mui/icons-material/ImportContacts';
 import TruncatedText from "../other/TruncatedText";
 
 type MoneroAddressTextFieldProps = TextFieldProps & {

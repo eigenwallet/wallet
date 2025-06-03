@@ -12,8 +12,8 @@ import {
     TextField,
     Tooltip,
     Typography,
-} from '@material-ui/core'
-import { ErrorOutline, Visibility } from '@material-ui/icons'
+} from '@mui/material'
+import { ErrorOutline, Visibility } from '@mui/icons-material'
 import ExternalLink from 'renderer/components/other/ExternalLink'
 import SwapSelectDropDown from './SwapSelectDropDown'
 import LogViewer from './LogViewer'
@@ -139,7 +139,7 @@ export default function FeedbackDialog({
                                             setSwapLogsEditorOpen(true)
                                         }
                                         disabled={input.selectedSwap === null}
-                                    >
+                                        size="large">
                                         <Visibility />
                                     </IconButton>
                                 </Box>
@@ -201,7 +201,7 @@ export default function FeedbackDialog({
                                         disabled={
                                             input.attachDaemonLogs === false
                                         }
-                                    >
+                                        size="large">
                                         <Visibility />
                                     </IconButton>
                                 </Box>
@@ -243,5 +243,5 @@ export default function FeedbackDialog({
                 </PromiseInvokeButton>
             </DialogActions>
         </Dialog>
-    )
+    );
 }

@@ -1,4 +1,5 @@
-import { Box, makeStyles, TextField, Typography } from "@material-ui/core";
+import { Box, TextField, Typography } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { BidQuote } from "models/tauriModel";
 import { useState } from "react";
 import { useAppSelector } from "store/hooks";

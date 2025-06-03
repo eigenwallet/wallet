@@ -1,4 +1,4 @@
-import { Link, Typography } from '@material-ui/core'
+import { Link, Typography } from '@mui/material'
 import SlideTemplate from './SlideTemplate'
 import imagePath from 'assets/mockHistoryPage.svg'
 import ExternalLink from 'renderer/components/other/ExternalLink'

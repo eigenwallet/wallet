@@ -1,14 +1,6 @@
-import {
-  Box,
-  Link,
-  makeStyles,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableRow,
-} from "@material-ui/core";
-import { OpenInNew } from "@material-ui/icons";
+import { Box, Link, Table, TableBody, TableCell, TableContainer, TableRow } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
+import { OpenInNew } from "@mui/icons-material";
 import { GetSwapInfoResponse } from "models/tauriModel";
 import ActionableMonospaceTextBox from "renderer/components/other/ActionableMonospaceTextBox";
 import MonospaceTextBox from "renderer/components/other/MonospaceTextBox";

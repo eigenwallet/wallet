@@ -8,12 +8,12 @@ import {
   Button,
   LinearProgress,
   Typography,
-  makeStyles,
   LinearProgressProps,
   Box,
   Link,
-} from '@material-ui/core';
-import SystemUpdateIcon from '@material-ui/icons/SystemUpdate';
+} from '@mui/material';
+import makeStyles from '@mui/styles/makeStyles';
+import SystemUpdateIcon from '@mui/icons-material/SystemUpdate';
 import { check, Update, DownloadEvent } from '@tauri-apps/plugin-updater';
 import { useSnackbar } from 'notistack';
 import { relaunch } from '@tauri-apps/plugin-process';
@@ -147,12 +147,7 @@ export default function UpdaterDialog() {
         )}
       </DialogContent>
       <DialogActions>
-        <Button
-          variant="text"
-          color="default"
-          onClick={hideNotification}
-          disabled={isDownloading}
-        >
+        <Button variant="text" onClick={hideNotification} disabled={isDownloading}>
           Remind me later
         </Button>
         <Button

@@ -1,16 +1,9 @@
-import {
-  Box,
-  Fab,
-  LinearProgress,
-  makeStyles,
-  Paper,
-  TextField,
-  Typography,
-} from "@material-ui/core";
-import InputAdornment from "@material-ui/core/InputAdornment";
-import ArrowDownwardIcon from "@material-ui/icons/ArrowDownward";
-import SwapHorizIcon from "@material-ui/icons/SwapHoriz";
-import { Alert } from "@material-ui/lab";
+import { Box, Fab, LinearProgress, Paper, TextField, Typography } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
+import InputAdornment from "@mui/material/InputAdornment";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import { Alert } from '@mui/material';
 import { ExtendedMakerStatus } from "models/apiModel";
 import { ChangeEvent, useEffect, useState } from "react";
 import { useAppSelector } from "store/hooks";

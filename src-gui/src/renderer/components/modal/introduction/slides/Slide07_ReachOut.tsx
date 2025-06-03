@@ -1,7 +1,7 @@
-import { Box, Typography } from '@material-ui/core'
+import { Box, Typography } from '@mui/material'
 import SlideTemplate from './SlideTemplate'
 import imagePath from 'assets/groupWithChatbubbles.png' 
-import GitHubIcon from "@material-ui/icons/GitHub"
+import GitHubIcon from "@mui/icons-material/GitHub"
 import MatrixIcon from 'renderer/components/icons/MatrixIcon'
 import LinkIconButton from 'renderer/components/icons/LinkIconButton'
 

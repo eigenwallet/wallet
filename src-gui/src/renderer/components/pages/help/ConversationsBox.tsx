@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from "react";
 import {
   Box,
   Typography,
-  makeStyles,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -25,9 +24,10 @@ import {
   ListItem,
   ListItemIcon,
   Link,
-} from "@material-ui/core";
-import ChatIcon from '@material-ui/icons/Chat';
-import SendIcon from '@material-ui/icons/Send';
+} from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
+import ChatIcon from '@mui/icons-material/Chat';
+import SendIcon from '@mui/icons-material/Send';
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import TruncatedText from "renderer/components/other/TruncatedText";
 import clsx from 'clsx';
@@ -36,7 +36,7 @@ import { markMessagesAsSeen } from "store/features/conversationsSlice";
 import { appendFeedbackMessageViaHttp, fetchAllConversations } from "renderer/api";
 import { useSnackbar } from "notistack";
 import logger from "utils/logger";
-import AttachmentIcon from '@material-ui/icons/Attachment';
+import AttachmentIcon from '@mui/icons-material/Attachment';
 import { Message, PrimitiveDateTimeString } from "models/apiModel";
 import { formatDateTime } from "utils/conversionUtils";
 
@@ -312,7 +312,7 @@ function ConversationModal({ open, onClose, feedbackId }: { open: boolean, onClo
             onChange={(e) => setText(e.target.value)}
             disabled={loading}
             multiline
-            rowsMax={4}
+            maxRows={4}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -326,7 +326,7 @@ function ConversationModal({ open, onClose, feedbackId }: { open: boolean, onClo
                     color="primary"
                     onClick={sendMessage}
                     disabled={!text.trim() || loading}
-                  >
+                    size="large">
                     {loading ? <CircularProgress size={24} /> : <SendIcon />}
                   </IconButton>
                 </InputAdornment>

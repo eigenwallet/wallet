@@ -4,8 +4,8 @@ import {
   IconButton,
   IconButtonProps,
   Tooltip,
-} from "@material-ui/core";
-import CircularProgress from "@material-ui/core/CircularProgress";
+} from "@mui/material";
+import CircularProgress from "@mui/material/CircularProgress";
 import { useSnackbar } from "notistack";
 import { ReactNode, useState } from "react";
 import { useIsContextAvailable } from "store/hooks";
@@ -84,7 +84,7 @@ export default function PromiseInvokeButton<T>({
             onClick={handleClick}
             disabled={isDisabled}
             {...(rest as IconButtonProps)}
-          >
+            size="large">
             {actualEndIcon}
           </IconButton>
         ) : (

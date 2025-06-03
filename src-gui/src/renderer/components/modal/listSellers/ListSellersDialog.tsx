@@ -7,10 +7,10 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  makeStyles,
   TextField,
   Theme,
-} from "@material-ui/core";
+} from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { ListSellersResponse } from "models/tauriModel";
 import { useSnackbar } from "notistack";
 import { ChangeEvent, useState } from "react";

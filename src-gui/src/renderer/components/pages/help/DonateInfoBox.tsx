@@ -1,4 +1,4 @@
-import { Link, Typography } from "@material-ui/core";
+import { Link, Typography } from "@mui/material";
 import MoneroIcon from "../../icons/MoneroIcon";
 import DepositAddressInfoBox from "../../modal/swap/DepositAddressInfoBox";
 

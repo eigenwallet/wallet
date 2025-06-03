@@ -9,10 +9,10 @@ import {
   ListItem,
   ListItemAvatar,
   ListItemText,
-  makeStyles,
-} from "@material-ui/core";
-import AddIcon from "@material-ui/icons/Add";
-import SearchIcon from "@material-ui/icons/Search";
+} from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
+import AddIcon from "@mui/icons-material/Add";
+import SearchIcon from "@mui/icons-material/Search";
 import { ExtendedMakerStatus } from "models/apiModel";
 import { useState } from "react";
 import { setSelectedMaker } from "store/features/makersSlice";

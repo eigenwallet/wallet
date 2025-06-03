@@ -1,4 +1,4 @@
-import { Typography } from '@material-ui/core'
+import { Typography } from '@mui/material'
 import SlideTemplate from './SlideTemplate'
 import imagePath from 'assets/simpleSwapFlowDiagram.svg'
 

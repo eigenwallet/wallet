@@ -6,8 +6,8 @@ import {
   DialogContent,
   DialogContentText,
   Link,
-} from "@material-ui/core";
-import { ButtonProps } from "@material-ui/core/Button/Button";
+} from "@mui/material";
+import { ButtonProps } from "@mui/material/Button/Button";
 import { BobStateName, GetSwapInfoResponseExt } from "models/tauriModelExt";
 import TruncatedText from "renderer/components/other/TruncatedText";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";

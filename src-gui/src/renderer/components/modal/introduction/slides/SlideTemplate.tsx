@@ -1,4 +1,6 @@
-import { makeStyles, Paper, Box, Typography, Button } from '@material-ui/core'
+import { Paper, Box, Typography, Button } from '@mui/material';
+
+import makeStyles from '@mui/styles/makeStyles';
 
 type slideTemplateProps = {
     handleContinue: () => void

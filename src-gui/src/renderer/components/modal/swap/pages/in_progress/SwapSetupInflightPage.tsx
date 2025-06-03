@@ -10,13 +10,15 @@ import {
   Box,
   Typography,
   Divider,
-} from '@material-ui/core';
-import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
+} from '@mui/material';
+import { Theme } from '@mui/material/styles';
+import makeStyles from '@mui/styles/makeStyles';
+import createStyles from '@mui/styles/createStyles';
 import { useActiveSwapId, usePendingLockBitcoinApproval } from 'store/hooks';
 import PromiseInvokeButton from 'renderer/components/PromiseInvokeButton';
 import InfoBox from 'renderer/components/modal/swap/InfoBox';
 import CircularProgressWithSubtitle from '../../CircularProgressWithSubtitle';
-import CheckIcon from '@material-ui/icons/Check';
+import CheckIcon from '@mui/icons-material/Check';
 
 const useStyles = makeStyles((theme: Theme) =>
   createStyles({

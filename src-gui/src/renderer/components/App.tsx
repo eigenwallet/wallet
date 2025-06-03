@@ -1,5 +1,6 @@
-import { Box, CssBaseline, makeStyles } from "@material-ui/core";
-import { ThemeProvider } from "@material-ui/core/styles";
+import { Box, CssBaseline } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
+import { ThemeProvider, Theme, StyledEngineProvider } from "@mui/material/styles";
 import "@tauri-apps/plugin-shell";
 import { Route, MemoryRouter as Router, Routes } from "react-router-dom";
 import Navigation, { drawerWidth } from "./navigation/Navigation";
@@ -16,6 +17,13 @@ import { setupBackgroundTasks } from "renderer/background";
 import "@fontsource/roboto";
 import FeedbackPage from "./pages/feedback/FeedbackPage";
 import IntroductionModal from "./modal/introduction/IntroductionModal";
+
+
+declare module '@mui/styles/defaultTheme' {
+  // eslint-disable-next-line @typescript-eslint/no-empty-interface
+  interface DefaultTheme extends Theme {}
+}
+
 
 const useStyles = makeStyles((theme) => ({
   innerContent: {
@@ -34,17 +42,19 @@ export default function App() {
   const theme = useSettings((s) => s.theme);
 
   return (
-    <ThemeProvider theme={themes[theme]}>
-      <GlobalSnackbarProvider>
-        <CssBaseline />
-        <IntroductionModal/>
-        <Router>
-          <Navigation />
-          <InnerContent />
-          <UpdaterDialog />
-        </Router>
-      </GlobalSnackbarProvider>
-    </ThemeProvider>
+    <StyledEngineProvider injectFirst>
+      (<ThemeProvider theme={themes[theme]}>
+        <GlobalSnackbarProvider>
+          <CssBaseline />
+          <IntroductionModal/>
+          <Router>
+            <Navigation />
+            <InnerContent />
+            <UpdaterDialog />
+          </Router>
+        </GlobalSnackbarProvider>
+      </ThemeProvider>)
+    </StyledEngineProvider>
   );
 }
 

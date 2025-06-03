@@ -1,5 +1,6 @@
-import { Box, makeStyles, Tooltip } from "@material-ui/core";
-import GitHubIcon from "@material-ui/icons/GitHub";
+import { Box, Tooltip } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
+import GitHubIcon from "@mui/icons-material/GitHub";
 import DaemonStatusAlert, { BackgroundProgressAlerts } from "../alert/DaemonStatusAlert";
 import FundsLeftInWalletAlert from "../alert/FundsLeftInWalletAlert";
 import MoneroWalletRpcUpdatingAlert from "../alert/MoneroWalletRpcUpdatingAlert";
@@ -7,7 +8,7 @@ import UnfinishedSwapsAlert from "../alert/UnfinishedSwapsAlert";
 import LinkIconButton from "../icons/LinkIconButton";
 import BackgroundRefundAlert from "../alert/BackgroundRefundAlert";
 import MatrixIcon from "../icons/MatrixIcon";
-import { MenuBook } from "@material-ui/icons";
+import { MenuBook } from "@mui/icons-material";
 
 const useStyles = makeStyles((theme) => ({
   outer: {

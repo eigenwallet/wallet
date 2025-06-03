@@ -1,5 +1,5 @@
-import { Box } from '@material-ui/core'
-import CheckIcon from '@material-ui/icons/Check'
+import { Box } from '@mui/material'
+import CheckIcon from '@mui/icons-material/Check'
 import { CardSelectionProvider } from './CardSelectionContext'
 
 interface CardSelectionGroupProps {

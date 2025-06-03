@@ -1,7 +1,6 @@
 import {
   Box,
   Typography,
-  makeStyles,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -9,7 +8,8 @@ import {
   Button,
   Link,
   DialogContentText,
-} from "@material-ui/core";
+} from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import { useState } from "react";
 import { getWalletDescriptor } from "renderer/rpc";
@@ -112,4 +112,4 @@ function WalletDescriptorModal({
       </DialogActions>
     </Dialog>
   );
-};
+}

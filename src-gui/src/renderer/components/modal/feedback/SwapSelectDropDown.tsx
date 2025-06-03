@@ -1,4 +1,4 @@
-import { MenuItem, Select, Box } from "@material-ui/core";
+import { MenuItem, Select, Box } from "@mui/material";
 import TruncatedText from "renderer/components/other/TruncatedText";
 import { PiconeroAmount } from "../../other/Units";
 import { parseDateString } from "utils/parseUtils";

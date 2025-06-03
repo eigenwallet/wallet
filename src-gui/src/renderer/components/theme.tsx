@@ -1,5 +1,5 @@
-import { createTheme } from "@material-ui/core";
-import { indigo } from "@material-ui/core/colors";
+import { createTheme, adaptV4Theme } from "@mui/material";
+import { indigo } from "@mui/material/colors";
 
 export enum Theme {
   Light = "light",
@@ -7,9 +7,9 @@ export enum Theme {
   Darker = "darker"
 }
 
-const darkTheme = createTheme({
+const darkTheme = createTheme(adaptV4Theme({
   palette: {
-    type: "dark",
+    mode: "dark",
     primary: {
       main: "#f4511e", // Monero orange
     },
@@ -21,23 +21,23 @@ const darkTheme = createTheme({
       fontFamily: "monospace"
     },
   },
-});
+}));
 
-const lightTheme = createTheme({
+const lightTheme = createTheme(adaptV4Theme({
   ...darkTheme,
   palette: {
-    type: "light",
+    mode: "light",
     primary: {
       main: "#f4511e", // Monero orange
     },
     secondary: indigo,
   },
-});
+}));
 
-const darkerTheme = createTheme({
+const darkerTheme = createTheme(adaptV4Theme({
   ...darkTheme,
   palette: {
-    type: 'dark',
+    mode: 'dark',
     primary: {
       main: "#f4511e",
     },
@@ -47,7 +47,7 @@ const darkerTheme = createTheme({
       paper: "#181818",
     },
   },
-});
+}));
 
 export const themes = {
   [Theme.Dark]: darkTheme,

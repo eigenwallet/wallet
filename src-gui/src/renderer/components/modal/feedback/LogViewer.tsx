@@ -8,7 +8,7 @@ import {
   Paper,
   Switch,
   Typography,
-} from "@material-ui/core";
+} from "@mui/material";
 import { CliLog } from "models/cliModel";
 import CliLogsBox from "renderer/components/other/RenderedCliLog";
 

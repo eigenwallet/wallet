@@ -1,4 +1,4 @@
-import { Box, Typography, Paper, Button, Slide } from '@material-ui/core'
+import { Box, Typography, Paper, Button, Slide } from '@mui/material'
 import CardSelectionGroup from 'renderer/components/inputs/CardSelection/CardSelectionGroup'
 import CardSelectionOption from 'renderer/components/inputs/CardSelection/CardSelectionOption'
 import SlideTemplate from './SlideTemplate'

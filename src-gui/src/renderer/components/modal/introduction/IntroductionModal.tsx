@@ -1,4 +1,5 @@
-import { makeStyles, Modal } from '@material-ui/core'
+import { Modal } from '@mui/material';
+import makeStyles from '@mui/styles/makeStyles';
 import { useState } from 'react'
 import Slide01_GettingStarted from './slides/Slide01_GettingStarted'
 import Slide02_ChooseAMaker from './slides/Slide02_ChooseAMaker'

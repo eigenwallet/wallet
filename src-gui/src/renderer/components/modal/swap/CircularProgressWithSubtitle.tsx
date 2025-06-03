@@ -1,10 +1,5 @@
-import {
-  Box,
-  CircularProgress,
-  LinearProgress,
-  makeStyles,
-  Typography,
-} from "@material-ui/core";
+import { Box, CircularProgress, LinearProgress, Typography } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { ReactNode } from "react";
 
 const useStyles = makeStyles((theme) => ({

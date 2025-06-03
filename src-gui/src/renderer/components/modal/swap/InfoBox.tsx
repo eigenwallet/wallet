@@ -1,10 +1,5 @@
-import {
-  Box,
-  LinearProgress,
-  makeStyles,
-  Paper,
-  Typography,
-} from "@material-ui/core";
+import { Box, LinearProgress, Paper, Typography } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { ReactNode } from "react";
 
 type Props = {

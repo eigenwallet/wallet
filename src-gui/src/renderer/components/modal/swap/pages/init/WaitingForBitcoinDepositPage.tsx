@@ -1,10 +1,11 @@
-import { Box, makeStyles, Typography } from "@material-ui/core";
+import { Box, Typography } from "@mui/material";
+import makeStyles from '@mui/styles/makeStyles';
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import BitcoinIcon from "../../../../icons/BitcoinIcon";
 import { MoneroSatsExchangeRate, SatsAmount } from "../../../../other/Units";
 import DepositAddressInfoBox from "../../DepositAddressInfoBox";
 import DepositAmountHelper from "./DepositAmountHelper";
-import { Alert } from "@material-ui/lab";
+import { Alert } from '@mui/material';
 
 const useStyles = makeStyles((theme) => ({
   amountHelper: {
