@@ -569,13 +569,18 @@ mod tests {
         let xmr_amount = crate::monero::Amount::from_piconero(10000);
 
         let tx_redeem_fee = alice_wallet
-            .estimate_fee(TxRedeem::weight(), btc_amount)
+            .estimate_fee(TxRedeem::weight(), Some(btc_amount))
             .await
             .unwrap();
         let tx_punish_fee = alice_wallet
-            .estimate_fee(TxPunish::weight(), btc_amount)
+            .estimate_fee(TxPunish::weight(), Some(btc_amount))
             .await
             .unwrap();
+        let tx_lock_fee = alice_wallet
+            .estimate_fee(TxLock::weight(), Some(btc_amount))
+            .await
+            .unwrap();
+
         let redeem_address = alice_wallet.new_address().await.unwrap();
         let punish_address = alice_wallet.new_address().await.unwrap();
 
@@ -602,6 +607,7 @@ mod tests {
             config.monero_finality_confirmations,
             spending_fee,
             spending_fee,
+            tx_lock_fee,
         );
 
         let message0 = bob_state0.next_message();
@@ -635,10 +641,10 @@ mod tests {
             .unwrap();
         let refund_transaction = bob_state6.signed_refund_transaction().unwrap();
 
-        assert_weight(redeem_transaction, TxRedeem::weight() as u64, "TxRedeem");
-        assert_weight(cancel_transaction, TxCancel::weight() as u64, "TxCancel");
-        assert_weight(punish_transaction, TxPunish::weight() as u64, "TxPunish");
-        assert_weight(refund_transaction, TxRefund::weight() as u64, "TxRefund");
+        assert_weight(redeem_transaction, TxRedeem::weight().to_wu(), "TxRedeem");
+        assert_weight(cancel_transaction, TxCancel::weight().to_wu(), "TxCancel");
+        assert_weight(punish_transaction, TxPunish::weight().to_wu(), "TxPunish");
+        assert_weight(refund_transaction, TxRefund::weight().to_wu(), "TxRefund");
     }
 
     // Weights fluctuate because of the length of the signatures. Valid ecdsa

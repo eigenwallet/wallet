@@ -299,6 +299,7 @@ impl ContextBuilder {
                 format,
                 data_dir.join("logs"),
                 self.tauri_handle.clone(),
+                false,
             );
             tracing::info!(
                 binary = "cli",
@@ -551,9 +552,11 @@ async fn init_monero_wallet(
 ) -> Result<(monero::Wallet, monero::WalletRpcProcess)> {
     let network = env_config.monero_network;
 
-    const MONERO_BLOCKCHAIN_MONITORING_WALLET_NAME: &str = "swap-tool-blockchain-monitoring-wallet";
+    // Start the monero-wallet-rpc after the wallet is removed
+    let monero_wallet_rpc_working_dir = data_dir.join("monero");
 
-    let monero_wallet_rpc = monero::WalletRpc::new(data_dir.join("monero"), tauri_handle).await?;
+    let monero_wallet_rpc =
+        monero::WalletRpc::new(monero_wallet_rpc_working_dir.clone(), tauri_handle).await?;
 
     tracing::debug!(
         override_monero_daemon_address = monero_daemon_address.clone().into(),
@@ -565,6 +568,32 @@ async fn init_monero_wallet(
         .await
         .context("Failed to start monero-wallet-rpc process")?;
 
+    let monero_wallet_rpc_dir = monero_wallet_rpc_working_dir.join("monero-data");
+
+    // Remove the monitoring wallet if it exists
+    // It doesn't contain any coins
+    // Deleting it ensures we never have issues at startup
+    // And we reset the restore height
+    const MONERO_BLOCKCHAIN_MONITORING_WALLET_NAME: &str = "swap-tool-blockchain-monitoring-wallet";
+
+    let wallet_path = monero_wallet_rpc_dir.join(MONERO_BLOCKCHAIN_MONITORING_WALLET_NAME);
+    if wallet_path.exists() {
+        tracing::debug!(
+            wallet_path = %wallet_path.display(),
+            "Removing monitoring wallet"
+        );
+        let _ = tokio::fs::remove_file(&wallet_path).await;
+    }
+    let keys_path = wallet_path.with_extension("keys");
+    if keys_path.exists() {
+        tracing::debug!(
+            keys_path = %keys_path.display(),
+            "Removing monitoring wallet keys"
+        );
+        let _ = tokio::fs::remove_file(keys_path).await;
+    }
+
+    // Now open the wallet
     let monero_wallet = monero::Wallet::open_or_create(
         monero_wallet_rpc_process.endpoint(),
         MONERO_BLOCKCHAIN_MONITORING_WALLET_NAME.to_string(),
