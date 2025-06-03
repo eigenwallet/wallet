@@ -14,7 +14,7 @@ fn main() {
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("BUILD_TESTS", "OFF")
         .define("TREZOR_DEBUG", "OFF")
-        .define("USE_DEVICE_TREZOR", "OFF")  // Force stub library to be built
+        .define("USE_DEVICE_TREZOR", "OFF") // Force stub library to be built
         .define("HIDAPI_FOUND", "OFF")
         .define("GTEST_HAS_ABSL", "OFF")
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
@@ -53,7 +53,7 @@ fn main() {
         "cargo:rustc-link-search=native={}",
         monero_build_dir.join("external/randomx").display()
     );
-    
+
     println!(
         "cargo:rustc-link-search=native={}",
         monero_build_dir.join("src").display()
