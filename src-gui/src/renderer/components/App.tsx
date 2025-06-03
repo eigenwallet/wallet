@@ -1,5 +1,4 @@
 import { Box, CssBaseline } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import { ThemeProvider, Theme, StyledEngineProvider } from "@mui/material/styles";
 import "@tauri-apps/plugin-shell";
 import { Route, MemoryRouter as Router, Routes } from "react-router-dom";
@@ -18,21 +17,14 @@ import "@fontsource/roboto";
 import FeedbackPage from "./pages/feedback/FeedbackPage";
 import IntroductionModal from "./modal/introduction/IntroductionModal";
 
-
-declare module '@mui/styles/defaultTheme' {
-  // eslint-disable-next-line @typescript-eslint/no-empty-interface
-  interface DefaultTheme extends Theme {}
+declare module '@mui/material/styles' {
+  interface Theme {
+    // Add your custom theme properties here if needed
+  }
+  interface ThemeOptions {
+    // Add your custom theme options here if needed
+  }
 }
-
-
-const useStyles = makeStyles((theme) => ({
-  innerContent: {
-    padding: theme.spacing(4),
-    marginLeft: drawerWidth,
-    maxHeight: `100vh`,
-    flex: 1,
-  },
-}));
 
 export default function App() {
   useEffect(() => {
@@ -40,12 +32,15 @@ export default function App() {
   }, []);
 
   const theme = useSettings((s) => s.theme);
+  const currentTheme = themes[theme];
+
+  console.log("Current theme:", { theme, currentTheme });
 
   return (
     <StyledEngineProvider injectFirst>
-      (<ThemeProvider theme={themes[theme]}>
+      <ThemeProvider theme={currentTheme}>
+        <CssBaseline />
         <GlobalSnackbarProvider>
-          <CssBaseline />
           <IntroductionModal/>
           <Router>
             <Navigation />
@@ -53,16 +48,20 @@ export default function App() {
             <UpdaterDialog />
           </Router>
         </GlobalSnackbarProvider>
-      </ThemeProvider>)
+      </ThemeProvider>
     </StyledEngineProvider>
   );
 }
 
 function InnerContent() {
-  const classes = useStyles();
 
   return (
-    <Box className={classes.innerContent}>
+    <Box sx={{
+      padding: 4,
+      marginLeft: drawerWidth,
+      maxHeight: `100vh`,
+      flex: 1,
+    }}>
       <Routes>
         <Route path="/swap" element={<SwapPage />} />
         <Route path="/history" element={<HistoryPage />} />

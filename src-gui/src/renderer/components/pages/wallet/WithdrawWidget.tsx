@@ -1,5 +1,4 @@
 import { Box, Button, Typography } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import SendIcon from "@mui/icons-material/Send";
 import { useState } from "react";
 import { SatsAmount } from "renderer/components/other/Units";
@@ -9,16 +8,7 @@ import InfoBox from "../../modal/swap/InfoBox";
 import WithdrawDialog from "../../modal/wallet/WithdrawDialog";
 import WalletRefreshButton from "./WalletRefreshButton";
 
-const useStyles = makeStyles((theme) => ({
-  title: {
-    alignItems: "center",
-    display: "flex",
-    gap: theme.spacing(0.5),
-  },
-}));
-
 export default function WithdrawWidget() {
-  const classes = useStyles();
   const walletBalance = useAppSelector((state) => state.rpc.state.balance);
   const [showDialog, setShowDialog] = useState(false);
 
@@ -30,7 +20,7 @@ export default function WithdrawWidget() {
     <>
       <InfoBox
         title={
-          <Box className={classes.title}>
+          <Box sx={{ alignItems: "center", display: "flex", gap: 0.5 }}>
             Wallet Balance
             <WalletRefreshButton />
           </Box>

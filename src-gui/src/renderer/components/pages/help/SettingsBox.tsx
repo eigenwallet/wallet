@@ -19,9 +19,8 @@ import {
   DialogTitle,
   useTheme,
   Switch,
+  SelectChangeEvent,
 } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
-import InfoBox from "renderer/components/modal/swap/InfoBox";
 import {
   removeNode,
   resetSettings,
@@ -45,30 +44,22 @@ import { Add, ArrowUpward, Delete, Edit, HourglassEmpty } from "@mui/icons-mater
 import { getNetwork } from "store/config";
 import { currencySymbol } from "utils/formatUtils";
 import { setTorEnabled } from "store/features/settingsSlice";
+import InfoBox from "renderer/components/modal/swap/InfoBox";
 
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
 
-const useStyles = makeStyles((theme) => ({
-  title: {
-    display: "flex",
-    alignItems: "center",
-    gap: theme.spacing(1),
-  }
-}));
-
 /**
  * The settings box, containing the settings for the GUI.
  */
 export default function SettingsBox() {
-  const classes = useStyles();
   const theme = useTheme();
 
   return (
     <InfoBox
       title={
-        <Box className={classes.title}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           Settings
         </Box>
       }
@@ -165,7 +156,7 @@ function FetchFiatPricesSetting() {
 function FiatCurrencySetting() {
   const fiatCurrency = useSettings((s) => s.fiatCurrency);
   const dispatch = useAppDispatch();
-  const onChange = (e: React.ChangeEvent<{ value: unknown }>) =>
+  const onChange = (e: SelectChangeEvent<FiatCurrency>) =>
     dispatch(setFiatCurrency(e.target.value as FiatCurrency));
 
   return (

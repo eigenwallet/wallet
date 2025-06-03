@@ -1,7 +1,5 @@
 import { Paper, Box, Typography, Button } from '@mui/material';
 
-import makeStyles from '@mui/styles/makeStyles';
-
 type slideTemplateProps = {
     handleContinue: () => void
     handlePrevious: () => void
@@ -14,23 +12,6 @@ type slideTemplateProps = {
     customContinueButtonText?: String
 }
 
-const useStyles = makeStyles({
-    paper: {
-        height: "80%",
-        width: "80%",
-        display: 'flex',
-        justifyContent: 'space-between',
-    },
-    stepLabel: {
-        textTransform: 'uppercase',
-    },
-    splitImage: {
-        height: '100%',
-        width: '100%',
-        objectFit: 'contain'
-    }
-})
-
 export default function SlideTemplate({
     handleContinue,
     handlePrevious,
@@ -42,12 +23,14 @@ export default function SlideTemplate({
     imagePadded,
     customContinueButtonText
 }: slideTemplateProps) {
-    const classes = useStyles()
-
     return (
-        <Paper className={classes.paper}>
+        <Paper sx={{
+            height: "80%",
+            width: "80%",
+            display: 'flex',
+            justifyContent: 'space-between',
+        }}>
             <Box
-                flex
                 sx={{
                     m: 3,
                     alignContent: "center",
@@ -59,7 +42,7 @@ export default function SlideTemplate({
                     {stepLabel && (
                         <Typography
                             variant="overline"
-                            className={classes.stepLabel}
+                            sx={{ textTransform: 'uppercase' }}
                         >
                             {stepLabel}
                         </Typography>
@@ -96,7 +79,14 @@ export default function SlideTemplate({
                         justifyContent: "center",
                         p: imagePadded ? "1.5em" : 0
                     }}>
-                    <img src={imagePath} className={classes.splitImage} />
+                    <img 
+                        src={imagePath} 
+                        style={{
+                            height: '100%',
+                            width: '100%',
+                            objectFit: 'contain'
+                        }}
+                    />
                 </Box>
             )}
         </Paper>

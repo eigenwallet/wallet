@@ -1,24 +1,10 @@
 import { Box, Typography } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import BitcoinIcon from "../../../../icons/BitcoinIcon";
 import { MoneroSatsExchangeRate, SatsAmount } from "../../../../other/Units";
 import DepositAddressInfoBox from "../../DepositAddressInfoBox";
 import DepositAmountHelper from "./DepositAmountHelper";
 import { Alert } from '@mui/material';
-
-const useStyles = makeStyles((theme) => ({
-  amountHelper: {
-    display: "flex",
-    alignItems: "center",
-  },
-  additionalContent: {
-    paddingTop: theme.spacing(1),
-    gap: theme.spacing(0.5),
-    display: "flex",
-    flexDirection: "column",
-  },
-}));
 
 export default function WaitingForBtcDepositPage({
   deposit_address,
@@ -28,15 +14,18 @@ export default function WaitingForBtcDepositPage({
   max_giveable,
   quote,
 }: TauriSwapProgressEventContent<"WaitingForBtcDeposit">) {
-  const classes = useStyles();
-
   return (
     <Box>
       <DepositAddressInfoBox
         title="Bitcoin Deposit Address"
         address={deposit_address}
         additionalContent={
-          <Box className={classes.additionalContent}>
+          <Box sx={{
+            paddingTop: 1,
+            gap: 0.5,
+            display: "flex",
+            flexDirection: "column",
+          }}>
             <Typography variant="subtitle2">
               <ul>
                 {max_giveable > 0 ? (

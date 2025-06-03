@@ -11,43 +11,11 @@ import {
   Typography,
   Divider,
 } from '@mui/material';
-import { Theme } from '@mui/material/styles';
-import makeStyles from '@mui/styles/makeStyles';
-import createStyles from '@mui/styles/createStyles';
 import { useActiveSwapId, usePendingLockBitcoinApproval } from 'store/hooks';
 import PromiseInvokeButton from 'renderer/components/PromiseInvokeButton';
 import InfoBox from 'renderer/components/modal/swap/InfoBox';
 import CircularProgressWithSubtitle from '../../CircularProgressWithSubtitle';
 import CheckIcon from '@mui/icons-material/Check';
-
-const useStyles = makeStyles((theme: Theme) =>
-  createStyles({
-    detailGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'auto 1fr',
-      rowGap: theme.spacing(1),
-      columnGap: theme.spacing(2),
-      alignItems: 'center',
-      marginBlock: theme.spacing(2),
-    },
-    label: {
-      color: theme.palette.text.secondary,
-    },
-    receiveValue: {
-      fontWeight: 'bold',
-      color: theme.palette.success.main,
-    },
-    actions: {
-      marginTop: theme.spacing(2),
-      display: 'flex',
-      justifyContent: 'flex-end',
-      gap: theme.spacing(2),
-    },
-    cancelButton: {
-      color: theme.palette.text.secondary,
-    },
-  })
-);
 
 /// A hook that returns the LockBitcoin confirmation request for the active swap
 /// Returns null if no confirmation request is found
@@ -62,7 +30,6 @@ function useActiveLockBitcoinApprovalRequest(): PendingLockBitcoinApprovalReques
 export default function SwapSetupInflightPage({
   btc_lock_amount,
 }: TauriSwapProgressEventContent<'SwapSetupInflight'>) {
-  const classes = useStyles();
   const request = useActiveLockBitcoinApprovalRequest();
 
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -96,23 +63,33 @@ export default function SwapSetupInflightPage({
       mainContent={
         <>
           <Divider />
-          <Box className={classes.detailGrid}>
-            <Typography className={classes.label}>You send</Typography>
+          <Box sx={{
+            display: 'grid',
+            gridTemplateColumns: 'auto 1fr',
+            rowGap: 1,
+            columnGap: 2,
+            alignItems: 'center',
+            marginBlock: 2,
+          }}>
+            <Typography sx={(theme) => ({ color: theme.palette.text.secondary })}>You send</Typography>
             <Typography>
               <SatsAmount amount={btc_lock_amount} />
             </Typography>
 
-            <Typography className={classes.label}>Bitcoin network fees</Typography>
+            <Typography sx={(theme) => ({ color: theme.palette.text.secondary })}>Bitcoin network fees</Typography>
             <Typography>
               <SatsAmount amount={btc_network_fee} />
             </Typography>
 
-            <Typography className={classes.label}>You receive</Typography>
-            <Typography className={classes.receiveValue}>
+            <Typography sx={(theme) => ({ color: theme.palette.text.secondary })}>You receive</Typography>
+            <Typography sx={(theme) => ({
+              fontWeight: 'bold',
+              color: theme.palette.success.main,
+            })}>
               <PiconeroAmount amount={xmr_receive_amount} />
             </Typography>
 
-            <Typography className={classes.label}>Exchange rate</Typography>
+            <Typography sx={(theme) => ({ color: theme.palette.text.secondary })}>Exchange rate</Typography>
             <Typography>
               <MoneroBitcoinExchangeRateFromAmounts
                 satsAmount={btc_lock_amount}
@@ -124,11 +101,16 @@ export default function SwapSetupInflightPage({
         </>
       }
       additionalContent={
-        <Box className={classes.actions}>
+        <Box sx={{
+          marginTop: 2,
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: 2,
+        }}>
           <PromiseInvokeButton
             variant="text"
             size="large"
-            className={classes.cancelButton}
+            sx={(theme) => ({ color: theme.palette.text.secondary })}
             onInvoke={() => resolveApproval(request.content.request_id, false)}
             displayErrorSnackbar
             requiresContext

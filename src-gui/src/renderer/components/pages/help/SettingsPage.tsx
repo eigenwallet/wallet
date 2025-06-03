@@ -1,5 +1,4 @@
 import { Box } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import ContactInfoBox from "./ContactInfoBox";
 import DonateInfoBox from "./DonateInfoBox";
 import DaemonControlBox from "./DaemonControlBox";
@@ -8,17 +7,7 @@ import ExportDataBox from "./ExportDataBox";
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
 
-const useStyles = makeStyles((theme) => ({
-  outer: {
-    display: "flex",
-    gap: theme.spacing(2),
-    flexDirection: "column",
-    paddingBottom: theme.spacing(2),
-  },
-}));
-
 export default function SettingsPage() {
-  const classes = useStyles();
   const location = useLocation();
 
   useEffect(() => {
@@ -29,7 +18,12 @@ export default function SettingsPage() {
   }, [location]);
 
   return (
-    <Box className={classes.outer}>
+    <Box sx={{
+      display: "flex",
+      gap: 2,
+      flexDirection: "column",
+      paddingBottom: 2,
+    }}>
       <SettingsBox />
       <ExportDataBox />
       <DaemonControlBox />

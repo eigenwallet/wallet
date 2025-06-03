@@ -1,16 +1,6 @@
 import { Box, DialogContent } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import { ReactNode } from "react";
 import WithdrawStepper from "./WithdrawStepper";
-
-const useStyles = makeStyles({
-  outer: {
-    minHeight: "15rem",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-  },
-});
 
 export default function WithdrawDialogContent({
   children,
@@ -21,10 +11,16 @@ export default function WithdrawDialogContent({
   isPending: boolean;
   withdrawTxId: string | null;
 }) {
-  const classes = useStyles();
-
   return (
-    <DialogContent dividers className={classes.outer}>
+    <DialogContent 
+      dividers 
+      sx={{
+        minHeight: "15rem",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+      }}
+    >
       <Box>{children}</Box>
       <WithdrawStepper isPending={isPending} withdrawTxId={withdrawTxId} />
     </DialogContent>

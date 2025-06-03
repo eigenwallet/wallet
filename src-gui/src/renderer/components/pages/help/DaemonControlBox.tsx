@@ -1,5 +1,4 @@
 import { Box } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
@@ -12,16 +11,7 @@ import RotateLeftIcon from "@mui/icons-material/RotateLeft";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { TauriContextStatusEvent } from "models/tauriModel";
 
-const useStyles = makeStyles((theme) => ({
-  actionsOuter: {
-    display: "flex",
-    gap: theme.spacing(1),
-    alignItems: "center",
-  },
-}));
-
 export default function DaemonControlBox() {
-  const classes = useStyles();
   const logs = useAppSelector((s) => s.rpc.logs);
 
   // The daemon can be manually started if it has failed or if it has not been started yet
@@ -45,7 +35,7 @@ export default function DaemonControlBox() {
         />
       }
       additionalContent={
-        <Box className={classes.actionsOuter}>
+        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
           <PromiseInvokeButton
             variant="contained"
             endIcon={<PlayArrowIcon />}

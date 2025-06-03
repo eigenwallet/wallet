@@ -1,4 +1,4 @@
-import { createTheme, adaptV4Theme } from "@mui/material";
+import { createTheme, ThemeOptions } from "@mui/material";
 import { indigo } from "@mui/material/colors";
 
 export enum Theme {
@@ -7,7 +7,17 @@ export enum Theme {
   Darker = "darker"
 }
 
-const darkTheme = createTheme(adaptV4Theme({
+const baseTheme: ThemeOptions = {
+  typography: {
+    overline: {
+      textTransform: "none" as const,
+      fontFamily: "monospace"
+    },
+  },
+};
+
+const darkTheme = createTheme({
+  ...baseTheme,
   palette: {
     mode: "dark",
     primary: {
@@ -15,16 +25,10 @@ const darkTheme = createTheme(adaptV4Theme({
     },
     secondary: indigo,
   },
-  typography: {
-    overline: {
-      textTransform: "none", // This prevents the text from being all caps
-      fontFamily: "monospace"
-    },
-  },
-}));
+});
 
-const lightTheme = createTheme(adaptV4Theme({
-  ...darkTheme,
+const lightTheme = createTheme({
+  ...baseTheme,
   palette: {
     mode: "light",
     primary: {
@@ -32,10 +36,10 @@ const lightTheme = createTheme(adaptV4Theme({
     },
     secondary: indigo,
   },
-}));
+});
 
-const darkerTheme = createTheme(adaptV4Theme({
-  ...darkTheme,
+const darkerTheme = createTheme({
+  ...baseTheme,
   palette: {
     mode: 'dark',
     primary: {
@@ -47,7 +51,13 @@ const darkerTheme = createTheme(adaptV4Theme({
       paper: "#181818",
     },
   },
-}));
+});
+
+console.log("Creating themes:", {
+  dark: darkTheme,
+  light: lightTheme,
+  darker: darkerTheme
+});
 
 export const themes = {
   [Theme.Dark]: darkTheme,

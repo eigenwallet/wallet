@@ -9,7 +9,6 @@ import {
   Link,
   DialogContentText,
 } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import { useState } from "react";
 import { getWalletDescriptor } from "renderer/rpc";
@@ -17,17 +16,7 @@ import { ExportBitcoinWalletResponse } from "models/tauriModel";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import ActionableMonospaceTextBox from "renderer/components/other/ActionableMonospaceTextBox";
 
-const useStyles = makeStyles((theme) => ({
-  content: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    gap: theme.spacing(2),
-  }
-}));
-
 export default function ExportDataBox() {
-  const classes = useStyles();
   const [walletDescriptor, setWalletDescriptor] = useState<ExportBitcoinWalletResponse | null>(null);
 
   const handleCloseDialog = () => {
@@ -40,7 +29,12 @@ export default function ExportDataBox() {
       icon={null}
       loading={false}
       mainContent={
-        <Box className={classes.content}>
+        <Box sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          gap: 2,
+        }}>
           <Typography variant="subtitle2">
             You can export the wallet descriptor of the interal Bitcoin wallet for backup or recovery purposes. Please make sure to store it securely.
           </Typography>

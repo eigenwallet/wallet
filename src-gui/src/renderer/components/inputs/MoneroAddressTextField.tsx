@@ -1,4 +1,14 @@
-import { Box, Button, Dialog, DialogActions, DialogContent, IconButton, List, ListItem, ListItemText, TextField } from "@mui/material";
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  IconButton,
+  List,
+  ListItemText,
+  TextField,
+} from "@mui/material";
 import { TextFieldProps } from "@mui/material/TextField/TextField";
 import { useEffect, useState } from "react";
 import { getMoneroAddresses } from "renderer/rpc";
@@ -6,6 +16,8 @@ import { isTestnet } from "store/config";
 import { isXmrAddressValid } from "utils/conversionUtils";
 import ImportContactsIcon from '@mui/icons-material/ImportContacts';
 import TruncatedText from "../other/TruncatedText";
+
+import ListItemButton from "@mui/material/ListItemButton";
 
 type MoneroAddressTextFieldProps = TextFieldProps & {
   address: string;
@@ -102,11 +114,7 @@ function RecentlyUsedAddressesDialog({
       <DialogContent>
         <List>
           {addresses.map((addr) => (
-            <ListItem 
-              button 
-              key={addr}
-              onClick={() => onAddressSelect(addr)}
-            >
+            <ListItemButton key={addr} onClick={() => onAddressSelect(addr)}>
               <ListItemText 
                 primary={
                   <Box sx={{
@@ -119,7 +127,7 @@ function RecentlyUsedAddressesDialog({
                 }
                 secondary="Recently used as a redeem address"
               />
-            </ListItem>
+            </ListItemButton>
           ))}
         </List>
       </DialogContent>

@@ -1,21 +1,14 @@
 import { Box, Typography } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import { Alert } from '@mui/material';
 import WithdrawWidget from "./WithdrawWidget";
 
-const useStyles = makeStyles((theme) => ({
-  outer: {
-    display: "flex",
-    flexDirection: "column",
-    gridGap: theme.spacing(0.5),
-  },
-}));
-
 export default function WalletPage() {
-  const classes = useStyles();
-
   return (
-    <Box className={classes.outer}>
+    <Box sx={{
+      display: "flex",
+      flexDirection: "column",
+      gridGap: 0.5,
+    }}>
       <Typography variant="h3">Wallet</Typography>
       <Alert severity="info">
         You do not have to deposit money before starting a swap. Instead, you

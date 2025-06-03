@@ -1,5 +1,4 @@
 import { Box } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import { Alert, AlertTitle } from "@mui/lab/";
 import {
   BobStateName,
@@ -17,41 +16,30 @@ import TruncatedText from "../../other/TruncatedText";
 import { SwapMoneroRecoveryButton } from "../../pages/history/table/SwapMoneroRecoveryButton";
 import { TimelockTimeline } from "./TimelockTimeline";
 
-const useStyles = makeStyles((theme) => ({
-  box: {
-    display: "flex",
-    flexDirection: "column",
-    gap: theme.spacing(1),
-  },
-  list: {
-    padding: "0px",
-    margin: "0px",
-    "& li": {
-      marginBottom: theme.spacing(0.5),
-      "&:last-child": {
-        marginBottom: 0
-      }
-    },
-  },
-  alertMessage: {
-    flexGrow: 1,
-  },
-}));
-
 /**
  * Component for displaying a list of messages.
  * @param messages - Array of messages to display.
  * @returns JSX.Element
  */
 function MessageList({ messages }: { messages: ReactNode[]; }) {
-  const classes = useStyles();
-
   return (
-    <ul className={classes.list}>
+    <Box
+      component="ul"
+      sx={{
+        padding: "0px",
+        margin: "0px",
+        "& li": {
+          marginBottom: 0.5,
+          "&:last-child": {
+            marginBottom: 0
+          }
+        },
+      }}
+    >
       {messages.filter(msg => msg != null).map((msg, i) => (
         <li key={i}>{msg}</li>
       ))}
-    </ul>
+    </Box>
   );
 }
 
@@ -61,9 +49,12 @@ function MessageList({ messages }: { messages: ReactNode[]; }) {
  * @returns JSX.Element
  */
 function BitcoinRedeemedStateAlert({ swap }: { swap: GetSwapInfoResponseExt; }) {
-  const classes = useStyles();
   return (
-    <Box className={classes.box}>
+    <Box sx={{
+      display: "flex",
+      flexDirection: "column",
+      gap: 1,
+    }}>
       <MessageList
         messages={[
           "The Bitcoin has been redeemed by the other party",
@@ -219,8 +210,6 @@ export default function SwapStatusAlert({
   swap: GetSwapInfoResponseExt;
   isRunning: boolean;
 }): JSX.Element | null {
-  const classes = useStyles();
-
   // If the swap is completed, we do not need to display anything
   if (!isGetSwapInfoResponseRunningSwap(swap)) {
     return null;
@@ -236,12 +225,21 @@ export default function SwapStatusAlert({
       key={swap.swap_id}
       severity="warning"
       variant="filled"
-      classes={{ message: classes.alertMessage }}
+      classes={{ message: "alert-message-flex-grow" }}
+      sx={{
+        "& .alert-message-flex-grow": {
+          flexGrow: 1,
+        }
+      }}
     >
       <AlertTitle>
         {isRunning ? "Swap has been running for a while" : <>Swap <TruncatedText>{swap.swap_id}</TruncatedText> is not running</>}
       </AlertTitle>
-      <Box className={classes.box}>
+      <Box sx={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 1,
+      }}>
         <StateAlert swap={swap} isRunning={isRunning} />
         <TimelockTimeline swap={swap} />
       </Box>

@@ -1,5 +1,4 @@
 import { Modal } from '@mui/material';
-import makeStyles from '@mui/styles/makeStyles';
 import { useState } from 'react'
 import Slide01_GettingStarted from './slides/Slide01_GettingStarted'
 import Slide02_ChooseAMaker from './slides/Slide02_ChooseAMaker'
@@ -13,19 +12,6 @@ import {
     setUserHasSeenIntroduction,
 } from 'store/features/settingsSlice'
 import { useAppDispatch, useSettings } from 'store/hooks'
-
-const useStyles = makeStyles({
-    modal: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    paper: {
-        width: '80%',
-        display: 'flex',
-        justifyContent: 'space-between',
-    },
-})
 
 export default function IntroductionModal() {
     const userHasSeenIntroduction = useSettings(
@@ -99,13 +85,15 @@ export default function IntroductionModal() {
         />,
     ]
 
-    const classes = useStyles()
-
     return (
         <Modal
             open={open}
             onClose={handleClose}
-            className={classes.modal}
+            sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+            }}
             disableAutoFocus
             closeAfterTransition
         >

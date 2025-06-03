@@ -1,5 +1,4 @@
 import { Box, Chip, Paper, Tooltip, Typography } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import { VerifiedUser } from "@mui/icons-material";
 import { ExtendedMakerStatus } from "models/apiModel";
 import TruncatedText from "renderer/components/other/TruncatedText";
@@ -10,34 +9,8 @@ import {
 import { getMarkup, satsToBtc, secondsToDays } from "utils/conversionUtils";
 import { isMakerOutdated, isMakerVersionOutdated } from 'utils/multiAddrUtils';
 import WarningIcon from '@mui/icons-material/Warning';
-import { useAppSelector, useMakerVersion } from "store/hooks";
+import { useAppSelector } from "store/hooks";
 import IdentIcon from "renderer/components/icons/IdentIcon";
-
-const useStyles = makeStyles((theme) => ({
-  content: {
-    flex: 1,
-    "& *": {
-      lineBreak: "anywhere",
-    },
-    display: "flex",
-    flexDirection: "column",
-    gap: theme.spacing(1),
-  },
-  chipsOuter: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: theme.spacing(0.5),
-  },
-  quoteOuter: {
-    display: "flex",
-    flexDirection: "column",
-  },
-  peerIdContainer: {
-    display: "flex",
-    alignItems: "center",
-    gap: theme.spacing(1),
-  },
-}));
 
 /**
  * A chip that displays the markup of the maker's exchange rate compared to the market rate.
@@ -63,14 +36,21 @@ export default function MakerInfo({
 }: {
   maker: ExtendedMakerStatus;
 }) {
-  const classes = useStyles();
   const isOutdated = isMakerOutdated(maker);
 
   return (
-    <Box className={classes.content}>
-      <Box className={classes.peerIdContainer}>
+    <Box sx={{
+      flex: 1,
+      "& *": {
+        lineBreak: "anywhere",
+      },
+      display: "flex",
+      flexDirection: "column",
+      gap: 1,
+    }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         <Tooltip title={"This avatar is deterministically derived from the public key of the maker"} arrow>
-          <Box className={classes.peerIdContainer}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <IdentIcon value={maker.peerId} size={"3rem"} />
           </Box>
         </Tooltip>
@@ -83,7 +63,7 @@ export default function MakerInfo({
           </Typography>
         </Box>
       </Box>
-      <Box className={classes.quoteOuter}>
+      <Box sx={{ display: "flex", flexDirection: "column" }}>
         <Typography variant="caption">
           Exchange rate:{" "}
           <MoneroBitcoinExchangeRate rate={satsToBtc(maker.price)} />
@@ -95,7 +75,7 @@ export default function MakerInfo({
           Maximum amount: <SatsAmount amount={maker.maxSwapAmount} />
         </Typography>
       </Box>
-      <Box className={classes.chipsOuter}>
+      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
         {maker.testnet && <Chip label="Testnet" />}
         {maker.uptime && (
           <Tooltip title="A high uptime (>90%) indicates reliability. Makers with very low uptime may be unreliable and cause swaps to take longer to complete or fail entirely.">

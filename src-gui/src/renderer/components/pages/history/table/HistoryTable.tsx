@@ -8,23 +8,17 @@ import {
   TableHead,
   TableRow,
 } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import { useSwapInfosSortedByDate } from "../../../../../store/hooks";
 import HistoryRow from "./HistoryRow";
 
-const useStyles = makeStyles((theme) => ({
-  outer: {
-    paddingTop: theme.spacing(1),
-    paddingBottom: theme.spacing(1),
-  },
-}));
-
 export default function HistoryTable() {
-  const classes = useStyles();
   const swapSortedByDate = useSwapInfosSortedByDate();
 
   return (
-    <Box className={classes.outer}>
+    <Box sx={{
+      paddingTop: 1,
+      paddingBottom: 1,
+    }}>
       <TableContainer component={Paper}>
         <Table>
           <TableHead>

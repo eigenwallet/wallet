@@ -1,20 +1,11 @@
 import { Box, CircularProgress, LinearProgress, Typography } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import { ReactNode } from "react";
-
-const useStyles = makeStyles((theme) => ({
-  subtitle: {
-    paddingTop: theme.spacing(1),
-  },
-}));
 
 export default function CircularProgressWithSubtitle({
   description,
 }: {
   description: string | ReactNode;
 }) {
-  const classes = useStyles();
-
   return (
     <Box
       sx={{
@@ -24,7 +15,7 @@ export default function CircularProgressWithSubtitle({
         flexDirection: "column"
       }}>
       <CircularProgress size={50} />
-      <Typography variant="subtitle2" className={classes.subtitle}>
+      <Typography variant="subtitle2" sx={{ paddingTop: 1 }}>
         {description}
       </Typography>
     </Box>
@@ -38,8 +29,6 @@ export function LinearProgressWithSubtitle({
   description: string | ReactNode;
   value: number;
 }) {
-  const classes = useStyles();
-
   return (
     <Box
       style={{ gap: "0.5rem" }}
@@ -49,7 +38,7 @@ export function LinearProgressWithSubtitle({
         alignItems: "center",
         justifyContent: "center"
       }}>
-      <Typography variant="subtitle2" className={classes.subtitle}>
+      <Typography variant="subtitle2" sx={{ paddingTop: 1 }}>
         {description}
       </Typography>
       <Box sx={{

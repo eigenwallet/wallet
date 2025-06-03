@@ -1,5 +1,4 @@
 import { Box, Collapse, IconButton, TableCell, TableRow } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
@@ -11,14 +10,6 @@ import HistoryRowActions from "./HistoryRowActions";
 import HistoryRowExpanded from "./HistoryRowExpanded";
 import { bobStateNameToHumanReadable, GetSwapInfoResponseExt } from "models/tauriModelExt";
 
-const useStyles = makeStyles((theme) => ({
-  amountTransferContainer: {
-    display: "flex",
-    alignItems: "center",
-    gap: theme.spacing(1),
-  },
-}));
-
 function AmountTransfer({
   btcAmount,
   xmrAmount,
@@ -26,10 +17,12 @@ function AmountTransfer({
   xmrAmount: number;
   btcAmount: number;
 }) {
-  const classes = useStyles();
-
   return (
-    <Box className={classes.amountTransferContainer}>
+    <Box sx={{
+      display: "flex",
+      alignItems: "center",
+      gap: 1,
+    }}>
       <SatsAmount amount={btcAmount} />
       <ArrowForwardIcon />
       <PiconeroAmount amount={xmrAmount} />

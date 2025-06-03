@@ -12,7 +12,6 @@ import {
   Box,
   Link,
 } from '@mui/material';
-import makeStyles from '@mui/styles/makeStyles';
 import SystemUpdateIcon from '@mui/icons-material/SystemUpdate';
 import { check, Update, DownloadEvent } from '@tauri-apps/plugin-updater';
 import { useSnackbar } from 'notistack';
@@ -20,19 +19,6 @@ import { relaunch } from '@tauri-apps/plugin-process';
 
 const GITHUB_RELEASES_URL = "https://github.com/UnstoppableSwap/core/releases";
 const HOMEPAGE_URL = "https://unstoppableswap.net/";
-
-const useStyles = makeStyles((theme) => ({
-  progress: {
-    marginTop: theme.spacing(2)
-  },
-  releaseNotes: {
-    marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(1)
-  },
-  noteContent: {
-    whiteSpace: 'pre-line'
-  }
-}));
 
 interface DownloadProgress {
   contentLength: number | null;
@@ -65,7 +51,6 @@ function LinearProgressWithLabel(props: LinearProgressProps & { label?: string }
 }
 
 export default function UpdaterDialog() {
-  const classes = useStyles();
   const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const { enqueueSnackbar } = useSnackbar();
@@ -134,10 +119,10 @@ export default function UpdaterDialog() {
           update from <Link href={GITHUB_RELEASES_URL} target="_blank">GitHub</Link> or visit the <Link href={HOMEPAGE_URL} target="_blank">download page</Link>.
           {availableUpdate.body && (
             <>
-              <Typography variant="h6" className={classes.releaseNotes}>
+              <Typography variant="h6" sx={{ mt: 2, mb: 1 }}>
                 Release Notes:
               </Typography>
-              <Typography variant="body2" component="div" className={classes.noteContent}>
+              <Typography variant="body2" component="div" sx={{ whiteSpace: 'pre-line' }}>
                 {availableUpdate.body}
               </Typography>
             </>
@@ -145,7 +130,7 @@ export default function UpdaterDialog() {
         </DialogContentText>
 
         {isDownloading && (
-          <Box className={classes.progress}>
+          <Box sx={{ mt: 2 }}>
             <LinearProgressWithLabel
               value={progress}
               label={`${(downloadProgress.downloadedBytes / 1024 / 1024).toFixed(1)} MB${downloadProgress.contentLength

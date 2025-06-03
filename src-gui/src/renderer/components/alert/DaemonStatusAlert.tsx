@@ -1,5 +1,4 @@
 import { Box, Button, LinearProgress, Badge } from "@mui/material";
-import makeStyles from '@mui/styles/makeStyles';
 import { Alert } from '@mui/material';
 import { useNavigate } from "react-router-dom";
 import { useAppSelector, usePendingBackgroundProcesses } from "store/hooks";
@@ -12,14 +11,6 @@ import TruncatedText from "../other/TruncatedText";
 import BitcoinIcon from "../icons/BitcoinIcon";
 import MoneroIcon from "../icons/MoneroIcon";
 import TorIcon from "../icons/TorIcon";
-
-const useStyles = makeStyles((theme) => ({
-  innerAlert: {
-    display: "flex",
-    flexDirection: "column",
-    gap: theme.spacing(2),
-  },
-}));
 
 function AlertWithLinearProgress({ title, progress, icon, count }: {
   title: React.ReactNode,
@@ -58,10 +49,9 @@ function AlertWithLinearProgress({ title, progress, icon, count }: {
   </Alert>
 }
 
-function PartialInitStatus({ status, totalOfType, classes }: {
+function PartialInitStatus({ status, totalOfType }: {
   status: TauriBackgroundProgress,
   totalOfType: number,
-  classes: ReturnType<typeof useStyles>
 }) {
   if (status.progress.type === "Completed") {
     return null;
@@ -200,7 +190,6 @@ export default function DaemonStatusAlert() {
 
 export function BackgroundProgressAlerts() {
   const backgroundProgress = usePendingBackgroundProcesses();
-  const classes = useStyles();
 
   if (backgroundProgress.length === 0) {
     return null;
@@ -220,12 +209,15 @@ export function BackgroundProgressAlerts() {
     return false;
   });
 
-  return uniqueBackgroundProcesses.map(([id, status]) => (
-    <PartialInitStatus
-      key={id}
-      status={status}
-      classes={classes}
-      totalOfType={componentCounts[status.componentName]}
-    />
-  ));
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {uniqueBackgroundProcesses.map(([id, status]) => (
+        <PartialInitStatus
+          key={id}
+          status={status}
+          totalOfType={componentCounts[status.componentName]}
+        />
+      ))}
+    </Box>
+  );
 }
