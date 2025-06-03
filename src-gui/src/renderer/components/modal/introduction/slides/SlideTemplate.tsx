@@ -46,7 +46,15 @@ export default function SlideTemplate({
 
     return (
         <Paper className={classes.paper}>
-            <Box m={3} flex alignContent="center" position="relative" width="50%" flexGrow={1}>
+            <Box
+                flex
+                sx={{
+                    m: 3,
+                    alignContent: "center",
+                    position: "relative",
+                    width: "50%",
+                    flexGrow: 1
+                }}>
                 <Box>
                     {stepLabel && (
                         <Typography
@@ -60,14 +68,13 @@ export default function SlideTemplate({
                     {children}
                 </Box>
                 <Box
-                    position="absolute"
-                    bottom={0}
-                    width="100%"
-                    display="flex"
-                    justifyContent={
-                        hidePreviousButton ? 'flex-end' : 'space-between'
-                    }
-                >
+                    sx={{
+                        position: "absolute",
+                        bottom: 0,
+                        width: "100%",
+                        display: "flex",
+                        justifyContent: hidePreviousButton ? 'flex-end' : 'space-between'
+                    }}>
                     {!hidePreviousButton && (
                         <Button onClick={handlePrevious}>Back</Button>
                     )}
@@ -82,15 +89,16 @@ export default function SlideTemplate({
             </Box>
             {imagePath && (
                 <Box
-                    bgcolor="#212121"
-                    width="50%"
-                    display="flex"
-                    justifyContent="center"
-                    p={imagePadded ? "1.5em" : 0}
-                >
+                    sx={{
+                        bgcolor: "#212121",
+                        width: "50%",
+                        display: "flex",
+                        justifyContent: "center",
+                        p: imagePadded ? "1.5em" : 0
+                    }}>
                     <img src={imagePath} className={classes.splitImage} />
                 </Box>
             )}
         </Paper>
-    )
+    );
 }

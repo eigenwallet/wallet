@@ -17,11 +17,12 @@ export default function CircularProgressWithSubtitle({
 
   return (
     <Box
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
-      flexDirection="column"
-    >
+      sx={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        flexDirection: "column"
+      }}>
       <CircularProgress size={50} />
       <Typography variant="subtitle2" className={classes.subtitle}>
         {description}
@@ -40,13 +41,22 @@ export function LinearProgressWithSubtitle({
   const classes = useStyles();
 
   return (
-    <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" style={{ gap: "0.5rem" }}>
+    <Box
+      style={{ gap: "0.5rem" }}
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center"
+      }}>
       <Typography variant="subtitle2" className={classes.subtitle}>
         {description}
       </Typography>
-      <Box width="10rem">
+      <Box sx={{
+        width: "10rem"
+      }}>
         <LinearProgress variant="determinate" value={value} />
       </Box>
-  </Box>
+    </Box>
   );
 }

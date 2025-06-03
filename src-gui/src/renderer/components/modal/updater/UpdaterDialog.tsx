@@ -41,11 +41,21 @@ interface DownloadProgress {
 
 function LinearProgressWithLabel(props: LinearProgressProps & { label?: string }) {
   return (
-    <Box display="flex" alignItems="center">
-      <Box width="100%" mr={1}>
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center"
+      }}>
+      <Box
+        sx={{
+          width: "100%",
+          mr: 1
+        }}>
         <LinearProgress variant="determinate" {...props} />
       </Box>
-      <Box minWidth={85}>
+      <Box sx={{
+        minWidth: 85
+      }}>
         <Typography variant="body2" color="textSecondary">
           {props.label || `${Math.round(props.value)}%`}
         </Typography>

@@ -109,7 +109,9 @@ function RecentlyUsedAddressesDialog({
             >
               <ListItemText 
                 primary={
-                  <Box fontFamily="monospace">
+                  <Box sx={{
+                    fontFamily: "monospace"
+                  }}>
                     <TruncatedText limit={40} truncateMiddle>
                       {addr}
                     </TruncatedText>

@@ -47,7 +47,9 @@ export default function CardSelectionOption({children, value}: {children: React.
                     />
                 ) : null}
             </Box>
-            <Box pt={0.5}>{children}</Box>
+            <Box sx={{
+                pt: 0.5
+            }}>{children}</Box>
         </Box>
-    )
+    );
 }

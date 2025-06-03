@@ -12,7 +12,9 @@ export default function Slide02_ChooseAMaker(props: slideProps) {
                 We would love to hear about your experience with Unstoppable
                 Swap and invite you to join our community.
             </Typography>
-            <Box mt={3}>
+            <Box sx={{
+                mt: 3
+            }}>
                 <LinkIconButton url="https://github.com/UnstoppableSwap/core">
                     <GitHubIcon/>
                 </LinkIconButton>
@@ -21,5 +23,5 @@ export default function Slide02_ChooseAMaker(props: slideProps) {
                 </LinkIconButton>
             </Box>
         </SlideTemplate>
-    )
+    );
 }

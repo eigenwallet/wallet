@@ -93,7 +93,9 @@ export default function SettingsBox() {
             </Table>
           </TableContainer>
           {/* Reset button with a bit of spacing */}
-          <Box mt={theme.spacing(0.1)} />
+          <Box sx={{
+            mt: theme.spacing(0.1)
+          }} />
           <ResetButton />
         </>
       }
