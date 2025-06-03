@@ -157,15 +157,6 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=boost_filesystem");
     println!("cargo:rustc-link-lib=dylib=boost_thread");
     println!("cargo:rustc-link-lib=dylib=boost_chrono");
-    println!("cargo:rustc-link-lib=dylib=absl_base");
-    println!("cargo:rustc-link-lib=dylib=absl_log_sink");
-    println!("cargo:rustc-link-lib=dylib=absl_strings");
-    println!("cargo:rustc-link-lib=dylib=absl_log_entry");
-    println!("cargo:rustc-link-lib=dylib=absl_log_severity");
-    println!("cargo:rustc-link-lib=dylib=absl_log_internal_message");
-    println!("cargo:rustc-link-lib=dylib=absl_raw_logging_internal");
-    println!("cargo:rustc-link-lib=dylib=absl_log_internal_check_op");
-    println!("cargo:rustc-link-lib=dylib=absl_log_internal_nullguard");
     println!("cargo:rustc-link-lib=dylib=ssl");
     println!("cargo:rustc-link-lib=dylib=crypto");
 
