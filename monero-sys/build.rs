@@ -11,6 +11,7 @@ fn main() {
         .build_target("wallet_api")
         .define("CMAKE_RELEASE_TYPE", "Release")
         .define("STATIC", "ON")
+        .define("BUILD_SHARED_LIBS", "OFF")
         // Do not build tests
         .define("BUILD_TESTS", "OFF")
         .define("TREZOR_DEBUG", "OFF") 
