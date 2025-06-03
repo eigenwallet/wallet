@@ -109,7 +109,7 @@ where
                         "TxLock lock did not get enough confirmations in time",
                     );
 
-                    AliceState::EarlyRefundable { state3 }
+                    AliceState::BtcEarlyRefundable { state3 }
                 }
                 Ok(res) => {
                     res?;
@@ -182,7 +182,7 @@ where
                         swap_id = %swap_id,
                         "We did not manage to lock the Monero funds before the timelock expired. Aborting swap."
                     );
-                    AliceState::EarlyRefundable { state3 }
+                    AliceState::BtcEarlyRefundable { state3 }
                 }
                 Err(e) => {
                     tracing::error!(
@@ -192,11 +192,11 @@ where
                         MAX_MONERO_LOCK_TIME.as_secs()
                     );
 
-                    AliceState::EarlyRefundable { state3 }
+                    AliceState::BtcEarlyRefundable { state3 }
                 }
             }
         }
-        AliceState::EarlyRefundable { state3 } => {
+        AliceState::BtcEarlyRefundable { state3 } => {
             let tx_early_refund = state3.signed_early_refund_transaction()?;
 
             let txid = tx_early_refund.compute_txid();
@@ -210,7 +210,7 @@ where
                 "Unilaterally refunded Bitcoin"
             );
 
-            AliceState::EarlyRefunded {
+            AliceState::BtcEarlyRefunded {
                 tx_early_refund_txid: txid,
             }
         }
@@ -558,9 +558,9 @@ where
         AliceState::XmrRefunded => AliceState::XmrRefunded,
         AliceState::BtcRedeemed => AliceState::BtcRedeemed,
         AliceState::BtcPunished { state3 } => AliceState::BtcPunished { state3 },
-        AliceState::EarlyRefunded {
+        AliceState::BtcEarlyRefunded {
             tx_early_refund_txid,
-        } => AliceState::EarlyRefunded {
+        } => AliceState::BtcEarlyRefunded {
             tx_early_refund_txid,
         },
         AliceState::SafelyAborted => AliceState::SafelyAborted,
@@ -574,7 +574,7 @@ pub fn is_complete(state: &AliceState) -> bool {
             | AliceState::BtcRedeemed
             | AliceState::BtcPunished { .. }
             | AliceState::SafelyAborted
-            | AliceState::EarlyRefunded { .. }
+            | AliceState::BtcEarlyRefunded { .. }
     )
 }
 

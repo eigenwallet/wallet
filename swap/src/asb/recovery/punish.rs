@@ -39,8 +39,8 @@ pub async fn punish(
         | AliceState::BtcRedeemed
         | AliceState::XmrRefunded
         | AliceState::BtcPunished { .. }
-        | AliceState::EarlyRefundable { .. }
-        | AliceState::EarlyRefunded { .. }
+        | AliceState::BtcEarlyRefundable { .. }
+        | AliceState::BtcEarlyRefunded { .. }
         | AliceState::SafelyAborted => bail!(Error::SwapNotPunishable(state)),
     };
 

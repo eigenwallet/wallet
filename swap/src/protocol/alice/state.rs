@@ -29,6 +29,9 @@ pub enum AliceState {
     BtcLocked {
         state3: Box<State3>,
     },
+    BtcEarlyRefundable {
+        state3: Box<State3>,
+    },
     XmrLockTransactionSent {
         monero_wallet_restore_blockheight: BlockHeight,
         transfer_proof: TransferProof,
@@ -59,6 +62,9 @@ pub enum AliceState {
         transfer_proof: TransferProof,
         state3: Box<State3>,
     },
+    BtcEarlyRefunded {
+        tx_early_refund_txid: bitcoin::Txid,
+    },
     BtcRefunded {
         monero_wallet_restore_blockheight: BlockHeight,
         transfer_proof: TransferProof,
@@ -79,13 +85,8 @@ pub enum AliceState {
     BtcPunished {
         state3: Box<State3>,
     },
-    EarlyRefundable {
-        state3: Box<State3>,
-    },
     SafelyAborted,
-    EarlyRefunded {
-        tx_early_refund_txid: bitcoin::Txid,
-    },
+    
 }
 
 impl fmt::Display for AliceState {
@@ -113,8 +114,8 @@ impl fmt::Display for AliceState {
             AliceState::BtcPunishable { .. } => write!(f, "btc is punishable"),
             AliceState::XmrRefunded => write!(f, "xmr is refunded"),
             AliceState::CancelTimelockExpired { .. } => write!(f, "cancel timelock is expired"),
-            AliceState::EarlyRefundable { .. } => write!(f, "early refundable"),
-            AliceState::EarlyRefunded { .. } => write!(f, "early refunded"),
+            AliceState::BtcEarlyRefundable { .. } => write!(f, "early refundable"),
+            AliceState::BtcEarlyRefunded { .. } => write!(f, "early refunded"),
         }
     }
 }
