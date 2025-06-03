@@ -455,7 +455,8 @@ where
                             tracing::trace!(%peer, address = %endpoint.get_remote_address(), %connection_id,  "Successfully closed connection");
                         }
                         SwarmEvent::NewListenAddr{address, ..} => {
-                            tracing::info!(%address, "New listen address reported");
+                            let multiaddr = format!("{address}/p2p/{}", self.swarm.local_peer_id());
+                            tracing::info!(%address, %multiaddr, "New listen address reported");
                         }
                         _ => {}
                     }
