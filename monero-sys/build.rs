@@ -14,8 +14,7 @@ fn main() {
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("BUILD_TESTS", "OFF")
         .define("TREZOR_DEBUG", "OFF")
-        .define("USE_DEVICE_TREZOR", "OFF")
-        .define("DEVICE_TREZOR_READY", "1")  // Force stub library to be built
+        .define("USE_DEVICE_TREZOR", "OFF")  // Force stub library to be built
         .define("HIDAPI_FOUND", "OFF")
         .define("GTEST_HAS_ABSL", "OFF")
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
