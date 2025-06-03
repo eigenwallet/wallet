@@ -4,6 +4,7 @@ use crate::bitcoin::{
     self, current_epoch, CancelTimelock, ExpiredTimelocks, PunishTimelock, Transaction, TxCancel,
     TxLock, Txid, Wallet,
 };
+use crate::common::retry;
 use crate::monero::wallet::WatchRequest;
 use crate::monero::{self, TxHash};
 use crate::monero::{monero_private_key, TransferProof};
@@ -20,6 +21,7 @@ use sha2::Sha256;
 use sigma_fun::ext::dl_secp256k1_ed25519_eq::CrossCurveDLEQProof;
 use std::fmt;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -467,18 +469,13 @@ impl State3 {
         }
     }
 
-    pub fn cancel(
-        &self,
-        monero_wallet_restore_blockheight: BlockHeight,
-        lock_transfer_proof: Option<TransferProof>,
-    ) -> State6 {
+    pub fn cancel(&self, monero_wallet_restore_blockheight: BlockHeight) -> State6 {
         State6 {
             A: self.A,
             b: self.b.clone(),
             s_b: self.s_b,
             v: self.v,
             monero_wallet_restore_blockheight,
-            lock_transfer_proof,
             cancel_timelock: self.cancel_timelock,
             punish_timelock: self.punish_timelock,
             refund_address: self.refund_address.clone(),
@@ -646,7 +643,6 @@ impl State4 {
             s_b: self.s_b,
             v: self.v,
             monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
-            lock_transfer_proof: Some(self.lock_transfer_proof),
             cancel_timelock: self.cancel_timelock,
             punish_timelock: self.punish_timelock,
             refund_address: self.refund_address,
@@ -714,12 +710,15 @@ impl State5 {
         tracing::debug!(%swap_id, receive_address=%monero_receive_address, "Sweeping Monero to receive address");
 
         let tx_hashes = wallet
-            .sweep(&monero_receive_address)
+            .clone()
+            .sweep(&monero_receive_address.clone())
             .await
-            .context("Failed to sweep Monero")?
+            .context("Failed to redeem Monero")?
             .into_iter()
             .map(TxHash)
             .collect();
+
+        tracing::info!(%swap_id, txids=?tx_hashes, "Monero sweep completed");
 
         Ok(tx_hashes)
     }
@@ -732,7 +731,6 @@ pub struct State6 {
     s_b: monero::Scalar,
     v: monero::PrivateViewKey,
     pub monero_wallet_restore_blockheight: BlockHeight,
-    pub lock_transfer_proof: Option<TransferProof>,
     cancel_timelock: CancelTimelock,
     punish_timelock: PunishTimelock,
     #[serde(with = "address_serde")]

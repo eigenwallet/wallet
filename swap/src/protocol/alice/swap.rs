@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use crate::asb::{EventLoopHandle, LatestRate};
 use crate::bitcoin::ExpiredTimelocks;
+use crate::common::retry;
 use crate::env::Config;
 use crate::monero::wallet::no_listener;
 use crate::monero::TransferProof;
@@ -458,14 +459,8 @@ where
             state3,
             ..
         } => {
-            // We retry indefinitely to refund the Monero funds, until the refund transaction is confirmed
-            let backoff = backoff::ExponentialBackoffBuilder::new()
-                .with_max_elapsed_time(None)
-                .with_max_interval(Duration::from_secs(60))
-                .build();
-
-            backoff::future::retry_notify(
-                backoff,
+            retry(
+                "Refund Monero",
                 || async {
                     state3
                         .refund_xmr(
@@ -477,14 +472,8 @@ where
                         .await
                         .map_err(backoff::Error::transient)
                 },
-                |e, wait_time: Duration| {
-                    tracing::warn!(
-                        swap_id = %swap_id,
-                        error = ?e,
-                        "Failed to refund Monero. We will retry in {} seconds",
-                        wait_time.as_secs()
-                    )
-                },
+                None,
+                Duration::from_secs(60),
             )
             .await
             .expect("We should never run out of retries while refunding Monero");

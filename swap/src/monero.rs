@@ -253,12 +253,18 @@ impl TransferProof {
 }
 
 // TODO: add constructor/ change String to fixed length byte array
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TxHash(pub String);
 
 impl From<TxHash> for String {
     fn from(from: TxHash) -> Self {
         from.0
+    }
+}
+
+impl fmt::Debug for TxHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

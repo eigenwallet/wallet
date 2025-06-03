@@ -5,6 +5,7 @@ use crate::cli::api::tauri_bindings::{
     LockBitcoinDetails, TauriEmitter, TauriHandle, TauriSwapProgressEvent,
 };
 use crate::cli::EventLoopHandle;
+use crate::common::retry;
 use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, Rejected};
 use crate::network::swap_setup::bob::NewSwap;
 use crate::protocol::bob::state::*;
@@ -12,6 +13,7 @@ use crate::protocol::{bob, Database};
 use crate::{bitcoin, monero};
 use anyhow::{bail, Context as AnyContext, Result};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::select;
 use uuid::Uuid;
 
@@ -231,7 +233,7 @@ async fn next_state(
                 .await?
                 .cancel_timelock_expired()
             {
-                let state4 = state3.cancel(monero_wallet_restore_blockheight, None);
+                let state4 = state3.cancel(monero_wallet_restore_blockheight);
                 return Ok(BobState::CancelTimelockExpired(state4));
             };
 
@@ -289,7 +291,7 @@ async fn next_state(
                     result?;
                     tracing::info!("Alice took too long to lock Monero, cancelling the swap");
 
-                    let state4 = state3.cancel(monero_wallet_restore_blockheight, None);
+                    let state4 = state3.cancel(monero_wallet_restore_blockheight);
                     BobState::CancelTimelockExpired(state4)
                 },
             }
@@ -316,10 +318,9 @@ async fn next_state(
                 .await?
                 .cancel_timelock_expired()
             {
-                return Ok(BobState::CancelTimelockExpired(state.cancel(
-                    monero_wallet_restore_blockheight,
-                    Some(lock_transfer_proof.clone()),
-                )));
+                return Ok(BobState::CancelTimelockExpired(
+                    state.cancel(monero_wallet_restore_blockheight),
+                ));
             };
 
             let watch_request = state.lock_xmr_watch_request(lock_transfer_proof.clone());
@@ -353,7 +354,7 @@ async fn next_state(
                             // because there's no way of recovering from this state
                             tx_lock_status.wait_until_confirmed_with(state.cancel_timelock).await?;
 
-                            BobState::CancelTimelockExpired(state.cancel(monero_wallet_restore_blockheight, Some(lock_transfer_proof_2.clone())))
+                            BobState::CancelTimelockExpired(state.cancel(monero_wallet_restore_blockheight))
                         },
                         Err(err) => {
                             tracing::error!(%err, "Failed to wait for Monero lock transaction to be confirmed");
@@ -363,7 +364,7 @@ async fn next_state(
                 }
                 result = tx_lock_status.wait_until_confirmed_with(state.cancel_timelock) => {
                     result?;
-                    BobState::CancelTimelockExpired(state.cancel(monero_wallet_restore_blockheight, Some(lock_transfer_proof_2.clone())))
+                    BobState::CancelTimelockExpired(state.cancel(monero_wallet_restore_blockheight))
                 }
             }
         }
@@ -440,9 +441,19 @@ async fn next_state(
         BobState::BtcRedeemed(state) => {
             event_emitter.emit_swap_progress_event(swap_id, TauriSwapProgressEvent::BtcRedeemed);
 
-            let xmr_redeem_txids = state
-                .redeem_xmr(&monero_wallet, swap_id, monero_receive_address)
-                .await?;
+            let xmr_redeem_txids = retry(
+                "Refund Monero",
+                || async {
+                    state
+                        .redeem_xmr(&monero_wallet, swap_id, monero_receive_address)
+                        .await
+                        .map_err(backoff::Error::transient)
+                },
+                None,
+                None,
+            )
+            .await
+            .context("Failed to redeem Monero")?;
 
             event_emitter.emit_swap_progress_event(
                 swap_id,
@@ -544,9 +555,19 @@ async fn next_state(
 
                     let state5 = state.attempt_cooperative_redeem(s_a, lock_transfer_proof);
 
-                    match state5
-                        .redeem_xmr(&monero_wallet, swap_id, monero_receive_address)
-                        .await
+                    match retry(
+                        "Redeeming Monero",
+                        || async {
+                            state5
+                                .redeem_xmr(&monero_wallet, swap_id, monero_receive_address)
+                                .await
+                                .map_err(backoff::Error::transient)
+                        },
+                        Duration::from_secs(2 * 60),
+                        None,
+                    )
+                    .await
+                    .context("Failed to redeem Monero")
                     {
                         Ok(xmr_redeem_txids) => {
                             event_emitter.emit_swap_progress_event(

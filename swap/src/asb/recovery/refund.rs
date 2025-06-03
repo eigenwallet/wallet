@@ -1,4 +1,5 @@
 use crate::bitcoin::{self};
+use crate::common::retry;
 use crate::monero;
 use crate::protocol::alice::AliceState;
 use crate::protocol::Database;
@@ -6,6 +7,7 @@ use anyhow::{bail, Result};
 use libp2p::PeerId;
 use std::convert::TryInto;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
@@ -71,9 +73,23 @@ pub async fn refund(
         bail!(Error::RefundTransactionNotPublishedYet(bob_peer_id),);
     };
 
-    state3
-        .refund_xmr(monero_wallet.clone(), swap_id, spend_key, transfer_proof)
-        .await?;
+    retry(
+        "Refund Monero",
+        || async {
+            state3
+                .refund_xmr(
+                    monero_wallet.clone(),
+                    swap_id,
+                    spend_key,
+                    transfer_proof.clone(),
+                )
+                .await
+                .map_err(backoff::Error::transient)
+        },
+        None,
+        Duration::from_secs(60),
+    )
+    .await?;
 
     let state = AliceState::XmrRefunded;
     db.insert_latest_state(swap_id, state.clone().into())
