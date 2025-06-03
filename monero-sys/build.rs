@@ -12,12 +12,12 @@ fn main() {
         .define("CMAKE_RELEASE_TYPE", "Release")
         .define("STATIC", "ON")
         .define("BUILD_SHARED_LIBS", "OFF")
-        // Do not build tests
         .define("BUILD_TESTS", "OFF")
-        .define("TREZOR_DEBUG", "OFF") 
+        .define("TREZOR_DEBUG", "OFF")
         .define("USE_DEVICE_TREZOR", "OFF")
         .define("HIDAPI_FOUND", "OFF")
         .define("GTEST_HAS_ABSL", "OFF")
+        .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
         .build_arg("-j1")
         .build();
 
