@@ -11,6 +11,7 @@ fn main() {
         .build_target("wallet_api")
         .define("CMAKE_RELEASE_TYPE", "Release")
         .define("STATIC", "ON")
+        .define("BUILD_SHARED_LIBS", "OFF")
         // Do not build tests
         .define("BUILD_TESTS", "OFF")
         .define("TREZOR_DEBUG", "OFF") 
@@ -102,10 +103,6 @@ fn main() {
     );
     println!(
         "cargo:rustc-link-search=native={}",
-        monero_build_dir.join("src/device_trezor").display()
-    );
-    println!(
-        "cargo:rustc-link-search=native={}",
         monero_build_dir.join("src/mnemonics").display()
     );
     println!(
@@ -142,13 +139,10 @@ fn main() {
     println!("cargo:rustc-link-lib=static=hardforks");
     println!("cargo:rustc-link-lib=static=blockchain_db");
     println!("cargo:rustc-link-lib=static=device");
-    println!("cargo:rustc-link-lib=static=device_trezor");
     println!("cargo:rustc-link-lib=static=mnemonics");
     println!("cargo:rustc-link-lib=static=rpc_base");
 
     // Link required system libraries dynamically
-    println!("cargo:rustc-link-lib=dylib=hidapi");
-    println!("cargo:rustc-link-lib=dylib=usb-1.0");
     println!("cargo:rustc-link-lib=dylib=unbound");
     println!("cargo:rustc-link-lib=dylib=boost_serialization");
     println!("cargo:rustc-link-lib=dylib=protobuf");
@@ -156,15 +150,6 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=boost_filesystem");
     println!("cargo:rustc-link-lib=dylib=boost_thread");
     println!("cargo:rustc-link-lib=dylib=boost_chrono");
-    println!("cargo:rustc-link-lib=dylib=absl_base");
-    println!("cargo:rustc-link-lib=dylib=absl_log_sink");
-    println!("cargo:rustc-link-lib=dylib=absl_strings");
-    println!("cargo:rustc-link-lib=dylib=absl_log_entry");
-    println!("cargo:rustc-link-lib=dylib=absl_log_severity");
-    println!("cargo:rustc-link-lib=dylib=absl_log_internal_message");
-    println!("cargo:rustc-link-lib=dylib=absl_raw_logging_internal");
-    println!("cargo:rustc-link-lib=dylib=absl_log_internal_check_op");
-    println!("cargo:rustc-link-lib=dylib=absl_log_internal_nullguard");
     println!("cargo:rustc-link-lib=dylib=ssl");
     println!("cargo:rustc-link-lib=dylib=crypto");
 
@@ -202,10 +187,10 @@ fn main() {
         // Minimum OS version you already add:
         println!("cargo:rustc-link-arg=-mmacosx-version-min=11.0");
     }
-    
+
     // Build the CXX bridge
     let mut build = cxx_build::bridge("src/bridge.rs");
-    
+
     #[cfg(target_os = "macos")]
     {
         build.flag_if_supported("-mmacosx-version-min=11.0");

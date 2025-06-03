@@ -24,6 +24,7 @@ RUN apt-get update && \
         libzmq3-dev \
         libsodium-dev \
         libhidapi-dev \
+        libabsl-dev \
         libusb-1.0-0-dev \
         libprotobuf-dev \
         protobuf-compiler \
