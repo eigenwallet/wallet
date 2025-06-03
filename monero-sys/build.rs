@@ -15,6 +15,7 @@ fn main() {
         .define("BUILD_TESTS", "OFF")
         .define("TREZOR_DEBUG", "OFF")
         .define("USE_DEVICE_TREZOR", "OFF")
+        .define("DEVICE_TREZOR_READY", "1")  // Force stub library to be built
         .define("HIDAPI_FOUND", "OFF")
         .define("GTEST_HAS_ABSL", "OFF")
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
@@ -53,6 +54,7 @@ fn main() {
         "cargo:rustc-link-search=native={}",
         monero_build_dir.join("external/randomx").display()
     );
+    
     println!(
         "cargo:rustc-link-search=native={}",
         monero_build_dir.join("src").display()
@@ -103,6 +105,10 @@ fn main() {
     );
     println!(
         "cargo:rustc-link-search=native={}",
+        monero_build_dir.join("src/device_trezor").display()
+    );
+    println!(
+        "cargo:rustc-link-search=native={}",
         monero_build_dir.join("src/mnemonics").display()
     );
     println!(
@@ -139,6 +145,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static=hardforks");
     println!("cargo:rustc-link-lib=static=blockchain_db");
     println!("cargo:rustc-link-lib=static=device");
+    println!("cargo:rustc-link-lib=static=device_trezor");
     println!("cargo:rustc-link-lib=static=mnemonics");
     println!("cargo:rustc-link-lib=static=rpc_base");
 
