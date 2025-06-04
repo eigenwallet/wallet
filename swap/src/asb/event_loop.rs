@@ -527,8 +527,7 @@ where
             get_unlocked_balance,
             get_reserved_items,
         )
-        .await
-        .context("Failed to construct quote");
+        .await;
 
         // Insert the computed quote into the cache
         // Need to clone it as insert takes ownership
@@ -874,7 +873,7 @@ async fn unlocked_monero_balance_with_timeout(
     wallet: Arc<Mutex<monero::Wallet>>,
 ) -> Result<Amount, anyhow::Error> {
     /// This is how long we maximally wait to get access to the wallet
-    const MONERO_WALLET_MUTEX_LOCK_TIMEOUT: Duration = Duration::from_secs(60);
+    const MONERO_WALLET_MUTEX_LOCK_TIMEOUT: Duration = Duration::from_secs(10);
 
     let balance = timeout(MONERO_WALLET_MUTEX_LOCK_TIMEOUT, wallet.lock())
         .await
