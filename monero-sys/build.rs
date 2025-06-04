@@ -15,7 +15,11 @@ fn main() {
         .define("BUILD_TESTS", "OFF")
         .define("TREZOR_DEBUG", "OFF")
         .define("USE_DEVICE_TREZOR", "OFF") // Force stub library to be built
-        .define("HIDAPI_FOUND", "OFF")
+        .define("USE_DEVICE_TREZOR_LIBUSB", "OFF") // Disable Trezor LibUSB
+        .define("USE_DEVICE_TREZOR_UDP_RELEASE", "OFF") // Disable Trezor UDP
+        .define("USE_DEVICE_TREZOR_DEBUG", "OFF") // Disable Trezor debug
+        .define("HIDAPI_FOUND", "FALSE") // Force HIDAPI to be not found
+        .define("USE_DEVICE_LEDGER", "OFF") // Disable Ledger device support
         .define("GTEST_HAS_ABSL", "OFF")
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
         .build_arg("-j1")
@@ -119,6 +123,7 @@ fn main() {
     {
         // add homebrew search paths/
         println!("cargo:rustc-link-search=native=/opt/homebrew/lib");
+        println!("cargo:rustc-link-search=native=/opt/homebrew/opt/unbound/lib");
     }
 
     // Link libwallet and libwallet_api statically
