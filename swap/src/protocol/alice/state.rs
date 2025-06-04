@@ -588,9 +588,14 @@ impl State3 {
     }
 }
 
-impl AliceState {
-    /// How much Monero do we need to reserve of our balance for this swap?
-    pub fn reserved_monero(&self) -> monero::Amount {
+pub trait ReservesMonero {
+    fn reserved_monero(&self) -> monero::Amount;
+}
+
+impl ReservesMonero for AliceState {
+    /// Returns the Monero amount we need to reserve for this swap
+    /// i.e funds we should not use for other things
+    fn reserved_monero(&self) -> monero::Amount {
         match self {
             // We haven't seen proof yet that Bob has locked the Bitcoin
             // We must assume he will not lock the Bitcoin to avoid being
