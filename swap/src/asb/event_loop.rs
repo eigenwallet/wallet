@@ -590,11 +590,14 @@ where
         let rate = self.latest_rate.clone();
 
         let get_reserved_items = || async {
-            let all_swaps = self.db.all().await.context("Failed to get reserved items to construct quote")?;
-            let alice_states: Vec<_> = all_swaps.into_iter().filter_map(|(_, state)| match state {
-                State::Alice(state) => Some(state),
-                _ => None,
-            }).collect();
+            let all_swaps = self.db.all().await?;
+            let alice_states: Vec<_> = all_swaps
+                .into_iter()
+                .filter_map(|(_, state)| match state {
+                    State::Alice(state) => Some(state),
+                    _ => None,
+                })
+                .collect();
 
             Ok(alice_states)
         };
@@ -870,9 +873,9 @@ async fn unlocked_monero_balance_with_timeout(
     wallet: Arc<Mutex<monero::Wallet>>,
 ) -> Result<Amount, anyhow::Error> {
     /// This is how long we maximally wait to get access to the wallet
-    const MAX_WAIT_DURATION: Duration = Duration::from_secs(60);
+    const MONERO_WALLET_MUTEX_LOCK_TIMEOUT: Duration = Duration::from_secs(60);
 
-    let balance = timeout(MAX_WAIT_DURATION, wallet.lock())
+    let balance = timeout(MONERO_WALLET_MUTEX_LOCK_TIMEOUT, wallet.lock())
         .await
         .context("Timeout while waiting for lock on Monero wallet")?
         .get_balance()
