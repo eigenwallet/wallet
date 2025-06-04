@@ -10,9 +10,13 @@ fn main() {
     let output_directory = config
         .build_target("wallet_api")
         .define("CMAKE_RELEASE_TYPE", "Release")
+        // Force building static libraries
         .define("STATIC", "ON")
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("BUILD_TESTS", "OFF")
+        .define("Boost_USE_STATIC_LIBS", "ON")
+        .define("Boost_USE_STATIC_RUNTIME", "ON")
+        // Disable support for ALL hardware wallets
         .define("TREZOR_DEBUG", "OFF")
         .define("USE_DEVICE_TREZOR", "OFF") // Force stub library to be built
         .define("USE_DEVICE_TREZOR_LIBUSB", "OFF") // Disable Trezor LibUSB
@@ -21,6 +25,7 @@ fn main() {
         .define("HIDAPI_FOUND", "FALSE") // Force HIDAPI to be not found
         .define("USE_DEVICE_LEDGER", "OFF") // Disable Ledger device support
         .define("GTEST_HAS_ABSL", "OFF")
+        // Use lightweight crypto library
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
         .build_arg("-j1")
         .build();
@@ -124,13 +129,14 @@ fn main() {
         // add homebrew search paths/
         println!("cargo:rustc-link-search=native=/opt/homebrew/lib");
         println!("cargo:rustc-link-search=native=/opt/homebrew/opt/unbound/lib");
+        println!("cargo:rustc-link-search=native=/opt/homebrew/opt/expat/lib");
     }
 
     // Link libwallet and libwallet_api statically
     println!("cargo:rustc-link-lib=static=wallet");
     println!("cargo:rustc-link-lib=static=wallet_api");
 
-    // Link additional required libraries
+    // Link targets of monero codebase statically
     println!("cargo:rustc-link-lib=static=epee");
     println!("cargo:rustc-link-lib=static=easylogging");
     println!("cargo:rustc-link-lib=static=lmdb");
@@ -153,16 +159,24 @@ fn main() {
     println!("cargo:rustc-link-lib=static=mnemonics");
     println!("cargo:rustc-link-lib=static=rpc_base");
 
-    // Link required system libraries dynamically
+    // Static linking for boost
+    println!("cargo:rustc-link-lib=static=boost_serialization");
+    println!("cargo:rustc-link-lib=static=boost_filesystem");
+    println!("cargo:rustc-link-lib=static=boost_thread");
+    println!("cargo:rustc-link-lib=static=boost_chrono");
+
+    // Link libsodium statically
+    println!("cargo:rustc-link-lib=static=sodium");
+
+    // Link unbound dynamically
+    // I haven't figured out how to link it statically
     println!("cargo:rustc-link-lib=dylib=unbound");
-    println!("cargo:rustc-link-lib=dylib=boost_serialization");
-    println!("cargo:rustc-link-lib=dylib=protobuf");
-    println!("cargo:rustc-link-lib=dylib=sodium");
-    println!("cargo:rustc-link-lib=dylib=boost_filesystem");
-    println!("cargo:rustc-link-lib=dylib=boost_thread");
-    println!("cargo:rustc-link-lib=dylib=boost_chrono");
+    println!("cargo:rustc-link-lib=dylib=expat"); // Expat is required by unbound
+
+    // Link required system libraries dynamically
     println!("cargo:rustc-link-lib=dylib=ssl");
     println!("cargo:rustc-link-lib=dylib=crypto");
+    println!("cargo:rustc-link-lib=dylib=protobuf");
 
     #[cfg(target_os = "macos")]
     {
