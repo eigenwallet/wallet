@@ -159,6 +159,7 @@ jobs:
 
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
@@ -278,6 +279,7 @@ jobs:
 
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest-m, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -379,6 +381,7 @@ jobs:
 
   docker_tests:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - package: swap
