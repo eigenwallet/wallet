@@ -9,7 +9,7 @@ pub use wallet::Wallet;
 pub use wallet_rpc::{WalletRpc, WalletRpcProcess};
 
 use crate::bitcoin;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use rand::{CryptoRng, RngCore};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
@@ -90,8 +90,18 @@ pub struct PublicViewKey(PublicKey);
 #[typeshare(serialized_as = "number")]
 pub struct Amount(u64);
 
-// Median tx fees on Monero as found here: https://www.monero.how/monero-transaction-fees, XMR 0.000_008 * 2 (to be on the safe side)
-pub const MONERO_FEE: Amount = Amount::from_piconero(16_000_000);
+// TX Fees on Monero can be found here:
+// - https://www.monero.how/monero-transaction-fees
+// - https://bitinfocharts.com/comparison/monero-transactionfees.html#1y
+//
+// In the last year the highest avg fee on any given day was around 0.00075 XMR
+// We use a multiplier of 4x to stay safe
+// 0.00075 XMR * 4 = 0.003 XMR (around $1 as of Jun. 4th 2025)
+// We DO NOT use this fee to construct any transactions. It is only to **estimate** how much
+// we need to reserve for the fee when determining our max giveable amount
+// We use a VERY conservative value here to stay on the safe side. We want to avoid not being able
+// to lock as much as we previously estimated.
+pub const CONSERVATIVE_MONERO_FEE: Amount = Amount::from_piconero(3_000_000_000);
 
 impl Amount {
     pub const ZERO: Self = Self(0);
@@ -121,12 +131,34 @@ impl Amount {
             .expect("Conversion from piconero to XMR should not overflow f64")
     }
 
+    /// Calculate the conservative max giveable of Monero we can spent given [`self`] is the balance
+    /// of a Monero wallet
+    /// This is going to be LESS than we can really spent because we assume a high fee
+    pub fn max_conservative_giveable(&self) -> Self {
+        let pico_minus_fee = self
+            .as_piconero()
+            .saturating_sub(CONSERVATIVE_MONERO_FEE.as_piconero());
+
+        Self::from_piconero(pico_minus_fee)
+    }
+
+    /// Calculate the Monero balance needed to send the [`self`] Amount to another address
+    /// E.g: Amount(1 XMR).min_conservative_balance_to_spend() with a fee of 0.1 XMR would be 1.1 XMR
+    /// This is going to be MORE than we really need because we assume a high fee
+    pub fn min_conservative_balance_to_spend(&self) -> Self {
+        let pico_minus_fee = self
+            .as_piconero()
+            .saturating_add(CONSERVATIVE_MONERO_FEE.as_piconero());
+
+        Self::from_piconero(pico_minus_fee)
+    }
+
     /// Calculate the maximum amount of Bitcoin that can be bought at a given
     /// asking price for this amount of Monero including the median fee.
     pub fn max_bitcoin_for_price(&self, ask_price: bitcoin::Amount) -> Option<bitcoin::Amount> {
-        let pico_minus_fee = self.as_piconero().saturating_sub(MONERO_FEE.as_piconero());
+        let pico_minus_fee = self.max_conservative_giveable();
 
-        if pico_minus_fee == 0 {
+        if pico_minus_fee.as_piconero() == 0 {
             return Some(bitcoin::Amount::ZERO);
         }
 
@@ -135,7 +167,7 @@ impl Amount {
         let pico_per_xmr = Decimal::from(PICONERO_OFFSET);
         let ask_sats_per_pico = ask_sats / pico_per_xmr;
 
-        let pico = Decimal::from(pico_minus_fee);
+        let pico = Decimal::from(pico_minus_fee.as_piconero());
         let max_sats = pico.checked_mul(ask_sats_per_pico)?;
         let satoshi = max_sats.to_u64()?;
 
@@ -164,6 +196,15 @@ impl Amount {
             .ok_or_else(|| OverflowError(amount.to_string()))?;
         Ok(Amount(piconeros))
     }
+
+    /// Subtract but throw an error on underflow.
+    pub fn checked_sub(self, rhs: Amount) -> Result<Self> {
+        if self.0 < rhs.0 {
+            bail!("checked sub would underflow");
+        }
+
+        Ok(Amount::from_piconero(self.0 - rhs.0))
+    }
 }
 
 impl Add for Amount {
@@ -174,7 +215,7 @@ impl Add for Amount {
     }
 }
 
-impl Sub for Amount {
+impl Sub<Amount> for Amount {
     type Output = Amount;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -456,27 +497,27 @@ mod tests {
         // then max BTC we can buy is μ
         let ask = bitcoin::Amount::from_btc(1.0).unwrap();
 
-        let xmr = Amount::parse_monero("1.0").unwrap() + MONERO_FEE;
+        let xmr = Amount::parse_monero("1.0").unwrap() + CONSERVATIVE_MONERO_FEE;
         let btc = xmr.max_bitcoin_for_price(ask).unwrap();
 
         assert_eq!(btc, bitcoin::Amount::from_btc(1.0).unwrap());
 
-        let xmr = Amount::parse_monero("0.5").unwrap() + MONERO_FEE;
+        let xmr = Amount::parse_monero("0.5").unwrap() + CONSERVATIVE_MONERO_FEE;
         let btc = xmr.max_bitcoin_for_price(ask).unwrap();
 
         assert_eq!(btc, bitcoin::Amount::from_btc(0.5).unwrap());
 
-        let xmr = Amount::parse_monero("2.5").unwrap() + MONERO_FEE;
+        let xmr = Amount::parse_monero("2.5").unwrap() + CONSERVATIVE_MONERO_FEE;
         let btc = xmr.max_bitcoin_for_price(ask).unwrap();
 
         assert_eq!(btc, bitcoin::Amount::from_btc(2.5).unwrap());
 
-        let xmr = Amount::parse_monero("420").unwrap() + MONERO_FEE;
+        let xmr = Amount::parse_monero("420").unwrap() + CONSERVATIVE_MONERO_FEE;
         let btc = xmr.max_bitcoin_for_price(ask).unwrap();
 
         assert_eq!(btc, bitcoin::Amount::from_btc(420.0).unwrap());
 
-        let xmr = Amount::parse_monero("0.00001").unwrap() + MONERO_FEE;
+        let xmr = Amount::parse_monero("0.00001").unwrap() + CONSERVATIVE_MONERO_FEE;
         let btc = xmr.max_bitcoin_for_price(ask).unwrap();
 
         assert_eq!(btc, bitcoin::Amount::from_btc(0.00001).unwrap());
@@ -484,13 +525,13 @@ mod tests {
         // other ask prices
 
         let ask = bitcoin::Amount::from_btc(0.5).unwrap();
-        let xmr = Amount::parse_monero("2").unwrap() + MONERO_FEE;
+        let xmr = Amount::parse_monero("2").unwrap() + CONSERVATIVE_MONERO_FEE;
         let btc = xmr.max_bitcoin_for_price(ask).unwrap();
 
         assert_eq!(btc, bitcoin::Amount::from_btc(1.0).unwrap());
 
         let ask = bitcoin::Amount::from_btc(2.0).unwrap();
-        let xmr = Amount::parse_monero("1").unwrap() + MONERO_FEE;
+        let xmr = Amount::parse_monero("1").unwrap() + CONSERVATIVE_MONERO_FEE;
         let btc = xmr.max_bitcoin_for_price(ask).unwrap();
 
         assert_eq!(btc, bitcoin::Amount::from_btc(2.0).unwrap());
@@ -499,7 +540,7 @@ mod tests {
         let xmr = Amount::parse_monero("10").unwrap();
         let btc = xmr.max_bitcoin_for_price(ask).unwrap();
 
-        assert_eq!(btc, bitcoin::Amount::from_sat(3_828_993));
+        assert_eq!(btc, bitcoin::Amount::from_sat(3_827_851));
 
         // example from https://github.com/comit-network/xmr-btc-swap/issues/1084
         // with rate from kraken at that time
@@ -507,7 +548,7 @@ mod tests {
         let xmr = Amount::parse_monero("0.826286435921").unwrap();
         let btc = xmr.max_bitcoin_for_price(ask).unwrap();
 
-        assert_eq!(btc, bitcoin::Amount::from_sat(566_656));
+        assert_eq!(btc, bitcoin::Amount::from_sat(564_609));
     }
 
     #[test]
@@ -516,7 +557,7 @@ mod tests {
         let ask = bitcoin::Amount::from_sat(728_688);
         let btc = xmr.max_bitcoin_for_price(ask).unwrap();
 
-        assert_eq!(bitcoin::Amount::from_sat(21_860_628), btc);
+        assert_eq!(bitcoin::Amount::from_sat(21_858_453), btc);
 
         let xmr = Amount::from_piconero(u64::MAX);
         let ask = bitcoin::Amount::from_sat(u64::MAX);
@@ -569,5 +610,123 @@ mod tests {
         let encoded = serde_cbor::to_vec(&amount).unwrap();
         let decoded: MoneroAmount = serde_cbor::from_slice(&encoded).unwrap();
         assert_eq!(amount, decoded);
+    }
+
+    #[test]
+    fn max_conservative_giveable_basic() {
+        // Test with balance larger than fee
+        let balance = Amount::parse_monero("1.0").unwrap();
+        let giveable = balance.max_conservative_giveable();
+        let expected = balance.as_piconero() - CONSERVATIVE_MONERO_FEE.as_piconero();
+        assert_eq!(giveable.as_piconero(), expected);
+    }
+
+    #[test]
+    fn max_conservative_giveable_exact_fee() {
+        // Test with balance exactly equal to fee
+        let balance = CONSERVATIVE_MONERO_FEE;
+        let giveable = balance.max_conservative_giveable();
+        assert_eq!(giveable, Amount::ZERO);
+    }
+
+    #[test]
+    fn max_conservative_giveable_less_than_fee() {
+        // Test with balance less than fee (should saturate to 0)
+        let balance = Amount::from_piconero(CONSERVATIVE_MONERO_FEE.as_piconero() / 2);
+        let giveable = balance.max_conservative_giveable();
+        assert_eq!(giveable, Amount::ZERO);
+    }
+
+    #[test]
+    fn max_conservative_giveable_zero_balance() {
+        // Test with zero balance
+        let balance = Amount::ZERO;
+        let giveable = balance.max_conservative_giveable();
+        assert_eq!(giveable, Amount::ZERO);
+    }
+
+    #[test]
+    fn max_conservative_giveable_large_balance() {
+        // Test with large balance
+        let balance = Amount::parse_monero("100.0").unwrap();
+        let giveable = balance.max_conservative_giveable();
+        let expected = balance.as_piconero() - CONSERVATIVE_MONERO_FEE.as_piconero();
+        assert_eq!(giveable.as_piconero(), expected);
+
+        // Ensure the result makes sense
+        assert!(giveable.as_piconero() > 0);
+        assert!(giveable < balance);
+    }
+
+    #[test]
+    fn min_conservative_balance_to_spend_basic() {
+        // Test with 1 XMR amount to send
+        let amount_to_send = Amount::parse_monero("1.0").unwrap();
+        let min_balance = amount_to_send.min_conservative_balance_to_spend();
+        let expected = amount_to_send.as_piconero() + CONSERVATIVE_MONERO_FEE.as_piconero();
+        assert_eq!(min_balance.as_piconero(), expected);
+    }
+
+    #[test]
+    fn min_conservative_balance_to_spend_zero() {
+        // Test with zero amount to send
+        let amount_to_send = Amount::ZERO;
+        let min_balance = amount_to_send.min_conservative_balance_to_spend();
+        assert_eq!(min_balance, CONSERVATIVE_MONERO_FEE);
+    }
+
+    #[test]
+    fn min_conservative_balance_to_spend_small_amount() {
+        // Test with small amount
+        let amount_to_send = Amount::from_piconero(1000);
+        let min_balance = amount_to_send.min_conservative_balance_to_spend();
+        let expected = 1000 + CONSERVATIVE_MONERO_FEE.as_piconero();
+        assert_eq!(min_balance.as_piconero(), expected);
+    }
+
+    #[test]
+    fn min_conservative_balance_to_spend_large_amount() {
+        // Test with large amount
+        let amount_to_send = Amount::parse_monero("50.0").unwrap();
+        let min_balance = amount_to_send.min_conservative_balance_to_spend();
+        let expected = amount_to_send.as_piconero() + CONSERVATIVE_MONERO_FEE.as_piconero();
+        assert_eq!(min_balance.as_piconero(), expected);
+
+        // Ensure the result makes sense
+        assert!(min_balance > amount_to_send);
+        assert!(min_balance > CONSERVATIVE_MONERO_FEE);
+    }
+
+    #[test]
+    fn conservative_fee_functions_are_inverse() {
+        // Test that the functions are somewhat inverse of each other
+        let original_balance = Amount::parse_monero("5.0").unwrap();
+
+        // Get max giveable amount
+        let max_giveable = original_balance.max_conservative_giveable();
+
+        // Calculate min balance needed to send that amount
+        let min_balance_needed = max_giveable.min_conservative_balance_to_spend();
+
+        // The min balance needed should be equal to or slightly more than the original balance
+        // (due to the conservative nature of the fee estimation)
+        assert!(min_balance_needed >= original_balance);
+
+        // The difference should be at most the conservative fee
+        let difference = min_balance_needed.as_piconero() - original_balance.as_piconero();
+        assert!(difference <= CONSERVATIVE_MONERO_FEE.as_piconero());
+    }
+
+    #[test]
+    fn conservative_fee_edge_cases() {
+        // Test with maximum possible amount
+        let max_amount = Amount::from_piconero(u64::MAX - CONSERVATIVE_MONERO_FEE.as_piconero());
+        let giveable = max_amount.max_conservative_giveable();
+        assert!(giveable.as_piconero() > 0);
+
+        // Test min balance calculation doesn't overflow
+        let large_amount = Amount::from_piconero(u64::MAX / 2);
+        let min_balance = large_amount.min_conservative_balance_to_spend();
+        assert!(min_balance > large_amount);
     }
 }
