@@ -168,14 +168,17 @@ fn main() {
     // Link libsodium statically
     println!("cargo:rustc-link-lib=static=sodium");
 
+    // Link OpenSSL statically
+    println!("cargo:rustc-link-lib=static=ssl"); // This is OpenSSL (libsll)
+    println!("cargo:rustc-link-lib=static=crypto"); // This is OpenSSLs crypto library (libcrypto)
+   
     // Link unbound dynamically
     // I haven't figured out how to link it statically
     println!("cargo:rustc-link-lib=dylib=unbound");
     println!("cargo:rustc-link-lib=dylib=expat"); // Expat is required by unbound
 
-    // Link required system libraries dynamically
-    println!("cargo:rustc-link-lib=dylib=ssl");
-    println!("cargo:rustc-link-lib=dylib=crypto");
+    // Link protobuf dynamically
+    // I haven't figured out how to link it statically
     println!("cargo:rustc-link-lib=dylib=protobuf");
 
     #[cfg(target_os = "macos")]
