@@ -511,8 +511,8 @@ where
         result
     }
 
-    /// Returns the Monero balance that is not reserved for ongoing swaps and can be used for new swaps
-    async fn unreserved_monero_balance(&mut self) -> Result<Amount, Arc<anyhow::Error>> {
+    /// Returns the unlocked Monero balance from the wallet
+    async fn unlocked_monero_balance(&mut self) -> Result<Amount, anyhow::Error> {
         /// This is how long we maximally wait to get access to the wallet
         const MAX_WAIT_DURATION: Duration = Duration::from_secs(60);
 
@@ -521,38 +521,9 @@ where
             .context("Timeout while waiting for lock on monero wallet while making quote")?
             .get_balance()
             .await
-            .map_err(|e| Arc::new(e.context("Failed to get Monero balance")))?;
+            .context("Failed to get Monero balance")?;
 
-        let balance = Amount::from_piconero(balance.unlocked_balance);
-
-        // From our full balance we need to subtract any Monero that is 'reserved' for ongoing swaps
-        //
-        // Those swaps where the Bitcoin has been locked (unconfirmed or confirmed) but we haven't locked the Monero yet
-        //
-        // This is still a naive approach because, suppose:
-        // - We have two UTXOs each 5 XMR
-        // - We have a pending swap for 6 XMR
-        // - We now want to construct another quote
-        //
-        // The code will assume we only have reserved 6 XMR but
-        // once we lock the 6 XMR our two outputs will be spent
-        // it'll take 10 blocks before we can spend our new output (4 XMR change)
-        //
-        // In this case it'll take 20 minutes for us to be able to spend the full balance
-        let reserved: Amount = self
-            .db
-            .all()
-            .await?
-            .iter()
-            .filter_map(|(_, state)| match state {
-                State::Alice(state) => Some(state.reserved_monero()),
-                _ => None,
-            })
-            .fold(Amount::ZERO, |acc, amount| acc + amount);
-
-        let free_monero_balance = balance.checked_sub(reserved).unwrap_or(Amount::ZERO);
-
-        Ok(free_monero_balance)
+        Ok(Amount::from_piconero(balance.unlocked_balance))
     }
 
     /// Computes a quote and returns the result wrapped in Arcs.
@@ -568,7 +539,21 @@ where
             .ask()
             .map_err(|e| Arc::new(e.context("Failed to compute asking price")))?;
 
-        let unreserved_xmr_balance = self.unreserved_monero_balance().await?;
+        // Get the unlocked balance
+        let balance = self.unlocked_monero_balance().await.map_err(Arc::new)?;
+
+        // Get the reserved amounts
+        let all_swaps = self.db.all().await.map_err(Arc::new)?;
+        let reserved_amounts: Vec<Amount> = all_swaps
+            .iter()
+            .filter_map(|(_, state)| match state {
+                State::Alice(state) => Some(state.reserved_monero()),
+                _ => None,
+            })
+            .collect();
+
+        let unreserved_xmr_balance =
+            unreserved_monero_balance(balance, reserved_amounts.into_iter());
 
         let max_bitcoin_for_monero = unreserved_xmr_balance
             .max_bitcoin_for_price(ask_price)
@@ -846,6 +831,21 @@ impl EventLoopHandle {
     }
 }
 
+/// Calculates the unreserved Monero balance by subtracting reserved amounts from unlocked balance
+pub fn unreserved_monero_balance(
+    unlocked_balance: Amount,
+    reserved_amounts: impl Iterator<Item = Amount>,
+) -> Amount {
+    // Get the sum of all the individual reserved amounts
+    let total_reserved = reserved_amounts.fold(Amount::ZERO, |acc, amount| acc + amount);
+
+    // Check how much of our unlocked balance is left when we
+    // take into account the reserved amounts
+    unlocked_balance
+        .checked_sub(total_reserved)
+        .unwrap_or(Amount::ZERO)
+}
+
 #[allow(missing_debug_implementations)]
 struct MpscChannels<T> {
     sender: mpsc::Sender<T>,
@@ -856,5 +856,92 @@ impl<T> Default for MpscChannels<T> {
     fn default() -> Self {
         let (sender, receiver) = mpsc::channel(100);
         MpscChannels { sender, receiver }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_unreserved_monero_balance_with_no_reserved_amounts() {
+        let balance = Amount::from_monero(10.0).unwrap();
+        let reserved_amounts = vec![];
+
+        let result = unreserved_monero_balance(balance, reserved_amounts.into_iter());
+
+        assert_eq!(result, balance);
+    }
+
+    #[tokio::test]
+    async fn test_unreserved_monero_balance_with_reserved_amounts() {
+        let balance = Amount::from_monero(10.0).unwrap();
+        let reserved_amounts = vec![
+            Amount::from_monero(2.0).unwrap(),
+            Amount::from_monero(3.0).unwrap(),
+        ];
+
+        let result = unreserved_monero_balance(balance, reserved_amounts.into_iter());
+
+        let expected = Amount::from_monero(5.0).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    #[tokio::test]
+    async fn test_unreserved_monero_balance_insufficient_balance() {
+        let balance = Amount::from_monero(5.0).unwrap();
+        let reserved_amounts = vec![
+            Amount::from_monero(3.0).unwrap(),
+            Amount::from_monero(4.0).unwrap(), // Total reserved > balance
+        ];
+
+        let result = unreserved_monero_balance(balance, reserved_amounts.into_iter());
+
+        // Should return zero when reserved > balance
+        assert_eq!(result, Amount::ZERO);
+    }
+
+    #[tokio::test]
+    async fn test_unreserved_monero_balance_exact_match() {
+        let balance = Amount::from_monero(10.0).unwrap();
+        let reserved_amounts = vec![
+            Amount::from_monero(4.0).unwrap(),
+            Amount::from_monero(6.0).unwrap(), // Exactly equals balance
+        ];
+
+        let result = unreserved_monero_balance(balance, reserved_amounts.into_iter());
+
+        assert_eq!(result, Amount::ZERO);
+    }
+
+    #[tokio::test]
+    async fn test_unreserved_monero_balance_zero_balance() {
+        let balance = Amount::ZERO;
+        let reserved_amounts = vec![Amount::from_monero(1.0).unwrap()];
+
+        let result = unreserved_monero_balance(balance, reserved_amounts.into_iter());
+
+        assert_eq!(result, Amount::ZERO);
+    }
+
+    #[tokio::test]
+    async fn test_unreserved_monero_balance_empty_reserved_amounts() {
+        let balance = Amount::from_monero(5.0).unwrap();
+        let reserved_amounts: Vec<Amount> = vec![];
+
+        let result = unreserved_monero_balance(balance, reserved_amounts.into_iter());
+
+        assert_eq!(result, balance);
+    }
+
+    #[tokio::test]
+    async fn test_unreserved_monero_balance_large_amounts() {
+        let balance = Amount::from_piconero(1_000_000_000);
+        let reserved_amounts = vec![Amount::from_piconero(300_000_000)];
+
+        let result = unreserved_monero_balance(balance, reserved_amounts.into_iter());
+
+        let expected = Amount::from_piconero(700_000_000);
+        assert_eq!(result, expected);
     }
 }
