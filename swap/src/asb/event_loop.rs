@@ -512,7 +512,7 @@ where
     }
 
     /// Returns the Monero balance that is not reserved for ongoing swaps and can be used for new swaps
-    async fn unreserved_monero_balance(&self) -> Result<Amount, Arc<anyhow::Error>> {
+    async fn unreserved_monero_balance(&mut self) -> Result<Amount, Arc<anyhow::Error>> {
         /// This is how long we maximally wait to get access to the wallet
         const MAX_WAIT_DURATION: Duration = Duration::from_secs(60);
 
