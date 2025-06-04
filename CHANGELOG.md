@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.7] - 2025-06-04
 
+- ASB: Fix an issue where the asb would quote a max_swap_amount off by a couple of piconeros
+
 ## [1.1.4] - 2025-06-04
 
 ## [1.1.3] - 2025-05-31
