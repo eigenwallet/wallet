@@ -442,6 +442,7 @@ pub struct TauriBackgroundProgressHandle<T: Clone> {
 impl<T: Clone> TauriBackgroundProgressHandle<T> {
     /// Update the progress of this background process
     /// Updates after finish() has been called will be ignored
+    #[cfg(feature = "tauri")]
     pub fn update(&self, progress: T) {
         if self.is_finished.load(std::sync::atomic::Ordering::Relaxed) {
             tracing::trace!(%self.id, "Ignoring update to background progress because it has already been finished");
@@ -454,6 +455,11 @@ impl<T: Clone> TauriBackgroundProgressHandle<T> {
                 (self.component)(PendingCompleted::Pending(progress)),
             );
         }
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    pub fn update(&self, _progress: T) {
+        // Do nothing when tauri is not enabled
     }
 
     /// Mark this background process as completed

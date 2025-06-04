@@ -156,9 +156,11 @@ impl From<AliceState> for Alice {
                 spend_key,
                 state3: state3.as_ref().clone(),
             },
-            AliceState::BtcEarlyRefundable { state3 } => Alice::Done(AliceEndState::EarlyRefundable {
-                state3: state3.as_ref().clone(),
-            }),
+            AliceState::BtcEarlyRefundable { state3 } => {
+                Alice::Done(AliceEndState::EarlyRefundable {
+                    state3: state3.as_ref().clone(),
+                })
+            }
             AliceState::BtcEarlyRefunded {
                 tx_early_refund_txid,
             } => Alice::Done(AliceEndState::BtcEarlyRefunded {
@@ -292,9 +294,11 @@ impl From<Alice> for AliceState {
                 AliceEndState::BtcPunished { state3 } => AliceState::BtcPunished {
                     state3: Box::new(state3),
                 },
-                AliceEndState::BtcEarlyRefunded { tx_early_refund } => AliceState::BtcEarlyRefunded {
-                    tx_early_refund_txid: tx_early_refund,
-                },
+                AliceEndState::BtcEarlyRefunded { tx_early_refund } => {
+                    AliceState::BtcEarlyRefunded {
+                        tx_early_refund_txid: tx_early_refund,
+                    }
+                }
                 AliceEndState::EarlyRefundable { state3 } => AliceState::BtcEarlyRefundable {
                     state3: Box::new(state3),
                 },

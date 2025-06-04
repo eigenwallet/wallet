@@ -21,7 +21,10 @@ const PRE_BTC_LOCK_APPROVAL_TIMEOUT_SECS: u64 = 120;
 pub fn is_complete(state: &BobState) -> bool {
     matches!(
         state,
-        BobState::BtcRefunded(..) | BobState::XmrRedeemed { .. } | BobState::SafelyAborted
+        BobState::BtcRefunded(..)
+            | BobState::BtcEarlyRefunded { .. }
+            | BobState::XmrRedeemed { .. }
+            | BobState::SafelyAborted
     )
 }
 

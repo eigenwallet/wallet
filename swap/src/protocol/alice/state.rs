@@ -86,7 +86,6 @@ pub enum AliceState {
         state3: Box<State3>,
     },
     SafelyAborted,
-    
 }
 
 impl fmt::Display for AliceState {

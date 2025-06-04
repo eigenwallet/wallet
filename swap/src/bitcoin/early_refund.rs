@@ -1,5 +1,4 @@
 use crate::bitcoin;
-use ::bitcoin::psbt::Psbt as PartiallySignedTransaction;
 use ::bitcoin::sighash::SighashCache;
 use ::bitcoin::{secp256k1, ScriptBuf};
 use ::bitcoin::{sighash::SegwitV0Sighash as Sighash, EcdsaSighashType, Txid};
@@ -13,16 +12,15 @@ use super::TxLock;
 
 #[derive(Clone)]
 pub struct TxEarlyRefund {
-    inner: PartiallySignedTransaction,
+    inner: Transaction,
     digest: Sighash,
-    refund_output_descriptor: Descriptor<::bitcoin::PublicKey>,
+    lock_output_descriptor: Descriptor<::bitcoin::PublicKey>,
     watch_script: ScriptBuf,
 }
 
 impl TxEarlyRefund {
     pub fn new(tx_lock: &TxLock, refund_address: &Address, spending_fee: Amount) -> Self {
         let tx = tx_lock.build_spend_transaction(refund_address, None, spending_fee);
-        let psbt = PartiallySignedTransaction::from_unsigned_tx(tx.clone()).expect("psbt");
 
         let digest = SighashCache::new(&tx)
             .p2wsh_signature_hash(
@@ -37,33 +35,19 @@ impl TxEarlyRefund {
             .expect("sighash");
 
         Self {
-            inner: psbt,
+            inner: tx,
             digest,
-            refund_output_descriptor: tx_lock.output_descriptor.clone(),
+            lock_output_descriptor: tx_lock.output_descriptor.clone(),
             watch_script: refund_address.script_pubkey(),
         }
     }
 
     pub fn txid(&self) -> Txid {
-        self.inner.unsigned_tx.compute_txid()
+        self.inner.compute_txid()
     }
 
     pub fn digest(&self) -> Sighash {
         self.digest
-    }
-
-    pub fn sign_as_bob(&mut self, b: bitcoin::SecretKey) -> Result<()> {
-        let sig_b = b.sign(self.digest);
-        let pk_b: ::bitcoin::PublicKey = b.public().try_into()?;
-        let sig_b = secp256k1::ecdsa::Signature::from_compact(&sig_b.to_bytes())?;
-        self.inner.inputs[0].partial_sigs.insert(
-            pk_b,
-            ::bitcoin::ecdsa::Signature {
-                signature: sig_b,
-                sighash_type: EcdsaSighashType::All,
-            },
-        );
-        Ok(())
     }
 
     pub fn complete(
@@ -75,11 +59,25 @@ impl TxEarlyRefund {
         let sig_a = a.sign(self.digest());
         let sig_b = tx_early_refund_sig;
 
+        self.add_signatures((a.public(), sig_a), (B, sig_b))
+    }
+
+    fn add_signatures(
+        self,
+        (A, sig_a): (bitcoin::PublicKey, bitcoin::Signature),
+        (B, sig_b): (bitcoin::PublicKey, bitcoin::Signature),
+    ) -> Result<Transaction> {
         let satisfier = {
             let mut satisfier = HashMap::with_capacity(2);
 
-            let A = a.public().try_into()?;
-            let B = B.try_into()?;
+            let A = ::bitcoin::PublicKey {
+                compressed: true,
+                inner: secp256k1::PublicKey::from_slice(&A.0.to_bytes())?,
+            };
+            let B = ::bitcoin::PublicKey {
+                compressed: true,
+                inner: secp256k1::PublicKey::from_slice(&B.0.to_bytes())?,
+            };
 
             let sig_a = secp256k1::ecdsa::Signature::from_compact(&sig_a.to_bytes())?;
             let sig_b = secp256k1::ecdsa::Signature::from_compact(&sig_b.to_bytes())?;
@@ -103,9 +101,8 @@ impl TxEarlyRefund {
             satisfier
         };
 
-        let mut tx_early_refund = self.inner.extract_tx()?;
-
-        self.refund_output_descriptor
+        let mut tx_early_refund = self.inner;
+        self.lock_output_descriptor
             .satisfy(&mut tx_early_refund.input[0], satisfier)
             .context("Failed to satisfy inputs with given signatures")?;
 

@@ -125,7 +125,7 @@ where
             // Sometimes locking the Monero can fail e.g due to the daemon not being fully synced
             let backoff = backoff::ExponentialBackoffBuilder::new()
                 .with_max_elapsed_time(Some(MAX_MONERO_LOCK_TIME))
-                .with_max_interval(Duration::from_secs(60))
+                .with_max_interval(Duration::from_secs(30))
                 .build();
 
             let transfer_proof = backoff::future::retry_notify(backoff, || async {

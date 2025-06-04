@@ -29,6 +29,7 @@ export enum BobStateName {
   CancelTimelockExpired = "cancel timelock is expired",
   BtcCancelled = "btc is cancelled",
   BtcRefunded = "btc is refunded",
+  BtcEarlyRefunded = "btc is early refunded",
   XmrRedeemed = "xmr is redeemed",
   BtcPunished = "btc is punished",
   SafelyAborted = "safely aborted",
@@ -46,6 +47,7 @@ export function bobStateNameToHumanReadable(stateName: BobStateName): string {
     case BobStateName.CancelTimelockExpired: return "Cancel timelock expired";
     case BobStateName.BtcCancelled: return "Bitcoin cancelled";
     case BobStateName.BtcRefunded: return "Bitcoin refunded";
+    case BobStateName.BtcEarlyRefunded: return "Bitcoin early refunded";
     case BobStateName.XmrRedeemed: return "Monero redeemed";
     case BobStateName.BtcPunished: return "Bitcoin punished";
     case BobStateName.SafelyAborted: return "Safely aborted";
@@ -84,6 +86,7 @@ export type BobStateNameRunningSwap = Exclude<
   | BobStateName.Started
   | BobStateName.SwapSetupCompleted
   | BobStateName.BtcRefunded
+  | BobStateName.BtcEarlyRefunded
   | BobStateName.BtcPunished
   | BobStateName.SafelyAborted
   | BobStateName.XmrRedeemed
@@ -104,6 +107,7 @@ export function isBobStateNameRunningSwap(
     BobStateName.Started,
     BobStateName.SwapSetupCompleted,
     BobStateName.BtcRefunded,
+    BobStateName.BtcEarlyRefunded,
     BobStateName.BtcPunished,
     BobStateName.SafelyAborted,
     BobStateName.XmrRedeemed,
@@ -113,6 +117,7 @@ export function isBobStateNameRunningSwap(
 export type BobStateNameCompletedSwap =
   | BobStateName.XmrRedeemed
   | BobStateName.BtcRefunded
+  | BobStateName.BtcEarlyRefunded
   | BobStateName.BtcPunished
   | BobStateName.SafelyAborted;
 
@@ -122,6 +127,7 @@ export function isBobStateNameCompletedSwap(
   return [
     BobStateName.XmrRedeemed,
     BobStateName.BtcRefunded,
+    BobStateName.BtcEarlyRefunded,
     BobStateName.BtcPunished,
     BobStateName.SafelyAborted,
   ].includes(state);
@@ -143,6 +149,7 @@ The following conditions must be met:
  - The bitcoin must not be cancelled
  - The bitcoin must not be refunded
  - The bitcoin must not be punished
+ - The bitcoin must not be early refunded
 
 See: https://github.com/comit-network/xmr-btc-swap/blob/7023e75bb51ab26dff4c8fcccdc855d781ca4b15/swap/src/cli/cancel.rs#L16-L35
  */

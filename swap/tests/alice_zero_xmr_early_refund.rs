@@ -30,7 +30,10 @@ async fn alice_zero_xmr_refunds_bitcoin() {
             let alice_state = alice_swap.await??;
             let bob_state = bob_swap.await??;
 
-            assert!(matches!(alice_state, AliceState::BtcLockTransactionSeen { .. }));
+            assert!(matches!(
+                alice_state,
+                AliceState::BtcLockTransactionSeen { .. }
+            ));
             assert!(matches!(bob_state, BobState::BtcLocked { .. }));
 
             // Empty Alice Monero Wallet
@@ -45,10 +48,7 @@ async fn alice_zero_xmr_refunds_bitcoin() {
             let bob_swap = tokio::spawn(bob::run(swap));
 
             let alice_swap = ctx.alice_next_swap().await;
-            let alice_swap = tokio::spawn(alice::run(
-                alice_swap,
-                FixedRate::default(),
-            ));
+            let alice_swap = tokio::spawn(alice::run(alice_swap, FixedRate::default()));
 
             let alice_state = alice_swap.await??;
             let bob_state = bob_swap.await??;
