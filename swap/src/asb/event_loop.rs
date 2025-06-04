@@ -37,91 +37,6 @@ struct QuoteCacheKey {
     max_buy: bitcoin::Amount,
 }
 
-/// Computes a quote given the provided dependencies
-pub async fn make_quote<LR, F, Fut, I, Fut2, T>(
-    min_buy: bitcoin::Amount,
-    max_buy: bitcoin::Amount,
-    mut latest_rate: LR,
-    get_unlocked_balance: F,
-    get_reserved_items: I,
-) -> Result<Arc<BidQuote>, Arc<anyhow::Error>>
-where
-    LR: LatestRate,
-    F: FnOnce() -> Fut,
-    Fut: futures::Future<Output = Result<Amount, anyhow::Error>>,
-    I: FnOnce() -> Fut2,
-    Fut2: futures::Future<Output = Result<Vec<T>, anyhow::Error>>,
-    T: ReservesMonero,
-{
-    let ask_price = latest_rate
-        .latest_rate()
-        .map_err(|e| Arc::new(anyhow!(e).context("Failed to get latest rate")))?
-        .ask()
-        .map_err(|e| Arc::new(e.context("Failed to compute asking price")))?;
-
-    // Get the unlocked balance
-    let unlocked_balance = get_unlocked_balance()
-        .await
-        .context("Failed to get unlocked Monero balance to construct quote")
-        .map_err(Arc::new)?;
-
-    // Get the reserved amounts
-    let reserved_amounts: Vec<Amount> = get_reserved_items()
-        .await
-        .context("Failed to get reserved items to construct quote")
-        .map_err(Arc::new)?
-        .into_iter()
-        .map(|item| item.reserved_monero())
-        .collect();
-
-    let unreserved_xmr_balance =
-        unreserved_monero_balance(unlocked_balance, reserved_amounts.into_iter());
-
-    let max_bitcoin_for_monero = unreserved_xmr_balance
-        .max_bitcoin_for_price(ask_price)
-        .ok_or_else(|| {
-            Arc::new(anyhow!(
-                "Bitcoin price ({}) x Monero ({}) overflow",
-                ask_price,
-                unreserved_xmr_balance
-            ))
-        })?;
-
-    tracing::trace!(%ask_price, %unreserved_xmr_balance, %max_bitcoin_for_monero, "Computed quote");
-
-    if min_buy > max_bitcoin_for_monero {
-        tracing::trace!(
-            "Your Monero balance is too low to initiate a swap, as your minimum swap amount is {}. You could at most swap {}",
-            min_buy, max_bitcoin_for_monero
-        );
-
-        return Ok(Arc::new(BidQuote {
-            price: ask_price,
-            min_quantity: bitcoin::Amount::ZERO,
-            max_quantity: bitcoin::Amount::ZERO,
-        }));
-    }
-
-    if max_buy > max_bitcoin_for_monero {
-        tracing::trace!(
-            "Your Monero balance is too low to initiate a swap with the maximum swap amount {} that you have specified in your config. You can at most swap {}",
-            max_buy, max_bitcoin_for_monero
-        );
-
-        return Ok(Arc::new(BidQuote {
-            price: ask_price,
-            min_quantity: min_buy,
-            max_quantity: max_bitcoin_for_monero,
-        }));
-    }
-
-    Ok(Arc::new(BidQuote {
-        price: ask_price,
-        min_quantity: min_buy,
-        max_quantity: max_buy,
-    }))
-}
-
 #[allow(missing_debug_implementations)]
 pub struct EventLoop<LR>
 where
@@ -612,7 +527,8 @@ where
             get_unlocked_balance,
             get_reserved_items,
         )
-        .await;
+        .await
+        .context("Failed to construct quote");
 
         // Insert the computed quote into the cache
         // Need to clone it as insert takes ownership
@@ -851,6 +767,91 @@ impl EventLoopHandle {
 
         Ok(())
     }
+}
+
+/// Computes a quote given the provided dependencies
+pub async fn make_quote<LR, F, Fut, I, Fut2, T>(
+    min_buy: bitcoin::Amount,
+    max_buy: bitcoin::Amount,
+    mut latest_rate: LR,
+    get_unlocked_balance: F,
+    get_reserved_items: I,
+) -> Result<Arc<BidQuote>, Arc<anyhow::Error>>
+where
+    LR: LatestRate,
+    F: FnOnce() -> Fut,
+    Fut: futures::Future<Output = Result<Amount, anyhow::Error>>,
+    I: FnOnce() -> Fut2,
+    Fut2: futures::Future<Output = Result<Vec<T>, anyhow::Error>>,
+    T: ReservesMonero,
+{
+    let ask_price = latest_rate
+        .latest_rate()
+        .map_err(|e| Arc::new(anyhow!(e).context("Failed to get latest rate")))?
+        .ask()
+        .map_err(|e| Arc::new(e.context("Failed to compute asking price")))?;
+
+    // Get the unlocked balance
+    let unlocked_balance = get_unlocked_balance()
+        .await
+        .context("Failed to get unlocked Monero balance")
+        .map_err(Arc::new)?;
+
+    // Get the reserved amounts
+    let reserved_amounts: Vec<Amount> = get_reserved_items()
+        .await
+        .context("Failed to get reserved items")
+        .map_err(Arc::new)?
+        .into_iter()
+        .map(|item| item.reserved_monero())
+        .collect();
+
+    let unreserved_xmr_balance =
+        unreserved_monero_balance(unlocked_balance, reserved_amounts.into_iter());
+
+    let max_bitcoin_for_monero = unreserved_xmr_balance
+        .max_bitcoin_for_price(ask_price)
+        .ok_or_else(|| {
+            Arc::new(anyhow!(
+                "Bitcoin price ({}) x Monero ({}) overflow",
+                ask_price,
+                unreserved_xmr_balance
+            ))
+        })?;
+
+    tracing::trace!(%ask_price, %unreserved_xmr_balance, %max_bitcoin_for_monero, "Computed quote");
+
+    if min_buy > max_bitcoin_for_monero {
+        tracing::trace!(
+            "Your Monero balance is too low to initiate a swap, as your minimum swap amount is {}. You could at most swap {}",
+            min_buy, max_bitcoin_for_monero
+        );
+
+        return Ok(Arc::new(BidQuote {
+            price: ask_price,
+            min_quantity: bitcoin::Amount::ZERO,
+            max_quantity: bitcoin::Amount::ZERO,
+        }));
+    }
+
+    if max_buy > max_bitcoin_for_monero {
+        tracing::trace!(
+            "Your Monero balance is too low to initiate a swap with the maximum swap amount {} that you have specified in your config. You can at most swap {}",
+            max_buy, max_bitcoin_for_monero
+        );
+
+        return Ok(Arc::new(BidQuote {
+            price: ask_price,
+            min_quantity: min_buy,
+            max_quantity: max_bitcoin_for_monero,
+        }));
+    }
+
+    Ok(Arc::new(BidQuote {
+        price: ask_price,
+        min_quantity: min_buy,
+        max_quantity: max_buy,
+    }))
 }
 
 /// Calculates the unreserved Monero balance by subtracting reserved amounts from unlocked balance
