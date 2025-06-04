@@ -587,3 +587,15 @@ impl State3 {
         )
     }
 }
+
+impl AliceState {
+    /// How much Monero do we need to reserve of our balance for this swap?
+    pub fn reserved_monero(&self) -> monero::Amount {
+        match self {
+            AliceState::BtcLockTransactionSeen { state3 } | AliceState::BtcLocked { state3 } => {
+                state3.xmr.min_conservative_balance_to_spend()
+            }
+            _ => monero::Amount::ZERO,
+        }
+    }
+}

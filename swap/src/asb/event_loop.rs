@@ -1,5 +1,5 @@
 use crate::asb::{Behaviour, OutEvent, Rate};
-use crate::monero::{Amount, MONERO_FEE};
+use crate::monero::Amount;
 use crate::network::cooperative_xmr_redeem_after_punish::CooperativeXmrRedeemRejectReason;
 use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, Rejected};
 use crate::network::quote::BidQuote;
@@ -511,8 +511,7 @@ where
         result
     }
 
-    /// Returns the unreserved Monero balance
-    /// Meaning the Monero balance that is not reserved for ongoing swaps and can be used for new swaps
+    /// Returns the Monero balance that is not reserved for ongoing swaps and can be used for new swaps
     async fn unreserved_monero_balance(&self) -> Result<Amount, Arc<anyhow::Error>> {
         /// This is how long we maximally wait to get access to the wallet
         const MAX_WAIT_DURATION: Duration = Duration::from_secs(60);
@@ -527,20 +526,26 @@ where
         let balance = Amount::from_piconero(balance.unlocked_balance);
 
         // From our full balance we need to subtract any Monero that is 'reserved' for ongoing swaps
-        // Those swaps where the Bitcoin has been locked (may be unconfirmed or confirmed) but we haven't locked the Monero yet
-        // This is a naive approach because:
-        // - Suppose we have two UTXOs each 5 XMR
+        //
+        // Those swaps where the Bitcoin has been locked (unconfirmed or confirmed) but we haven't locked the Monero yet
+        //
+        // This is still a naive approach because, suppose:
+        // - We have two UTXOs each 5 XMR
         // - We have a pending swap for 6 XMR
-        // The code will assume we only have reserved 6 XMR but once we lock the 6 XMR our two outputs will be spent
-        // and it'll take 10 blocks before we can use our new output (4 XMR change) again
+        // - We now want to construct another quote
+        //
+        // The code will assume we only have reserved 6 XMR but
+        // once we lock the 6 XMR our two outputs will be spent
+        // it'll take 10 blocks before we can spend our new output (4 XMR change)
+        //
+        // In this case it'll take 20 minutes for us to be able to spend the full balance
         let reserved: Amount = self
             .db
             .all()
             .await?
             .iter()
             .filter_map(|(_, state)| match state {
-                State::Alice(AliceState::BtcLockTransactionSeen { state3 })
-                | State::Alice(AliceState::BtcLocked { state3 }) => Some(state3.xmr + MONERO_FEE),
+                State::Alice(state) => Some(state.reserved_monero()),
                 _ => None,
             })
             .fold(Amount::ZERO, |acc, amount| acc + amount);
