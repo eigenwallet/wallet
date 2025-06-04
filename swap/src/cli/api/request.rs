@@ -10,7 +10,8 @@ use crate::network::quote::{BidQuote, ZeroQuoteReceived};
 use crate::network::swarm;
 use crate::protocol::bob::{BobState, Swap};
 use crate::protocol::{bob, State};
-use crate::{bitcoin, cli, monero, rpc};
+use crate::{bitcoin, cli, monero};
+use ::bitcoin::address::NetworkUnchecked;
 use ::bitcoin::Txid;
 use ::monero::Network;
 use anyhow::{bail, Context as AnyContext, Result};
@@ -24,7 +25,6 @@ use serde_json::json;
 use std::cmp::min;
 use std::convert::TryInto;
 use std::future::Future;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -33,6 +33,7 @@ use tracing::debug_span;
 use tracing::Instrument;
 use tracing::Span;
 use typeshare::typeshare;
+use url::Url;
 use uuid::Uuid;
 
 /// This trait is implemented by all types of request args that
@@ -56,7 +57,7 @@ pub struct BuyXmrArgs {
     #[typeshare(serialized_as = "string")]
     pub seller: Multiaddr,
     #[typeshare(serialized_as = "Option<string>")]
-    pub bitcoin_change_address: Option<bitcoin::Address>,
+    pub bitcoin_change_address: Option<bitcoin::Address<NetworkUnchecked>>,
     #[typeshare(serialized_as = "string")]
     pub monero_receive_address: monero::Address,
 }
@@ -143,9 +144,10 @@ impl Request for MoneroRecoveryArgs {
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct WithdrawBtcArgs {
     #[typeshare(serialized_as = "number")]
-    #[serde(default, with = "::bitcoin::util::amount::serde::as_sat::opt")]
+    #[serde(default, with = "::bitcoin::amount::serde::as_sat::opt")]
     pub amount: Option<bitcoin::Amount>,
     #[typeshare(serialized_as = "string")]
+    #[serde(with = "crate::bitcoin::address_serde")]
     pub address: bitcoin::Address,
 }
 
@@ -153,7 +155,7 @@ pub struct WithdrawBtcArgs {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WithdrawBtcResponse {
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub amount: bitcoin::Amount,
     pub txid: String,
 }
@@ -188,22 +190,6 @@ impl Request for ListSellersArgs {
     }
 }
 
-// StartDaemon
-#[typeshare]
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct StartDaemonArgs {
-    #[typeshare(serialized_as = "string")]
-    pub server_address: Option<SocketAddr>,
-}
-
-impl Request for StartDaemonArgs {
-    type Response = serde_json::Value;
-
-    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
-        start_daemon(self, (*ctx).clone()).await
-    }
-}
-
 // GetSwapInfo
 #[typeshare]
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -225,18 +211,18 @@ pub struct GetSwapInfoResponse {
     #[typeshare(serialized_as = "number")]
     pub xmr_amount: monero::Amount,
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub btc_amount: bitcoin::Amount,
     #[typeshare(serialized_as = "string")]
     pub tx_lock_id: Txid,
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub tx_cancel_fee: bitcoin::Amount,
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub tx_refund_fee: bitcoin::Amount,
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub tx_lock_fee: bitcoin::Amount,
     pub btc_refund_address: String,
     pub cancel_timelock: CancelTimelock,
@@ -263,7 +249,7 @@ pub struct BalanceArgs {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BalanceResponse {
     #[typeshare(serialized_as = "number")]
-    #[serde(with = "::bitcoin::util::amount::serde::as_sat")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub balance: bitcoin::Amount,
 }
 
@@ -357,6 +343,7 @@ pub struct ExportBitcoinWalletArgs;
 #[typeshare]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ExportBitcoinWalletResponse {
+    #[typeshare(serialized_as = "object")]
     pub wallet_descriptor: serde_json::Value,
 }
 
@@ -611,7 +598,9 @@ pub async fn buy_xmr(
     );
 
     let bitcoin_change_address = match bitcoin_change_address {
-        Some(addr) => addr,
+        Some(addr) => addr
+            .require_network(bitcoin_wallet.network())
+            .context("Address is not on the correct network")?,
         None => {
             let internal_wallet_address = bitcoin_wallet.new_address().await?;
 
@@ -740,8 +729,10 @@ pub async fn buy_xmr(
                 }
             },
             swap_result = async {
-                let max_givable = || bitcoin_wallet.max_giveable(TxLock::script_size());
-                let estimate_fee = |amount| bitcoin_wallet.estimate_fee(TxLock::weight(), amount);
+                let max_givable = || async {
+                    let (amount, fee) = bitcoin_wallet.max_giveable(TxLock::script_size()).await?;
+                    Ok((amount, fee))
+                };
 
                 let determine_amount = determine_btc_to_swap(
                     context.config.json,
@@ -750,12 +741,11 @@ pub async fn buy_xmr(
                     || bitcoin_wallet.balance(),
                     max_givable,
                     || bitcoin_wallet.sync(),
-                    estimate_fee,
                     context.tauri_handle.clone(),
                     Some(swap_id)
                 );
 
-                let (amount, fees) = match determine_amount.await {
+                let (tx_lock_amount, tx_lock_fee) = match determine_amount.await {
                     Ok(val) => val,
                     Err(error) => match error.downcast::<ZeroQuoteReceived>() {
                         Ok(_) => {
@@ -765,7 +755,7 @@ pub async fn buy_xmr(
                     },
                 };
 
-                tracing::info!(%amount, %fees,  "Determined swap amount");
+                tracing::info!(%tx_lock_amount, %tx_lock_fee, "Determined swap amount");
 
                 context.db.insert_peer_id(swap_id, seller_peer_id).await?;
 
@@ -778,7 +768,8 @@ pub async fn buy_xmr(
                     event_loop_handle,
                     monero_receive_address,
                     bitcoin_change_address,
-                    amount,
+                    tx_lock_amount,
+                    tx_lock_fee
                 ).with_event_emitter(context.tauri_handle.clone());
 
                 bob::run(swap).await
@@ -1015,47 +1006,41 @@ pub async fn withdraw_btc(
         .as_ref()
         .context("Could not get Bitcoin wallet")?;
 
-    let amount = match amount {
-        Some(amount) => amount,
+    let (withdraw_tx_unsigned, amount) = match amount {
+        Some(amount) => {
+            let withdraw_tx_unsigned = bitcoin_wallet
+                .send_to_address_dynamic_fee(address, amount, None)
+                .await?;
+
+            (withdraw_tx_unsigned, amount)
+        }
         None => {
-            bitcoin_wallet
+            let (max_giveable, spending_fee) = bitcoin_wallet
                 .max_giveable(address.script_pubkey().len())
-                .await?
+                .await?;
+
+            let withdraw_tx_unsigned = bitcoin_wallet
+                .send_to_address(address, max_giveable, spending_fee, None)
+                .await?;
+
+            (withdraw_tx_unsigned, max_giveable)
         }
     };
-    let psbt = bitcoin_wallet
-        .send_to_address(address, amount, None)
+
+    let withdraw_tx = bitcoin_wallet
+        .sign_and_finalize(withdraw_tx_unsigned)
         .await?;
-    let signed_tx = bitcoin_wallet.sign_and_finalize(psbt).await?;
 
     bitcoin_wallet
-        .broadcast(signed_tx.clone(), "withdraw")
+        .broadcast(withdraw_tx.clone(), "withdraw")
         .await?;
 
+    let txid = withdraw_tx.compute_txid();
+
     Ok(WithdrawBtcResponse {
-        txid: signed_tx.txid().to_string(),
+        txid: txid.to_string(),
         amount,
     })
-}
-
-#[tracing::instrument(fields(method = "start_daemon"), skip(context))]
-pub async fn start_daemon(
-    start_daemon: StartDaemonArgs,
-    context: Context,
-) -> Result<serde_json::Value> {
-    let StartDaemonArgs { server_address } = start_daemon;
-    // Default to 127.0.0.1:1234
-    let server_address = server_address.unwrap_or("127.0.0.1:1234".parse()?);
-
-    let (addr, server_handle) = rpc::run_server(server_address, context).await?;
-
-    tracing::info!(%addr, "Started RPC server");
-
-    server_handle.stopped().await;
-
-    tracing::info!("Stopped RPC server");
-
-    Ok(json!({}))
 }
 
 #[tracing::instrument(fields(method = "get_balance"), skip(context))]
@@ -1206,26 +1191,23 @@ fn qr_code(value: &impl ToString) -> Result<String> {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS, FFE, TFE>(
+pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS>(
     json: bool,
     bid_quote: BidQuote,
     get_new_address: impl Future<Output = Result<bitcoin::Address>>,
     balance: FB,
     max_giveable_fn: FMG,
     sync: FS,
-    estimate_fee: FFE,
     event_emitter: Option<TauriHandle>,
     swap_id: Option<Uuid>,
 ) -> Result<(bitcoin::Amount, bitcoin::Amount)>
 where
     TB: Future<Output = Result<bitcoin::Amount>>,
     FB: Fn() -> TB,
-    TMG: Future<Output = Result<bitcoin::Amount>>,
+    TMG: Future<Output = Result<(bitcoin::Amount, bitcoin::Amount)>>,
     FMG: Fn() -> TMG,
     TS: Future<Output = Result<()>>,
     FS: Fn() -> TS,
-    FFE: Fn(bitcoin::Amount) -> TFE,
-    TFE: Future<Output = Result<bitcoin::Amount>>,
 {
     if bid_quote.max_quantity == bitcoin::Amount::ZERO {
         bail!(ZeroQuoteReceived)
@@ -1238,13 +1220,17 @@ where
         "Received quote",
     );
 
-    sync().await?;
-    let mut max_giveable = max_giveable_fn().await?;
+    sync().await.context("Failed to sync of Bitcoin wallet")?;
+    let (mut max_giveable, mut spending_fee) = max_giveable_fn().await?;
 
     if max_giveable == bitcoin::Amount::ZERO || max_giveable < bid_quote.min_quantity {
         let deposit_address = get_new_address.await?;
         let minimum_amount = bid_quote.min_quantity;
         let maximum_amount = bid_quote.max_quantity;
+
+        // To avoid any issus, we clip maximum_amount to never go above the
+        // total maximim Bitcoin supply
+        let maximum_amount = maximum_amount.min(bitcoin::Amount::MAX_MONEY);
 
         if !json {
             eprintln!("{}", qr_code(&deposit_address)?);
@@ -1252,10 +1238,13 @@ where
 
         loop {
             let min_outstanding = bid_quote.min_quantity - max_giveable;
-            let min_bitcoin_lock_tx_fee = estimate_fee(min_outstanding).await?;
+            let min_bitcoin_lock_tx_fee = spending_fee;
             let min_deposit_until_swap_will_start = min_outstanding + min_bitcoin_lock_tx_fee;
-            let max_deposit_until_maximum_amount_is_reached =
-                maximum_amount - max_giveable + min_bitcoin_lock_tx_fee;
+            let max_deposit_until_maximum_amount_is_reached = maximum_amount
+                .checked_sub(max_giveable)
+                .context("Overflow when subtracting max_giveable from maximum_amount")?
+                .checked_add(min_bitcoin_lock_tx_fee)
+                .context(format!("Overflow when adding min_bitcoin_lock_tx_fee ({min_bitcoin_lock_tx_fee}) to max_giveable ({max_giveable}) with maximum_amount ({maximum_amount})"))?;
 
             tracing::info!(
                 "Deposit at least {} to cover the min quantity with fee!",
@@ -1287,12 +1276,14 @@ where
                 );
             }
 
-            max_giveable = loop {
-                sync().await?;
-                let new_max_givable = max_giveable_fn().await?;
+            (max_giveable, spending_fee) = loop {
+                sync()
+                    .await
+                    .context("Failed to sync Bitcoin wallet while waiting for deposit")?;
+                let (new_max_givable, new_fee) = max_giveable_fn().await?;
 
                 if new_max_givable > max_giveable {
-                    break new_max_givable;
+                    break (new_max_givable, new_fee);
                 }
 
                 tokio::time::sleep(Duration::from_secs(1)).await;
@@ -1386,12 +1377,12 @@ pub struct CheckElectrumNodeResponse {
 impl CheckElectrumNodeArgs {
     pub async fn request(self) -> Result<CheckElectrumNodeResponse> {
         // Check if the URL is valid
-        let Ok(url) = self.url.parse() else {
+        let Ok(url) = Url::parse(&self.url) else {
             return Ok(CheckElectrumNodeResponse { available: false });
         };
 
         // Check if the node is available
-        let res = wallet::Client::new(url, Duration::from_secs(10), 0);
+        let res = wallet::Client::new(url.as_str(), Duration::from_secs(60));
 
         Ok(CheckElectrumNodeResponse {
             available: res.is_ok(),

@@ -1,8 +1,9 @@
 use crate::asb::config::GetDefaults;
-use crate::bitcoin::Amount;
+use crate::bitcoin::{bitcoin_address, Amount};
 use crate::env;
 use crate::env::GetConfig;
-use anyhow::{bail, Result};
+use anyhow::Result;
+use bitcoin::address::NetworkUnchecked;
 use bitcoin::Address;
 use serde::Serialize;
 use std::ffi::OsString;
@@ -19,6 +20,7 @@ where
     let args = RawArguments::from_clap(&matches);
 
     let json = args.json;
+    let trace = args.trace;
     let testnet = args.testnet;
     let config = args.config;
     let command: RawCommand = args.cmd;
@@ -27,6 +29,7 @@ where
         RawCommand::Start { resume_only } => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::Start { resume_only },
@@ -34,6 +37,7 @@ where
         RawCommand::History { only_unfinished } => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::History { only_unfinished },
@@ -45,6 +49,7 @@ where
         } => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::Logs {
@@ -56,16 +61,18 @@ where
         RawCommand::WithdrawBtc { amount, address } => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::WithdrawBtc {
                 amount,
-                address: bitcoin_address(address, testnet)?,
+                address: bitcoin_address::validate(address, testnet)?,
             },
         },
         RawCommand::Balance => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::Balance,
@@ -73,6 +80,7 @@ where
         RawCommand::Config => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::Config,
@@ -80,6 +88,7 @@ where
         RawCommand::ExportBitcoinWallet => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::ExportBitcoinWallet,
@@ -90,6 +99,7 @@ where
         }) => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::Redeem {
@@ -103,6 +113,7 @@ where
         }) => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::Cancel { swap_id },
@@ -112,6 +123,7 @@ where
         }) => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::Refund { swap_id },
@@ -121,6 +133,7 @@ where
         }) => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::Punish { swap_id },
@@ -128,6 +141,7 @@ where
         RawCommand::ManualRecovery(ManualRecovery::SafelyAbort { swap_id }) => Arguments {
             testnet,
             json,
+            trace,
             config_path: config_path(config, testnet)?,
             env_config: env_config(testnet),
             cmd: Command::SafelyAbort { swap_id },
@@ -135,23 +149,6 @@ where
     };
 
     Ok(arguments)
-}
-
-fn bitcoin_address(address: Address, is_testnet: bool) -> Result<Address> {
-    let network = if is_testnet {
-        bitcoin::Network::Testnet
-    } else {
-        bitcoin::Network::Bitcoin
-    };
-
-    if address.network != network {
-        bail!(BitcoinAddressNetworkMismatch {
-            expected: network,
-            actual: address.network
-        });
-    }
-
-    Ok(address)
 }
 
 fn config_path(config: Option<PathBuf>, is_testnet: bool) -> Result<PathBuf> {
@@ -187,6 +184,7 @@ pub struct BitcoinAddressNetworkMismatch {
 pub struct Arguments {
     pub testnet: bool,
     pub json: bool,
+    pub trace: bool,
     pub config_path: PathBuf,
     pub env_config: env::Config,
     pub cmd: Command,
@@ -247,6 +245,9 @@ pub struct RawArguments {
         help = "Changes the log messages to json vs plain-text. If you run ASB as a service, it is recommended to set this to true to simplify log analyses."
     )]
     pub json: bool,
+
+    #[structopt(long = "trace", help = "Also output verbose tracing logs to stdout")]
+    pub trace: bool,
 
     #[structopt(
         short,
@@ -311,7 +312,7 @@ pub enum RawCommand {
         )]
         amount: Option<Amount>,
         #[structopt(long = "address", help = "The address to receive the Bitcoin.")]
-        address: Address,
+        address: Address<NetworkUnchecked>,
     },
     #[structopt(
         about = "Prints the Bitcoin and Monero balance. Requires the monero-wallet-rpc to be running."
@@ -397,6 +398,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: false,
             json: false,
+            trace: false,
             config_path: default_mainnet_conf_path,
             env_config: mainnet_env_config,
             cmd: Command::Start { resume_only: false },
@@ -414,6 +416,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: false,
             json: false,
+            trace: false,
             config_path: default_mainnet_conf_path,
             env_config: mainnet_env_config,
             cmd: Command::History {
@@ -433,6 +436,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: false,
             json: false,
+            trace: false,
             config_path: default_mainnet_conf_path,
             env_config: mainnet_env_config,
             cmd: Command::Balance,
@@ -454,11 +458,13 @@ mod tests {
         let expected_args = Arguments {
             testnet: false,
             json: false,
+            trace: false,
             config_path: default_mainnet_conf_path,
             env_config: mainnet_env_config,
             cmd: Command::WithdrawBtc {
                 amount: None,
-                address: Address::from_str(BITCOIN_MAINNET_ADDRESS).unwrap(),
+                address: bitcoin_address::parse_and_validate(BITCOIN_MAINNET_ADDRESS, false)
+                    .unwrap(),
             },
         };
         let args = parse_args(raw_ars).unwrap();
@@ -480,6 +486,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: false,
             json: false,
+            trace: false,
             config_path: default_mainnet_conf_path,
             env_config: mainnet_env_config,
             cmd: Command::Cancel {
@@ -505,6 +512,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: false,
             json: false,
+            trace: false,
             config_path: default_mainnet_conf_path,
             env_config: mainnet_env_config,
             cmd: Command::Refund {
@@ -530,6 +538,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: false,
             json: false,
+            trace: false,
             config_path: default_mainnet_conf_path,
             env_config: mainnet_env_config,
             cmd: Command::Punish {
@@ -555,6 +564,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: false,
             json: false,
+            trace: false,
             config_path: default_mainnet_conf_path,
             env_config: mainnet_env_config,
             cmd: Command::SafelyAbort {
@@ -574,6 +584,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: true,
             json: false,
+            trace: false,
             config_path: default_testnet_conf_path,
             env_config: testnet_env_config,
             cmd: Command::Start { resume_only: false },
@@ -591,6 +602,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: true,
             json: false,
+            trace: false,
             config_path: default_testnet_conf_path,
             env_config: testnet_env_config,
             cmd: Command::History {
@@ -610,6 +622,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: true,
             json: false,
+            trace: false,
             config_path: default_testnet_conf_path,
             env_config: testnet_env_config,
             cmd: Command::Balance,
@@ -633,11 +646,13 @@ mod tests {
         let expected_args = Arguments {
             testnet: true,
             json: false,
+            trace: false,
             config_path: default_testnet_conf_path,
             env_config: testnet_env_config,
             cmd: Command::WithdrawBtc {
                 amount: None,
-                address: Address::from_str(BITCOIN_TESTNET_ADDRESS).unwrap(),
+                address: bitcoin_address::parse_and_validate(BITCOIN_TESTNET_ADDRESS, true)
+                    .unwrap(),
             },
         };
         let args = parse_args(raw_ars).unwrap();
@@ -659,6 +674,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: true,
             json: false,
+            trace: false,
             config_path: default_testnet_conf_path,
             env_config: testnet_env_config,
             cmd: Command::Cancel {
@@ -685,6 +701,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: true,
             json: false,
+            trace: false,
             config_path: default_testnet_conf_path,
             env_config: testnet_env_config,
             cmd: Command::Refund {
@@ -711,6 +728,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: true,
             json: false,
+            trace: false,
             config_path: default_testnet_conf_path,
             env_config: testnet_env_config,
             cmd: Command::Punish {
@@ -737,6 +755,7 @@ mod tests {
         let expected_args = Arguments {
             testnet: true,
             json: false,
+            trace: false,
             config_path: default_testnet_conf_path,
             env_config: testnet_env_config,
             cmd: Command::SafelyAbort {
@@ -756,6 +775,25 @@ mod tests {
         let expected_args = Arguments {
             testnet: false,
             json: false,
+            trace: false,
+            config_path: default_mainnet_conf_path,
+            env_config: mainnet_env_config,
+            cmd: Command::Start { resume_only: false },
+        };
+        let args = parse_args(raw_ars).unwrap();
+        assert_eq!(expected_args, args);
+    }
+
+    #[test]
+    fn ensure_trace_mapping() {
+        let default_mainnet_conf_path = env::Mainnet::getConfigFileDefaults().unwrap().config_path;
+        let mainnet_env_config = env::Mainnet::get_config();
+
+        let raw_ars = vec![BINARY_NAME, "--trace", "start"];
+        let expected_args = Arguments {
+            testnet: false,
+            json: false,
+            trace: true,
             config_path: default_mainnet_conf_path,
             env_config: mainnet_env_config,
             cmd: Command::Start { resume_only: false },
@@ -778,29 +816,20 @@ mod tests {
     #[test]
     fn given_bitcoin_address_network_mismatch_then_error() {
         let error =
-            bitcoin_address(Address::from_str(BITCOIN_MAINNET_ADDRESS).unwrap(), true).unwrap_err();
+            bitcoin_address::parse_and_validate(BITCOIN_TESTNET_ADDRESS, false).unwrap_err();
 
+        let error_message = error.to_string();
         assert_eq!(
-            error
-                .downcast_ref::<BitcoinAddressNetworkMismatch>()
-                .unwrap(),
-            &BitcoinAddressNetworkMismatch {
-                expected: bitcoin::Network::Testnet,
-                actual: bitcoin::Network::Bitcoin
-            }
+            error_message,
+            "Bitcoin address network mismatch, expected `Bitcoin`"
         );
 
-        let error = bitcoin_address(Address::from_str(BITCOIN_TESTNET_ADDRESS).unwrap(), false)
-            .unwrap_err();
+        let error = bitcoin_address::parse_and_validate(BITCOIN_MAINNET_ADDRESS, true).unwrap_err();
 
+        let error_message = error.to_string();
         assert_eq!(
-            error
-                .downcast_ref::<BitcoinAddressNetworkMismatch>()
-                .unwrap(),
-            &BitcoinAddressNetworkMismatch {
-                expected: bitcoin::Network::Bitcoin,
-                actual: bitcoin::Network::Testnet
-            }
+            error_message,
+            "Bitcoin address network mismatch, expected `Testnet`"
         );
     }
 }

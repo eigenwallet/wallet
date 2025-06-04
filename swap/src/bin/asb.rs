@@ -45,9 +45,14 @@ const DEFAULT_WALLET_NAME: &str = "asb-wallet";
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to install default rustls provider");
+
     let Arguments {
         testnet,
         json,
+        trace,
         config_path,
         env_config,
         cmd,
@@ -73,15 +78,22 @@ pub async fn main() -> Result<()> {
         Ok(config) => config,
         Err(ConfigNotInitialized {}) => {
             initial_setup(config_path.clone(), query_user_for_initial_config(testnet)?)?;
-            read_config(config_path)?.expect("after initial setup config can be read")
+            read_config(config_path.clone())?.expect("after initial setup config can be read")
         }
     };
 
     // Initialize tracing
     let format = if json { Format::Json } else { Format::Raw };
     let log_dir = config.data.dir.join("logs");
-    common::tracing_util::init(LevelFilter::DEBUG, format, log_dir, None)
+    common::tracing_util::init(LevelFilter::DEBUG, format, log_dir, None, trace)
         .expect("initialize tracing");
+    tracing::info!(
+        binary = "asb",
+        version = env!("VERGEN_GIT_DESCRIBE"),
+        os = std::env::consts::OS,
+        arch = std::env::consts::ARCH,
+        "Setting up context"
+    );
 
     // Check for conflicting env / config values
     if config.monero.network != env_config.monero_network {
@@ -160,7 +172,7 @@ pub async fn main() -> Result<()> {
             let namespace = XmrBtcNamespace::from_is_testnet(testnet);
 
             // Initialize Tor client
-            let tor_client = init_tor_client(&config.data.dir).await?.into();
+            let tor_client = init_tor_client(&config.data.dir, None).await?.into();
 
             let (mut swarm, onion_addresses) = swarm::asb(
                 &seed,
@@ -299,19 +311,22 @@ pub async fn main() -> Result<()> {
         Command::WithdrawBtc { amount, address } => {
             let bitcoin_wallet = init_bitcoin_wallet(&config, &seed, env_config).await?;
 
-            let amount = match amount {
-                Some(amount) => amount,
+            let withdraw_tx_unsigned = match amount {
+                Some(amount) => {
+                    bitcoin_wallet
+                        .send_to_address_dynamic_fee(address, amount, None)
+                        .await?
+                }
                 None => {
                     bitcoin_wallet
-                        .max_giveable(address.script_pubkey().len())
+                        .sweep_balance_to_address_dynamic_fee(address)
                         .await?
                 }
             };
 
-            let psbt = bitcoin_wallet
-                .send_to_address(address, amount, None)
+            let signed_tx = bitcoin_wallet
+                .sign_and_finalize(withdraw_tx_unsigned)
                 .await?;
-            let signed_tx = bitcoin_wallet.sign_and_finalize(psbt).await?;
 
             bitcoin_wallet.broadcast(signed_tx, "withdraw").await?;
         }
@@ -387,7 +402,7 @@ pub async fn main() -> Result<()> {
         Command::ExportBitcoinWallet => {
             let bitcoin_wallet = init_bitcoin_wallet(&config, &seed, env_config).await?;
             let wallet_export = bitcoin_wallet.wallet_export("asb").await?;
-            println!("{}", wallet_export.to_string())
+            println!("{}", wallet_export)
         }
     }
 
@@ -400,16 +415,20 @@ async fn init_bitcoin_wallet(
     env_config: swap::env::Config,
 ) -> Result<bitcoin::Wallet> {
     tracing::debug!("Opening Bitcoin wallet");
-    let data_dir = &config.data.dir;
-    let wallet = bitcoin::Wallet::new(
-        config.bitcoin.electrum_rpc_url.clone(),
-        data_dir,
-        seed.derive_extended_private_key(env_config.bitcoin_network)?,
-        env_config,
-        config.bitcoin.target_block,
-    )
-    .await
-    .context("Failed to initialize Bitcoin wallet")?;
+    let wallet = bitcoin::wallet::WalletBuilder::default()
+        .seed(seed.clone())
+        .network(env_config.bitcoin_network)
+        .electrum_rpc_url(config.bitcoin.electrum_rpc_url.as_str().to_string())
+        .persister(bitcoin::wallet::PersisterConfig::SqliteFile {
+            data_dir: config.data.dir.clone(),
+        })
+        .finality_confirmations(env_config.bitcoin_finality_confirmations)
+        .target_block(config.bitcoin.target_block)
+        .use_mempool_space_fee_estimation(config.bitcoin.use_mempool_space_fee_estimation)
+        .sync_interval(env_config.bitcoin_sync_interval())
+        .build()
+        .await
+        .context("Failed to initialize Bitcoin wallet")?;
 
     wallet.sync().await?;
 

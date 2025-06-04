@@ -3,9 +3,11 @@ import { getAllSwapInfos, checkBitcoinBalance, updateAllNodeStatuses, fetchSelle
 import logger from "utils/logger";
 import { contextStatusEventReceived } from "store/features/rpcSlice";
 import { addNode, setFetchFiatPrices, setFiatCurrency } from "store/features/settingsSlice";
-import { updateRates } from "renderer/api";
+import { fetchFeedbackMessagesViaHttp, updateRates } from "renderer/api";
 import { store } from "renderer/store/storeRenderer";
 import { swapProgressEventReceived } from "store/features/swapSlice";
+import { addFeedbackId, setConversation } from "store/features/conversationsSlice";
+import { TauriContextStatusEvent } from "models/tauriModel";
 
 export function createMainListeners() {
   const listener = createListenerMiddleware();
@@ -17,10 +19,10 @@ export function createMainListeners() {
     effect: async (action) => {
       const status = action.payload;
 
-      // If the context is available, check the bitcoin balance and fetch all swap infos
-      if (status.type === "Available") {
+      // If the context is available, check the Bitcoin balance and fetch all swap infos
+      if (status === TauriContextStatusEvent.Available) {
         logger.debug(
-          "Context is available, checking bitcoin balance and history",
+          "Context is available, checking Bitcoin balance and history",
         );
         await Promise.allSettled([
           checkBitcoinBalance(),
@@ -75,6 +77,16 @@ export function createMainListeners() {
     actionCreator: addNode,
     effect: async (_) => {
       await updateAllNodeStatuses();
+    },
+  });
+
+  // Listener for when a feedback id is added
+  listener.startListening({
+    actionCreator: addFeedbackId,
+    effect: async (action) => {
+      // Whenever a new feedback id is added, fetch the messages and store them in the Redux store
+      const messages = await fetchFeedbackMessagesViaHttp(action.payload);
+      store.dispatch(setConversation({ feedbackId: action.payload, messages }));
     },
   });
 

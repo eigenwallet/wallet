@@ -107,12 +107,13 @@ async fn next_state(
         BobState::Started {
             btc_amount,
             change_address,
+            tx_lock_fee,
         } => {
             let tx_refund_fee = bitcoin_wallet
-                .estimate_fee(TxRefund::weight(), btc_amount)
+                .estimate_fee(TxRefund::weight(), Some(btc_amount))
                 .await?;
             let tx_cancel_fee = bitcoin_wallet
-                .estimate_fee(TxCancel::weight(), btc_amount)
+                .estimate_fee(TxCancel::weight(), Some(btc_amount))
                 .await?;
 
             // Emit an event to tauri that we are negotiating with the maker to lock the Bitcoin
@@ -129,6 +130,7 @@ async fn next_state(
                 .setup_swap(NewSwap {
                     swap_id,
                     btc: btc_amount,
+                    tx_lock_fee,
                     tx_refund_fee,
                     tx_cancel_fee,
                     bitcoin_refund_address: change_address,
@@ -163,13 +165,11 @@ async fn next_state(
                 .context("Failed to sign Bitcoin lock transaction")?;
 
             let btc_network_fee = tx_lock.fee().context("Failed to get fee")?;
-            let btc_lock_amount = bitcoin::Amount::from_sat(
-                signed_tx
-                    .output
-                    .first()
-                    .context("Failed to get lock amount")?
-                    .value,
-            );
+            let btc_lock_amount = signed_tx
+                .output
+                .first()
+                .context("Failed to get lock amount")?
+                .value;
 
             let request = ApprovalRequestDetails::LockBitcoin(LockBitcoinDetails {
                 btc_lock_amount,
@@ -516,7 +516,7 @@ async fn next_state(
             event_emitter.emit_swap_progress_event(
                 swap_id,
                 TauriSwapProgressEvent::BtcRefunded {
-                    btc_refund_txid: state4.signed_refund_transaction()?.txid(),
+                    btc_refund_txid: state4.signed_refund_transaction()?.compute_txid(),
                 },
             );
 

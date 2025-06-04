@@ -9,6 +9,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ASB: The maker will take Monero funds needed for ongoing swaps into consideration when making a quote. A warning will be displayed if the Monero funds do not cover all ongoing swaps.
 
+## [1.1.7] - 2025-06-04
+
+- ASB: Fix an issue where the asb would quote a max_swap_amount off by a couple of piconeros
+
+## [1.1.4] - 2025-06-04
+
+## [1.1.3] - 2025-05-31
+
+- The Bitcoin fee estimation is now more accurate. It uses a combination of `estimatesmartfee` from Bitcoin Core and `mempool.get_fee_histogram` from Electrum to ensure our distance from the mempool tip is appropriate. If our Electrum server doesn't support fee estimation, we use the mempool.space API. The mempool space API can be disabled using the `bitcoin.use_mempool_space_fee_estimation` option in the config file. It defaults to `true`.
+- ASB: You can use the `--trace` flag to log all messages to the terminal. This is useful for debugging but shouldn't be used in production because it will log a lot of data, especially related to p2p networking and tor bootstrapping. If you want to debug issues in production, read the tracing-logs inside the data directory instead.
+
+## [1.1.2] - 2025-05-24
+
+- Docs: Document `external_bitcoin_address` option for using a specific
+  Bitcoin address when redeeming or punishing swaps.
+- Removed the JSON-RPC daemon and the `start-daemon` CLI command.
+- Increased the max Bitcoin fee to up to 20% of the value of the transaction. This mitigates an issue where the Bitcoin lock transaction would not get confirmed in time on the blockchain.
+
+## [1.1.1] - 2025-05-20
+
+- CLI + GUI + ASB: Retry the Bitcoin wallet sync up to 15 seconds to work around transient errors.
+
+## [1.1.0] - 2025-05-19
+
+- GUI: Discourage swapping with makers running `< 1.1.0-rc.3` because the bdk upgrade introduced a breaking change.
+- GUI: Fix an issue where the auto updater would incorrectly throw an error
+
+## [1.1.0-rc.3] - 2025-05-18
+
+- Breaking Change(Makers): Please complete all pending swaps, then upgrade as soon as possible. Takers might not be able to taker your offers until you upgrade your asb instance.
+- CLI + ASB + GUI: We upgraded dependencies related to the Bitcoin wallet. When you boot up the new version for the first time, a migration process will be run to convert the old wallet format to the new one. This might take a few minutes. We also fixed a bug where we would generate too many unused addresses in the Bitcoin wallet which would cause the wallet to take longer to start up as time goes on.
+- GUI: We display detailed progress about running background tasks (Tor bootstrapping, Bitcoin wallet sync progress, etc.)
+
+## [1.0.0-rc.21] - 2025-05-15
+
+## [1.0.0-rc.20] - 2025-05-14
+
+- GUI: Added introduction flow for first-time users
+- CLI + GUI: Update monero-wallet-rpc to v0.18.4.0
+
+## [1.0.0-rc.19] - 2025-04-28
+
+## [1.0.0-rc.18] - 2025-04-28
+
+- GUI: Feedback submitted can be responded to by the core developers. The responses will be displayed under the "Feedback" tab.
+
 ## [1.0.0-rc.17] - 2025-04-18
 
 - GUI: The user will now be asked to approve the swap offer again before the Bitcoin lock transaction is published. Makers should take care to only assume a swap has been accepted by the taker if the Bitcoin lock transaction is detected (`Advancing state state=bitcoin lock transaction in mempool ...`). Swaps that have been safely aborted will not be displayed in the GUI anymore.
@@ -453,7 +499,20 @@ It is possible to migrate critical data from the old db to the sqlite but there 
 - Fixed an issue where Alice would not verify if Bob's Bitcoin lock transaction is semantically correct, i.e. pays the agreed upon amount to an output owned by both of them.
   Fixing this required a **breaking change** on the network layer and hence old versions are not compatible with this version.
 
-[unreleased]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.17...HEAD
+[unreleased]: https://github.com/UnstoppableSwap/core/compare/1.1.7...HEAD
+[1.1.7]: https://github.com/UnstoppableSwap/core/compare/1.1.4...1.1.7
+[1.1.4]: https://github.com/UnstoppableSwap/core/compare/1.1.3...1.1.4
+[1.1.3]: https://github.com/UnstoppableSwap/core/compare/1.1.2...1.1.3
+[1.1.2]: https://github.com/UnstoppableSwap/core/compare/1.1.1...1.1.2
+[1.1.1]: https://github.com/UnstoppableSwap/core/compare/1.1.0...1.1.1
+[1.1.0]: https://github.com/UnstoppableSwap/core/compare/1.1.0-rc.3...1.1.0
+[1.1.0-rc.3]: https://github.com/UnstoppableSwap/core/compare/1.1.0-rc.2...1.1.0-rc.3
+[1.1.0-rc.2]: https://github.com/UnstoppableSwap/core/compare/1.1.0-rc.1...1.1.0-rc.2
+[1.1.0-rc.1]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.21...1.1.0-rc.1
+[1.0.0-rc.21]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.20...1.0.0-rc.21
+[1.0.0-rc.20]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.19...1.0.0-rc.20
+[1.0.0-rc.19]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.18...1.0.0-rc.19
+[1.0.0-rc.18]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.17...1.0.0-rc.18
 [1.0.0-rc.17]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.16...1.0.0-rc.17
 [1.0.0-rc.16]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.14...1.0.0-rc.16
 [1.0.0-rc.14]: https://github.com/UnstoppableSwap/core/compare/1.0.0-rc.13...1.0.0-rc.14

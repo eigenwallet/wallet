@@ -185,6 +185,12 @@ pub struct Bitcoin {
     pub finality_confirmations: Option<u32>,
     #[serde(with = "crate::bitcoin::network")]
     pub network: bitcoin::Network,
+    #[serde(default = "default_use_mempool_space_fee_estimation")]
+    pub use_mempool_space_fee_estimation: bool,
+}
+
+fn default_use_mempool_space_fee_estimation() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -206,12 +212,13 @@ pub struct TorConf {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Maker {
-    #[serde(with = "::bitcoin::util::amount::serde::as_btc")]
+    #[serde(with = "::bitcoin::amount::serde::as_btc")]
     pub min_buy_btc: bitcoin::Amount,
-    #[serde(with = "::bitcoin::util::amount::serde::as_btc")]
+    #[serde(with = "::bitcoin::amount::serde::as_btc")]
     pub max_buy_btc: bitcoin::Amount,
     pub ask_spread: Decimal,
     pub price_ticker_ws_url: Url,
+    #[serde(default, with = "crate::bitcoin::address_serde::option")]
     pub external_bitcoin_redeem_address: Option<bitcoin::Address>,
 }
 
@@ -376,6 +383,7 @@ pub fn query_user_for_initial_config(testnet: bool) -> Result<Config> {
             target_block,
             finality_confirmations: None,
             network: bitcoin_network,
+            use_mempool_space_fee_estimation: true,
         },
         monero: Monero {
             wallet_rpc_url: monero_wallet_rpc_url,
@@ -420,6 +428,7 @@ mod tests {
                 target_block: defaults.bitcoin_confirmation_target,
                 finality_confirmations: None,
                 network: bitcoin::Network::Testnet,
+                use_mempool_space_fee_estimation: true,
             },
             network: Network {
                 listen: vec![defaults.listen_address_tcp],
@@ -464,6 +473,7 @@ mod tests {
                 target_block: defaults.bitcoin_confirmation_target,
                 finality_confirmations: None,
                 network: bitcoin::Network::Bitcoin,
+                use_mempool_space_fee_estimation: true,
             },
             network: Network {
                 listen: vec![defaults.listen_address_tcp],
@@ -518,6 +528,7 @@ mod tests {
                 target_block: defaults.bitcoin_confirmation_target,
                 finality_confirmations: None,
                 network: bitcoin::Network::Bitcoin,
+                use_mempool_space_fee_estimation: true,
             },
             network: Network {
                 listen,

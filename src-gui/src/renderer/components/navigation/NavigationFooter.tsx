@@ -1,13 +1,13 @@
 import { Box, makeStyles, Tooltip } from "@material-ui/core";
 import GitHubIcon from "@material-ui/icons/GitHub";
-import DaemonStatusAlert from "../alert/DaemonStatusAlert";
+import DaemonStatusAlert, { BackgroundProgressAlerts } from "../alert/DaemonStatusAlert";
 import FundsLeftInWalletAlert from "../alert/FundsLeftInWalletAlert";
 import MoneroWalletRpcUpdatingAlert from "../alert/MoneroWalletRpcUpdatingAlert";
 import UnfinishedSwapsAlert from "../alert/UnfinishedSwapsAlert";
 import LinkIconButton from "../icons/LinkIconButton";
 import BackgroundRefundAlert from "../alert/BackgroundRefundAlert";
 import MatrixIcon from "../icons/MatrixIcon";
-import { BookRounded, MenuBook } from "@material-ui/icons";
+import { MenuBook } from "@material-ui/icons";
 
 const useStyles = makeStyles((theme) => ({
   outer: {
@@ -31,11 +31,12 @@ export default function NavigationFooter() {
       <UnfinishedSwapsAlert />
       <BackgroundRefundAlert />
       <DaemonStatusAlert />
+      <BackgroundProgressAlerts />
       <MoneroWalletRpcUpdatingAlert />
       <Box className={classes.linksOuter}>
         <Tooltip title="Check out the GitHub repository">
           <span>
-            <LinkIconButton url="https://github.com/UnstoppableSwap/unstoppableswap-gui">
+            <LinkIconButton url="https://github.com/UnstoppableSwap/core">
               <GitHubIcon />
             </LinkIconButton>
           </span>

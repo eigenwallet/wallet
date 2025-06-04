@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "check-bindings": "typeshare --lang=typescript --output-file __temp_bindings.ts ../swap/src && dprint fmt __temp_bindings.ts && diff -wbB __temp_bindings.ts ./src/models/tauriModel.ts && rm __temp_bindings.ts",
+    "gen-bindings-verbose": "RUST_LOG=debug RUST_BACKTRACE=1 typeshare --lang=typescript --output-file ./src/models/tauriModel.ts ../swap/src && dprint fmt ./src/models/tauriModel.ts",
     "gen-bindings": "typeshare --lang=typescript --output-file ./src/models/tauriModel.ts ../swap/src && dprint fmt ./src/models/tauriModel.ts",
     "test": "vitest",
     "test:ui": "vitest --ui",
@@ -23,7 +24,7 @@
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-cli": "^2.0.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.0.0",
-    "@tauri-apps/plugin-opener": "^2.2.5",
+    "@tauri-apps/plugin-opener": "^2.0.0",
     "@tauri-apps/plugin-process": "^2.0.0",
     "@tauri-apps/plugin-shell": "^2.0.0",
     "@tauri-apps/plugin-store": "^2.0.0",
@@ -47,6 +48,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
+    "@redux-devtools/remote": "^0.9.5",
     "@tauri-apps/cli": "^2.0.0",
     "@testing-library/react": "^16.0.1",
     "@testing-library/user-event": "^14.5.2",
