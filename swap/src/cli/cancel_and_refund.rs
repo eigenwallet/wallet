@@ -46,6 +46,8 @@ pub async fn cancel(
         BobState::CancelTimelockExpired(state6) => state6,
         BobState::BtcRefunded(state6) => state6,
         BobState::BtcCancelled(state6) => state6,
+        BobState::BtcRefundPublished(state6) => state6,
+        BobState::BtcEarlyRefundPublished(state6) => state6,
 
         BobState::Started { .. }
         | BobState::SwapSetupCompleted(_)
@@ -141,10 +143,12 @@ pub async fn refund(
         BobState::EncSigSent(state4) => state4.cancel(),
         BobState::CancelTimelockExpired(state6) => state6,
         BobState::BtcCancelled(state6) => state6,
+        BobState::BtcRefunded(state6) => state6,
+        BobState::BtcRefundPublished(state6) => state6,
+        BobState::BtcEarlyRefundPublished(state6) => state6,
         BobState::Started { .. }
         | BobState::SwapSetupCompleted(_)
         | BobState::BtcRedeemed(_)
-        | BobState::BtcRefunded(_)
         | BobState::BtcEarlyRefunded { .. }
         | BobState::XmrRedeemed { .. }
         | BobState::BtcPunished { .. }

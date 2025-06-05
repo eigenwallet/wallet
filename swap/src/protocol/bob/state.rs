@@ -46,10 +46,10 @@ pub enum BobState {
     BtcRedeemed(State5),
     CancelTimelockExpired(State6),
     BtcCancelled(State6),
+    BtcRefundPublished(State6),
+    BtcEarlyRefundPublished(State6),
     BtcRefunded(State6),
-    BtcEarlyRefunded {
-        tx_early_refund: bitcoin::Txid,
-    },
+    BtcEarlyRefunded(State6),
     XmrRedeemed {
         tx_lock_id: bitcoin::Txid,
     },
@@ -74,6 +74,8 @@ impl fmt::Display for BobState {
             BobState::BtcRedeemed(..) => write!(f, "btc is redeemed"),
             BobState::CancelTimelockExpired(..) => write!(f, "cancel timelock is expired"),
             BobState::BtcCancelled(..) => write!(f, "btc is cancelled"),
+            BobState::BtcRefundPublished { .. } => write!(f, "btc refund is published"),
+            BobState::BtcEarlyRefundPublished { .. } => write!(f, "btc early refund is published"),
             BobState::BtcRefunded(..) => write!(f, "btc is refunded"),
             BobState::XmrRedeemed { .. } => write!(f, "xmr is redeemed"),
             BobState::BtcPunished { .. } => write!(f, "btc is punished"),
@@ -101,7 +103,10 @@ impl BobState {
             BobState::XmrLocked(state) | BobState::EncSigSent(state) => {
                 Some(state.expired_timelock(&bitcoin_wallet).await?)
             }
-            BobState::CancelTimelockExpired(state) | BobState::BtcCancelled(state) => {
+            BobState::CancelTimelockExpired(state)
+            | BobState::BtcCancelled(state)
+            | BobState::BtcRefundPublished(state)
+            | BobState::BtcEarlyRefundPublished(state) => {
                 Some(state.expired_timelock(&bitcoin_wallet).await?)
             }
             BobState::BtcPunished { .. } => Some(ExpiredTimelocks::Punish),
@@ -673,6 +678,10 @@ impl State4 {
             tx_cancel_fee: self.tx_cancel_fee,
         }
     }
+
+    pub fn construct_tx_early_refund(&self) -> bitcoin::TxEarlyRefund {
+        bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -729,11 +738,11 @@ pub struct State6 {
     s_b: monero::Scalar,
     v: monero::PrivateViewKey,
     pub monero_wallet_restore_blockheight: BlockHeight,
-    cancel_timelock: CancelTimelock,
+    pub cancel_timelock: CancelTimelock,
     punish_timelock: PunishTimelock,
     #[serde(with = "address_serde")]
     refund_address: bitcoin::Address,
-    tx_lock: bitcoin::TxLock,
+    pub tx_lock: bitcoin::TxLock,
     tx_cancel_sig_a: Signature,
     tx_refund_encsig: bitcoin::EncryptedSignature,
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
@@ -765,6 +774,7 @@ impl State6 {
             tx_cancel_status,
         ))
     }
+
     pub fn construct_tx_cancel(&self) -> Result<bitcoin::TxCancel> {
         bitcoin::TxCancel::new(
             &self.tx_lock,
@@ -774,6 +784,7 @@ impl State6 {
             self.tx_cancel_fee,
         )
     }
+
     pub async fn check_for_tx_cancel(
         &self,
         bitcoin_wallet: &bitcoin::Wallet,
@@ -810,10 +821,17 @@ impl State6 {
         Ok(signed_tx_refund_txid)
     }
 
-    pub fn signed_refund_transaction(&self) -> Result<Transaction> {
+    pub fn construct_tx_refund(&self) -> Result<bitcoin::TxRefund> {
         let tx_cancel = self.construct_tx_cancel()?;
+
         let tx_refund =
             bitcoin::TxRefund::new(&tx_cancel, &self.refund_address, self.tx_refund_fee);
+
+        Ok(tx_refund)
+    }
+
+    pub fn signed_refund_transaction(&self) -> Result<Transaction> {
+        let tx_refund = self.construct_tx_refund()?;
 
         let adaptor = Adaptor::<HashTranscript<Sha256>, Deterministic<Sha256>>::default();
 
@@ -823,6 +841,7 @@ impl State6 {
 
         let signed_tx_refund =
             tx_refund.add_signatures((self.A, sig_a), (self.b.public(), sig_b))?;
+
         Ok(signed_tx_refund)
     }
 

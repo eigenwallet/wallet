@@ -60,6 +60,9 @@ pub enum Alice {
         transfer_proof: TransferProof,
         state3: alice::State3,
     },
+    BtcEarlyRefundable {
+        state3: alice::State3,
+    },
     BtcRefunded {
         monero_wallet_restore_blockheight: BlockHeight,
         transfer_proof: TransferProof,
@@ -75,8 +78,7 @@ pub enum AliceEndState {
     SafelyAborted,
     BtcRedeemed,
     XmrRefunded,
-    EarlyRefundable { state3: alice::State3 },
-    BtcEarlyRefunded { tx_early_refund: bitcoin::Txid },
+    BtcEarlyRefunded { state3: alice::State3 },
     BtcPunished { state3: alice::State3 },
 }
 
@@ -156,15 +158,11 @@ impl From<AliceState> for Alice {
                 spend_key,
                 state3: state3.as_ref().clone(),
             },
-            AliceState::BtcEarlyRefundable { state3 } => {
-                Alice::Done(AliceEndState::EarlyRefundable {
-                    state3: state3.as_ref().clone(),
-                })
-            }
-            AliceState::BtcEarlyRefunded {
-                tx_early_refund_txid,
-            } => Alice::Done(AliceEndState::BtcEarlyRefunded {
-                tx_early_refund: tx_early_refund_txid,
+            AliceState::BtcEarlyRefundable { state3 } => Alice::BtcEarlyRefundable {
+                state3: state3.as_ref().clone(),
+            },
+            AliceState::BtcEarlyRefunded(state3) => Alice::Done(AliceEndState::BtcEarlyRefunded {
+                state3: state3.as_ref().clone(),
             }),
             AliceState::BtcPunishable {
                 monero_wallet_restore_blockheight,
@@ -266,7 +264,6 @@ impl From<Alice> for AliceState {
                 transfer_proof,
                 state3: Box::new(state3),
             },
-
             Alice::BtcPunishable {
                 monero_wallet_restore_blockheight,
                 transfer_proof,
@@ -287,6 +284,9 @@ impl From<Alice> for AliceState {
                 spend_key,
                 state3: Box::new(state3),
             },
+            Alice::BtcEarlyRefundable { state3 } => AliceState::BtcEarlyRefundable {
+                state3: Box::new(state3),
+            },
             Alice::Done(end_state) => match end_state {
                 AliceEndState::SafelyAborted => AliceState::SafelyAborted,
                 AliceEndState::BtcRedeemed => AliceState::BtcRedeemed,
@@ -294,14 +294,9 @@ impl From<Alice> for AliceState {
                 AliceEndState::BtcPunished { state3 } => AliceState::BtcPunished {
                     state3: Box::new(state3),
                 },
-                AliceEndState::BtcEarlyRefunded { tx_early_refund } => {
-                    AliceState::BtcEarlyRefunded {
-                        tx_early_refund_txid: tx_early_refund,
-                    }
+                AliceEndState::BtcEarlyRefunded { state3 } => {
+                    AliceState::BtcEarlyRefunded(Box::new(state3))
                 }
-                AliceEndState::EarlyRefundable { state3 } => AliceState::BtcEarlyRefundable {
-                    state3: Box::new(state3),
-                },
             },
         }
     }
@@ -328,6 +323,7 @@ impl fmt::Display for Alice {
             Alice::BtcCancelled { .. } => f.write_str("Bitcoin cancel transaction published"),
             Alice::BtcPunishable { .. } => f.write_str("Bitcoin punishable"),
             Alice::BtcRefunded { .. } => f.write_str("Monero refundable"),
+            Alice::BtcEarlyRefundable { .. } => f.write_str("Bitcoin early refundable"),
             Alice::Done(end_state) => write!(f, "Done: {}", end_state),
         }
     }

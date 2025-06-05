@@ -83,7 +83,7 @@ pub async fn redeem(
         | AliceState::BtcRedeemed
         | AliceState::XmrRefunded
         | AliceState::BtcEarlyRefundable { .. }
-        | AliceState::BtcEarlyRefunded { .. }
+        | AliceState::BtcEarlyRefunded(_)
         | AliceState::BtcPunished { .. }
         | AliceState::SafelyAborted => bail!(
             "Cannot redeem swap {} because it is in state {} which cannot be manually redeemed",

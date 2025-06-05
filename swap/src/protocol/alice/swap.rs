@@ -213,9 +213,7 @@ where
                         "Published early refund transaction for Bob"
                     );
 
-                    AliceState::BtcEarlyRefunded {
-                        tx_early_refund_txid,
-                    }
+                    AliceState::BtcEarlyRefunded(state3)
                 }
                 // If we do not have a signature for the early refund transaction, we cannot do an early refund
                 // We abort the swap on our side. Bob will have to wait for the timelock to expire then refund himself.
@@ -568,11 +566,7 @@ where
         AliceState::XmrRefunded => AliceState::XmrRefunded,
         AliceState::BtcRedeemed => AliceState::BtcRedeemed,
         AliceState::BtcPunished { state3 } => AliceState::BtcPunished { state3 },
-        AliceState::BtcEarlyRefunded {
-            tx_early_refund_txid,
-        } => AliceState::BtcEarlyRefunded {
-            tx_early_refund_txid,
-        },
+        AliceState::BtcEarlyRefunded(state3) => AliceState::BtcEarlyRefunded(state3),
         AliceState::SafelyAborted => AliceState::SafelyAborted,
     })
 }
@@ -584,7 +578,7 @@ pub fn is_complete(state: &AliceState) -> bool {
             | AliceState::BtcRedeemed
             | AliceState::BtcPunished { .. }
             | AliceState::SafelyAborted
-            | AliceState::BtcEarlyRefunded { .. }
+            | AliceState::BtcEarlyRefunded(_)
     )
 }
 

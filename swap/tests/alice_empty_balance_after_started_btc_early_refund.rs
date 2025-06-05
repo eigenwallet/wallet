@@ -50,8 +50,8 @@ async fn alice_zero_xmr_refunds_bitcoin() {
         let alice_state = alice_swap.await??;
         let bob_state = bob_swap.await??;
 
-        assert!(matches!(alice_state, AliceState::BtcEarlyRefunded { .. }));
-        assert!(matches!(bob_state, BobState::BtcEarlyRefunded { .. }));
+        assert!(matches!(alice_state, AliceState::BtcEarlyRefunded(_)));
+        assert!(matches!(bob_state, BobState::BtcEarlyRefunded(_)));
 
         Ok(())
     })

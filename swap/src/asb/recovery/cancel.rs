@@ -39,7 +39,7 @@ pub async fn cancel(
         | AliceState::BtcRedeemed
         | AliceState::XmrRefunded
         | AliceState::BtcEarlyRefundable { .. }
-        | AliceState::BtcEarlyRefunded { .. }
+        | AliceState::BtcEarlyRefunded(_)
         | AliceState::BtcPunished { .. }
         | AliceState::SafelyAborted => bail!("Swap is in state {} which is not cancelable", state),
     };

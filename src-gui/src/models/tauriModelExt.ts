@@ -28,6 +28,8 @@ export enum BobStateName {
   BtcRedeemed = "btc is redeemed",
   CancelTimelockExpired = "cancel timelock is expired",
   BtcCancelled = "btc is cancelled",
+  BtcRefundPublished = "btc refund is published",
+  BtcEarlyRefundPublished = "btc early refund is published",
   BtcRefunded = "btc is refunded",
   BtcEarlyRefunded = "btc is early refunded",
   XmrRedeemed = "xmr is redeemed",
@@ -46,6 +48,8 @@ export function bobStateNameToHumanReadable(stateName: BobStateName): string {
     case BobStateName.BtcRedeemed: return "Bitcoin redeemed";
     case BobStateName.CancelTimelockExpired: return "Cancel timelock expired";
     case BobStateName.BtcCancelled: return "Bitcoin cancelled";
+    case BobStateName.BtcRefundPublished: return "Bitcoin refund published";
+    case BobStateName.BtcEarlyRefundPublished: return "Bitcoin early refund published";
     case BobStateName.BtcRefunded: return "Bitcoin refunded";
     case BobStateName.BtcEarlyRefunded: return "Bitcoin early refunded";
     case BobStateName.XmrRedeemed: return "Monero redeemed";
@@ -138,7 +142,9 @@ export type BobStateNamePossiblyCancellableSwap =
   | BobStateName.XmrLockProofReceived
   | BobStateName.XmrLocked
   | BobStateName.EncSigSent
-  | BobStateName.CancelTimelockExpired;
+  | BobStateName.CancelTimelockExpired
+  | BobStateName.BtcRefundPublished
+  | BobStateName.BtcEarlyRefundPublished;
 
 /**
 Checks if a swap is in a state where it can possibly be cancelled
@@ -162,6 +168,8 @@ export function isBobStateNamePossiblyCancellableSwap(
     BobStateName.XmrLocked,
     BobStateName.EncSigSent,
     BobStateName.CancelTimelockExpired,
+    BobStateName.BtcRefundPublished,
+    BobStateName.BtcEarlyRefundPublished,
   ].includes(state);
 }
 
@@ -171,7 +179,9 @@ export type BobStateNamePossiblyRefundableSwap =
   | BobStateName.XmrLocked
   | BobStateName.EncSigSent
   | BobStateName.CancelTimelockExpired
-  | BobStateName.BtcCancelled;
+  | BobStateName.BtcCancelled
+  | BobStateName.BtcRefundPublished
+  | BobStateName.BtcEarlyRefundPublished;
 
 /**
 Checks if a swap is in a state where it can possibly be refunded (meaning it's not impossible)
@@ -194,6 +204,8 @@ export function isBobStateNamePossiblyRefundableSwap(
     BobStateName.EncSigSent,
     BobStateName.CancelTimelockExpired,
     BobStateName.BtcCancelled,
+    BobStateName.BtcRefundPublished,
+    BobStateName.BtcEarlyRefundPublished,
   ].includes(state);
 }
 
