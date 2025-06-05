@@ -588,7 +588,8 @@ async fn next_state(
                     //
                     // By default, Alice will not publish tx_early_refund if the timelock has expired.
                     // However, this could change if Alice is malicious but there's no point in doing that really?
-
+                    //
+                    // TODO: Really this should be handled by having a new state to differentiate between BtcRefundPublished, BtcRefundConfirmed, BtcEarlyRefundPublished and BtcEarlyRefundConfirmed
                     let btc_refund_txid = state.publish_refund_btc(bitcoin_wallet).await?;
 
                     event_emitter.emit_swap_progress_event(
