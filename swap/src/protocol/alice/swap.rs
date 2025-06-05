@@ -197,21 +197,30 @@ where
             }
         }
         AliceState::BtcEarlyRefundable { state3 } => {
-            let tx_early_refund = state3.signed_early_refund_transaction()?;
+            match state3.signed_early_refund_transaction() {
+                Some(tx_early_refund) => {
+                    let tx_early_refund = tx_early_refund?;
+                    let txid = tx_early_refund.compute_txid();
 
-            let txid = tx_early_refund.compute_txid();
+                    // Broadcast the early refund transaction
+                    let (_, _) = bitcoin_wallet
+                        .broadcast(tx_early_refund, "early_refund")
+                        .await?;
 
-            let (_, _) = bitcoin_wallet
-                .broadcast(tx_early_refund, "early_refund")
-                .await?;
+                    tracing::info!(
+                        %txid,
+                        "Unilaterally refunded Bitcoin"
+                    );
 
-            tracing::info!(
-                %txid,
-                "Unilaterally refunded Bitcoin"
-            );
-
-            AliceState::BtcEarlyRefunded {
-                tx_early_refund_txid: txid,
+                    AliceState::BtcEarlyRefunded {
+                        tx_early_refund_txid: txid,
+                    }
+                }
+                // If we do not have a signature for the early refund transaction, we cannot do an early refund
+                // We abort the swap on our side. Bob will have to wait for the timelock to expire then refund himself.
+                None => {
+                    return Ok(AliceState::SafelyAborted);
+                }
             }
         }
         AliceState::XmrLockTransactionSent {

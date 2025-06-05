@@ -364,18 +364,20 @@ impl State2 {
             self.tx_cancel_fee,
         )
         .expect("valid cancel tx");
+
         let tx_cancel_sig = self.b.sign(tx_cancel.digest());
+
         let tx_punish = bitcoin::TxPunish::new(
             &tx_cancel,
             &self.punish_address,
             self.punish_timelock,
             self.tx_punish_fee,
         );
+        let tx_punish_sig = self.b.sign(tx_punish.digest());
 
         let tx_early_refund =
             bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee);
 
-        let tx_punish_sig = self.b.sign(tx_punish.digest());
         let tx_early_refund_sig = self.b.sign(tx_early_refund.digest());
 
         Message4 {

@@ -647,8 +647,15 @@ mod tests {
         assert_weight(refund_transaction, TxRefund::weight().to_wu(), "TxRefund");
 
         // Test TxEarlyRefund transaction
-        let early_refund_transaction = alice_state3.signed_early_refund_transaction().unwrap();
-        assert_weight(early_refund_transaction, TxEarlyRefund::weight() as u64, "TxEarlyRefund");
+        let early_refund_transaction = alice_state3
+            .signed_early_refund_transaction()
+            .unwrap()
+            .unwrap();
+        assert_weight(
+            early_refund_transaction,
+            TxEarlyRefund::weight() as u64,
+            "TxEarlyRefund",
+        );
     }
 
     #[tokio::test]
@@ -722,22 +729,31 @@ mod tests {
 
         // Test TxEarlyRefund construction
         let tx_early_refund = alice_state3.tx_early_refund();
-        
+
         // Verify basic properties
         assert_eq!(tx_early_refund.txid(), tx_early_refund.txid()); // Should be deterministic
         assert!(tx_early_refund.digest() != Sighash::all_zeros()); // Should have valid digest
-        
+
         // Test that it can be signed and completed
-        let early_refund_transaction = alice_state3.signed_early_refund_transaction().unwrap();
-        
+        let early_refund_transaction = alice_state3
+            .signed_early_refund_transaction()
+            .unwrap()
+            .unwrap();
+
         // Verify the transaction has expected structure
         assert_eq!(early_refund_transaction.input.len(), 1); // One input from lock tx
         assert_eq!(early_refund_transaction.output.len(), 1); // One output to refund address
-        assert_eq!(early_refund_transaction.output[0].script_pubkey, refund_address.script_pubkey());
-        
+        assert_eq!(
+            early_refund_transaction.output[0].script_pubkey,
+            refund_address.script_pubkey()
+        );
+
         // Verify the input is spending the lock transaction
-        assert_eq!(early_refund_transaction.input[0].previous_output, alice_state3.tx_lock.as_outpoint());
-        
+        assert_eq!(
+            early_refund_transaction.input[0].previous_output,
+            alice_state3.tx_lock.as_outpoint()
+        );
+
         // Verify the amount is correct (lock amount minus fee)
         let expected_amount = alice_state3.tx_lock.lock_amount() - alice_state3.tx_refund_fee;
         assert_eq!(early_refund_transaction.output[0].value, expected_amount);
@@ -747,7 +763,7 @@ mod tests {
     fn tx_early_refund_has_correct_weight() {
         // TxEarlyRefund should have the same weight as other similar transactions
         assert_eq!(TxEarlyRefund::weight(), 548);
-        
+
         // It should be the same as TxRedeem and TxRefund weights since they have similar structure
         assert_eq!(TxEarlyRefund::weight() as u64, TxRedeem::weight().to_wu());
         assert_eq!(TxEarlyRefund::weight() as u64, TxRefund::weight().to_wu());

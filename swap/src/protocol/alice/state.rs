@@ -392,7 +392,7 @@ impl State2 {
             tx_lock: self.tx_lock,
             tx_punish_sig_bob: msg.tx_punish_sig,
             tx_cancel_sig_bob: msg.tx_cancel_sig,
-            tx_early_refund_sig_bob: msg.tx_early_refund_sig,
+            tx_early_refund_sig_bob: msg.tx_early_refund_sig.into(),
             tx_redeem_fee: self.tx_redeem_fee,
             tx_punish_fee: self.tx_punish_fee,
             tx_refund_fee: self.tx_refund_fee,
@@ -423,7 +423,17 @@ pub struct State3 {
     pub tx_lock: bitcoin::TxLock,
     tx_punish_sig_bob: bitcoin::Signature,
     tx_cancel_sig_bob: bitcoin::Signature,
-    tx_early_refund_sig_bob: bitcoin::Signature,
+    /// This field was added in this pull request:
+    /// https://github.com/UnstoppableSwap/core/pull/344
+    ///
+    /// Previously this did not exist. To avoid deserialization failing for
+    /// older swaps we default it to None.
+    ///
+    /// The signature is not essential for the protocol to work. It is used optionally
+    /// to allow Alice to refund the Bitcoin early. If it is not present, Bob will have
+    /// to wait for the timelock to expire.
+    #[serde(default)]
+    tx_early_refund_sig_bob: Option<bitcoin::Signature>,
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_redeem_fee: bitcoin::Amount,
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
@@ -607,13 +617,20 @@ impl State3 {
             .context("Failed to complete Bitcoin punish transaction")
     }
 
-    pub fn signed_early_refund_transaction(&self) -> Result<bitcoin::Transaction> {
+    /// Construct tx_early_refund, sign it with Bob's signature and our own.
+    /// If we do not have a Bob's signature stored, we return None.
+    pub fn signed_early_refund_transaction(&self) -> Option<Result<bitcoin::Transaction>> {
         let tx_early_refund = self.tx_early_refund();
-        let tx = tx_early_refund
-            .complete(self.tx_early_refund_sig_bob.clone(), self.a.clone(), self.B)
-            .context("Failed to complete Bitcoin early refund transaction")?;
 
-        Ok(tx)
+        if let Some(signature) = &self.tx_early_refund_sig_bob {
+            let tx = tx_early_refund
+                .complete(signature.clone(), self.a.clone(), self.B)
+                .context("Failed to complete Bitcoin early refund transaction");
+
+            Some(tx)
+        } else {
+            None
+        }
     }
 
     fn tx_punish(&self) -> TxPunish {
