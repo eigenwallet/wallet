@@ -142,109 +142,6 @@ where
     testfn(test).await.unwrap()
 }
 
-pub async fn setup_test_with_alice_starting_balances<T, F, C>(
-    alice_starting_balances: StartingBalances,
-    _config: C,
-    testfn: T,
-) where
-    T: Fn(TestContext) -> F,
-    F: Future<Output = Result<()>>,
-    C: GetConfig,
-{
-    let cli = Cli::default();
-
-    let _guard = tracing_subscriber::fmt()
-        .with_env_filter(
-            "warn,swap=debug,monero_harness=debug,monero_rpc=debug,bitcoin_harness=info,testcontainers=info",
-        )
-        .with_test_writer()
-        .set_default();
-
-    let env_config = C::get_config();
-
-    let (monero, containers) = init_containers(&cli).await;
-    monero.init_miner().await.unwrap();
-
-    let btc_amount = bitcoin::Amount::from_sat(1_000_000);
-    let xmr_amount = monero::Amount::from_monero(btc_amount.to_btc() / FixedRate::RATE).unwrap();
-
-    let electrs_rpc_port = containers.electrs.get_host_port_ipv4(electrs::RPC_PORT);
-
-    let alice_seed = Seed::random().unwrap();
-    let (alice_bitcoin_wallet, alice_monero_wallet) = init_test_wallets(
-        MONERO_WALLET_NAME_ALICE,
-        containers.bitcoind_url.clone(),
-        &monero,
-        alice_starting_balances.clone(),
-        electrs_rpc_port,
-        &alice_seed,
-        env_config,
-    )
-    .await;
-
-    let alice_listen_port = get_port().expect("Failed to find a free port");
-    let alice_listen_address: Multiaddr = format!("/ip4/127.0.0.1/tcp/{}", alice_listen_port)
-        .parse()
-        .expect("failed to parse Alice's address");
-
-    let alice_db_path = NamedTempFile::new().unwrap().path().to_path_buf();
-    let (alice_handle, alice_swap_handle) = start_alice(
-        &alice_seed,
-        alice_db_path.clone(),
-        alice_listen_address.clone(),
-        env_config,
-        alice_bitcoin_wallet.clone(),
-        alice_monero_wallet.clone(),
-    )
-    .await;
-
-    let bob_seed = Seed::random().unwrap();
-    let bob_starting_balances = StartingBalances::new(btc_amount * 10, monero::Amount::ZERO, None);
-
-    let (bob_bitcoin_wallet, bob_monero_wallet) = init_test_wallets(
-        MONERO_WALLET_NAME_BOB,
-        containers.bitcoind_url,
-        &monero,
-        bob_starting_balances.clone(),
-        electrs_rpc_port,
-        &bob_seed,
-        env_config,
-    )
-    .await;
-
-    let bob_params = BobParams {
-        seed: Seed::random().unwrap(),
-        db_path: NamedTempFile::new().unwrap().path().to_path_buf(),
-        bitcoin_wallet: bob_bitcoin_wallet.clone(),
-        monero_wallet: bob_monero_wallet.clone(),
-        alice_address: alice_listen_address.clone(),
-        alice_peer_id: alice_handle.peer_id,
-        env_config,
-    };
-
-    monero.start_miner().await.unwrap();
-
-    let test = TestContext {
-        env_config,
-        btc_amount,
-        xmr_amount,
-        alice_seed,
-        alice_db_path,
-        alice_listen_address,
-        alice_starting_balances,
-        alice_bitcoin_wallet,
-        alice_monero_wallet,
-        alice_swap_handle,
-        alice_handle,
-        bob_params,
-        bob_starting_balances,
-        bob_bitcoin_wallet,
-        bob_monero_wallet,
-    };
-
-    testfn(test).await.unwrap();
-}
-
 async fn init_containers(cli: &Cli) -> (Monero, Containers<'_>) {
     let prefix = random_prefix();
     let bitcoind_name = format!("{}_{}", prefix, "bitcoind");
@@ -937,6 +834,29 @@ impl TestContext {
         let lock_tx_bitcoin_fee = self.bob_bitcoin_wallet.transaction_fee(lock_tx_id).await?;
 
         Ok(self.bob_starting_balances.btc - self.btc_amount - lock_tx_bitcoin_fee)
+    }
+
+    pub async fn stop_alice_monero_wallet_rpc(&self) {
+        self.alice_monero_wallet.lock().await.stop().await.unwrap();
+
+        // Wait until the monero-wallet-rpc is fully stopped
+        // stop_wallet() internally sets a flag in the monero-wallet-rpc (`m_stop`) which
+        // is only checked every once in a while
+        loop {
+            if !self
+                .alice_monero_wallet
+                .lock()
+                .await
+                .is_alive()
+                .await
+                .unwrap()
+            {
+                tracing::info!("Alice Monero Wallet RPC stopped");
+                break;
+            }
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
     }
 
     pub async fn empty_alice_monero_wallet(&self) {

@@ -118,13 +118,12 @@ where
             }
         }
         AliceState::BtcLocked { state3 } => {
-            // If we do not manage to lock the Monero funds within 2 minutes, we will give up
-            const MAX_MONERO_LOCK_TIME: Duration = Duration::from_secs(120);
-
-            // We will retry indefinitely to lock the Monero funds, until the swap is cancelled
             // Sometimes locking the Monero can fail e.g due to the daemon not being fully synced
+            // We will retry indefinitely to lock the Monero funds, until either:
+            // - the swap is cancelled
+            // - we do not manage to lock the Monero funds within the timeout
             let backoff = backoff::ExponentialBackoffBuilder::new()
-                .with_max_elapsed_time(Some(MAX_MONERO_LOCK_TIME))
+                .with_max_elapsed_time(Some(env_config.monero_lock_retry_timeout))
                 .with_max_interval(Duration::from_secs(30))
                 .build();
 
@@ -177,19 +176,21 @@ where
                 }
                 // If we were not able to lock the Monero funds before the timelock expired,
                 // we can safely abort the swap because we did not lock any funds
+                // We do not do an early refund because Bob can do this himself
                 Ok(None) => {
                     tracing::info!(
                         swap_id = %swap_id,
                         "We did not manage to lock the Monero funds before the timelock expired. Aborting swap."
                     );
-                    AliceState::BtcEarlyRefundable { state3 }
+
+                    AliceState::SafelyAborted
                 }
                 Err(e) => {
                     tracing::error!(
                         swap_id = %swap_id,
                         error = ?e,
-                        "Failed to lock Monero within {} seconds",
-                        MAX_MONERO_LOCK_TIME.as_secs()
+                        "Failed to lock Monero within {} seconds. We will do an early refund of the Bitcoin.",
+                        env_config.monero_lock_retry_timeout.as_secs()
                     );
 
                     AliceState::BtcEarlyRefundable { state3 }
