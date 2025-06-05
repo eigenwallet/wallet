@@ -539,6 +539,18 @@ impl State3 {
     pub fn construct_tx_early_refund(&self) -> bitcoin::TxEarlyRefund {
         bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee)
     }
+
+    pub async fn check_for_tx_early_refund(
+        &self,
+        bitcoin_wallet: &bitcoin::Wallet,
+    ) -> Result<Arc<Transaction>> {
+        let tx_early_refund = self.construct_tx_early_refund();
+        let tx = bitcoin_wallet
+            .get_raw_transaction(tx_early_refund.txid())
+            .await?;
+
+        Ok(tx)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]

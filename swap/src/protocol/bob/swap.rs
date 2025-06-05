@@ -225,12 +225,12 @@ async fn next_state(
                 },
             );
 
-            let tx_early_refund_status = bitcoin_wallet
-                .subscribe_to(state3.construct_tx_early_refund())
-                .await;
-            let tx_lock_status = bitcoin_wallet.subscribe_to(state3.tx_lock.clone()).await;
+            let (tx_early_refund_status, tx_lock_status) = tokio::join!(
+                bitcoin_wallet.subscribe_to(state3.construct_tx_early_refund()),
+                bitcoin_wallet.subscribe_to(state3.tx_lock.clone())
+            );
 
-            // Check whether we can cancel the swap, and do so if possible
+            // Check explicitly whether we can cancel the swap, and do so if possible
             if state3
                 .expired_timelock(bitcoin_wallet)
                 .await?
@@ -239,6 +239,24 @@ async fn next_state(
                 let state4 = state3.cancel(monero_wallet_restore_blockheight);
                 return Ok(BobState::CancelTimelockExpired(state4));
             };
+
+            // Check explicitly whether Alice has published the early refund transaction
+            if let Ok(tx) = state3.check_for_tx_early_refund(bitcoin_wallet).await {
+                let tx_early_refund_txid = tx.compute_txid();
+
+                tracing::info!(%tx_early_refund_txid, "Alice has refunded us our Bitcoin early");
+
+                event_emitter.emit_swap_progress_event(
+                    swap_id,
+                    TauriSwapProgressEvent::BtcRefunded {
+                        btc_refund_txid: tx_early_refund_txid,
+                    },
+                );
+
+                return Ok(BobState::BtcEarlyRefunded {
+                    tx_early_refund: tx_early_refund_txid,
+                });
+            }
 
             tracing::info!("Waiting for Alice to lock Monero");
 
@@ -280,17 +298,17 @@ async fn next_state(
             select! {
                 // Alice published the early refund transaction
                 _ = early_refund_tx_seen => {
-                    tracing::info!("Alice unilaterally refunded us our Bitcoin");
+                    let tx_early_refund_txid = state3.construct_tx_early_refund().txid();
 
-                    let tx_early_refund = state3.construct_tx_early_refund().txid();
+                    tracing::info!(%tx_early_refund_txid, "Alice refunded us our Bitcoin early");
 
                     event_emitter.emit_swap_progress_event(
                         swap_id,
-                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund },
+                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund_txid },
                     );
 
                     BobState::BtcEarlyRefunded {
-                        tx_early_refund,
+                        tx_early_refund: tx_early_refund_txid,
                     }
                 },
                 // Alice sent us the transfer proof for the Monero she locked
@@ -394,15 +412,17 @@ async fn next_state(
                     BobState::CancelTimelockExpired(state.cancel(monero_wallet_restore_blockheight))
                 },
                 _ = tx_early_refund_status.wait_until_seen() => {
-                    tracing::info!("Alice unilaterally refunded us our Bitcoin");
+                    let tx_early_refund_txid = state.construct_tx_early_refund().txid();
+
+                    tracing::info!(%tx_early_refund_txid, "Alice refunded us our Bitcoin early");
 
                     event_emitter.emit_swap_progress_event(
                         swap_id,
-                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund.txid() },
+                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund_txid },
                     );
 
                     BobState::BtcEarlyRefunded {
-                        tx_early_refund: state.construct_tx_early_refund().txid(),
+                        tx_early_refund:  tx_early_refund_txid,
                     }
                 },
             }
@@ -501,6 +521,26 @@ async fn next_state(
             }
         }
         BobState::CancelTimelockExpired(state4) => {
+            // Check if Alice has published the early refund transaction already
+            // We won't be able to to cancel if she has because tx_cancel and tx_early_refund are mutually exclusive
+            // They spend the same UTXO
+            if let Ok(tx) = state4.check_for_tx_early_refund(bitcoin_wallet).await {
+                tracing::info!("Alice has refunded us our Bitcoin early");
+
+                let tx_early_refund_txid = tx.compute_txid();
+
+                event_emitter.emit_swap_progress_event(
+                    swap_id,
+                    TauriSwapProgressEvent::BtcRefunded {
+                        btc_refund_txid: tx_early_refund_txid,
+                    },
+                );
+
+                return Ok(BobState::BtcEarlyRefunded {
+                    tx_early_refund: tx_early_refund_txid,
+                });
+            }
+
             event_emitter
                 .emit_swap_progress_event(swap_id, TauriSwapProgressEvent::CancelTimelockExpired);
 
@@ -532,19 +572,24 @@ async fn next_state(
                 ExpiredTimelocks::Cancel { .. } => {
                     // Check if Alice has published the early refund transaction already
                     // We won't be able to refund ourselves then
+                    // TODO: Figure out what to do if both tx_lock and tx_early_refund are published?
+                    // TODO: We cannot know which one will get confirmed first?
+                    // TODO: Both transactions have the same fee but are mutually exclusive
                     if let Ok(tx) = state.check_for_tx_early_refund(bitcoin_wallet).await {
-                        tracing::info!("Alice has unilateraly refunded our Bitcoin");
+                        let tx_early_refund_txid = tx.compute_txid();
 
-                        let tx_early_refund = tx.compute_txid();
+                        tracing::info!(%tx_early_refund_txid, "Alice has refunded us our Bitcoin early");
 
                         event_emitter.emit_swap_progress_event(
                             swap_id,
                             TauriSwapProgressEvent::BtcRefunded {
-                                btc_refund_txid: tx_early_refund,
+                                btc_refund_txid: tx_early_refund_txid,
                             },
                         );
 
-                        return Ok(BobState::BtcEarlyRefunded { tx_early_refund });
+                        return Ok(BobState::BtcEarlyRefunded {
+                            tx_early_refund: tx_early_refund_txid,
+                        });
                     }
 
                     let btc_refund_txid = state.publish_refund_btc(bitcoin_wallet).await?;
