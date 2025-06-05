@@ -201,7 +201,7 @@ where
             match state3.signed_early_refund_transaction() {
                 Some(tx_early_refund) => {
                     let tx_early_refund = tx_early_refund?;
-                    let txid = tx_early_refund.compute_txid();
+                    let tx_early_refund_txid = tx_early_refund.compute_txid();
 
                     // Broadcast the early refund transaction
                     let (_, _) = bitcoin_wallet
@@ -209,12 +209,12 @@ where
                         .await?;
 
                     tracing::info!(
-                        %txid,
-                        "Unilaterally refunded Bitcoin"
+                        %tx_early_refund_txid,
+                        "Published early refund transaction for Bob"
                     );
 
                     AliceState::BtcEarlyRefunded {
-                        tx_early_refund_txid: txid,
+                        tx_early_refund_txid,
                     }
                 }
                 // If we do not have a signature for the early refund transaction, we cannot do an early refund
