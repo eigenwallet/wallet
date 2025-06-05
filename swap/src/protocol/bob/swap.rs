@@ -555,11 +555,11 @@ async fn next_state(
             BobState::BtcCancelled(state4)
         }
         BobState::BtcCancelled(state) => {
+            let btc_cancel_txid = state.construct_tx_cancel()?.txid();
+
             event_emitter.emit_swap_progress_event(
                 swap_id,
-                TauriSwapProgressEvent::BtcCancelled {
-                    btc_cancel_txid: state.construct_tx_cancel()?.txid(),
-                },
+                TauriSwapProgressEvent::BtcCancelled { btc_cancel_txid },
             );
 
             // Bob has cancelled the swap
@@ -570,27 +570,24 @@ async fn next_state(
                     );
                 }
                 ExpiredTimelocks::Cancel { .. } => {
-                    // Check if Alice has published the early refund transaction already
-                    // We won't be able to refund ourselves then
-                    // TODO: Figure out what to do if both tx_lock and tx_early_refund are published?
-                    // TODO: We cannot know which one will get confirmed first?
-                    // TODO: Both transactions have the same fee but are mutually exclusive
-                    if let Ok(tx) = state.check_for_tx_early_refund(bitcoin_wallet).await {
-                        let tx_early_refund_txid = tx.compute_txid();
-
-                        tracing::info!(%tx_early_refund_txid, "Alice has refunded us our Bitcoin early");
-
-                        event_emitter.emit_swap_progress_event(
-                            swap_id,
-                            TauriSwapProgressEvent::BtcRefunded {
-                                btc_refund_txid: tx_early_refund_txid,
-                            },
-                        );
-
-                        return Ok(BobState::BtcEarlyRefunded {
-                            tx_early_refund: tx_early_refund_txid,
-                        });
-                    }
+                    // We DO NOT check if Alice has published the early refund transaction already
+                    //
+                    // What if both tx_lock and tx_early_refund are published?
+                    // We cannot know which one will get confirmed first.
+                    // Both transactions have the same fee and same size but are mutually exclusive.
+                    //
+                    // If tx_cancel gets confirmed before tx_early_refund, we MUST still publish tx_refund
+                    // because if we don't we could get punished by Alice.
+                    //
+                    // It is definitely safer to assume that tx_early_refund will not get confirmed, and to
+                    // try to publish tx_refund anyway.
+                    // The user will definitely receive the refund but the displayed txid might be wrong
+                    // because our state machine assume that tx_refund was confirmed but really tx_early_refund was confirmed
+                    //
+                    // This is a UX issue rather than a security issue
+                    //
+                    // By default, Alice will not publish tx_early_refund if the timelock has expired.
+                    // However, this could change if Alice is malicious but there's no point in doing that really?
 
                     let btc_refund_txid = state.publish_refund_btc(bitcoin_wallet).await?;
 
