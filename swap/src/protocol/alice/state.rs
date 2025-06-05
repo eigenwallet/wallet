@@ -113,8 +113,8 @@ impl fmt::Display for AliceState {
             AliceState::BtcPunishable { .. } => write!(f, "btc is punishable"),
             AliceState::XmrRefunded => write!(f, "xmr is refunded"),
             AliceState::CancelTimelockExpired { .. } => write!(f, "cancel timelock is expired"),
-            AliceState::BtcEarlyRefundable { .. } => write!(f, "early refundable"),
-            AliceState::BtcEarlyRefunded { .. } => write!(f, "early refunded"),
+            AliceState::BtcEarlyRefundable { .. } => write!(f, "btc is early refundable"),
+            AliceState::BtcEarlyRefunded { .. } => write!(f, "btc is early refunded"),
         }
     }
 }
