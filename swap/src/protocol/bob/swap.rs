@@ -245,8 +245,7 @@ async fn next_state(
             // (Most likely redundant but cannot hurt)
             if state3
                 .check_for_tx_early_refund(bitcoin_wallet)
-                .await
-                .context("Failed to check for existence of tx_early_refund")?
+                .await?
                 .is_some()
             {
                 return Ok(BobState::BtcEarlyRefundPublished(
@@ -533,9 +532,8 @@ async fn next_state(
             event_emitter
                 .emit_swap_progress_event(swap_id, TauriSwapProgressEvent::CancelTimelockExpired);
 
-            if let Err(err) = state6.check_for_tx_cancel(bitcoin_wallet).await {
+            if state6.check_for_tx_cancel(bitcoin_wallet).await?.is_none() {
                 tracing::debug!(
-                    %err,
                     "Couldn't find tx_cancel yet, publishing ourselves"
                 );
 
@@ -545,7 +543,7 @@ async fn next_state(
                     // If tx_cancel is not present in the chain and we fail to publish it. There's only one logical conclusion:
                     // The tx_lock UTXO has been spent by the tx_early_refund transaction
                     // Therefore we check for the early refund transaction
-                    match state6.check_for_tx_early_refund(bitcoin_wallet).await.context("Failed to check for existence of tx_early_refund after tx_cancel was rejected")? {
+                    match state6.check_for_tx_early_refund(bitcoin_wallet).await? {
                         Some(_) => {
                             return Ok(BobState::BtcEarlyRefundPublished(state6));
                         }

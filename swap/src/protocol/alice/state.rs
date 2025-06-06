@@ -531,7 +531,7 @@ impl State3 {
         bitcoin_wallet: &bitcoin::Wallet,
     ) -> Result<Option<Arc<Transaction>>> {
         let tx_cancel = self.tx_cancel();
-        let tx = bitcoin_wallet.get_raw_transaction(tx_cancel.txid()).await?;
+        let tx = bitcoin_wallet.get_raw_transaction(tx_cancel.txid()).await.context("Failed to check for existence of tx_cancel")?;
 
         Ok(tx)
     }

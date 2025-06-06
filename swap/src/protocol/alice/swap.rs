@@ -430,7 +430,7 @@ where
             transfer_proof,
             state3,
         } => {
-            if state3.check_for_tx_cancel(bitcoin_wallet).await.is_err() {
+            if state3.check_for_tx_cancel(bitcoin_wallet).await?.is_none() {
                 // If Bob hasn't yet broadcasted the cancel transaction, Alice has to publish it
                 // to be able to eventually punish. Since the punish timelock is
                 // relative to the publication of the cancel transaction we have to ensure it
@@ -552,6 +552,7 @@ where
                     let published_refund_tx = bitcoin_wallet
                         .get_raw_transaction(state3.tx_refund().txid())
                         .await
+                        // TODO: Better log message here
                         .context("Failed to fetch refund transaction after assuming it was included because the punish transaction failed")?
                         .ok_or_else(|| anyhow::anyhow!("Bitcoin refund transaction not found"))?;
 
