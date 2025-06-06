@@ -85,6 +85,9 @@ export default function PromiseInvokeButton<T>({
             disabled={isDisabled}
             {...(rest as IconButtonProps)}
             size="large"
+            sx={{
+              padding: "0.25rem",
+            }}
           >
             {actualEndIcon}
           </IconButton>
