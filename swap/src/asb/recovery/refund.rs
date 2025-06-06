@@ -2,7 +2,7 @@ use crate::bitcoin::{self};
 use crate::monero;
 use crate::protocol::alice::AliceState;
 use crate::protocol::Database;
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use libp2p::PeerId;
 use std::convert::TryInto;
 use std::sync::Arc;

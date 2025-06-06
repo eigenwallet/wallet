@@ -660,7 +660,7 @@ impl Wallet {
     }
 
     pub async fn get_raw_transaction(&self, txid: Txid) -> Result<Option<Arc<Transaction>>> {
-        self.get_tx(txid).await
+        self.get_tx(txid).await.with_context(|| format!("Could not get raw tx with id: {}", txid))
     }
 
     // Returns the TxId of the last published Bitcoin transaction
