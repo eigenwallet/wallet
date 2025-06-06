@@ -133,7 +133,7 @@ where
                 // If the swap is cancelled, there is no need to lock the Monero funds anymore
                 // because there is no way for the swap to succeed.
                 if !matches!(
-                    state3.expired_timelocks(bitcoin_wallet).await?,
+                    state3.expired_timelocks(bitcoin_wallet).await.context("Failed to check for expired timelocks before locking Monero").map_err(backoff::Error::transient)?,
                     ExpiredTimelocks::None { .. }
                 ) {
                     return Ok(None);
