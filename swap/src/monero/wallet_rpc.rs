@@ -48,8 +48,14 @@ impl MoneroDaemon {
 
     /// Checks if the Monero daemon is available by sending a request to its `get_info` endpoint.
     pub async fn is_available(&self, client: &reqwest::Client) -> Result<bool, Error> {
+        let url = if self.url.ends_with("/") {
+            format!("{}get_info", self.url)
+        } else {
+            format!("{}/get_info", self.url)
+        };
+
         let res = client
-            .get(&self.url)
+            .get(&url)
             .send()
             .await
             .context("Failed to send request to get_info endpoint")?;
