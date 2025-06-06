@@ -259,8 +259,21 @@ where
                                 // The error is already logged in the make_quote_or_use_cached function
                                 // We don't log it here to avoid spamming on each request
                                 Err(_) => {
-                                    // TODO: Respond with the error to Bob. Currently this will timeout on Bob's side.
-                                    continue;
+                                    let zero_quote = BidQuote {
+                                        price: bitcoin::Amount::ZERO,
+                                        min_quantity: bitcoin::Amount::ZERO,
+                                        max_quantity: bitcoin::Amount::ZERO,
+                                    };
+
+                                    if self
+                                        .swarm
+                                        .behaviour_mut()
+                                        .quote
+                                        .send_response(channel, zero_quote)
+                                        .is_err()
+                                    {
+                                        tracing::debug!(%peer, "Failed to respond with zero quote");
+                                    }
                                 }
                             }
                         }
