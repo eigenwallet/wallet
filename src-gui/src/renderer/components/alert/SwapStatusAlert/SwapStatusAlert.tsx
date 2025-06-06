@@ -1,5 +1,4 @@
-import { Box } from "@mui/material";
-import { Alert, AlertTitle } from "@mui/lab/";
+import { Box, Alert, AlertTitle } from "@mui/material";
 import {
   BobStateName,
   GetSwapInfoResponseExt,
