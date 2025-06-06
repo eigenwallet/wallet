@@ -803,7 +803,10 @@ impl State6 {
     ) -> Result<Option<Arc<Transaction>>> {
         let tx_cancel = self.construct_tx_cancel()?;
 
-        let tx = bitcoin_wallet.get_raw_transaction(tx_cancel.txid()).await.context("Failed to check for existence of tx_cancel")?;
+        let tx = bitcoin_wallet
+            .get_raw_transaction(tx_cancel.txid())
+            .await
+            .context("Failed to check for existence of tx_cancel")?;
 
         Ok(tx)
     }

@@ -533,9 +533,7 @@ async fn next_state(
                 .emit_swap_progress_event(swap_id, TauriSwapProgressEvent::CancelTimelockExpired);
 
             if state6.check_for_tx_cancel(bitcoin_wallet).await?.is_none() {
-                tracing::debug!(
-                    "Couldn't find tx_cancel yet, publishing ourselves"
-                );
+                tracing::debug!("Couldn't find tx_cancel yet, publishing ourselves");
 
                 if let Err(tx_cancel_err) = state6.submit_tx_cancel(bitcoin_wallet).await {
                     tracing::warn!(err = %tx_cancel_err, "Failed to publish tx_cancel even though it is not present in the chain. Did Alice already refund us our Bitcoin early?");
