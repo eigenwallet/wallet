@@ -529,18 +529,20 @@ impl State3 {
     pub async fn check_for_tx_cancel(
         &self,
         bitcoin_wallet: &bitcoin::Wallet,
-    ) -> Result<Arc<Transaction>> {
+    ) -> Result<Option<Arc<Transaction>>> {
         let tx_cancel = self.tx_cancel();
         let tx = bitcoin_wallet.get_raw_transaction(tx_cancel.txid()).await?;
+
         Ok(tx)
     }
 
     pub async fn fetch_tx_refund(
         &self,
         bitcoin_wallet: &bitcoin::Wallet,
-    ) -> Result<Arc<Transaction>> {
+    ) -> Result<Option<Arc<Transaction>>> {
         let tx_refund = self.tx_refund();
         let tx = bitcoin_wallet.get_raw_transaction(tx_refund.txid()).await?;
+
         Ok(tx)
     }
 

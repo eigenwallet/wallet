@@ -2,7 +2,7 @@ use crate::bitcoin::{self};
 use crate::monero;
 use crate::protocol::alice::AliceState;
 use crate::protocol::Database;
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use libp2p::PeerId;
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -64,8 +64,10 @@ pub async fn refund(
 
     tracing::info!(%swap_id, "Trying to manually refund swap");
 
-    let spend_key = if let Ok(published_refund_tx) =
-        state3.fetch_tx_refund(bitcoin_wallet.as_ref()).await
+    let spend_key = if let Some(published_refund_tx) = state3
+        .fetch_tx_refund(bitcoin_wallet.as_ref())
+        .await
+        .context("Failed to fetch Bitcoin refund transaction")?
     {
         tracing::debug!(%swap_id, "Bitcoin refund transaction found, extracting key to refund Monero");
         state3.extract_monero_private_key(published_refund_tx)?

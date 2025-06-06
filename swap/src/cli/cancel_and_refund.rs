@@ -1,7 +1,7 @@
 use crate::bitcoin::{ExpiredTimelocks, Wallet};
 use crate::protocol::bob::BobState;
 use crate::protocol::Database;
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use bitcoin::Txid;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -78,11 +78,16 @@ pub async fn cancel(
         // 2. The cancel transaction has already been published by Alice
         Err(err) => {
             // Check if Alice has already published the cancel transaction while we were absent
-            if let Ok(tx) = state6.check_for_tx_cancel(bitcoin_wallet.as_ref()).await {
+            if let Some(tx) = state6
+                .check_for_tx_cancel(bitcoin_wallet.as_ref())
+                .await
+                .context("Failed to check for existence of tx_cancel")?
+            {
                 let state = BobState::BtcCancelled(state6);
                 db.insert_latest_state(swap_id, state.clone().into())
                     .await?;
                 tracing::info!("Alice has already cancelled the swap");
+
                 return Ok((tx.compute_txid(), state));
             }
 

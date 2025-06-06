@@ -1,4 +1,4 @@
-use crate::bitcoin::{Address, Amount, Transaction};
+use crate::bitcoin::{parse_rpc_error_code, Address, Amount, RpcErrorCode, Transaction};
 use crate::cli::api::tauri_bindings::{
     TauriBackgroundProgress, TauriBitcoinFullScanProgress, TauriBitcoinSyncProgress, TauriEmitter,
     TauriHandle,
@@ -659,10 +659,8 @@ impl Wallet {
         Ok((txid, subscription))
     }
 
-    pub async fn get_raw_transaction(&self, txid: Txid) -> Result<Arc<Transaction>> {
-        self.get_tx(txid)
-            .await
-            .with_context(|| format!("Could not get raw tx with id: {}", txid))
+    pub async fn get_raw_transaction(&self, txid: Txid) -> Result<Option<Arc<Transaction>>> {
+        self.get_tx(txid).await
     }
 
     // Returns the TxId of the last published Bitcoin transaction
@@ -763,7 +761,7 @@ impl Wallet {
     }
 
     /// Get a transaction from the Electrum server or the cache.
-    pub async fn get_tx(&self, txid: Txid) -> Result<Arc<Transaction>> {
+    pub async fn get_tx(&self, txid: Txid) -> Result<Option<Arc<Transaction>>> {
         let client = self.electrum_client.lock().await;
         let tx = client
             .get_tx(txid)
@@ -992,7 +990,8 @@ impl Wallet {
         let transaction = self
             .get_tx(txid)
             .await
-            .context("Could not find tx in bdk wallet when trying to determine fees")?;
+            .context("Could not find tx in bdk wallet when trying to determine fees")?
+            .ok_or_else(|| anyhow!("Transaction not found"))?;
 
         let fee = self.wallet.lock().await.calculate_fee(&transaction)?;
 
@@ -1661,10 +1660,22 @@ impl Client {
 
     /// Get a transaction from the Electrum server.
     /// Fails if the transaction is not found.
-    pub fn get_tx(&self, txid: Txid) -> Result<Arc<Transaction>> {
-        self.electrum
-            .fetch_tx(txid)
-            .context("Failed to get transaction from the Electrum server")
+    pub fn get_tx(&self, txid: Txid) -> Result<Option<Arc<Transaction>>> {
+        match self.electrum.fetch_tx(txid) {
+            Ok(tx) => Ok(Some(tx)),
+            Err(err) => {
+                let err = anyhow::anyhow!(err);
+
+                if let Ok(error_code) = parse_rpc_error_code(&err) {
+                    // RpcInvalidAddressOrKey means the transaction was not found
+                    if error_code == i64::from(RpcErrorCode::RpcInvalidAddressOrKey) {
+                        return Ok(None);
+                    }
+                }
+
+                Err(err.context("Failed to get transaction from the Electrum server"))
+            }
+        }
     }
 
     /// Estimate the fee rate to be included in a block at the given offset.

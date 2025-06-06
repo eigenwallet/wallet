@@ -437,6 +437,8 @@ pub enum RpcErrorCode {
     RpcVerifyAlreadyInChain,
     /// General error during transaction or block submission
     RpcVerifyError,
+    /// Invalid address or key. Error code -5. Is throwns when a transaction is not found.
+    RpcInvalidAddressOrKey,
 }
 
 impl From<RpcErrorCode> for i64 {
@@ -445,6 +447,7 @@ impl From<RpcErrorCode> for i64 {
             RpcErrorCode::RpcVerifyError => -25,
             RpcErrorCode::RpcVerifyRejected => -26,
             RpcErrorCode::RpcVerifyAlreadyInChain => -27,
+            RpcErrorCode::RpcInvalidAddressOrKey => -5,
         }
     }
 }
