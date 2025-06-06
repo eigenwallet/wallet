@@ -78,10 +78,7 @@ pub async fn cancel(
         // 2. The cancel transaction has already been published by Alice
         Err(err) => {
             // Check if Alice has already published the cancel transaction while we were absent
-            if let Some(tx) = state6
-                .check_for_tx_cancel(bitcoin_wallet.as_ref())
-                .await?
-            {
+            if let Some(tx) = state6.check_for_tx_cancel(bitcoin_wallet.as_ref()).await? {
                 let state = BobState::BtcCancelled(state6);
                 db.insert_latest_state(swap_id, state.clone().into())
                     .await?;
