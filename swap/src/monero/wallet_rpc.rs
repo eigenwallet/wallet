@@ -10,52 +10,46 @@ use std::time::Duration;
 // We don't need any testnet nodes because we don't support testnet at all
 static MONERO_DAEMONS: Lazy<[MoneroDaemon; 12]> = Lazy::new(|| {
     [
-        MoneroDaemon::new("xmr-node.cakewallet.com", 18081, Network::Mainnet),
-        MoneroDaemon::new("nodex.monerujo.io", 18081, Network::Mainnet),
-        MoneroDaemon::new("nodes.hashvault.pro", 18081, Network::Mainnet),
-        MoneroDaemon::new("p2pmd.xmrvsbeast.com", 18081, Network::Mainnet),
-        MoneroDaemon::new("node.monerodevs.org", 18089, Network::Mainnet),
-        MoneroDaemon::new("xmr-node-uk.cakewallet.com", 18081, Network::Mainnet),
-        MoneroDaemon::new("xmr.litepay.ch", 18081, Network::Mainnet),
-        MoneroDaemon::new("stagenet.xmr-tw.org", 38081, Network::Stagenet),
-        MoneroDaemon::new("node.monerodevs.org", 38089, Network::Stagenet),
-        MoneroDaemon::new("singapore.node.xmr.pm", 38081, Network::Stagenet),
-        MoneroDaemon::new("xmr-lux.boldsuck.org", 38081, Network::Stagenet),
-        MoneroDaemon::new("stagenet.community.rino.io", 38081, Network::Stagenet),
+        MoneroDaemon::new("http://xmr-node.cakewallet.com:18081", Network::Mainnet),
+        MoneroDaemon::new("http://nodex.monerujo.io:18081", Network::Mainnet),
+        MoneroDaemon::new("http://nodes.hashvault.pro:18081", Network::Mainnet),
+        MoneroDaemon::new("http://p2pmd.xmrvsbeast.com:18081", Network::Mainnet),
+        MoneroDaemon::new("http://node.monerodevs.org:18089", Network::Mainnet),
+        MoneroDaemon::new("http://xmr-node-uk.cakewallet.com:18081", Network::Mainnet),
+        MoneroDaemon::new("http://xmr.litepay.ch:18081", Network::Mainnet),
+        MoneroDaemon::new("http://stagenet.xmr-tw.org:38081", Network::Stagenet),
+        MoneroDaemon::new("http://node.monerodevs.org:38089", Network::Stagenet),
+        MoneroDaemon::new("http://singapore.node.xmr.pm:38081", Network::Stagenet),
+        MoneroDaemon::new("http://xmr-lux.boldsuck.org:38081", Network::Stagenet),
+        MoneroDaemon::new("http://stagenet.community.rino.io:38081", Network::Stagenet),
     ]
 });
 
 #[derive(Debug, Clone)]
 pub struct MoneroDaemon {
-    address: String,
-    port: u16,
+    url: String,
     network: Network,
 }
 
 impl MoneroDaemon {
-    pub fn new(address: impl Into<String>, port: u16, network: Network) -> MoneroDaemon {
+    pub fn new(url: impl Into<String>, network: Network) -> MoneroDaemon {
         MoneroDaemon {
-            address: address.into(),
-            port,
+            url: url.into(),
             network,
         }
     }
 
-    pub fn from_str(address: impl Into<String>, network: Network) -> Result<MoneroDaemon, Error> {
-        let (address, port) = extract_host_and_port(address.into())?;
-
+    pub fn from_str(url: impl Into<String>, network: Network) -> Result<MoneroDaemon, Error> {
         Ok(MoneroDaemon {
-            address,
-            port,
+            url: url.into(),
             network,
         })
     }
 
     /// Checks if the Monero daemon is available by sending a request to its `get_info` endpoint.
     pub async fn is_available(&self, client: &reqwest::Client) -> Result<bool, Error> {
-        let url = format!("http://{}:{}/get_info", self.address, self.port);
         let res = client
-            .get(url)
+            .get(&self.url)
             .send()
             .await
             .context("Failed to send request to get_info endpoint")?;
@@ -79,7 +73,7 @@ impl MoneroDaemon {
 
 impl Display for MoneroDaemon {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.address, self.port)
+        write!(f, "{}", self.url)
     }
 }
 
@@ -174,10 +168,10 @@ mod tests {
             )
             .create();
 
-        let (host, port) = extract_host_and_port(server.host_with_port()).unwrap();
+        let url = format!("http://{}", server.url());
 
         let client = reqwest::Client::new();
-        let result = MoneroDaemon::new(host, port, Network::Mainnet)
+        let result = MoneroDaemon::new(url, Network::Mainnet)
             .is_available(&client)
             .await;
 
@@ -205,10 +199,10 @@ mod tests {
             )
             .create();
 
-        let (host, port) = extract_host_and_port(server.host_with_port()).unwrap();
+        let url = format!("http://{}", server.url());
 
         let client = reqwest::Client::new();
-        let result = MoneroDaemon::new(host, port, Network::Stagenet)
+        let result = MoneroDaemon::new(url, Network::Stagenet)
             .is_available(&client)
             .await;
 
@@ -236,10 +230,10 @@ mod tests {
             )
             .create();
 
-        let (host, port) = extract_host_and_port(server.host_with_port()).unwrap();
+        let url = format!("http://{}", server.url());
 
         let client = reqwest::Client::new();
-        let result = MoneroDaemon::new(host, port, Network::Mainnet)
+        let result = MoneroDaemon::new(url, Network::Mainnet)
             .is_available(&client)
             .await;
 
@@ -250,7 +244,7 @@ mod tests {
     #[tokio::test]
     async fn test_is_daemon_available_network_error_failure() {
         let client = reqwest::Client::new();
-        let result = MoneroDaemon::new("does.not.exist.com", 18081, Network::Mainnet)
+        let result = MoneroDaemon::new("http://does.not.exist.com:18081", Network::Mainnet)
             .is_available(&client)
             .await;
 

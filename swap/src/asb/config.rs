@@ -196,7 +196,7 @@ fn default_use_mempool_space_fee_estimation() -> bool {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Monero {
-    pub wallet_rpc_url: Url,
+    pub daemon_url: Url,
     pub finality_confirmations: Option<u64>,
     #[serde(with = "crate::monero::network")]
     pub network: monero::Network,
@@ -386,7 +386,7 @@ pub fn query_user_for_initial_config(testnet: bool) -> Result<Config> {
             use_mempool_space_fee_estimation: true,
         },
         monero: Monero {
-            wallet_rpc_url: monero_wallet_rpc_url,
+            daemon_url: monero_wallet_rpc_url,
             finality_confirmations: None,
             network: monero_network,
         },
@@ -436,7 +436,7 @@ mod tests {
                 external_addresses: vec![],
             },
             monero: Monero {
-                wallet_rpc_url: defaults.monero_daemon_address,
+                daemon_url: defaults.monero_daemon_address,
                 finality_confirmations: None,
                 network: monero::Network::Stagenet,
             },
@@ -481,7 +481,7 @@ mod tests {
                 external_addresses: vec![],
             },
             monero: Monero {
-                wallet_rpc_url: defaults.monero_daemon_address,
+                daemon_url: defaults.monero_daemon_address,
                 finality_confirmations: None,
                 network: monero::Network::Mainnet,
             },
@@ -536,7 +536,7 @@ mod tests {
                 external_addresses,
             },
             monero: Monero {
-                wallet_rpc_url: defaults.monero_daemon_address,
+                daemon_url: defaults.monero_daemon_address,
                 finality_confirmations: None,
                 network: monero::Network::Mainnet,
             },

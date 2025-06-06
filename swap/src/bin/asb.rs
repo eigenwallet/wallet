@@ -451,8 +451,8 @@ async fn init_monero_wallet(
     tracing::debug!("Initializing Monero wallets");
 
     let daemon = Daemon {
-        address: config.monero.wallet_rpc_url.to_string(),
-        ssl: config.monero.wallet_rpc_url.as_str().contains("https"),
+        address: config.monero.daemon_url.to_string(),
+        ssl: config.monero.daemon_url.as_str().contains("https"),
     };
 
     let manager = monero::Wallets::new(
