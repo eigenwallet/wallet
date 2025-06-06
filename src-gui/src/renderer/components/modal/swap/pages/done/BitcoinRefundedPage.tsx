@@ -1,4 +1,4 @@
-import { Box, DialogContentText } from "@material-ui/core";
+import { Box, DialogContentText } from "@mui/material";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { useActiveSwapInfo } from "store/hooks";
 import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
@@ -9,13 +9,14 @@ export default function BitcoinRefundedPage({
   btc_refund_finalized,
 }: TauriSwapProgressEventContent<"BtcRefunded">) {
   const swap = useActiveSwapInfo();
-  const additionalContent = swap
-    ? <>
-        {!btc_refund_finalized && "Waiting for refund transaction to be confirmed"}
-        {!btc_refund_finalized && <br />}
-        Refund address: ${swap.btc_refund_address}
-      </>
-    : null;
+  const additionalContent = swap ? (
+    <>
+      {!btc_refund_finalized &&
+        "Waiting for refund transaction to be confirmed"}
+      {!btc_refund_finalized && <br />}
+      Refund address: ${swap.btc_refund_address}
+    </>
+  ) : null;
 
   return (
     <Box>

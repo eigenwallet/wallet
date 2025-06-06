@@ -14,7 +14,8 @@ export type TauriSwapProgressEventContent<
   T extends TauriSwapProgressEventType,
 > = Extract<TauriSwapProgressEvent, { type: T }>["content"];
 
-export type TauriSwapProgressEventExt<T extends TauriSwapProgressEventType> = Extract<TauriSwapProgressEvent, { type: T }>;
+export type TauriSwapProgressEventExt<T extends TauriSwapProgressEventType> =
+  Extract<TauriSwapProgressEvent, { type: T }>;
 
 // See /swap/src/protocol/bob/state.rs#L57
 // TODO: Replace this with a typeshare definition
@@ -39,22 +40,38 @@ export enum BobStateName {
 
 export function bobStateNameToHumanReadable(stateName: BobStateName): string {
   switch (stateName) {
-    case BobStateName.Started: return "Started";
-    case BobStateName.SwapSetupCompleted: return "Setup completed";
-    case BobStateName.BtcLocked: return "Bitcoin locked";
-    case BobStateName.XmrLockProofReceived: return "Monero locked";
-    case BobStateName.XmrLocked: return "Monero locked and fully confirmed";
-    case BobStateName.EncSigSent: return "Encrypted signature sent";
-    case BobStateName.BtcRedeemed: return "Bitcoin redeemed";
-    case BobStateName.CancelTimelockExpired: return "Cancel timelock expired";
-    case BobStateName.BtcCancelled: return "Bitcoin cancelled";
-    case BobStateName.BtcRefundPublished: return "Bitcoin refund published";
-    case BobStateName.BtcEarlyRefundPublished: return "Bitcoin early refund published";
-    case BobStateName.BtcRefunded: return "Bitcoin refunded";
-    case BobStateName.BtcEarlyRefunded: return "Bitcoin early refunded";
-    case BobStateName.XmrRedeemed: return "Monero redeemed";
-    case BobStateName.BtcPunished: return "Bitcoin punished";
-    case BobStateName.SafelyAborted: return "Safely aborted";
+    case BobStateName.Started:
+      return "Started";
+    case BobStateName.SwapSetupCompleted:
+      return "Setup completed";
+    case BobStateName.BtcLocked:
+      return "Bitcoin locked";
+    case BobStateName.XmrLockProofReceived:
+      return "Monero locked";
+    case BobStateName.XmrLocked:
+      return "Monero locked and fully confirmed";
+    case BobStateName.EncSigSent:
+      return "Encrypted signature sent";
+    case BobStateName.BtcRedeemed:
+      return "Bitcoin redeemed";
+    case BobStateName.CancelTimelockExpired:
+      return "Cancel timelock expired";
+    case BobStateName.BtcCancelled:
+      return "Bitcoin cancelled";
+    case BobStateName.BtcRefundPublished:
+      return "Bitcoin refund published";
+    case BobStateName.BtcEarlyRefundPublished:
+      return "Bitcoin early refund published";
+    case BobStateName.BtcRefunded:
+      return "Bitcoin refunded";
+    case BobStateName.BtcEarlyRefunded:
+      return "Bitcoin early refunded";
+    case BobStateName.XmrRedeemed:
+      return "Monero redeemed";
+    case BobStateName.BtcPunished:
+      return "Bitcoin punished";
+    case BobStateName.SafelyAborted:
+      return "Safely aborted";
     default:
       return exhaustiveGuard(stateName);
   }
@@ -70,7 +87,11 @@ export type TimelockCancel = Extract<ExpiredTimelocks, { type: "Cancel" }>;
 export type TimelockPunish = Extract<ExpiredTimelocks, { type: "Punish" }>;
 
 // This function returns the absolute block number of the timelock relative to the block the tx_lock was included in
-export function getAbsoluteBlock(timelock: ExpiredTimelocks, cancelTimelock: number, punishTimelock: number): number {
+export function getAbsoluteBlock(
+  timelock: ExpiredTimelocks,
+  cancelTimelock: number,
+  punishTimelock: number,
+): number {
   if (timelock.type === "None") {
     return cancelTimelock - timelock.content.blocks_left;
   }
@@ -227,12 +248,15 @@ export function isGetSwapInfoResponseRunningSwap(
  * @returns True if the timelock exists, false otherwise
  */
 export function isGetSwapInfoResponseWithTimelock(
-  response: GetSwapInfoResponseExt
+  response: GetSwapInfoResponseExt,
 ): response is GetSwapInfoResponseExtWithTimelock {
   return response.timelock !== null;
 }
 
-export type PendingApprovalRequest = Extract<ApprovalRequest, { state: "Pending" }>;
+export type PendingApprovalRequest = Extract<
+  ApprovalRequest,
+  { state: "Pending" }
+>;
 
 export type PendingLockBitcoinApprovalRequest = PendingApprovalRequest & {
   content: {
@@ -258,7 +282,10 @@ export function isPendingBackgroundProcess(
   return process.progress.type === "Pending";
 }
 
-export type TauriBitcoinSyncProgress = Extract<TauriBackgroundProgress, { componentName: "SyncingBitcoinWallet" }>;
+export type TauriBitcoinSyncProgress = Extract<
+  TauriBackgroundProgress,
+  { componentName: "SyncingBitcoinWallet" }
+>;
 
 export function isBitcoinSyncProgress(
   progress: TauriBackgroundProgress,
