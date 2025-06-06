@@ -454,19 +454,11 @@ where
             transfer_proof,
             state3,
         } => {
-            let (tx_refund_status, tx_cancel_status) = tokio::join!(
-                bitcoin_wallet.subscribe_to(state3.tx_refund()),
-                bitcoin_wallet.subscribe_to(state3.tx_cancel())
-            );
+            let tx_cancel_status = bitcoin_wallet.subscribe_to(state3.tx_cancel()).await;
 
             select! {
-                // TODO: Create a watch_for_refund helper function (like watch_for_redeem)
-                seen_refund = tx_refund_status.wait_until_seen() => {
-                    seen_refund.context("Failed to monitor refund transaction")?;
-
-                    let published_refund_tx = bitcoin_wallet.get_raw_transaction(state3.tx_refund().txid()).await?.ok_or_else(|| anyhow::anyhow!("Bitcoin refund transaction not found"))?;
-
-                    let spend_key = state3.extract_monero_private_key(published_refund_tx)?;
+                spend_key = state3.watch_for_btc_tx_refund(bitcoin_wallet) => {
+                    let spend_key = spend_key?;
 
                     AliceState::BtcRefunded {
                         monero_wallet_restore_blockheight,

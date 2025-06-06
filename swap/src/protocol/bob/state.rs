@@ -219,7 +219,6 @@ impl State0 {
             bail!("Alice's dleq proof doesn't verify")
         }
 
-        // Here: Allow TxLock to be spent with both Bobs sig and Alices sig
         let tx_lock = bitcoin::TxLock::new(
             wallet,
             self.btc,

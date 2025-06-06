@@ -647,6 +647,27 @@ impl State3 {
             self.tx_punish_fee,
         )
     }
+
+    pub async fn watch_for_btc_tx_refund(
+        &self,
+        bitcoin_wallet: &bitcoin::Wallet,
+    ) -> Result<monero::PrivateKey> {
+        let tx_refund_status = bitcoin_wallet.subscribe_to(self.tx_refund()).await;
+
+        tx_refund_status
+            .wait_until_seen()
+            .await
+            .context("Failed to monitor refund transaction")?;
+
+        let published_refund_tx = bitcoin_wallet
+            .get_raw_transaction(self.tx_refund().txid())
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Bitcoin refund transaction not found even though we saw it in the mempool previously. Maybe our Electrum server has cleared its mempool?"))?;
+
+        let spend_key = self.extract_monero_private_key(published_refund_tx)?;
+
+        Ok(spend_key)
+    }
 }
 
 pub trait ReservesMonero {

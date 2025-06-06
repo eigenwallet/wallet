@@ -635,6 +635,7 @@ pub enum TauriSwapProgressEvent {
     BtcRefunded {
         #[typeshare(serialized_as = "string")]
         btc_refund_txid: Txid,
+        btc_refund_finalized: bool,
     },
     BtcPunished,
     AttemptingCooperativeRedeem,

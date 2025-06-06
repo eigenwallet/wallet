@@ -6,11 +6,15 @@ import BitcoinTransactionInfoBox from "../../BitcoinTransactionInfoBox";
 
 export default function BitcoinRefundedPage({
   btc_refund_txid,
+  btc_refund_finalized,
 }: TauriSwapProgressEventContent<"BtcRefunded">) {
-  // TODO: Reimplement this using Tauri
   const swap = useActiveSwapInfo();
   const additionalContent = swap
-    ? `Refund address: ${swap.btc_refund_address}`
+    ? <>
+        {!btc_refund_finalized && "Waiting for refund transaction to be confirmed"}
+        {!btc_refund_finalized && <br />}
+        Refund address: ${swap.btc_refund_address}
+      </>
     : null;
 
   return (
@@ -27,13 +31,10 @@ export default function BitcoinRefundedPage({
           gap: "0.5rem",
         }}
       >
-        {
-          // TODO: We should display the confirmation count here
-        }
         <BitcoinTransactionInfoBox
           title="Bitcoin Refund Transaction"
           txId={btc_refund_txid}
-          loading={false}
+          loading={!btc_refund_finalized}
           additionalContent={additionalContent}
         />
         <FeedbackInfoBox />

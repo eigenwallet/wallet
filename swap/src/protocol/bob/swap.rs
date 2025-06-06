@@ -603,7 +603,7 @@ async fn next_state(
 
                     event_emitter.emit_swap_progress_event(
                         swap_id,
-                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_refund_txid },
+                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_refund_txid, btc_refund_finalized: true },
                     );
 
                     BobState::BtcRefunded(state)
@@ -616,7 +616,7 @@ async fn next_state(
 
                     event_emitter.emit_swap_progress_event(
                         swap_id,
-                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund_txid },
+                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund_txid, btc_refund_finalized: true },
                     );
 
                     BobState::BtcEarlyRefunded(state)
@@ -634,6 +634,7 @@ async fn next_state(
                 swap_id,
                 TauriSwapProgressEvent::BtcRefunded {
                     btc_refund_txid: tx_early_refund_txid,
+                    btc_refund_finalized: false,
                 },
             );
 
@@ -651,7 +652,7 @@ async fn next_state(
 
                     event_emitter.emit_swap_progress_event(
                         swap_id,
-                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund_txid },
+                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund_txid, btc_refund_finalized: true },
                     );
 
                     BobState::BtcEarlyRefunded(state)
@@ -670,6 +671,7 @@ async fn next_state(
                 swap_id,
                 TauriSwapProgressEvent::BtcRefunded {
                     btc_refund_txid: state.signed_refund_transaction()?.compute_txid(),
+                    btc_refund_finalized: true,
                 },
             );
 
