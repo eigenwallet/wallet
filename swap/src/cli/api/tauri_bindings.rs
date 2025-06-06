@@ -632,10 +632,27 @@ pub enum TauriSwapProgressEvent {
         #[typeshare(serialized_as = "string")]
         btc_cancel_txid: Txid,
     },
+    // tx_early_refund has been published but has not been confirmed yet
+    // we can still transition into BtcRefunded from here
+    BtcEarlyRefundPublished {
+        #[typeshare(serialized_as = "string")]
+        btc_early_refund_txid: Txid,
+    },
+    // tx_refund has been published but has not been confirmed yet
+    // we can still transition into BtcEarlyRefunded from here
+    BtcRefundPublished {
+        #[typeshare(serialized_as = "string")]
+        btc_refund_txid: Txid,
+    },
+    // tx_early_refund has been confirmed
+    BtcEarlyRefunded {
+        #[typeshare(serialized_as = "string")]
+        btc_early_refund_txid: Txid,
+    },
+    // tx_refund has been confirmed
     BtcRefunded {
         #[typeshare(serialized_as = "string")]
         btc_refund_txid: Txid,
-        btc_refund_finalized: bool,
     },
     BtcPunished,
     AttemptingCooperativeRedeem,

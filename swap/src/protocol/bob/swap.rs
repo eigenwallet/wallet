@@ -583,6 +583,14 @@ async fn next_state(
             }
         }
         BobState::BtcRefundPublished(state) => {
+            // Emit a Tauri event
+            event_emitter.emit_swap_progress_event(
+                swap_id,
+                TauriSwapProgressEvent::BtcRefundPublished {
+                    btc_refund_txid: state.signed_refund_transaction()?.compute_txid(),
+                },
+            );
+
             // Watch for the refund transaction to be confirmed by its txid
             let tx_refund = state.construct_tx_refund()?;
             let tx_early_refund = state.construct_tx_early_refund();
@@ -603,7 +611,7 @@ async fn next_state(
 
                     event_emitter.emit_swap_progress_event(
                         swap_id,
-                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_refund_txid, btc_refund_finalized: true },
+                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_refund_txid },
                     );
 
                     BobState::BtcRefunded(state)
@@ -616,7 +624,7 @@ async fn next_state(
 
                     event_emitter.emit_swap_progress_event(
                         swap_id,
-                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund_txid, btc_refund_finalized: true },
+                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund_txid },
                     );
 
                     BobState::BtcEarlyRefunded(state)
@@ -632,9 +640,8 @@ async fn next_state(
             // Emit Tauri event
             event_emitter.emit_swap_progress_event(
                 swap_id,
-                TauriSwapProgressEvent::BtcRefunded {
-                    btc_refund_txid: tx_early_refund_txid,
-                    btc_refund_finalized: false,
+                TauriSwapProgressEvent::BtcEarlyRefundPublished {
+                    btc_early_refund_txid: tx_early_refund_txid,
                 },
             );
 
@@ -652,7 +659,7 @@ async fn next_state(
 
                     event_emitter.emit_swap_progress_event(
                         swap_id,
-                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund_txid, btc_refund_finalized: true },
+                        TauriSwapProgressEvent::BtcRefunded { btc_refund_txid: tx_early_refund_txid },
                     );
 
                     BobState::BtcEarlyRefunded(state)
@@ -671,7 +678,6 @@ async fn next_state(
                 swap_id,
                 TauriSwapProgressEvent::BtcRefunded {
                     btc_refund_txid: state.signed_refund_transaction()?.compute_txid(),
-                    btc_refund_finalized: true,
                 },
             );
 
