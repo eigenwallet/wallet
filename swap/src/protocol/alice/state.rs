@@ -662,7 +662,7 @@ impl State3 {
         let published_refund_tx = bitcoin_wallet
             .get_raw_transaction(self.tx_refund().txid())
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Bitcoin refund transaction not found even though we saw it in the mempool previously. Maybe our Electrum server has cleared its mempool?"))?;
+            .context("Bitcoin refund transaction not found even though we saw it in the mempool previously. Maybe our Electrum server has cleared its mempool?")?;
 
         let spend_key = self.extract_monero_private_key(published_refund_tx)?;
 

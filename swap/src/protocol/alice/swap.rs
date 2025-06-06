@@ -544,9 +544,8 @@ where
                     let published_refund_tx = bitcoin_wallet
                         .get_raw_transaction(state3.tx_refund().txid())
                         .await
-                        // TODO: Better log message here
                         .context("Failed to fetch refund transaction after assuming it was included because the punish transaction failed")?
-                        .ok_or_else(|| anyhow::anyhow!("Bitcoin refund transaction not found"))?;
+                        .context("Bitcoin refund transaction not found")?;
 
                     let spend_key = state3.extract_monero_private_key(published_refund_tx)?;
 
