@@ -784,6 +784,10 @@ pub async fn buy_xmr(
                 }
             },
         };
+
+        // Abort the event loop if it's still running to avoid it
+        // intercepting messages for subsequent swaps
+        event_loop.abort();
         tracing::debug!(%swap_id, "Swap completed");
 
         context
@@ -910,6 +914,9 @@ pub async fn resume_swap(
 
                 }
             }
+
+            // Ensure the event loop is not left running in the background
+            handle.abort();
             context
                 .swap_lock
                 .release_swap_lock()
