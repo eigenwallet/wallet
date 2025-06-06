@@ -20,6 +20,7 @@ import {
 import { useAppDispatch, useAppSelector } from "store/hooks";
 import DialogHeader from "../../../modal/DialogHeader";
 import ScrollablePaperTextBox from "../../../other/ScrollablePaperTextBox";
+import { MoneroRecoveryResponse } from "models/rpcModel";
 
 function MoneroRecoveryKeysDialog({
   swap_id,
@@ -115,8 +116,8 @@ export function SwapMoneroRecoveryButton({
   return (
     <>
       <PromiseInvokeButton
-        onInvoke={() => getMoneroRecoveryKeys(swap.swap_id)}
-        onSuccess={(keys) =>
+        onInvoke={(): Promise<MoneroRecoveryResponse> => getMoneroRecoveryKeys(swap.swap_id)}
+        onSuccess={(keys: MoneroRecoveryResponse) =>
           store.dispatch(rpcSetMoneroRecoveryKeys([swap.swap_id, keys]))
         }
         {...props}

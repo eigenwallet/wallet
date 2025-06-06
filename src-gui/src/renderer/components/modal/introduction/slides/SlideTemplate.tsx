@@ -4,12 +4,12 @@ type slideTemplateProps = {
     handleContinue: () => void
     handlePrevious: () => void
     hidePreviousButton?: boolean
-    stepLabel?: String
-    title: String
+    stepLabel?: string
+    title: string
     children?: React.ReactNode
     imagePath?: string
     imagePadded?: boolean
-    customContinueButtonText?: String
+    customContinueButtonText?: string
 }
 
 export default function SlideTemplate({

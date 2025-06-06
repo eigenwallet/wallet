@@ -54,22 +54,27 @@ export default function IntroductionModal() {
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
             hidePreviousButton
+            key="slide-01"
         />,
         <Slide02_ChooseAMaker
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
+            key="slide-02"
         />,
         <Slide03_PrepareSwap
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
+            key="slide-03"
         />,
         <Slide04_ExecuteSwap
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
+            key="slide-04"
         />,
         <Slide05_KeepAnEyeOnYourSwaps
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
+            key="slide-05"
         />,
         <Slide06_FiatPricePreference
             handleContinue={handleContinue}
@@ -78,10 +83,12 @@ export default function IntroductionModal() {
             onChange={(showFiatSetting: string) =>
                 setShowFiat(showFiatSetting === 'show')
             }
+            key="slide-06"
         />,
         <Slide07_ReachOut
             handleContinue={handleContinue}
             handlePrevious={handlePrevious}
+            key="slide-07"
         />,
     ]
 

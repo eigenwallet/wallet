@@ -20,7 +20,7 @@ export default function ScrollablePaperTextBox({
   rows: ReactNode[];
   title: string;
   copyValue: string;
-  searchQuery: string | null;
+  searchQuery?: string | null;
   setSearchQuery?: ((query: string) => void) | null;
   minHeight?: string;
   topRightButton?: ReactNode | null

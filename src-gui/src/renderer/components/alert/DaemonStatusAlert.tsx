@@ -71,7 +71,7 @@ function PartialInitStatus({ status, totalOfType }: {
           icon={<TorIcon />}
         />
       );
-    case "SyncingBitcoinWallet":
+    case "SyncingBitcoinWallet": {
       const progressValue =
         status.progress.content?.type === "Known" ?
         (status.progress.content?.content?.consumed / status.progress.content?.content?.total) * 100 : null;
@@ -88,7 +88,8 @@ function PartialInitStatus({ status, totalOfType }: {
           count={totalOfType}
         />
       );
-    case "FullScanningBitcoinWallet":
+    }
+    case "FullScanningBitcoinWallet": {
       const fullScanProgressValue = status.progress.content?.type === "Known" ? (status.progress.content?.content?.current_index / status.progress.content?.content?.assumed_total) * 100 : null;
       return (
         <AlertWithLinearProgress
@@ -102,6 +103,7 @@ function PartialInitStatus({ status, totalOfType }: {
           count={totalOfType}
         />
       );
+    }
     case "OpeningBitcoinWallet":
       return (
         <LoadingSpinnerAlert severity="info">
@@ -110,7 +112,7 @@ function PartialInitStatus({ status, totalOfType }: {
           </>
         </LoadingSpinnerAlert>
       );
-    case "DownloadingMoneroWalletRpc":
+    case "DownloadingMoneroWalletRpc": {
       const moneroRpcTitle = `Downloading and verifying the Monero wallet RPC (${bytesToMb(status.progress.content.size).toFixed(2)} MB)`;
       return (
         <AlertWithLinearProgress
@@ -124,6 +126,7 @@ function PartialInitStatus({ status, totalOfType }: {
           count={totalOfType}
         />
       );
+    }
     case "OpeningMoneroWallet":
       return (
         <LoadingSpinnerAlert severity="info">
