@@ -4,14 +4,16 @@ import SwapWidget from "./SwapWidget";
 
 export default function SwapPage() {
   return (
-    <Box sx={{
-      display: "flex",
-      width: "100%",
-      flexDirection: "column",
-      alignItems: "center",
-      paddingBottom: 1,
-      gap: 1,
-    }}>
+    <Box
+      sx={{
+        display: "flex",
+        width: "100%",
+        flexDirection: "column",
+        alignItems: "center",
+        paddingBottom: 1,
+        gap: 1,
+      }}
+    >
       <ApiAlertsBox />
       <SwapWidget />
     </Box>

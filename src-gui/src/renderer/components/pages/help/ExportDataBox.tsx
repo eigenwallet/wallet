@@ -17,7 +17,8 @@ import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import ActionableMonospaceTextBox from "renderer/components/other/ActionableMonospaceTextBox";
 
 export default function ExportDataBox() {
-  const [walletDescriptor, setWalletDescriptor] = useState<ExportBitcoinWalletResponse | null>(null);
+  const [walletDescriptor, setWalletDescriptor] =
+    useState<ExportBitcoinWalletResponse | null>(null);
 
   const handleCloseDialog = () => {
     setWalletDescriptor(null);
@@ -29,14 +30,18 @@ export default function ExportDataBox() {
       icon={null}
       loading={false}
       mainContent={
-        <Box sx={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-start",
-          gap: 2,
-        }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+            gap: 2,
+          }}
+        >
           <Typography variant="subtitle2">
-            You can export the wallet descriptor of the interal Bitcoin wallet for backup or recovery purposes. Please make sure to store it securely.
+            You can export the wallet descriptor of the interal Bitcoin wallet
+            for backup or recovery purposes. Please make sure to store it
+            securely.
           </Typography>
         </Box>
       }
@@ -72,7 +77,9 @@ function WalletDescriptorModal({
   onClose: () => void;
   walletDescriptor: ExportBitcoinWalletResponse;
 }) {
-  const parsedDescriptor = JSON.parse(walletDescriptor.wallet_descriptor["descriptor"]);
+  const parsedDescriptor = JSON.parse(
+    walletDescriptor.wallet_descriptor["descriptor"],
+  );
   const stringifiedDescriptor = JSON.stringify(parsedDescriptor, null, 4);
 
   return (
@@ -82,14 +89,22 @@ function WalletDescriptorModal({
         <DialogContentText>
           <ul style={{ marginTop: 0 }}>
             <li>
-              The text below contains the wallet descriptor of the internal Bitcoin wallet. It contains your private key and can be used to derive your wallet. It should thus be stored securely.
+              The text below contains the wallet descriptor of the internal
+              Bitcoin wallet. It contains your private key and can be used to
+              derive your wallet. It should thus be stored securely.
             </li>
             <li>
-              It can be imported into other Bitcoin wallets or services that support the descriptor format.
+              It can be imported into other Bitcoin wallets or services that
+              support the descriptor format.
             </li>
             <li>
-              For more information on what to do with the descriptor, see our 
-              {" "}<Link href="https://github.com/UnstoppableSwap/core/blob/master/dev-docs/asb/README.md#exporting-the-bitcoin-wallet-descriptor" target="_blank">documentation</Link>
+              For more information on what to do with the descriptor, see our{" "}
+              <Link
+                href="https://github.com/UnstoppableSwap/core/blob/master/dev-docs/asb/README.md#exporting-the-bitcoin-wallet-descriptor"
+                target="_blank"
+              >
+                documentation
+              </Link>
             </li>
           </ul>
         </DialogContentText>

@@ -1,8 +1,15 @@
-import { Box, Fab, LinearProgress, Paper, TextField, Typography } from "@mui/material";
+import {
+  Box,
+  Fab,
+  LinearProgress,
+  Paper,
+  TextField,
+  Typography,
+} from "@mui/material";
 import InputAdornment from "@mui/material/InputAdornment";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
-import { Alert } from '@mui/material';
+import { Alert } from "@mui/material";
 import { ExtendedMakerStatus } from "models/apiModel";
 import { ChangeEvent, useEffect, useState } from "react";
 import { useAppSelector } from "store/hooks";
@@ -88,7 +95,7 @@ function HasMakerSwapWidget({
     // @ts-ignore
     <Paper
       variant="outlined"
-      sx={theme => ({
+      sx={(theme) => ({
         width: "min(480px, 100%)",
         minHeight: "150px",
         display: "grid",
@@ -148,9 +155,7 @@ function HasNoMakersSwapWidget() {
           Currently, the public registry of makers seems to be unreachable.
           Here&apos;s what you can do:
           <ul>
-            <li>
-              Try discovering a maker by connecting to a rendezvous point
-            </li>
+            <li>Try discovering a maker by connecting to a rendezvous point</li>
             <li>
               Try again later when the public registry may be reachable again
             </li>
@@ -168,9 +173,7 @@ function HasNoMakersSwapWidget() {
           Currently, there are no makers (trading partners) available in the
           official registry. Here&apos;s what you can do:
           <ul>
-            <li>
-              Try discovering a maker by connecting to a rendezvous point
-            </li>
+            <li>Try discovering a maker by connecting to a rendezvous point</li>
             <li>Add a new maker to the public registry</li>
             <li>Try again later when more makers may be available</li>
           </ul>
@@ -186,7 +189,7 @@ function HasNoMakersSwapWidget() {
   return (
     <Box>
       {alertBox}
-      <SwapDialog open={forceShowDialog} onClose={() => { }} />
+      <SwapDialog open={forceShowDialog} onClose={() => {}} />
     </Box>
   );
 }
@@ -196,8 +199,8 @@ function MakerLoadingSwapWidget() {
     // 'elevation' prop can't be passed down (type def issue)
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
-    <Box 
-      component={Paper} 
+    <Box
+      component={Paper}
       elevation={15}
       sx={{
         width: "min(480px, 100%)",
@@ -214,9 +217,7 @@ function MakerLoadingSwapWidget() {
 }
 
 export default function SwapWidget() {
-  const selectedMaker = useAppSelector(
-    (state) => state.makers.selectedMaker,
-  );
+  const selectedMaker = useAppSelector((state) => state.makers.selectedMaker);
   // If we fail more than RECONNECTION_ATTEMPTS_UNTIL_ASSUME_DOWN reconnect attempts, we'll show the "no makers" widget. We can assume the public registry is down.
   const makerLoading = useAppSelector(
     (state) =>

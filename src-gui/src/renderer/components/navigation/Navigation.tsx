@@ -11,18 +11,20 @@ export default function Navigation() {
       sx={{
         width: drawerWidth,
         flexShrink: 0,
-        '& .MuiDrawer-paper': {
+        "& .MuiDrawer-paper": {
           width: drawerWidth,
         },
       }}
     >
-      <Box sx={{
-        overflow: "auto",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        height: "100%",
-      }}>
+      <Box
+        sx={{
+          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          height: "100%",
+        }}
+      >
         <NavigationHeader />
         <NavigationFooter />
       </Box>

@@ -4,7 +4,7 @@ import BitcoinIcon from "../../../../icons/BitcoinIcon";
 import { MoneroSatsExchangeRate, SatsAmount } from "../../../../other/Units";
 import DepositAddressInfoBox from "../../DepositAddressInfoBox";
 import DepositAmountHelper from "./DepositAmountHelper";
-import { Alert } from '@mui/material';
+import { Alert } from "@mui/material";
 
 export default function WaitingForBtcDepositPage({
   deposit_address,
@@ -20,18 +20,21 @@ export default function WaitingForBtcDepositPage({
         title="Bitcoin Deposit Address"
         address={deposit_address}
         additionalContent={
-          <Box sx={{
-            paddingTop: 1,
-            gap: 0.5,
-            display: "flex",
-            flexDirection: "column",
-          }}>
+          <Box
+            sx={{
+              paddingTop: 1,
+              gap: 0.5,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
             <Typography variant="subtitle2">
               <ul>
                 {max_giveable > 0 ? (
                   <li>
-                    You have already deposited enough funds to swap{' '}
-                    <SatsAmount amount={max_giveable} />. However, that is below the minimum amount required to start the swap.
+                    You have already deposited enough funds to swap{" "}
+                    <SatsAmount amount={max_giveable} />. However, that is below
+                    the minimum amount required to start the swap.
                   </li>
                 ) : null}
                 <li>
@@ -48,7 +51,10 @@ export default function WaitingForBtcDepositPage({
                 <li>
                   Bitcoin sent to this this address will be converted into
                   Monero at an exchange rate of{" ≈ "}
-                  <MoneroSatsExchangeRate rate={quote.price} displayMarkup={true} />
+                  <MoneroSatsExchangeRate
+                    rate={quote.price}
+                    displayMarkup={true}
+                  />
                 </li>
                 <li>
                   The Network fee of{" ≈  "}
@@ -56,7 +62,8 @@ export default function WaitingForBtcDepositPage({
                   automatically be deducted from the deposited coins
                 </li>
                 <li>
-                  After the deposit is detected, you'll get to confirm the exact details before your funds are locked
+                  After the deposit is detected, you'll get to confirm the exact
+                  details before your funds are locked
                 </li>
                 <li>
                   <DepositAmountHelper
@@ -75,8 +82,8 @@ export default function WaitingForBtcDepositPage({
 
             <Alert severity="info">
               Please do not use replace-by-fee on your deposit transaction.
-              You'll need to start a new swap if you do.
-              The funds will be available for future swaps.
+              You'll need to start a new swap if you do. The funds will be
+              available for future swaps.
             </Alert>
           </Box>
         }

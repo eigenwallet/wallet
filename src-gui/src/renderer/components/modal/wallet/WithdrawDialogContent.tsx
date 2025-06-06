@@ -12,8 +12,8 @@ export default function WithdrawDialogContent({
   withdrawTxId: string | null;
 }) {
   return (
-    <DialogContent 
-      dividers 
+    <DialogContent
+      dividers
       sx={{
         minHeight: "15rem",
         display: "flex",

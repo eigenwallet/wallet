@@ -119,7 +119,7 @@ function getActiveStep(state: SwapState | null): PathStep | null {
     default:
       return fallbackStep("No step is assigned to the current state");
     // TODO: Make this guard work. It should force the compiler to check if we have covered all possible cases.
-    // return exhaustiveGuard(latestState.type);  
+    // return exhaustiveGuard(latestState.type);
   }
 }
 

@@ -18,12 +18,14 @@ export default function SettingsPage() {
   }, [location]);
 
   return (
-    <Box sx={{
-      display: "flex",
-      gap: 2,
-      flexDirection: "column",
-      paddingBottom: 2,
-    }}>
+    <Box
+      sx={{
+        display: "flex",
+        gap: 2,
+        flexDirection: "column",
+        paddingBottom: 2,
+      }}
+    >
       <SettingsBox />
       <ExportDataBox />
       <DaemonControlBox />

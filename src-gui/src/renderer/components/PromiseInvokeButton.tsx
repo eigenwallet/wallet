@@ -84,7 +84,8 @@ export default function PromiseInvokeButton<T>({
             onClick={handleClick}
             disabled={isDisabled}
             {...(rest as IconButtonProps)}
-            size="large">
+            size="large"
+          >
             {actualEndIcon}
           </IconButton>
         ) : (

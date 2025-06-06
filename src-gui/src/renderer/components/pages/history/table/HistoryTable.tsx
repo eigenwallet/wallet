@@ -15,10 +15,12 @@ export default function HistoryTable() {
   const swapSortedByDate = useSwapInfosSortedByDate();
 
   return (
-    <Box sx={{
-      paddingTop: 1,
-      paddingBottom: 1,
-    }}>
+    <Box
+      sx={{
+        paddingTop: 1,
+        paddingBottom: 1,
+      }}
+    >
       <TableContainer component={Paper}>
         <Table>
           <TableHead>

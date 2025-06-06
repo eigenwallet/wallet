@@ -7,9 +7,7 @@ import MakerListDialog from "./MakerListDialog";
 
 export default function MakerSelect() {
   const [selectDialogOpen, setSelectDialogOpen] = useState(false);
-  const selectedMaker = useAppSelector(
-    (state) => state.makers.selectedMaker,
-  );
+  const selectedMaker = useAppSelector((state) => state.makers.selectedMaker);
 
   if (!selectedMaker) return <>No maker selected</>;
 

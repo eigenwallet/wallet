@@ -13,7 +13,13 @@ export default function SwapDialogTitle({
   setDebug: (d: boolean) => void;
 }) {
   return (
-    <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <DialogTitle
+      sx={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+      }}
+    >
       <Typography variant="h6">{title}</Typography>
       <Box sx={{ display: "flex", alignItems: "center", gridGap: 1 }}>
         <FeedbackSubmitBadge />

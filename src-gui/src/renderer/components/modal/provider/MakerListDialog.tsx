@@ -37,7 +37,8 @@ export function MakerSubmitDialogOpenButton() {
         if (!open) {
           setOpen(true);
         }
-      }}>
+      }}
+    >
       <MakerSubmitDialog open={open} onClose={() => setOpen(false)} />
       <ListItemAvatar>
         <Avatar>
@@ -60,7 +61,8 @@ export function ListSellersDialogOpenButton() {
         if (!open) {
           setOpen(true);
         }
-      }}>
+      }}
+    >
       <ListSellersDialog open={open} onClose={() => setOpen(false)} />
       <ListItemAvatar>
         <Avatar>
@@ -90,7 +92,10 @@ export default function MakerListDialog({
       <DialogContent sx={{ padding: 0 }} dividers>
         <List>
           {makers.map((maker) => (
-            <ListItemButton onClick={() => handleMakerChange(maker)} key={maker.peerId}>
+            <ListItemButton
+              onClick={() => handleMakerChange(maker)}
+              key={maker.peerId}
+            >
               <MakerInfo maker={maker} key={maker.peerId} />
             </ListItemButton>
           ))}

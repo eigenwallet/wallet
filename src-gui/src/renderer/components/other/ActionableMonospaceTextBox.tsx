@@ -1,5 +1,8 @@
 import { Box, Button, IconButton, Tooltip } from "@mui/material";
-import { FileCopyOutlined, CropFree as CropFreeIcon } from "@mui/icons-material";
+import {
+  FileCopyOutlined,
+  CropFree as CropFreeIcon,
+} from "@mui/icons-material";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useState } from "react";
 import MonospaceTextBox from "./MonospaceTextBox";
@@ -21,14 +24,16 @@ type Props = {
 function QRCodeModal({ open, onClose, content }: ModalProps) {
   return (
     <Modal open={open} onClose={onClose}>
-      <Box sx={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-        justifyContent: "center",
-        alignItems: "center",
-        height: "100%",
-      }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100%",
+        }}
+      >
         <QRCode
           value={content}
           size={500}
@@ -38,7 +43,12 @@ function QRCodeModal({ open, onClose, content }: ModalProps) {
           }}
           viewBox="0 0 500 500"
         />
-        <Button onClick={onClose} size="large" variant="contained" color="primary">
+        <Button
+          onClick={onClose}
+          size="large"
+          variant="contained"
+          color="primary"
+        >
           Done
         </Button>
       </Box>
@@ -63,17 +73,32 @@ export default function ActionableMonospaceTextBox({
 
   return (
     <>
-      <Tooltip title={isQrCodeButtonHovered ? "" : (copied ? "Copied to clipboard" : "Click to copy")} arrow>
-        <Box sx={{
-          display: "flex",
-          alignItems: "center",
-          cursor: "pointer",
-        }}>
+      <Tooltip
+        title={
+          isQrCodeButtonHovered
+            ? ""
+            : copied
+              ? "Copied to clipboard"
+              : "Click to copy"
+        }
+        arrow
+      >
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            cursor: "pointer",
+          }}
+        >
           <Box sx={{ flexGrow: 1 }} onClick={handleCopy}>
             <MonospaceTextBox>
               {content}
               {displayCopyIcon && (
-                <IconButton onClick={handleCopy} size="small" sx={{ marginLeft: 1 }}>
+                <IconButton
+                  onClick={handleCopy}
+                  size="small"
+                  sx={{ marginLeft: 1 }}
+                >
                   <FileCopyOutlined />
                 </IconButton>
               )}

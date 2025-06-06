@@ -1,5 +1,9 @@
 import { Box, CssBaseline } from "@mui/material";
-import { ThemeProvider, Theme, StyledEngineProvider } from "@mui/material/styles";
+import {
+  ThemeProvider,
+  Theme,
+  StyledEngineProvider,
+} from "@mui/material/styles";
 import "@tauri-apps/plugin-shell";
 import { Route, MemoryRouter as Router, Routes } from "react-router-dom";
 import Navigation, { drawerWidth } from "./navigation/Navigation";
@@ -17,7 +21,7 @@ import "@fontsource/roboto";
 import FeedbackPage from "./pages/feedback/FeedbackPage";
 import IntroductionModal from "./modal/introduction/IntroductionModal";
 
-declare module '@mui/material/styles' {
+declare module "@mui/material/styles" {
   interface Theme {
     // Add your custom theme properties here if needed
   }
@@ -41,7 +45,7 @@ export default function App() {
       <ThemeProvider theme={currentTheme}>
         <CssBaseline />
         <GlobalSnackbarProvider>
-          <IntroductionModal/>
+          <IntroductionModal />
           <Router>
             <Navigation />
             <InnerContent />
@@ -54,14 +58,15 @@ export default function App() {
 }
 
 function InnerContent() {
-
   return (
-    <Box sx={{
-      padding: 4,
-      marginLeft: drawerWidth,
-      maxHeight: `100vh`,
-      flex: 1,
-    }}>
+    <Box
+      sx={{
+        padding: 4,
+        marginLeft: drawerWidth,
+        maxHeight: `100vh`,
+        flex: 1,
+      }}
+    >
       <Routes>
         <Route path="/swap" element={<SwapPage />} />
         <Route path="/history" element={<HistoryPage />} />

@@ -10,18 +10,18 @@ const baseTheme: ThemeOptions = {
   typography: {
     overline: {
       textTransform: "none" as const,
-      fontFamily: "monospace"
+      fontFamily: "monospace",
     },
   },
   components: {
     MuiButton: {
       styleOverrides: {
         outlined: {
-          color: 'inherit',
-          borderColor: 'color-mix(in srgb, currentColor 30%, transparent)',
-          '&:hover': {
-            borderColor: 'color-mix(in srgb, currentColor 30%, transparent)',
-            backgroundColor: 'color-mix(in srgb, #bdbdbd 10%, transparent)',
+          color: "inherit",
+          borderColor: "color-mix(in srgb, currentColor 30%, transparent)",
+          "&:hover": {
+            borderColor: "color-mix(in srgb, currentColor 30%, transparent)",
+            backgroundColor: "color-mix(in srgb, #bdbdbd 10%, transparent)",
           },
         },
       },
@@ -38,8 +38,8 @@ const baseTheme: ThemeOptions = {
     MuiTextField: {
       styleOverrides: {
         root: {
-          '& legend': {
-            transition: 'unset',
+          "& legend": {
+            transition: "unset",
           },
         },
       },
@@ -71,7 +71,7 @@ const lightTheme = createTheme({
 
 console.log("Creating themes:", {
   dark: darkTheme,
-  light: lightTheme
+  light: lightTheme,
 });
 
 export const themes = {

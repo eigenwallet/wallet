@@ -5,15 +5,17 @@ import ContactInfoBox from "../help/ContactInfoBox";
 
 export default function FeedbackPage() {
   return (
-    <Box sx={{
-      display: "flex",
-      gap: 2,
-      flexDirection: "column",
-      paddingBottom: 2,
-    }}>
+    <Box
+      sx={{
+        display: "flex",
+        gap: 2,
+        flexDirection: "column",
+        paddingBottom: 2,
+      }}
+    >
       <FeedbackInfoBox />
       <ConversationsBox />
       <ContactInfoBox />
     </Box>
   );
-} 
+}

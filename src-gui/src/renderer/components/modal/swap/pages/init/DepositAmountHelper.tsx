@@ -52,11 +52,13 @@ export default function DepositAmountHelper({
   }
 
   return (
-    <Box sx={{
-      display: "flex",
-      alignItems: "center",
-      gap: 1,
-    }}>
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 1,
+      }}
+    >
       <Typography variant="subtitle2">
         Depositing {bitcoinBalance > 0 && <>another</>}
       </Typography>
@@ -67,9 +69,10 @@ export default function DepositAmountHelper({
         size="small"
         type="number"
         sx={{
-          "& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button": {
-            display: "none",
-          },
+          "& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button":
+            {
+              display: "none",
+            },
           "& input[type=number]": {
             MozAppearance: "textfield",
           },

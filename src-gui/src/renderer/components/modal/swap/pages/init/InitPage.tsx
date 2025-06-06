@@ -17,9 +17,7 @@ export default function InitPage() {
   const [redeemAddressValid, setRedeemAddressValid] = useState(false);
   const [refundAddressValid, setRefundAddressValid] = useState(false);
 
-  const selectedMaker = useAppSelector(
-    (state) => state.makers.selectedMaker,
-  );
+  const selectedMaker = useAppSelector((state) => state.makers.selectedMaker);
 
   async function init() {
     await buyXmr(
@@ -31,11 +29,13 @@ export default function InitPage() {
 
   return (
     <Box>
-      <Box sx={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 1.5,
-      }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 1.5,
+        }}
+      >
         <RemainingFundsWillBeUsedAlert />
         <MoneroAddressTextField
           label="Monero redeem address"
@@ -46,7 +46,7 @@ export default function InitPage() {
           fullWidth
         />
 
-        <Paper variant="outlined"  style={{}}>
+        <Paper variant="outlined" style={{}}>
           <Tabs
             value={useExternalRefundAddress ? 1 : 0}
             indicatorColor="primary"

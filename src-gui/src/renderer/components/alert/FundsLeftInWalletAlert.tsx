@@ -1,5 +1,5 @@
 import { Button } from "@mui/material";
-import Alert from '@mui/material/Alert';
+import Alert from "@mui/material/Alert";
 import { useNavigate } from "react-router-dom";
 import { useAppSelector } from "store/hooks";
 

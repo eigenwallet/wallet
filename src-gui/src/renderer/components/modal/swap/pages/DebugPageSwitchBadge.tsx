@@ -18,7 +18,8 @@ export default function DebugPageSwitchBadge({
       <IconButton
         onClick={handleToggle}
         color={enabled ? "primary" : "default"}
-        size="large">
+        size="large"
+      >
         <DeveloperBoardIcon />
       </IconButton>
     </Tooltip>

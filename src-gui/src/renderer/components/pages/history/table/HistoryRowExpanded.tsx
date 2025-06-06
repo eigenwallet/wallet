@@ -1,4 +1,12 @@
-import { Box, Link, Table, TableBody, TableCell, TableContainer, TableRow } from "@mui/material";
+import {
+  Box,
+  Link,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableRow,
+} from "@mui/material";
 import { OpenInNew } from "@mui/icons-material";
 import { GetSwapInfoResponse } from "models/tauriModel";
 import ActionableMonospaceTextBox from "renderer/components/other/ActionableMonospaceTextBox";
@@ -20,11 +28,13 @@ export default function HistoryRowExpanded({
   swap: GetSwapInfoResponse;
 }) {
   return (
-    <Box sx={{
-      display: "grid",
-      padding: 1,
-      gap: 1,
-    }}>
+    <Box
+      sx={{
+        display: "grid",
+        padding: 1,
+        gap: 1,
+      }}
+    >
       <TableContainer>
         <Table>
           <TableBody>
@@ -70,11 +80,13 @@ export default function HistoryRowExpanded({
             <TableRow>
               <TableCell>Maker Address</TableCell>
               <TableCell>
-                <Box sx={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 1,
-                }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                  }}
+                >
                   {swap.seller.addresses.map((addr) => (
                     <ActionableMonospaceTextBox
                       key={addr}
@@ -93,27 +105,30 @@ export default function HistoryRowExpanded({
                   href={getBitcoinTxExplorerUrl(swap.tx_lock_id, isTestnet())}
                   target="_blank"
                 >
-                  <MonospaceTextBox>
-                    {swap.tx_lock_id}
-                  </MonospaceTextBox>
+                  <MonospaceTextBox>{swap.tx_lock_id}</MonospaceTextBox>
                 </Link>
               </TableCell>
             </TableRow>
           </TableBody>
         </Table>
       </TableContainer>
-      <Box sx={{
-        display: "flex",
-        flexDirection: "row",
-        gap: 1,
-      }}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "row",
+          gap: 1,
+        }}
+      >
         <SwapLogFileOpenButton
           swapId={swap.swap_id}
           variant="outlined"
           size="small"
         />
-        <ExportLogsButton swap_id={swap.swap_id} variant="outlined"
-          size="small"/>
+        <ExportLogsButton
+          swap_id={swap.swap_id}
+          variant="outlined"
+          size="small"
+        />
       </Box>
     </Box>
   );

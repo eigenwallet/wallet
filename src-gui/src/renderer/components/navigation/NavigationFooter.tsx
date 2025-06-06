@@ -1,6 +1,8 @@
 import { Box, Tooltip } from "@mui/material";
 import GitHubIcon from "@mui/icons-material/GitHub";
-import DaemonStatusAlert, { BackgroundProgressAlerts } from "../alert/DaemonStatusAlert";
+import DaemonStatusAlert, {
+  BackgroundProgressAlerts,
+} from "../alert/DaemonStatusAlert";
 import FundsLeftInWalletAlert from "../alert/FundsLeftInWalletAlert";
 import UnfinishedSwapsAlert from "../alert/UnfinishedSwapsAlert";
 import LinkIconButton from "../icons/LinkIconButton";
@@ -10,21 +12,25 @@ import { MenuBook } from "@mui/icons-material";
 
 export default function NavigationFooter() {
   return (
-    <Box sx={{
-      display: "flex",
-      flexDirection: "column",
-      padding: 1,
-      gap: 1,
-    }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        padding: 1,
+        gap: 1,
+      }}
+    >
       <FundsLeftInWalletAlert />
       <UnfinishedSwapsAlert />
       <BackgroundRefundAlert />
       <DaemonStatusAlert />
       <BackgroundProgressAlerts />
-      <Box sx={{
-        display: "flex",
-        justifyContent: "space-evenly",
-      }}>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-evenly",
+        }}
+      >
         <Tooltip title="Check out the GitHub repository">
           <span>
             <LinkIconButton url="https://github.com/UnstoppableSwap/core">

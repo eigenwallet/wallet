@@ -28,7 +28,7 @@ export function SwapResumeButton({
       onInvoke={() => resumeSwap(swap.swap_id)}
       {...props}
     >
-      { children }
+      {children}
     </PromiseInvokeButton>
   );
 }
@@ -79,7 +79,9 @@ export default function HistoryRowActions(swap: GetSwapInfoResponse) {
   if (swap.state_name === BobStateName.BtcPunished) {
     return (
       <Tooltip title="You have been punished. You can attempt to recover the Monero with the help of the other party but that is not guaranteed to work">
-        <SwapResumeButton swap={swap} size="small">Attempt recovery</SwapResumeButton>
+        <SwapResumeButton swap={swap} size="small">
+          Attempt recovery
+        </SwapResumeButton>
       </Tooltip>
     );
   }

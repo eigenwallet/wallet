@@ -65,7 +65,7 @@ export default function CliLogsBox({
 }: {
   label: string;
   logs: (CliLog | string)[];
-  topRightButton?: ReactNode
+  topRightButton?: ReactNode;
 }) {
   const [searchQuery, setSearchQuery] = useState<string>("");
 

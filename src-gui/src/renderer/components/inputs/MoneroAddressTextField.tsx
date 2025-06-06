@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import { getMoneroAddresses } from "renderer/rpc";
 import { isTestnet } from "store/config";
 import { isXmrAddressValid } from "utils/conversionUtils";
-import ImportContactsIcon from '@mui/icons-material/ImportContacts';
+import ImportContactsIcon from "@mui/icons-material/ImportContacts";
 import TruncatedText from "../other/TruncatedText";
 
 import ListItemButton from "@mui/material/ListItemButton";
@@ -24,7 +24,7 @@ type MoneroAddressTextFieldProps = TextFieldProps & {
   onAddressChange: (address: string) => void;
   onAddressValidityChange: (valid: boolean) => void;
   helperText: string;
-}
+};
 
 export default function MoneroAddressTextField({
   address,
@@ -73,12 +73,12 @@ export default function MoneroAddressTextField({
         variant="outlined"
         slotProps={{
           input: {
-          endAdornment: addresses?.length > 0 && (
-            <IconButton onClick={() => setShowDialog(true)} size="small">
-              <ImportContactsIcon />
-            </IconButton>
-            )
-          }
+            endAdornment: addresses?.length > 0 && (
+              <IconButton onClick={() => setShowDialog(true)} size="small">
+                <ImportContactsIcon />
+              </IconButton>
+            ),
+          },
         }}
         {...props}
       />
@@ -104,24 +104,21 @@ function RecentlyUsedAddressesDialog({
   open,
   onClose,
   addresses,
-  onAddressSelect
+  onAddressSelect,
 }: RecentlyUsedAddressesDialogProps) {
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-    >
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogContent>
         <List>
           {addresses.map((addr) => (
             <ListItemButton key={addr} onClick={() => onAddressSelect(addr)}>
-              <ListItemText 
+              <ListItemText
                 primary={
-                  <Box sx={{
-                    fontFamily: "monospace"
-                  }}>
+                  <Box
+                    sx={{
+                      fontFamily: "monospace",
+                    }}
+                  >
                     <TruncatedText limit={40} truncateMiddle>
                       {addr}
                     </TruncatedText>
@@ -134,11 +131,7 @@ function RecentlyUsedAddressesDialog({
         </List>
       </DialogContent>
       <DialogActions>
-        <Button 
-          onClick={onClose}
-          variant="contained"
-          color="primary"
-        >
+        <Button onClick={onClose} variant="contained" color="primary">
           Close
         </Button>
       </DialogActions>

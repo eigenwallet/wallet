@@ -6,7 +6,7 @@ export default function PaperTextBox({ stdOut }: { stdOut: string }) {
   }
 
   return (
-    <Paper 
+    <Paper
       variant="outlined"
       sx={{
         overflow: "auto",

@@ -1,4 +1,9 @@
-import { Box, CircularProgress, LinearProgress, Typography } from "@mui/material";
+import {
+  Box,
+  CircularProgress,
+  LinearProgress,
+  Typography,
+} from "@mui/material";
 import { ReactNode } from "react";
 
 export default function CircularProgressWithSubtitle({
@@ -12,8 +17,9 @@ export default function CircularProgressWithSubtitle({
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
-        flexDirection: "column"
-      }}>
+        flexDirection: "column",
+      }}
+    >
       <CircularProgress size={50} />
       <Typography variant="subtitle2" sx={{ paddingTop: 1 }}>
         {description}
@@ -36,14 +42,17 @@ export function LinearProgressWithSubtitle({
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center"
-      }}>
+        justifyContent: "center",
+      }}
+    >
       <Typography variant="subtitle2" sx={{ paddingTop: 1 }}>
         {description}
       </Typography>
-      <Box sx={{
-        width: "10rem"
-      }}>
+      <Box
+        sx={{
+          width: "10rem",
+        }}
+      >
         <LinearProgress variant="determinate" value={value} />
       </Box>
     </Box>

@@ -19,8 +19,8 @@ export default function InfoBox({
   loading,
 }: Props) {
   return (
-    <Paper 
-      variant="outlined" 
+    <Paper
+      variant="outlined"
       id={id}
       sx={{
         padding: 1.5,

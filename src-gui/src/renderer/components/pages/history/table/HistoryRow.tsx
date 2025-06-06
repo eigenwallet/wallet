@@ -8,7 +8,10 @@ import TruncatedText from "renderer/components/other/TruncatedText";
 import { PiconeroAmount, SatsAmount } from "../../../other/Units";
 import HistoryRowActions from "./HistoryRowActions";
 import HistoryRowExpanded from "./HistoryRowExpanded";
-import { bobStateNameToHumanReadable, GetSwapInfoResponseExt } from "models/tauriModelExt";
+import {
+  bobStateNameToHumanReadable,
+  GetSwapInfoResponseExt,
+} from "models/tauriModelExt";
 
 function AmountTransfer({
   btcAmount,
@@ -18,11 +21,13 @@ function AmountTransfer({
   btcAmount: number;
 }) {
   return (
-    <Box sx={{
-      display: "flex",
-      alignItems: "center",
-      gap: 1,
-    }}>
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 1,
+      }}
+    >
       <SatsAmount amount={btcAmount} />
       <ArrowForwardIcon />
       <PiconeroAmount amount={xmrAmount} />

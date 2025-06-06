@@ -14,7 +14,10 @@ import { useSnackbar } from "notistack";
 import { ChangeEvent, useState } from "react";
 import TruncatedText from "renderer/components/other/TruncatedText";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
-import { listSellersAtRendezvousPoint, PRESET_RENDEZVOUS_POINTS } from "renderer/rpc";
+import {
+  listSellersAtRendezvousPoint,
+  PRESET_RENDEZVOUS_POINTS,
+} from "renderer/rpc";
 import { discoveredMakersByRendezvous } from "store/features/makersSlice";
 import { useAppDispatch } from "store/hooks";
 import { isValidMultiAddressWithPeerId } from "utils/parseUtils";

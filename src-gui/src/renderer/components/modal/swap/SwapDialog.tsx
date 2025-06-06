@@ -42,8 +42,8 @@ export default function SwapDialog({
         title="Swap Bitcoin for Monero"
       />
 
-      <DialogContent 
-        dividers 
+      <DialogContent
+        dividers
         sx={{
           minHeight: "25rem",
           display: "flex",

@@ -23,7 +23,7 @@ export default function ScrollablePaperTextBox({
   searchQuery?: string | null;
   setSearchQuery?: ((query: string) => void) | null;
   minHeight?: string;
-  topRightButton?: ReactNode | null
+  topRightButton?: ReactNode | null;
 }) {
   const virtuaEl = useRef<VListHandle | null>(null);
 
@@ -50,7 +50,14 @@ export default function ScrollablePaperTextBox({
         width: "100%",
       }}
     >
-      <Box style={{ display: "flex", flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+      <Box
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
         <Typography>{title}</Typography>
         {topRightButton}
       </Box>

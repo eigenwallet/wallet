@@ -16,23 +16,23 @@ export default function DaemonControlBox() {
 
   // The daemon can be manually started if it has failed or if it has not been started yet
   const canContextBeManuallyStarted = useAppSelector(
-    (s) => s.rpc.status === TauriContextStatusEvent.Failed || s.rpc.status === null,
+    (s) =>
+      s.rpc.status === TauriContextStatusEvent.Failed || s.rpc.status === null,
   );
   const isContextInitializing = useAppSelector(
     (s) => s.rpc.status === TauriContextStatusEvent.Initializing,
   );
 
-  const stringifiedDaemonStatus = useAppSelector((s) => s.rpc.status ?? "not started");
+  const stringifiedDaemonStatus = useAppSelector(
+    (s) => s.rpc.status ?? "not started",
+  );
 
   return (
     <InfoBox
       id="daemon-control-box"
       title={`Daemon Controller (${stringifiedDaemonStatus})`}
       mainContent={
-        <CliLogsBox
-          label="Logs (current session only)"
-          logs={logs}
-        />
+        <CliLogsBox label="Logs (current session only)" logs={logs} />
       }
       additionalContent={
         <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
