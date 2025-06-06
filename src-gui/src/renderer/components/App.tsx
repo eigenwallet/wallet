@@ -10,7 +10,7 @@ import WalletPage from "./pages/wallet/WalletPage";
 import GlobalSnackbarProvider from "./snackbar/GlobalSnackbarProvider";
 import UpdaterDialog from "./modal/updater/UpdaterDialog";
 import { useSettings } from "store/hooks";
-import { themes } from "./theme";
+import { Theme as ThemeEnum, themes } from "./theme";
 import { useEffect } from "react";
 import { setupBackgroundTasks } from "renderer/background";
 import "@fontsource/roboto";
@@ -32,7 +32,7 @@ export default function App() {
   }, []);
 
   const theme = useSettings((s) => s.theme);
-  const currentTheme = themes[theme];
+  const currentTheme = themes[theme] || themes[ThemeEnum.Dark];
 
   console.log("Current theme:", { theme, currentTheme });
 

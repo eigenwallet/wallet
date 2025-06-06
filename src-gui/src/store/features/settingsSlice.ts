@@ -98,7 +98,7 @@ const initialState: SettingsState = {
       [Blockchain.Monero]: []
     }
   },
-  theme: Theme.Darker,
+  theme: Theme.Dark,
   fetchFiatPrices: false,
   fiatCurrency: FiatCurrency.Usd,
   enableTor: true,

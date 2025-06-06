@@ -4,7 +4,6 @@ import { indigo } from "@mui/material/colors";
 export enum Theme {
   Light = "light",
   Dark = "dark",
-  Darker = "darker"
 }
 
 const baseTheme: ThemeOptions = {
@@ -70,29 +69,12 @@ const lightTheme = createTheme({
   },
 });
 
-const darkerTheme = createTheme({
-  ...baseTheme,
-  palette: {
-    mode: 'dark',
-    primary: {
-      main: "#f4511e",
-    },
-    secondary: indigo,
-    background: {
-      default: "#080808",
-      paper: "#181818",
-    },
-  },
-});
-
 console.log("Creating themes:", {
   dark: darkTheme,
-  light: lightTheme,
-  darker: darkerTheme
+  light: lightTheme
 });
 
 export const themes = {
   [Theme.Dark]: darkTheme,
   [Theme.Light]: lightTheme,
-  [Theme.Darker]: darkerTheme,
 };
