@@ -36,6 +36,15 @@ const baseTheme: ThemeOptions = {
         },
       },
     },
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          '& legend': {
+            transition: 'unset',
+          },
+        },
+      },
+    },
   },
 };
 

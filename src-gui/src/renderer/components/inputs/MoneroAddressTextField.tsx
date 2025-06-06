@@ -9,7 +9,7 @@ import {
   ListItemText,
   TextField,
 } from "@mui/material";
-import { TextFieldProps } from "@mui/material/TextField/TextField";
+import { TextFieldProps } from "@mui/material";
 import { useEffect, useState } from "react";
 import { getMoneroAddresses } from "renderer/rpc";
 import { isTestnet } from "store/config";
@@ -71,12 +71,14 @@ export default function MoneroAddressTextField({
         helperText={address.length > 0 ? errorText || helperText : helperText}
         placeholder={placeholder}
         variant="outlined"
-        InputProps={{
+        slotProps={{
+          input: {
           endAdornment: addresses?.length > 0 && (
             <IconButton onClick={() => setShowDialog(true)} size="small">
               <ImportContactsIcon />
             </IconButton>
-          )
+            )
+          }
         }}
         {...props}
       />
