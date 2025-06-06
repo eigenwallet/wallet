@@ -5,7 +5,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@mui/material";
-import { ButtonProps } from "@mui/material/Button/Button";
+import { ButtonProps } from "@mui/material/Button";
 import { CliLog, parseCliLogString } from "models/cliModel";
 import { GetLogsResponse } from "models/tauriModel";
 import { useState } from "react";

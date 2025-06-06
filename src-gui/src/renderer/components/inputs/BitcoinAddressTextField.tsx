@@ -1,5 +1,4 @@
-import { TextField } from "@mui/material";
-import { TextFieldProps } from "@mui/material/TextField/TextField";
+import TextField, { TextFieldProps } from "@mui/material/TextField";
 import { useEffect } from "react";
 import { isTestnet } from "store/config";
 import { isBtcAddressValid } from "utils/conversionUtils";

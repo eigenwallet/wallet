@@ -1,5 +1,4 @@
-import { SvgIcon } from "@mui/material";
-import { SvgIconProps } from "@mui/material/SvgIcon/SvgIcon";
+import SvgIcon, { SvgIconProps } from "@mui/material/SvgIcon";
 
 export default function MatrixIcon(props: SvgIconProps) {
   return (

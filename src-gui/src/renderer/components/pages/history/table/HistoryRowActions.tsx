@@ -1,5 +1,5 @@
 import { Tooltip } from "@mui/material";
-import { ButtonProps } from "@mui/material/Button/Button";
+import { ButtonProps } from "@mui/material/Button";
 import { green, red } from "@mui/material/colors";
 import DoneIcon from "@mui/icons-material/Done";
 import ErrorIcon from "@mui/icons-material/Error";
