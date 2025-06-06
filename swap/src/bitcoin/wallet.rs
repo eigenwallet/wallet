@@ -1686,6 +1686,7 @@ impl Client {
                 if err
                     .to_string()
                     .contains("No such mempool or blockchain transaction")
+                    | err.to_string().contains("missing transaction")
                 {
                     return Ok(None);
                 }
