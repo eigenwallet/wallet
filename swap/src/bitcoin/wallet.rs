@@ -1670,11 +1670,24 @@ impl Client {
             Err(err) => {
                 let err = anyhow::anyhow!(err);
 
-                if let Ok(error_code) = parse_rpc_error_code(&err) {
-                    // RpcInvalidAddressOrKey means the transaction was not found
-                    if error_code == i64::from(RpcErrorCode::RpcInvalidAddressOrKey) {
-                        return Ok(None);
+                // Try to parse the error code from the error message
+                match parse_rpc_error_code(&err) {
+                    Ok(error_code) => {
+                        if error_code == i64::from(RpcErrorCode::RpcInvalidAddressOrKey) {
+                            return Ok(None);
+                        }
                     }
+                    Err(err) => {
+                        tracing::trace!("Failed to parse error code from error message: {:#}", err);
+                    }
+                }
+
+                // Alternatively check if the error contains "No such mempool or blockchain transaction"
+                if err
+                    .to_string()
+                    .contains("No such mempool or blockchain transaction")
+                {
+                    return Ok(None);
                 }
 
                 Err(err.context("Failed to get transaction from the Electrum server"))

@@ -466,7 +466,11 @@ pub fn parse_rpc_error_code(error: &anyhow::Error) -> anyhow::Result<i64> {
         ),
     };
 
-    let json = serde_json::from_str(&string.replace("sendrawtransaction RPC error:", ""))?;
+    let json = serde_json::from_str(
+        &string
+            .replace("sendrawtransaction RPC error:", "")
+            .replace("daemon error:", ""),
+    )?;
 
     let json_map = match json {
         serde_json::Value::Object(map) => map,
