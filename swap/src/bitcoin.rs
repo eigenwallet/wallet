@@ -438,6 +438,9 @@ pub enum RpcErrorCode {
     /// General error during transaction or block submission
     RpcVerifyError,
     /// Invalid address or key. Error code -5. Is throwns when a transaction is not found.
+    /// See:
+    /// - https://github.com/bitcoin/bitcoin/blob/ae024137bda9fe189f4e7ccf26dbaffd44cbbeb6/src/rpc/mempool.cpp#L470-L472
+    /// - https://github.com/bitcoin/bitcoin/blob/ae024137bda9fe189f4e7ccf26dbaffd44cbbeb6/src/rpc/rawtransaction.cpp#L352-L368
     RpcInvalidAddressOrKey,
 }
 

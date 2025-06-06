@@ -541,7 +541,10 @@ impl State3 {
         bitcoin_wallet: &bitcoin::Wallet,
     ) -> Result<Option<Arc<Transaction>>> {
         let tx_refund = self.tx_refund();
-        let tx = bitcoin_wallet.get_raw_transaction(tx_refund.txid()).await?;
+        let tx = bitcoin_wallet
+            .get_raw_transaction(tx_refund.txid())
+            .await
+            .context("Failed to fetch Bitcoin refund transaction")?;
 
         Ok(tx)
     }
