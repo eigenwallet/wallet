@@ -622,7 +622,6 @@ impl State4 {
     pub async fn watch_for_redeem_btc(&self, bitcoin_wallet: &bitcoin::Wallet) -> Result<State5> {
         let tx_redeem =
             bitcoin::TxRedeem::new(&self.tx_lock, &self.redeem_address, self.tx_redeem_fee);
-        let tx_redeem_encsig = self.b.encsign(self.S_a_bitcoin, tx_redeem.digest());
 
         bitcoin_wallet
             .subscribe_to(tx_redeem.clone())
@@ -630,24 +629,11 @@ impl State4 {
             .wait_until_seen()
             .await?;
 
-        let tx_redeem_candidate = bitcoin_wallet.get_raw_transaction(tx_redeem.txid()).await?;
+        let state5 = self.check_for_tx_redeem(bitcoin_wallet).await?;
 
-        if let Some(tx_redeem_candidate) = tx_redeem_candidate {
-            let tx_redeem_sig =
-                tx_redeem.extract_signature_by_key(tx_redeem_candidate, self.b.public())?;
-            let s_a = bitcoin::recover(self.S_a_bitcoin, tx_redeem_sig, tx_redeem_encsig)?;
-            let s_a = monero::private_key_from_secp256k1_scalar(s_a.into());
-
-            Ok(State5 {
-                s_a,
-                s_b: self.s_b,
-                v: self.v,
-                tx_lock: self.tx_lock.clone(),
-                monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
-            })
-        } else {
-            bail!("Bitcoin redeem transaction was not found in the chain even though we previously saw it in the mempool. Our Electrum server might have cleared its mempool?")
-        }
+        state5.ok_or_else(|| {
+            anyhow!("Bitcoin redeem transaction was not found in the chain even though we previously saw it in the mempool. Our Electrum server might have cleared its mempool?")
+        })
     }
 
     pub async fn expired_timelock(
@@ -883,6 +869,7 @@ impl State6 {
         bitcoin_wallet: &bitcoin::Wallet,
     ) -> Result<Option<Arc<Transaction>>> {
         let tx_early_refund = self.construct_tx_early_refund();
+
         let tx = bitcoin_wallet
             .get_raw_transaction(tx_early_refund.txid())
             .await

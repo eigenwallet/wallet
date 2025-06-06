@@ -660,7 +660,9 @@ impl Wallet {
     }
 
     pub async fn get_raw_transaction(&self, txid: Txid) -> Result<Option<Arc<Transaction>>> {
-        self.get_tx(txid).await.with_context(|| format!("Could not get raw tx with id: {}", txid))
+        self.get_tx(txid)
+            .await
+            .with_context(|| format!("Could not get raw tx with id: {}", txid))
     }
 
     // Returns the TxId of the last published Bitcoin transaction
@@ -990,7 +992,9 @@ impl Wallet {
         let transaction = self
             .get_tx(txid)
             .await
-            .context("Could not find tx in bdk wallet when trying to determine fees")?
+            .context(
+                "Could not fetch transaction from Electrum server while trying to determine fees",
+            )?
             .ok_or_else(|| anyhow!("Transaction not found"))?;
 
         let fee = self.wallet.lock().await.calculate_fee(&transaction)?;
