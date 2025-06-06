@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use super::wallet::Watchable;
 use super::TxLock;
 
+const TX_EARLY_REFUND_WEIGHT: usize = 548;
+
 #[derive(Clone)]
 pub struct TxEarlyRefund {
     inner: Transaction,
@@ -110,7 +112,7 @@ impl TxEarlyRefund {
     }
 
     pub fn weight() -> usize {
-        548
+        TX_EARLY_REFUND_WEIGHT
     }
 }
 
