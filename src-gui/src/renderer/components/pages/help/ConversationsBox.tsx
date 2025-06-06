@@ -38,6 +38,7 @@ import logger from "utils/logger";
 import AttachmentIcon from '@mui/icons-material/Attachment';
 import { Message, PrimitiveDateTimeString } from "models/apiModel";
 import { formatDateTime } from "utils/conversionUtils";
+import { Theme } from "renderer/components/theme";
 
 // Hook: sorted feedback IDs by latest activity, then unread
 function useSortedFeedbackIds() {
@@ -90,9 +91,9 @@ export default function ConversationsBox() {
               <Table stickyHeader size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell style={{ width: '25%' }}>Last Message</TableCell>
-                    <TableCell style={{ width: '60%' }}>Preview</TableCell>
-                    <TableCell align="right" style={{ width: '15%' }} />
+                    <TableCell sx={theme => ({ width: '25%', backgroundColor: theme.palette.grey[900] })}>Last Message</TableCell>
+                    <TableCell sx={theme => ({ width: '60%', backgroundColor: theme.palette.grey[900] })}>Preview</TableCell>
+                    <TableCell align="right" sx={theme => ({ width: '15%', backgroundColor: theme.palette.grey[900] })} />
                   </TableRow>
                 </TableHead>
                 <TableBody>

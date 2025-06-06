@@ -14,6 +14,29 @@ const baseTheme: ThemeOptions = {
       fontFamily: "monospace"
     },
   },
+  components: {
+    MuiButton: {
+      styleOverrides: {
+        outlined: {
+          color: 'inherit',
+          borderColor: 'color-mix(in srgb, currentColor 30%, transparent)',
+          '&:hover': {
+            borderColor: 'color-mix(in srgb, currentColor 30%, transparent)',
+            backgroundColor: 'color-mix(in srgb, #bdbdbd 10%, transparent)',
+          },
+        },
+      },
+    },
+    MuiDialog: {
+      defaultProps: {
+        slotProps: {
+          paper: {
+            variant: "outlined",
+          },
+        },
+      },
+    },
+  },
 };
 
 const darkTheme = createTheme({

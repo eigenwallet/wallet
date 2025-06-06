@@ -6,13 +6,13 @@ type Props = {
 
 export default function MonospaceTextBox({ children }: Props) {
   return (
-    <Box sx={{
+    <Box sx={theme => ({
       display: "flex",
       alignItems: "center",
-      backgroundColor: "grey.900",
-      borderRadius: 1,
-      padding: 1,
-    }}>
+      backgroundColor: theme.palette.grey[900],
+      borderRadius: 2,
+      padding: theme.spacing(1),
+    })}>
       <Typography 
         component="span" 
         variant="overline" 

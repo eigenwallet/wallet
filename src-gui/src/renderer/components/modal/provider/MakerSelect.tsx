@@ -1,4 +1,4 @@
-import { Box, Card, CardContent, IconButton } from "@mui/material";
+import { Paper, Card, CardContent, IconButton } from "@mui/material";
 import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
 import { useState } from "react";
 import { useAppSelector } from "store/hooks";
@@ -22,12 +22,12 @@ export default function MakerSelect() {
   }
 
   return (
-    <Box>
+    <Paper variant="outlined" elevation={4}>
       <MakerListDialog
         open={selectDialogOpen}
         onClose={handleSelectDialogClose}
       />
-      <Card variant="outlined" sx={{ width: "100%" }}>
+      <Card sx={{ width: "100%" }}>
         <CardContent sx={{ display: "flex", alignItems: "center" }}>
           <MakerInfo maker={selectedMaker} />
           <IconButton onClick={handleSelectDialogOpen} size="small">
@@ -35,6 +35,6 @@ export default function MakerSelect() {
           </IconButton>
         </CardContent>
       </Card>
-    </Box>
+    </Paper>
   );
 }

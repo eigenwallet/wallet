@@ -46,7 +46,7 @@ export default function InitPage() {
           fullWidth
         />
 
-        <Paper variant="outlined" style={{}}>
+        <Paper variant="outlined"  style={{}}>
           <Tabs
             value={useExternalRefundAddress ? 1 : 0}
             indicatorColor="primary"

@@ -86,16 +86,15 @@ function HasMakerSwapWidget({
     // 'elevation' prop can't be passed down (type def issue)
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
-    <Box 
-      component={Paper} 
-      elevation={5}
-      sx={{
+    <Paper
+      variant="outlined"
+      sx={theme => ({
         width: "min(480px, 100%)",
         minHeight: "150px",
         display: "grid",
-        padding: 1,
-        gridGap: 1,
-      }}
+        padding: theme.spacing(2),
+        gridGap: theme.spacing(1),
+      })}
     >
       <Title />
       <TextField
@@ -132,7 +131,7 @@ function HasMakerSwapWidget({
         open={showDialog || forceShowDialog}
         onClose={() => setShowDialog(false)}
       />
-    </Box>
+    </Paper>
   );
 }
 
