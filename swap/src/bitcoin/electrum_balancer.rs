@@ -1,6 +1,10 @@
 use std::sync::{Arc, Mutex};
 
+use futures::future::join_all;
+use tokio::task::spawn_blocking;
+
 use bdk_electrum::electrum_client::{Client, Error};
+use bitcoin::Transaction;
 use tracing::warn;
 
 /// Round-robin load balancer for Electrum connections.
@@ -60,6 +64,48 @@ impl ElectrumBalancer {
             std::io::ErrorKind::Other,
             "all electrum nodes failed",
         )))
+    }
+
+    /// Execute the given closure on **all** Electrum nodes in parallel.
+    ///
+    /// The closure is executed in a blocking task for each client.
+    /// The resulting `Result`s are collected and returned in the same
+    /// order as the nodes were provided during construction.
+    pub async fn join_all<F, T>(&self, f: F) -> Vec<Result<T, Error>>
+    where
+        F: Fn(Arc<Client>) -> Result<T, Error> + Send + Sync + Clone + 'static,
+        T: Send + 'static,
+    {
+        let tasks = self.clients.iter().cloned().map(|client| {
+            let f = f.clone();
+            spawn_blocking(move || f(client))
+        });
+
+        join_all(tasks)
+            .await
+            .into_iter()
+            .map(|res| match res {
+                Ok(r) => r,
+                Err(e) => Err(Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("spawn error: {e}"),
+                ))),
+            })
+            .collect()
+    }
+
+    /// Broadcast the given transaction to all Electrum nodes in parallel.
+    ///
+    /// The method returns a list of results in the same order as the
+    /// configured nodes. Errors for individual nodes do not abort the
+    /// others.
+    pub async fn broadcast_all(
+        &self,
+        tx: &Transaction,
+    ) -> Vec<Result<bitcoin::Txid, Error>> {
+        self
+            .join_all(|client| client.transaction_broadcast(tx))
+            .await
     }
 }
 

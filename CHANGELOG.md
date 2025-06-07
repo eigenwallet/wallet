@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ASB: The maker will take Monero funds needed for ongoing swaps into consideration when making a quote. A warning will be displayed if the Monero funds do not cover all ongoing swaps.
 - ASB: Return a zero quote when quoting fails instead of letting the request time out
+- Bitcoin wallet: add ElectrumBalancer supporting parallel broadcasts to multiple nodes
 
 ## [1.1.7] - 2025-06-04
 
