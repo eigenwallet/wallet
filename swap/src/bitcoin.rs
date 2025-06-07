@@ -1,3 +1,4 @@
+pub mod electrum_balancer;
 pub mod wallet;
 
 mod cancel;
