@@ -681,7 +681,7 @@ pub struct TauriSettings {
     pub monero_node_url: Option<String>,
     /// The URL of the Electrum RPC server e.g `ssl://bitcoin.com:50001`
     #[typeshare(serialized_as = "string")]
-    pub electrum_rpc_url: Option<Url>,
+    pub electrum_rpc_urls: Option<Vec<Url>>,
     /// Whether to initialize and use a tor client.
     pub use_tor: bool,
 }

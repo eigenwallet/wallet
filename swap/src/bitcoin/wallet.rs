@@ -1,3 +1,4 @@
+use crate::bitcoin::electrum_balancer::ElectrumBalancer;
 use crate::bitcoin::{Address, Amount, Transaction};
 use crate::cli::api::tauri_bindings::{
     TauriBackgroundProgress, TauriBitcoinFullScanProgress, TauriBitcoinSyncProgress, TauriEmitter,
@@ -83,7 +84,7 @@ pub struct Wallet<Persister = Connection, C = Client> {
 /// This is our wrapper around a bdk electrum client.
 pub struct Client {
     /// The underlying bdk electrum client.
-    electrum: Arc<BdkElectrumClient<bdk_electrum::electrum_client::Client>>,
+    electrum: Arc<BdkElectrumClient<ElectrumBalancer>>,
     /// The history of transactions for each script.
     script_history: BTreeMap<ScriptBuf, Vec<GetHistoryRes>>,
     /// The subscriptions to the status of transactions.
@@ -113,7 +114,7 @@ pub struct Client {
 pub struct WalletConfig {
     seed: Seed,
     network: Network,
-    electrum_rpc_url: String,
+    electrum_rpc_urls: Vec<String>,
     persister: PersisterConfig,
     finality_confirmations: u32,
     target_block: u32,
@@ -133,7 +134,7 @@ impl WalletBuilder {
             .validate_config()
             .map_err(|e| anyhow!("Builder validation failed: {e}"))?;
 
-        let client = Client::new(&config.electrum_rpc_url, config.sync_interval)
+        let client = Client::new(&config.electrum_rpc_urls, config.sync_interval)
             .context("Failed to create Electrum client")?;
 
         match &config.persister {
@@ -352,7 +353,7 @@ impl Wallet {
     pub async fn with_sqlite(
         seed: &Seed,
         network: Network,
-        electrum_rpc_url: &str,
+        electrum_rpc_urls: &[String],
         data_dir: impl AsRef<Path>,
         finality_confirmations: u32,
         target_block: u32,
@@ -370,7 +371,7 @@ impl Wallet {
         let wallet_exists = wallet_path.exists();
 
         // Connect to the electrum server.
-        let client = Client::new(electrum_rpc_url, sync_interval)?;
+        let client = Client::new(electrum_rpc_urls, sync_interval)?;
 
         // Make sure the wallet directory exists.
         tokio::fs::create_dir_all(&wallet_dir).await?;
@@ -417,7 +418,7 @@ impl Wallet {
     pub async fn with_sqlite_in_memory(
         seed: &Seed,
         network: Network,
-        electrum_rpc_url: &str,
+        electrum_rpc_urls: &[String],
         finality_confirmations: u32,
         target_block: u32,
         sync_interval: Duration,
@@ -426,7 +427,8 @@ impl Wallet {
         Self::create_new(
             seed.derive_extended_private_key(network)?,
             network,
-            Client::new(electrum_rpc_url, sync_interval).expect("Failed to create electrum client"),
+            Client::new(electrum_rpc_urls, sync_interval)
+                .expect("Failed to create electrum client"),
             || {
                 bdk_wallet::rusqlite::Connection::open_in_memory()
                     .context("Failed to open in-memory SQLite database")
@@ -1492,11 +1494,16 @@ where
 }
 
 impl Client {
-    /// Create a new client to this electrum server.
-    pub fn new(electrum_rpc_url: &str, sync_interval: Duration) -> Result<Self> {
-        let client = bdk_electrum::electrum_client::Client::new(electrum_rpc_url)?;
+    /// Create a new client with multiple electrum servers for load balancing.
+    pub fn new(electrum_rpc_urls: &[String], sync_interval: Duration) -> Result<Self> {
+        tracing::info!(
+            "Creating Bitcoin wallet client with {} electrum servers",
+            electrum_rpc_urls.len()
+        );
+        tracing::debug!("Electrum servers: {:?}", electrum_rpc_urls);
+        let balancer = ElectrumBalancer::new(electrum_rpc_urls.to_vec())?;
         Ok(Self {
-            electrum: Arc::new(BdkElectrumClient::new(client)),
+            electrum: Arc::new(BdkElectrumClient::new(balancer)),
             script_history: Default::default(),
             last_sync: Instant::now()
                 .checked_sub(sync_interval)

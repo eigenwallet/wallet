@@ -315,7 +315,7 @@ async fn init_test_wallets(
     let btc_wallet = swap::bitcoin::wallet::WalletBuilder::default()
         .seed(seed.clone())
         .network(env_config.bitcoin_network)
-        .electrum_rpc_url(electrum_rpc_url.as_str().to_string())
+        .electrum_rpc_urls(vec![electrum_rpc_url.as_str().to_string()])
         .persister(swap::bitcoin::wallet::PersisterConfig::InMemorySqlite)
         .finality_confirmations(1_u32)
         .target_block(1_u32)

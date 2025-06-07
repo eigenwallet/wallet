@@ -250,7 +250,7 @@ export async function initializeContext() {
 
   // Initialize Tauri settings with null values
   const tauriSettings: TauriSettings = {
-    electrum_rpc_url: bitcoinNode,
+    electrum_rpc_urls: [bitcoinNode],
     monero_node_url: moneroNode,
     use_tor: useTor,
   };

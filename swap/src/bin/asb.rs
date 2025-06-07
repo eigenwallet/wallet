@@ -415,10 +415,17 @@ async fn init_bitcoin_wallet(
     env_config: swap::env::Config,
 ) -> Result<bitcoin::Wallet> {
     tracing::debug!("Opening Bitcoin wallet");
+    let electrum_urls: Vec<String> = config
+        .bitcoin
+        .electrum_rpc_urls
+        .iter()
+        .map(|url| url.as_str().to_string())
+        .collect();
+
     let wallet = bitcoin::wallet::WalletBuilder::default()
         .seed(seed.clone())
         .network(env_config.bitcoin_network)
-        .electrum_rpc_url(config.bitcoin.electrum_rpc_url.as_str().to_string())
+        .electrum_rpc_urls(electrum_urls)
         .persister(bitcoin::wallet::PersisterConfig::SqliteFile {
             data_dir: config.data.dir.clone(),
         })
