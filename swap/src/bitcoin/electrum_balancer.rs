@@ -3,9 +3,8 @@ use std::sync::{Arc, Mutex};
 use futures::future::join_all;
 use tokio::task::spawn_blocking;
 
-use bdk_electrum::electrum_client::{
-    Client, ConfigBuilder, ElectrumApi, Error,
-};
+use bdk_electrum::electrum_client::{Client, ConfigBuilder, ElectrumApi, Error};
+use bdk_electrum::BdkElectrumClient;
 use bitcoin::Transaction;
 use tracing::{debug, error, info, instrument, trace, warn};
 
@@ -18,26 +17,27 @@ use tracing::{debug, error, info, instrument, trace, warn};
 /// Clients are created lazily on first use to avoid blocking during initialization.
 pub struct ElectrumBalancer {
     urls: Vec<String>,
-    clients: Mutex<Vec<Option<Arc<Client>>>>,
+    clients: Mutex<Vec<Option<Arc<BdkElectrumClient<Client>>>>>,
     next: Mutex<usize>,
 }
 
 impl ElectrumBalancer {
     /// Create a single electrum client with timeout
-    fn create_client_with_timeout(url: &str) -> Result<Client, Error> {
+    fn create_client_with_timeout(url: &str) -> Result<BdkElectrumClient<Client>, Error> {
         // Configure client with short timeout to prevent hanging on unresponsive servers
         let config = ConfigBuilder::new()
             .timeout(Some(5)) // 5 second timeout
             .retry(0) // Retrying is done at the caller level (ElectrumBalancer)
             .build();
 
-        Client::from_config(url, config)
+        let client = Client::from_config(url, config)?;
+        Ok(BdkElectrumClient::new(client))
     }
 
     /// Create a new balancer from a list of Electrum URLs.
     /// All clients are created at startup - this may take time but eliminates delays during use.
     #[instrument(level = "info", fields(num_urls = urls.len()))]
-    pub fn new(urls: Vec<String>) -> Result<Self, Error> {
+    pub async fn new(urls: Vec<String>) -> Result<Self, Error> {
         if urls.is_empty() {
             error!("No Electrum URLs provided");
             return Err(Error::Protocol("No Electrum URLs provided".into()));
@@ -49,14 +49,22 @@ impl ElectrumBalancer {
         );
 
         // Create all clients at startup
-        let clients: Vec<Option<Arc<Client>>> = urls
+        let futures: Vec<_> = urls
             .iter()
             .map(|url| {
-                Self::create_client_with_timeout(url)
-                    .map(|client| Arc::new(client))
-                    .ok()
+                let url = url.clone();
+                spawn_blocking(move || {
+                    Self::create_client_with_timeout(&url)
+                        .map(|client| Arc::new(client))
+                        .ok()
+                })
             })
             .collect();
+
+        let results = join_all(futures).await;
+
+        let clients: Vec<Option<Arc<BdkElectrumClient<Client>>>> =
+            results.into_iter().map(|res| res.unwrap_or(None)).collect();
 
         Ok(Self {
             urls,
@@ -66,7 +74,10 @@ impl ElectrumBalancer {
     }
 
     /// Get a client for the given index.
-    async fn get_or_create_client(&self, idx: usize) -> Result<Arc<Client>, Error> {
+    pub async fn get_or_create_client(
+        &self,
+        idx: usize,
+    ) -> Result<Arc<BdkElectrumClient<Client>>, Error> {
         let clients = self.clients.lock().expect("mutex poisoned");
 
         if let Some(ref client) = clients[idx] {
@@ -103,7 +114,7 @@ impl ElectrumBalancer {
     #[instrument(level = "debug", skip(self, f), fields(total_urls = self.urls.len()))]
     pub async fn call_async<F, T>(&self, f: F) -> Result<T, Error>
     where
-        F: Fn(&Client) -> Result<T, Error> + Send + Sync + Clone + 'static,
+        F: Fn(&BdkElectrumClient<Client>) -> Result<T, Error> + Send + Sync + Clone + 'static,
         T: Send + 'static,
     {
         let operation_id = uuid::Uuid::new_v4();
@@ -129,11 +140,17 @@ impl ElectrumBalancer {
 
             // Execute the request in spawn_blocking to prevent blocking the async runtime
             let f_clone = f.clone();
-            let request_result = spawn_blocking(move || f_clone(&client)).await;
+            let url = self.urls[idx].clone();
+            let url_for_logging = url.clone();
+            let request_result = spawn_blocking(move || {
+                debug!("Executing request on {}", url);
+                f_clone(&client)
+            })
+            .await;
 
             match request_result {
                 Ok(Ok(res)) => {
-                    debug!(%operation_id, "Request successful on {}", self.urls[idx]);
+                    debug!(%operation_id, "Request successful on {}", url_for_logging);
                     return Ok(res);
                 }
                 Ok(Err(e)) => {
@@ -141,7 +158,7 @@ impl ElectrumBalancer {
                         debug!(
                             %operation_id,
                             "Request failed on {}: {:?}, trying next server",
-                            self.urls[idx], e
+                            url_for_logging, e
                         );
                         last_error = Some(e);
                         continue;
@@ -149,7 +166,7 @@ impl ElectrumBalancer {
                         debug!(
                             %operation_id,
                             "Non-retryable error on {}: {:?}",
-                            self.urls[idx], e
+                            url_for_logging, e
                         );
                         return Err(e);
                     }
@@ -162,7 +179,7 @@ impl ElectrumBalancer {
                     debug!(
                         %operation_id,
                         "Request execution failed on {}: {:?}, trying next server",
-                        self.urls[idx], join_err
+                        url_for_logging, join_err
                     );
                     last_error = Some(error);
                     continue;
@@ -195,7 +212,7 @@ impl ElectrumBalancer {
     #[instrument(level = "debug", skip(self, f), fields(total_urls = self.urls.len()))]
     pub fn call<F, T>(&self, mut f: F) -> Result<T, Error>
     where
-        F: FnMut(&Client) -> Result<T, Error>,
+        F: FnMut(&BdkElectrumClient<Client>) -> Result<T, Error>,
     {
         let num_urls = self.urls.len();
         let mut last_error = None;
@@ -265,7 +282,7 @@ impl ElectrumBalancer {
     #[instrument(level = "debug", skip(self, f), fields(num_urls = self.urls.len()))]
     pub async fn join_all<F, T>(&self, f: F) -> Vec<Result<T, Error>>
     where
-        F: Fn(Arc<Client>) -> Result<T, Error> + Send + Sync + Clone + 'static,
+        F: Fn(Arc<BdkElectrumClient<Client>>) -> Result<T, Error> + Send + Sync + Clone + 'static,
         T: Send + 'static,
     {
         info!(
@@ -366,7 +383,7 @@ impl ElectrumBalancer {
         );
 
         let results = self
-            .join_all(move |client| client.transaction_broadcast(&tx))
+            .join_all(move |client| client.inner.transaction_broadcast(&tx))
             .await;
 
         let success_count = results.iter().filter(|r| r.is_ok()).count();
@@ -395,14 +412,10 @@ impl ElectrumBalancer {
     }
 
     /// Populate the transaction cache for all clients.
-    /// Note: This is not implemented for the load balancer as the underlying clients 
+    /// Note: This is not implemented for the load balancer as the underlying clients
     /// don't support transaction caching.
-    pub fn populate_tx_cache(
-        &self,
-        _txs: impl IntoIterator<Item = impl Into<Arc<Transaction>>>,
-    ) {
+    pub fn populate_tx_cache(&self, _txs: impl IntoIterator<Item = impl Into<Arc<Transaction>>>) {
         // No-op: The raw electrum clients don't support transaction caching
         tracing::debug!("populate_tx_cache called on ElectrumBalancer - this is a no-op");
     }
 }
-
