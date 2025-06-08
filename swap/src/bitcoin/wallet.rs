@@ -6,6 +6,7 @@ use crate::cli::api::tauri_bindings::{
 use crate::seed::Seed;
 use anyhow::{anyhow, bail, Context, Result};
 use bdk_chain::spk_client::{SyncRequest, SyncRequestBuilder};
+use bdk_chain::CheckPoint;
 use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
 use bdk_electrum::BdkElectrumClient;
 
@@ -517,6 +518,7 @@ impl Wallet {
 
         let full_scan = wallet.start_full_scan().inspect(callback);
 
+        // TODO: Fix this. NEVER manualy CREATE BDK CLINET
         // For full_scan, we create a new BDK electrum client using the first URL
         // from our balancer. This is a one-time operation so load balancing isn't critical.
         let bdk_client = {
@@ -692,10 +694,12 @@ impl Wallet {
             .expect("time went backwards")
             .as_secs();
 
-        let mut wallet = self.wallet.lock().await;
-        let mut persister = self.persister.lock().await;
-        wallet.apply_unconfirmed_txs(vec![(transaction, timestamp)]);
-        wallet.persist(&mut persister)?;
+        {
+            let mut wallet = self.wallet.lock().await;
+            let mut persister = self.persister.lock().await;
+            wallet.apply_unconfirmed_txs(vec![(transaction, timestamp)]);
+            wallet.persist(&mut persister)?;
+        }
 
         Ok((txid, subscription))
     }
@@ -709,12 +713,14 @@ impl Wallet {
     // Returns the TxId of the last published Bitcoin transaction
     pub async fn last_published_txid(&self) -> Result<Txid> {
         let wallet = self.wallet.lock().await;
-        let txs = wallet.transactions();
-        let mut txs: Vec<_> = txs.collect();
-        txs.sort_by(|tx1, tx2| tx2.chain_position.cmp(&tx1.chain_position));
-        let tx = txs.first().context("No transactions found")?;
 
-        Ok(tx.tx_node.txid)
+        // Get all the transactions sorted by recency
+        let mut txs = wallet.transactions().collect::<Vec<_>>();
+        txs.sort_by(|tx1, tx2| tx2.chain_position.cmp(&tx1.chain_position));
+
+        let last_tx = txs.first().context("No transactions found")?;
+
+        Ok(last_tx.tx_node.txid)
     }
 
     pub async fn status_of_script<T>(&self, tx: &T) -> Result<ScriptStatus>
@@ -829,12 +835,20 @@ impl Wallet {
         max_num_chunks: u32,
         batch_size: u32,
     ) -> Vec<SyncRequestBuilderFactory> {
-        let wallet = self.wallet.lock().await;
-        let spks: Vec<_> = wallet
-            .spk_index()
-            .revealed_spks(..)
-            .map(|(index, spk)| (index, spk.clone()))
-            .collect();
+        let (spks, chain_tip): (Vec<((KeychainKind, u32), ScriptBuf)>, CheckPoint) = {
+            let wallet = self.wallet.lock().await;
+
+            let spks = wallet
+                .spk_index()
+                .revealed_spks(..)
+                .map(|(index, spk)| (index, spk.clone()))
+                .collect();
+
+            let chain_tip = wallet.local_chain().tip();
+
+            (spks, chain_tip)
+        };
+
         let total_spks =
             u32::try_from(spks.len()).expect("Number of SPKs should not exceed u32::MAX");
 
@@ -856,8 +870,6 @@ impl Wallet {
         let chunk_size = (total_spks + num_chunks - 1) / num_chunks;
 
         let mut chunks = Vec::new();
-
-        let chain_tip = wallet.local_chain().tip();
 
         for spk_chunk in spks.chunks(chunk_size as usize) {
             let factory = SyncRequestBuilderFactory {
@@ -964,13 +976,7 @@ impl Wallet {
                     })
                     .build();
 
-                client
-                    .sync(sync_request, Self::SCAN_BATCH_SIZE as usize, true)
-                    .map_err(|e| {
-                        bdk_electrum::electrum_client::Error::Protocol(
-                            format!("BDK sync failed: {}", e).into(),
-                        )
-                    })
+                client.sync(sync_request, Self::SCAN_BATCH_SIZE as usize, true)
             })
             .await?;
 
@@ -1288,17 +1294,21 @@ where
             .transpose()
             .context("Change address is not on the correct network")?;
 
-        let mut wallet = self.wallet.lock().await;
         let script = address.script_pubkey();
 
-        // Build the transaction with a dummy fee rate
-        // just to figure out the final weight of the transaction
-        // send_to_address(...) takes an absolute fee
-        let mut tx_builder = wallet.build_tx();
-        tx_builder.add_recipient(script.clone(), amount);
-        tx_builder.fee_absolute(Amount::ZERO);
+        let psbt = {
+            let mut wallet = self.wallet.lock().await;
 
-        let psbt = tx_builder.finish()?;
+            // Build the transaction with a dummy fee rate
+            // just to figure out the final weight of the transaction
+            // send_to_address(...) takes an absolute fee
+            let mut tx_builder = wallet.build_tx();
+
+            tx_builder.add_recipient(script.clone(), amount);
+            tx_builder.fee_absolute(Amount::ZERO);
+
+            tx_builder.finish()?
+        };
 
         let weight = psbt.unsigned_tx.weight();
         let fee = self.estimate_fee(weight, Some(amount)).await?;
@@ -1622,9 +1632,15 @@ impl Client {
     async fn update_script_histories(&mut self) -> Result<()> {
         let scripts: Vec<_> = self.script_history.keys().cloned().collect();
 
-        let histories: Vec<Vec<GetHistoryRes>> = self
+        // No need to do any network request if we have nothing to fetch
+        if scripts.is_empty() {
+            return Ok(());
+        }
+
+        // Concurrently fetch the script histories from ALL electrum servers
+        let results = self
             .inner
-            .call_async({
+            .join_all({
                 let scripts = scripts.clone();
 
                 move |client| {
@@ -1632,33 +1648,101 @@ impl Client {
                     client.inner.batch_script_get_history(script_refs)
                 }
             })
-            .await
-            .context("Failed to fetch script histories")?;
+            .await;
 
-        if histories.len() != self.script_history.len() {
-            bail!(
-                "Expected {} script histories, got {}",
-                self.script_history.len(),
-                histories.len()
-            );
+        let successful_results: Vec<Vec<Vec<GetHistoryRes>>> = results
+            .iter()
+            .filter_map(|r| r.as_ref().ok())
+            .cloned()
+            .collect();
+
+        // If we didn't get a single successful request, we have to fail
+        if successful_results.is_empty() {
+            if let Some(Err(e)) = results.into_iter().find(|r| r.is_err()) {
+                return Err(e.into());
+            }
         }
 
-        self.script_history = scripts.into_iter().zip(histories).collect();
+        // Iterate through each script we fetched and find the highest
+        // returned entry at any Electrum node
+        for script_index in 0..scripts.len() {
+            let all_history_for_script: Vec<GetHistoryRes> = successful_results
+                .iter()
+                .filter_map(|server_result| server_result.get(script_index))
+                .flatten()
+                .cloned()
+                .collect();
+
+            let mut best_history: BTreeMap<Txid, GetHistoryRes> = BTreeMap::new();
+            for item in all_history_for_script {
+                best_history
+                    .entry(item.tx_hash)
+                    .and_modify(|current| {
+                        if item.height > current.height {
+                            *current = item.clone();
+                        }
+                    })
+                    .or_insert(item);
+            }
+
+            let final_history: Vec<GetHistoryRes> = best_history.into_values().collect();
+            self.script_history
+                .insert(scripts[script_index].clone(), final_history);
+        }
 
         Ok(())
     }
 
     /// Update the script history of a single script.
     pub async fn update_script_history(&mut self, script: &impl Watchable) -> Result<()> {
-        let (script, _) = script.script_and_txid();
-        let script_clone = script.clone();
+        let (script_buf, _) = script.script_and_txid();
+        let script_clone = script_buf.clone();
 
-        let history = self
+        // Call all electrum servers in parallel to get script history.
+        let results = self
             .inner
-            .call_async(move |client| client.inner.script_get_history(script_clone.as_script()))
-            .await?;
+            .join_all(move |client| client.inner.script_get_history(script_clone.as_script()))
+            .await;
 
-        self.script_history.insert(script, history);
+        // Collect all successful history entries from all servers.
+        let mut all_history_items: Vec<GetHistoryRes> = Vec::new();
+        let mut first_error = None;
+
+        for result in results {
+            match result {
+                Ok(history) => all_history_items.extend(history),
+                Err(e) => {
+                    if first_error.is_none() {
+                        first_error = Some(e);
+                    }
+                }
+            }
+        }
+
+        // If we got no history items at all, and there was an error, propagate it.
+        // Otherwise, it's valid for a script to have no history.
+        if all_history_items.is_empty() {
+            if let Some(err) = first_error {
+                return Err(err.into());
+            }
+        }
+
+        // Use a map to find the best (highest confirmation) entry for each transaction.
+        let mut best_history: BTreeMap<Txid, GetHistoryRes> = BTreeMap::new();
+        for item in all_history_items {
+            best_history
+                .entry(item.tx_hash)
+                .and_modify(|current| {
+                    if item.height > current.height {
+                        *current = item.clone();
+                    }
+                })
+                .or_insert(item);
+        }
+
+        let final_history: Vec<GetHistoryRes> = best_history.into_values().collect();
+
+        self.script_history.insert(script_buf, final_history);
 
         Ok(())
     }
@@ -3233,7 +3317,7 @@ TRACE swap::bitcoin::wallet: Bitcoin transaction status changed txid=00000000000
 }
 
 #[derive(Clone)]
-struct SyncRequestBuilderFactory {
+pub struct SyncRequestBuilderFactory {
     chain_tip: bdk_wallet::chain::CheckPoint,
     spks: Vec<((KeychainKind, u32), ScriptBuf)>,
 }

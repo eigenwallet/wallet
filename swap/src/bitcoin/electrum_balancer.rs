@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
 use futures::future::join_all;
@@ -15,10 +16,11 @@ use tracing::{debug, error, info, instrument, trace, warn};
 /// Any non I/O error is immediately returned to the caller.
 ///
 /// Clients are created lazily on first use to avoid blocking during initialization.
+#[derive(Clone)]
 pub struct ElectrumBalancer {
     urls: Vec<String>,
-    clients: Mutex<Vec<Option<Arc<BdkElectrumClient<Client>>>>>,
-    next: Mutex<usize>,
+    clients: Arc<Mutex<Vec<Arc<BdkElectrumClient<Client>>>>>,
+    next: Arc<Mutex<usize>>,
 }
 
 impl ElectrumBalancer {
@@ -63,13 +65,15 @@ impl ElectrumBalancer {
 
         let results = join_all(futures).await;
 
-        let clients: Vec<Option<Arc<BdkElectrumClient<Client>>>> =
-            results.into_iter().map(|res| res.unwrap_or(None)).collect();
+        let clients: Vec<Arc<BdkElectrumClient<Client>>> = results
+            .into_iter()
+            .filter_map(|res| res.unwrap_or(None))
+            .collect();
 
         Ok(Self {
             urls,
-            clients: Mutex::new(clients),
-            next: Mutex::new(0),
+            clients: Arc::new(Mutex::new(clients)),
+            next: Arc::new(Mutex::new(0)),
         })
     }
 
@@ -80,8 +84,9 @@ impl ElectrumBalancer {
     ) -> Result<Arc<BdkElectrumClient<Client>>, Error> {
         let clients = self.clients.lock().expect("mutex poisoned");
 
-        if let Some(ref client) = clients[idx] {
-            Ok(client.clone())
+        if let Some(ref client) = clients.get(idx) {
+            // TODO: Why do we need to double clone here?
+            Ok(client.deref().clone())
         } else {
             Err(Error::IOError(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -117,88 +122,16 @@ impl ElectrumBalancer {
         F: Fn(&BdkElectrumClient<Client>) -> Result<T, Error> + Send + Sync + Clone + 'static,
         T: Send + 'static,
     {
-        let operation_id = uuid::Uuid::new_v4();
-        let num_urls = self.urls.len();
-        let mut last_error = None;
+        let balancer = self.clone();
 
-        for _attempt in 0..num_urls {
-            let idx = {
-                let mut next = self.next.lock().expect("mutex poisoned");
-                let idx = *next;
-                *next = (*next + 1) % num_urls;
-                idx
-            };
-
-            // Get or create client for this index
-            let client = match self.get_or_create_client(idx).await {
-                Ok(client) => client,
-                Err(e) => {
-                    last_error = Some(e);
-                    continue;
-                }
-            };
-
-            // Execute the request in spawn_blocking to prevent blocking the async runtime
-            let f_clone = f.clone();
-            let url = self.urls[idx].clone();
-            let url_for_logging = url.clone();
-            let request_result = spawn_blocking(move || {
-                debug!("Executing request on {}", url);
-                f_clone(&client)
-            })
-            .await;
-
-            match request_result {
-                Ok(Ok(res)) => {
-                    debug!(%operation_id, "Request successful on {}", url_for_logging);
-                    return Ok(res);
-                }
-                Ok(Err(e)) => {
-                    if Self::should_retry_on_error(&e) {
-                        debug!(
-                            %operation_id,
-                            "Request failed on {}: {:?}, trying next server",
-                            url_for_logging, e
-                        );
-                        last_error = Some(e);
-                        continue;
-                    } else {
-                        debug!(
-                            %operation_id,
-                            "Non-retryable error on {}: {:?}",
-                            url_for_logging, e
-                        );
-                        return Err(e);
-                    }
-                }
-                Err(join_err) => {
-                    let error = Error::IOError(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("spawn_blocking failed: {}", join_err),
-                    ));
-                    debug!(
-                        %operation_id,
-                        "Request execution failed on {}: {:?}, trying next server",
-                        url_for_logging, join_err
-                    );
-                    last_error = Some(error);
-                    continue;
-                }
-            }
-        }
-
-        trace!(
-            %operation_id,
-            "All {} electrum servers failed or could not be created",
-            num_urls
-        );
-
-        Err(last_error.unwrap_or_else(|| {
-            Error::IOError(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "all electrum nodes failed",
-            ))
-        }))
+        spawn_blocking(move || balancer.call(f))
+            .await
+            .map_err(|e| {
+                Error::IOError(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))
+            })?
     }
 
     /// Execute the given closure using one of the Electrum clients synchronously.
@@ -227,8 +160,9 @@ impl ElectrumBalancer {
 
             // Get client for this index
             let client = {
-                let clients = self.clients.lock().expect("mutex poisoned");
-                match &clients[idx] {
+                let clients = self.clients.lock().expect("mutex poisoned").clone();
+
+                match clients.get(idx) {
                     Some(client) => client.clone(),
                     None => {
                         last_error = Some(Error::IOError(std::io::Error::new(
@@ -290,80 +224,43 @@ impl ElectrumBalancer {
             self.urls.len()
         );
 
-        // Pre-create all clients asynchronously
-        let mut all_clients = Vec::new();
-        for idx in 0..self.urls.len() {
-            match self.get_or_create_client(idx).await {
-                Ok(client) => all_clients.push(Some(client)),
-                Err(e) => {
-                    warn!("Failed to create client #{}: {:?}", idx, e);
-                    all_clients.push(None);
-                }
-            }
-        }
-
-        let tasks = all_clients
+        // Create a thread for each Electrum node
+        let tasks = self
+            .clients
+            .lock()
+            .expect("mutex poisoned")
+            .clone()
             .into_iter()
-            .enumerate()
-            .map(|(idx, client_opt)| {
+            .map(|client| {
                 let f = f.clone();
-                spawn_blocking(move || {
-                    debug!("Starting parallel request on server #{}", idx);
 
-                    let client = match client_opt {
-                        Some(client) => client,
-                        None => {
-                            debug!("No client available for server #{}", idx);
-                            return Err(Error::IOError(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("client #{} unavailable", idx),
-                            )));
-                        }
-                    };
-
-                    let result = f(client);
-                    match &result {
-                        Ok(_) => debug!("Parallel request succeeded on server #{}", idx),
-                        Err(e) => debug!("Parallel request failed on server #{}: {:?}", idx, e),
-                    }
-                    result
-                })
+                spawn_blocking(move || f(client))
             });
 
+        // Spawn the threads and wait until they all finish
         let results = join_all(tasks)
             .await
             .into_iter()
             .enumerate()
             .map(|(idx, res)| match res {
                 Ok(r) => r,
-                Err(e) => {
-                    error!("Spawn error for server #{}: {}", idx, e);
-                    Err(Error::IOError(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("spawn error: {e}"),
-                    )))
-                }
+                Err(e) => Err(Error::IOError(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to spawn thread for server {idx}: {e}"),
+                ))),
             })
             .collect::<Vec<_>>();
 
         let success_count = results.iter().filter(|r| r.is_ok()).count();
         let failure_count = results.len() - success_count;
 
-        if failure_count > 0 {
-            warn!(
-                "Parallel execution completed: {}/{} succeeded, {}/{} failed",
-                success_count,
-                results.len(),
-                failure_count,
-                results.len()
-            );
-        } else {
-            info!(
-                "Parallel execution completed: all {}/{} requests succeeded",
-                success_count,
-                results.len()
-            );
-        }
+        info!(
+            "Parallel execution completed: {}/{} succeeded, {}/{} failed",
+            success_count,
+            results.len(),
+            failure_count,
+            results.len()
+        );
 
         results
     }
@@ -389,14 +286,14 @@ impl ElectrumBalancer {
         let success_count = results.iter().filter(|r| r.is_ok()).count();
 
         if success_count > 0 {
-            info!(
+            debug!(
                 "Transaction {} broadcast successful on {}/{} servers",
                 txid,
                 success_count,
                 results.len()
             );
         } else {
-            error!(
+            warn!(
                 "Transaction {} broadcast failed on all {} servers",
                 txid,
                 results.len()
