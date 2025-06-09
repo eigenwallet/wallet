@@ -962,7 +962,7 @@ impl Wallet {
             .lock()
             .await
             .inner
-            .call_async(move |client| {
+            .call_async("sync_wallet", move |client| {
                 let sync_request_factory = sync_request_factory.clone();
                 let callback = callback.clone();
 
@@ -1612,7 +1612,7 @@ impl Client {
     async fn update_block_height(&mut self) -> Result<()> {
         let latest_block = self
             .inner
-            .call_async(|client| client.inner.block_headers_subscribe())
+            .call_async("block_headers_subscribe", |client| client.inner.block_headers_subscribe())
             .await
             .context("Failed to subscribe to header notifications")?;
         let latest_block_height = BlockHeight::try_from(latest_block)?;
@@ -1758,8 +1758,9 @@ impl Client {
 
         // Add the transaction to the cache if at least one broadcast succeeded
         if results.iter().any(|r| r.is_ok()) {
-            // Note: Transaction caching is not supported with ElectrumBalancer
-            // self.electrum.populate_tx_cache(vec![transaction.clone()]);
+            // Note: Perhaps it is better to only populate caches of the Electrum nodes
+            // that accepted our transaction?
+            self.inner.populate_tx_cache(vec![transaction.clone()]);
         }
 
         Ok(results)
@@ -1842,7 +1843,7 @@ impl Client {
     pub async fn get_tx(&self, txid: Txid) -> Result<Option<Arc<Transaction>>> {
         match self
             .inner
-            .call_async(move |client| {
+            .call_async("get_raw_transaction", move |client| {
                 use bitcoin::consensus::Decodable;
                 client.inner.transaction_get_raw(&txid).and_then(|raw| {
                     let mut cursor = std::io::Cursor::new(&raw);
@@ -1857,8 +1858,9 @@ impl Client {
         {
             Ok(tx) => {
                 let tx = Arc::new(tx);
-                // Note: Transaction caching is not supported with ElectrumBalancer
-                // self.electrum.populate_tx_cache(vec![(*tx).clone()]);
+                // Note: Perhaps it is better to only populate caches of the Electrum nodes
+                // that accepted our transaction?
+                self.inner.populate_tx_cache(vec![(*tx).clone()]);
                 Ok(Some(tx))
             }
             Err(err) => {
@@ -1899,7 +1901,7 @@ impl Client {
         // Get the fee rate in Bitcoin per kilobyte
         let btc_per_kvb = self
             .inner
-            .call_async(move |client| client.inner.estimate_fee(target_block as usize))
+            .call_async("estimate_fee", move |client| client.inner.estimate_fee(target_block as usize))
             .await?;
 
         // If the fee rate is less than 0, return an error
@@ -1943,7 +1945,7 @@ impl Client {
         // First we fetch the fee histogram from the Electrum server
         let fee_histogram = self
             .inner
-            .call_async(move |client| client.inner.raw_call("mempool.get_fee_histogram", vec![]))
+            .call_async("get_fee_histogram", move |client| client.inner.raw_call("mempool.get_fee_histogram", vec![]))
             .await?;
 
         // Parse the histogram as array of [fee, vsize] pairs
@@ -1995,7 +1997,7 @@ impl Client {
     async fn min_relay_fee(&self) -> Result<FeeRate> {
         let min_relay_btc_per_kvb = self
             .inner
-            .call_async(|client| client.inner.relay_fee())
+            .call_async("relay_fee", |client| client.inner.relay_fee())
             .await?;
 
         // Convert to sat / kB without ever constructing an Amount from the float
