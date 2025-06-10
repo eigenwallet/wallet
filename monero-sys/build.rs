@@ -171,7 +171,7 @@ fn main() {
     // Link OpenSSL statically
     println!("cargo:rustc-link-lib=static=ssl"); // This is OpenSSL (libsll)
     println!("cargo:rustc-link-lib=static=crypto"); // This is OpenSSLs crypto library (libcrypto)
-   
+
     // Link unbound dynamically
     // I haven't figured out how to link it statically
     println!("cargo:rustc-link-lib=dylib=unbound");
