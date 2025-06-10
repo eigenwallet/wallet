@@ -300,9 +300,9 @@ impl Wallet {
     /// which results in us having a bunch of large gaps in the SPKs
     const SCAN_STOP_GAP: u32 = 500;
     /// The batch size for syncing
-    const SCAN_BATCH_SIZE: u32 = 32;
+    const SCAN_BATCH_SIZE: u32 = 2;
     /// The number of maximum chunks to use when syncing
-    const SCAN_CHUNKS: u32 = 5;
+    const SCAN_CHUNKS: u32 = 10;
 
     /// Maximum time we are willing to spend retrying a wallet sync
     const SYNC_MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
@@ -1612,7 +1612,9 @@ impl Client {
     async fn update_block_height(&mut self) -> Result<()> {
         let latest_block = self
             .inner
-            .call_async("block_headers_subscribe", |client| client.inner.block_headers_subscribe())
+            .call_async("block_headers_subscribe", |client| {
+                client.inner.block_headers_subscribe()
+            })
             .await
             .context("Failed to subscribe to header notifications")?;
         let latest_block_height = BlockHeight::try_from(latest_block)?;
@@ -1648,7 +1650,7 @@ impl Client {
                     client.inner.batch_script_get_history(script_refs)
                 }
             })
-            .await;
+            .await?;
 
         let successful_results: Vec<Vec<Vec<GetHistoryRes>>> = results
             .iter()
@@ -1702,7 +1704,7 @@ impl Client {
         let results = self
             .inner
             .join_all(move |client| client.inner.script_get_history(script_clone.as_script()))
-            .await;
+            .await?;
 
         // Collect all successful history entries from all servers.
         let mut all_history_items: Vec<GetHistoryRes> = Vec::new();
@@ -1754,7 +1756,7 @@ impl Client {
         transaction: &Transaction,
     ) -> Result<Vec<Result<bitcoin::Txid, bdk_electrum::electrum_client::Error>>> {
         // Broadcast to all electrum servers in parallel
-        let results = self.inner.broadcast_all(transaction.clone()).await;
+        let results = self.inner.broadcast_all(transaction.clone()).await?;
 
         // Add the transaction to the cache if at least one broadcast succeeded
         if results.iter().any(|r| r.is_ok()) {
@@ -1901,7 +1903,9 @@ impl Client {
         // Get the fee rate in Bitcoin per kilobyte
         let btc_per_kvb = self
             .inner
-            .call_async("estimate_fee", move |client| client.inner.estimate_fee(target_block as usize))
+            .call_async("estimate_fee", move |client| {
+                client.inner.estimate_fee(target_block as usize)
+            })
             .await?;
 
         // If the fee rate is less than 0, return an error
@@ -1945,7 +1949,9 @@ impl Client {
         // First we fetch the fee histogram from the Electrum server
         let fee_histogram = self
             .inner
-            .call_async("get_fee_histogram", move |client| client.inner.raw_call("mempool.get_fee_histogram", vec![]))
+            .call_async("get_fee_histogram", move |client| {
+                client.inner.raw_call("mempool.get_fee_histogram", vec![])
+            })
             .await?;
 
         // Parse the histogram as array of [fee, vsize] pairs

@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 use futures::future::join_all;
 use tokio::task::spawn_blocking;
@@ -6,6 +6,7 @@ use bdk_electrum::electrum_client::{Client, ConfigBuilder, ElectrumApi, Error};
 use bdk_electrum::BdkElectrumClient;
 use bitcoin::Transaction;
 use tracing::{debug, error, info, instrument, trace, warn};
+use once_cell::sync::OnceCell;
 
 /// Configuration for the Electrum balancer
 #[derive(Clone, Debug)]
@@ -35,7 +36,7 @@ impl Default for ElectrumBalancerConfig {
 #[derive(Clone)]
 pub struct ElectrumBalancer {
     urls: Vec<String>,
-    clients: Arc<Mutex<Vec<Arc<BdkElectrumClient<Client>>>>>,
+    clients: Arc<RwLock<Vec<Arc<OnceCell<Arc<BdkElectrumClient<Client>>>>>>>,
     next: Arc<Mutex<usize>>,
     config: ElectrumBalancerConfig,
 }
@@ -45,7 +46,7 @@ impl ElectrumBalancer {
     fn create_client_with_timeout(
         url: &str,
         config: &ElectrumBalancerConfig,
-    ) -> Result<BdkElectrumClient<Client>, Error> {
+    ) -> Result<Arc<BdkElectrumClient<Client>>, Error> {
         // Configure client with configurable timeout to prevent hanging on unresponsive servers
         let client_config = ConfigBuilder::new()
             .timeout(Some(config.request_timeout))
@@ -55,7 +56,44 @@ impl ElectrumBalancer {
         let client = Client::from_config(url, client_config)?;
         let bdk_client = BdkElectrumClient::new(client);
 
-        Ok(bdk_client)
+        Ok(Arc::new(bdk_client))
+    }
+
+    /// Helper function to get or initialize a client for a given index
+    fn get_or_init_client_sync(
+        &self,
+        idx: usize,
+    ) -> Result<Arc<BdkElectrumClient<Client>>, Error> {
+        let clients = self.clients.read().expect("rwlock poisoned");
+        if idx >= clients.len() {
+            return Err(Error::IOError(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Index {} out of bounds for {} clients", idx, clients.len()),
+            )));
+        }
+        let once_cell = clients[idx].clone();
+        let url = self.urls[idx].clone();
+        let config = self.config.clone();
+        drop(clients); // Release the read lock early
+
+        let client = once_cell.get_or_try_init(|| {
+            Self::create_client_with_timeout(&url, &config)
+        })?;
+
+        Ok(client.clone())
+    }
+
+    async fn get_or_init_client_async(
+        &self,
+        idx: usize,
+    ) -> Result<Arc<BdkElectrumClient<Client>>, Error> {
+        let balancer = self.clone();
+        spawn_blocking(move || balancer.get_or_init_client_sync(idx))
+            .await
+            .map_err(|e| Error::IOError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            )))?
     }
 
     /// Create a new balancer from a list of Electrum URLs with default configuration.
@@ -64,7 +102,7 @@ impl ElectrumBalancer {
     }
 
     /// Create a new balancer from a list of Electrum URLs with custom configuration.
-    /// All clients are created at startup - this may take time but eliminates delays during use.
+    /// Clients are initialized lazily on first use.
     pub async fn new_with_config(
         urls: Vec<String>,
         config: ElectrumBalancerConfig,
@@ -73,8 +111,7 @@ impl ElectrumBalancer {
             return Err(Error::Protocol("No Electrum URLs provided".into()));
         }
 
-        let start_time = Instant::now();
-        info!(
+        debug!(
             servers = ?urls,
             server_count = urls.len(),
             timeout_seconds = config.request_timeout,
@@ -82,91 +119,22 @@ impl ElectrumBalancer {
             "Initializing Electrum load balancer"
         );
 
-        // Create all clients at startup
-        let futures: Vec<_> = urls
+        // Create OnceCell containers for each URL - clients will be created on first use
+        let clients: Vec<Arc<OnceCell<Arc<BdkElectrumClient<Client>>>>> = urls
             .iter()
-            .enumerate()
-            .map(|(idx, url)| {
-                let url = url.clone();
-                let config = config.clone();
-                spawn_blocking(
-                    move || match Self::create_client_with_timeout(&url, &config) {
-                        Ok(client) => {
-                            Some(Arc::new(client))
-                        }
-                        Err(e) => {
-                            warn!(url = %url, index = idx, error = ?e, "Failed to create client");
-                            None
-                        }
-                    },
-                )
-            })
+            .map(|_| Arc::new(OnceCell::new()))
             .collect();
-
-        let results = join_all(futures).await;
-
-        let mut clients: Vec<Arc<BdkElectrumClient<Client>>> = Vec::new();
-
-        for (idx, result) in results.into_iter().enumerate() {
-            match result {
-                Ok(client_opt) => {
-                    if let Some(client) = client_opt {
-                        clients.push(client);
-                    } else {
-                        warn!(url = %urls[idx], index = idx, "Failed to create client");
-                    }
-                }
-                Err(e) => {
-                    warn!(url = %urls[idx], index = idx, error = ?e, "Failed to spawn client creation task");
-                }
-            }
-        }
-
-        if clients.is_empty() {
-            error!("Failed to create any working Electrum clients");
-            return Err(Error::Protocol(
-                "No working Electrum servers available".into(),
-            ));
-        }
-
-        info!(
-            successful_clients = clients.len(),
-            total_urls = urls.len(),
-            initialization_duration_ms = start_time.elapsed().as_millis(),
-            "Electrum load balancer initialized successfully"
-        );
-
-        if clients.len() < urls.len() {
-            warn!(
-                working_clients = clients.len(),
-                total_urls = urls.len(),
-                "Some Electrum clients failed to initialize - continuing with available clients"
-            );
-        }
 
         Ok(Self {
             urls,
-            clients: Arc::new(Mutex::new(clients)),
+            clients: Arc::new(RwLock::new(clients)),
             next: Arc::new(Mutex::new(0)),
             config,
         })
     }
 
-    /// Get a client for the given index.
-    pub async fn get_client(&self, idx: usize) -> Result<Arc<BdkElectrumClient<Client>>, Error> {
-        let clients = self.clients.lock().expect("mutex poisoned");
-
-        if idx >= clients.len() {
-            return Err(Error::IOError(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("Index {} out of bounds for {} clients", idx, clients.len()),
-            )));
-        }
-
-        Ok(clients[idx].clone())
-    }
-
     /// Helper function to determine if an error should trigger failover
+    /// TODO: This should not be in this file?
     fn should_retry_on_error(error: &Error) -> bool {
         // Check if this is a transaction not found error - these should NOT be retried
         let error_str = format!("{:?}", error);
@@ -182,9 +150,9 @@ impl ElectrumBalancer {
         true
     }
 
-    /// Get the number of clients
+    /// Get the number of URLs (potential clients)
     pub fn client_count(&self) -> usize {
-        self.clients.lock().expect("mutex poisoned").len()
+        self.urls.len()
     }
 
     /// Execute the given closure using one of the Electrum clients asynchronously.
@@ -241,10 +209,29 @@ impl ElectrumBalancer {
                 idx
             };
 
-            // Get client for this index
-            let client = {
-                let clients = self.clients.lock().expect("mutex poisoned");
-                clients[idx].clone()
+            // Get client for this index (will initialize if needed)
+            let client = match self.get_or_init_client_sync(idx) {
+                Ok(client) => client,
+                Err(e) => {
+                    if Self::should_retry_on_error(&e) {
+                        warn!(
+                            client_index = idx,
+                            attempt = attempt + 1,
+                            error = ?e,
+                            "Client initialization failed, trying next client"
+                        );
+                        last_error = Some(e);
+                        continue;
+                    } else {
+                        debug!(
+                            client_index = idx,
+                            attempt = attempt + 1,
+                            error = ?e,
+                            "Client initialization failed with non-retryable error"
+                        );
+                        return Err(e);
+                    }
+                }
             };
 
             // Execute the request synchronously
@@ -304,9 +291,9 @@ impl ElectrumBalancer {
     /// The resulting `Result`s are collected and returned in the same
     /// order as the nodes were provided during construction.
     #[instrument(level = "debug", skip(self, f), fields(total_clients = self.client_count()))]
-    pub async fn join_all<F, T>(&self, f: F) -> Vec<Result<T, Error>>
+    pub async fn join_all<F, T>(&self, f: F) -> Result<Vec<Result<T, Error>>, Error>
     where
-        F: Fn(Arc<BdkElectrumClient<Client>>) -> Result<T, Error> + Send + Sync + Clone + 'static,
+        F: Fn(&BdkElectrumClient<Client>) -> Result<T, Error> + Send + Sync + Clone + 'static,
         T: Send + 'static,
     {
         let start_time = Instant::now();
@@ -315,45 +302,68 @@ impl ElectrumBalancer {
             "Executing parallel requests on electrum clients"
         );
 
-        // Create a thread for each Electrum client
-        let tasks = self
-            .clients
-            .lock()
-            .expect("mutex poisoned")
-            .iter()
-            .enumerate()
-            .map(|(idx, client)| {
-                let f = f.clone();
-                let client = client.clone();
+        // Create a task for each potential client
+        let tasks = {
+            (0..self.client_count())
+                .map(|idx| {
+                    let f = f.clone();
+                    let balancer = self.clone();
 
-                spawn_blocking(move || {
-                    let start = Instant::now();
-                    let result = f(client);
-                    trace!(
-                        client_index = idx,
-                        duration_ms = start.elapsed().as_millis(),
-                        success = result.is_ok(),
-                        "Parallel request completed"
-                    );
-                    result
+                    tokio::spawn(async move {
+                        let start = Instant::now();
+                        
+                        let result = match balancer.get_or_init_client_async(idx).await {
+                            Ok(client) => {
+                                // Now call f with a blocking task since f expects sync operation
+                                tokio::task::spawn_blocking(move || f(&client)).await
+                                    .map_err(|e| Error::IOError(std::io::Error::new(
+                                        std::io::ErrorKind::Other,
+                                        e.to_string(),
+                                    )))?
+                            }
+                            Err(e) => {
+                                warn!(index = idx, error = ?e, "Failed to create client during join_all");
+                                Err(e)
+                            }
+                        };
+
+                        match result {
+                            Ok(r) => {
+                                trace!(
+                                    client_index = idx,
+                                    duration_ms = start.elapsed().as_millis(),
+                                    "Parallel request completed"
+                                );
+                                Ok(r)
+                            }
+                            Err(e) => {
+                                trace!(index = idx, error = ?e, "Failed to execute request during join_all");
+                                Err(e)
+                            }
+                        }
+                    })
                 })
-            })
-            .collect::<Vec<_>>();
+                .collect::<Vec<_>>()
+        };
 
         // Spawn the threads and wait until they all finish
         let spawn_results = join_all(tasks).await;
 
-        let results: Vec<Result<T, Error>> = spawn_results
-            .into_iter()
-            .enumerate()
-            .filter_map(|(task_idx, res)| match res {
-                Ok(r) => Some(r),
+        let mut results: Vec<Result<T, Error>> = Vec::new();
+        for (task_idx, res) in spawn_results.into_iter().enumerate() {
+            match res {
+                Ok(r) => results.push(r),
+                Err(err) if err.is_cancelled() => {
+                    return Err(Error::IOError(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Task cancelled",
+                    )));
+                }
                 Err(e) => {
                     warn!(task_index = task_idx, error = ?e, "Failed to spawn thread for parallel request");
-                    None
                 }
-            })
-            .collect();
+            }
+        }
 
         let success_count = results.iter().filter(|r| r.is_ok()).count();
         let failure_count = results.len() - success_count;
@@ -366,7 +376,7 @@ impl ElectrumBalancer {
             "Parallel execution completed"
         );
 
-        results
+        Ok(results)
     }
 
     /// Broadcast the given transaction to all Electrum nodes in parallel.
@@ -375,7 +385,7 @@ impl ElectrumBalancer {
     /// configured nodes. Errors for individual nodes do not abort the
     /// others.
     #[instrument(level = "info", skip(self, tx), fields(txid = %tx.compute_txid(), total_clients = self.client_count()))]
-    pub async fn broadcast_all(&self, tx: Transaction) -> Vec<Result<bitcoin::Txid, Error>> {
+    pub async fn broadcast_all(&self, tx: Transaction) -> Result<Vec<Result<bitcoin::Txid, Error>>, Error> {
         let txid = tx.compute_txid();
         let start_time = Instant::now();
 
@@ -387,7 +397,7 @@ impl ElectrumBalancer {
 
         let results = self
             .join_all(move |client| client.inner.transaction_broadcast(&tx))
-            .await;
+            .await?;
 
         let success_count = results.iter().filter(|r| r.is_ok()).count();
 
@@ -408,7 +418,7 @@ impl ElectrumBalancer {
             );
         }
 
-        results
+        Ok(results)
     }
 
     /// Get the URLs used by this balancer
@@ -421,21 +431,26 @@ impl ElectrumBalancer {
         &self.config
     }
 
-    /// Populate the transaction cache for all clients.
+    /// Populate the transaction cache for all initialized clients.
     pub fn populate_tx_cache(&self, txs: impl IntoIterator<Item = impl Into<Arc<Transaction>>>) {
         // Convert transactions to Arc<Transaction> and collect them since we'll use them for each client
         let transactions: Vec<Arc<Transaction>> = txs.into_iter().map(|tx| tx.into()).collect();
-        let clients = self.clients.lock().expect("mutex poisoned");
+        let clients = self.clients.read().expect("rwlock poisoned");
 
-        // Iterate through all BdkElectrumClient and populate their caches
-        for client in clients.iter() {
-            client.populate_tx_cache(transactions.iter().cloned());
+        let mut initialized_count = 0;
+        // Only populate cache for already initialized clients
+        for client_once_cell in clients.iter() {
+            if let Some(client) = client_once_cell.get() {
+                client.populate_tx_cache(transactions.iter().cloned());
+                initialized_count += 1;
+            }
         }
 
         trace!(
             transaction_count = transactions.len(),
-            client_count = clients.len(),
-            "Populated transaction cache for all clients"
+            initialized_client_count = initialized_count,
+            total_client_count = clients.len(),
+            "Populated transaction cache for initialized clients"
         );
     }
 }
