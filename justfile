@@ -22,7 +22,7 @@ test-ffi: test-ffi-address
 
 # Tests the FFI bindings using AddressSanitizer (https://doc.rust-lang.org/beta/unstable-book/compiler-flags/sanitizer.html#addresssanitizer). Can detect memory safety issues like use-after-free, double-free, leaks, etc.
 test-ffi-address:
-	cd monero-sys && RUSTFLAGS=-Zsanitizer=address cargo nextest run -Zbuild-std --target=`rustc --version --verbose | grep "host:" | cut -d' ' -f2`
+	cd monero-sys && RUSTFLAGS=-Zsanitizer=address cargo +nightly nextest run -Zbuild-std --target=`rustc --version --verbose | grep "host:" | cut -d' ' -f2`
 
 # Start the Tauri app
 tauri:
