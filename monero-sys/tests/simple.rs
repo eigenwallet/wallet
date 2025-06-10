@@ -58,10 +58,11 @@ async fn main() {
     assert!(balance > Amount::ZERO);
     assert!(unlocked_balance > Amount::ZERO);
 
+    let transfer_amount = Amount::ONE_XMR;
     tracing::info!("Transferring 1 XMR to ourselves");
 
     wallet
-        .transfer(&wallet.main_address().await, Amount::ONE_XMR)
+        .transfer(&wallet.main_address().await, transfer_amount)
         .await
         .unwrap();
 
@@ -71,6 +72,12 @@ async fn main() {
     let new_unlocked_balance = wallet.unlocked_balance().await;
     tracing::info!("Unlocked balance: {}", new_unlocked_balance);
 
-    assert!(new_balance == balance);
-    assert!(new_unlocked_balance <= balance - Amount::ONE_XMR);
+    let fee = balance - new_balance;
+
+    tracing::info!("Fee: {}", fee);
+
+    assert!(fee > Amount::ZERO);
+    assert!(new_balance > Amount::ZERO);
+    assert!(new_balance <= balance);
+    assert!(new_unlocked_balance <= balance - transfer_amount);
 }
