@@ -1,3 +1,6 @@
+//! This module contains the bridge between the Monero C++ API and the Rust code.
+//! It uses the [cxx](https://cxx.rs) crate to generate the actual bindings.
+
 use cxx::CxxString;
 use tracing::Level;
 
@@ -301,7 +304,9 @@ pub mod log {
 }
 
 /// This is the actual rust function that forwards the c++ log messages to tracing.
-/// Just calls e.g. `tracing::info!` with the appropriate log level and message.
+/// It is called every time C++ issues a log message.
+///
+/// It just calls e.g. `tracing` with the appropriate log level and message.
 fn forward_cpp_log(
     span_name: &CxxString,
     level: u8,
@@ -319,13 +324,12 @@ fn forward_cpp_log(
     let file = file.to_string();
     let func = func.to_string();
 
-    // Silence the default panic hook while we probe tracing so potential TLS
-    // panics do not get printed to stderr even though we recover them.
+    // Sometimes C++ still issues log messages after the rust side is i.e. panicking (especially in tests).
+    // We have to ignore those because tracing is no longer functional.
+
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
-
     let result = std::panic::catch_unwind(|| tracing::span!(Level::TRACE, "probe"));
-
     // Restore the original hook irrespective of whether the probe panicked.
     std::panic::set_hook(default_hook);
 
