@@ -17,6 +17,17 @@ monero_sys:
 	just update_submodules
 	cd monero-sys && cargo build
 
+# Test the FFI bindings using various sanitizers, that can detect memory and thread safety issues.
+test-ffi: test-ffi-address test-ffi-thread
+
+# Tests the FFI bindings using AddressSanitizer (https://doc.rust-lang.org/beta/unstable-book/compiler-flags/sanitizer.html#addresssanitizer). Can detect memory safety issues like use-after-free, double-free, leaks, etc.
+test-ffi-address:
+	cd monero-sys && RUSTFLAGS=-Zsanitizer=address cargo nextest run -Zbuild-std --target=`rustc --version --verbose | grep "host:" | cut -d' ' -f2`
+
+# Test the FFI bindings using ThreadSanitizer (https://doc.rust-lang.org/beta/unstable-book/compiler-flags/sanitizer.html#threadsanitizer). Can detect thread safety issues.
+test-ffi-thread:
+	cd monero-sys && RUSTFLAGS=-Zsanitizer=thread cargo nextest run -Zbuild-std --target=`rustc --version --verbose | grep "host:" | cut -d' ' -f2`
+
 # Start the Tauri app
 tauri:
 	cd src-tauri && cargo tauri dev --no-watch -- -- --testnet
