@@ -5823,6 +5823,7 @@ dependencies = [
  "cmake",
  "cxx",
  "cxx-build",
+ "futures",
  "monero",
  "tempfile",
  "testcontainers",
