@@ -57,7 +57,7 @@ pub async fn init_tor_client(
                     
                     // Log clean progress messages, but only when percentage changes significantly
                     let current_percentage = (status.frac * 100.0) as u8;
-                    if current_percentage >= last_logged_percentage + 10 || current_percentage == 100 {
+                    if current_percentage >= last_logged_percentage + 10 || (current_percentage == 100 && last_logged_percentage < 100) {
                         if let Some(blockage) = &status.blockage {
                             tracing::info!("Tor bootstrap {}%: {}", current_percentage, blockage);
                         } else if status.ready_for_traffic {
