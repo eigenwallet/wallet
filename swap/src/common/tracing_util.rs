@@ -41,7 +41,6 @@ pub fn init(
         "arti",
     ];
     let OUR_CRATES: Vec<&str> = vec!["swap", "asb"];
-    let TOR_CRATES: Vec<&str> = vec!["arti"];
 
     // General log file for non-verbose logs
     let file_appender: RollingFileAppender = tracing_appender::rolling::never(&dir, "swap-all.log");
@@ -88,14 +87,15 @@ pub fn init(
         .with_target(false);
 
     // Layer for writing to the Tauri guest. This will be displayed in the GUI.
-    // Crates: swap, asb, libp2p_community_tor, unstoppableswap-gui-rs
+    // Crates: swap, asb, libp2p_community_tor, unstoppableswap-gui-rs, arti
     // Level: Passed in
-    // Note: Exclude arti from Tauri logs to avoid verbose Tor bootstrap messages
+    // Note: Include arti logs in Tauri to show Tor progress in GUI
     let tauri_crates: Vec<&str> = vec![
         "swap",
         "asb", 
         "libp2p_community_tor",
         "unstoppableswap-gui-rs",
+        "arti",
     ];
     let tauri_layer = fmt::layer()
         .with_writer(TauriWriter::new(tauri_handle))
@@ -106,16 +106,13 @@ pub fn init(
         .with_filter(env_filter(level_filter, tauri_crates)?);
 
     // If trace_stdout is true, we log all messages to the terminal
-    // Otherwise, we only log the bare minimum and exclude verbose Tor logs
+    // Otherwise, we only log our own log messages (no arti logs)
     let terminal_layer_env_filter = match trace_stdout {
         true => env_filter(LevelFilter::TRACE, ALL_CRATES.clone())?,
         false => {
-            // For normal operation, exclude verbose arti logs from terminal
-            let mut filter = env_filter(level_filter, OUR_CRATES.clone())?;
-            // Only show ERROR and WARN level logs from Tor crates
-            filter = filter.add_directive(Directive::from_str("arti=warn")?);
-            Ok(filter)
-        }?,
+            // For normal operation, only log our own crates (exclude arti completely)
+            env_filter(level_filter, OUR_CRATES.clone())?
+        }
     };
     let final_terminal_layer = match format {
         Format::Json => terminal_layer
