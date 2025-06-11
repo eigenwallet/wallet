@@ -435,7 +435,12 @@ where
                 // to be able to eventually punish. Since the punish timelock is
                 // relative to the publication of the cancel transaction we have to ensure it
                 // gets published once the cancel timelock expires.
+
                 if let Err(e) = state3.submit_tx_cancel(bitcoin_wallet).await {
+                    // TODO: Actually ensure the transaction is published
+                    // What about a wrapper function ensure_tx_published that repeats the tx submission until
+                    // our subscription sees it in the mempool?
+                    
                     tracing::debug!(
                         "Assuming cancel transaction is already broadcasted because we failed to publish: {:#}",
                         e

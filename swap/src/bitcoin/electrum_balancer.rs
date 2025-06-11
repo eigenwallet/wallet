@@ -8,6 +8,116 @@ use bitcoin::Transaction;
 use tracing::{debug, error, info, instrument, trace, warn};
 use once_cell::sync::OnceCell;
 
+/// Error type that contains multiple Electrum errors from different nodes.
+/// 
+/// This allows the caller to inspect all individual failures while still
+/// working with the `?` operator through automatic conversion to a single Error.
+#[derive(Debug)]
+pub struct MultiError {
+    pub errors: Vec<Error>,
+    pub context: String,
+}
+
+impl Clone for MultiError {
+    fn clone(&self) -> Self {
+        // Clone by converting each error to a string and back to an error
+        let cloned_errors = self.errors.iter()
+            .map(|e| Error::IOError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string()
+            )))
+            .collect();
+        
+        Self {
+            errors: cloned_errors,
+            context: self.context.clone(),
+        }
+    }
+}
+
+impl MultiError {
+    pub fn new(errors: Vec<Error>, context: impl Into<String>) -> Self {
+        Self {
+            errors,
+            context: context.into(),
+        }
+    }
+
+    /// Get the number of errors
+    pub fn len(&self) -> usize {
+        self.errors.len()
+    }
+
+    /// Check if there are no errors
+    pub fn is_empty(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    /// Get an iterator over the errors
+    pub fn iter(&self) -> impl Iterator<Item = &Error> {
+        self.errors.iter()
+    }
+
+    /// Check if any error matches a predicate
+    pub fn any<F>(&self, predicate: F) -> bool 
+    where
+        F: Fn(&Error) -> bool,
+    {
+        self.errors.iter().any(predicate)
+    }
+
+    /// Check if all errors match a predicate
+    pub fn all<F>(&self, predicate: F) -> bool 
+    where
+        F: Fn(&Error) -> bool,
+    {
+        self.errors.iter().all(predicate)
+    }
+
+    /// Convert to a single Error (uses the last error, or creates a generic one)
+    pub fn into_single_error(self) -> Error {
+        self.errors
+            .into_iter()
+            .last()
+            .unwrap_or_else(|| {
+                Error::IOError(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("All operations failed: {}", self.context),
+                ))
+            })
+    }
+}
+
+impl std::fmt::Display for MultiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {} errors occurred", self.context, self.errors.len())?;
+        for (i, error) in self.errors.iter().enumerate() {
+            write!(f, "\n  {}: {}", i + 1, error)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for MultiError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        // Return the last error as the source
+        self.errors.last().and_then(|e| e.source())
+    }
+}
+
+impl From<MultiError> for Error {
+    fn from(multi_error: MultiError) -> Self {
+        multi_error.into_single_error()
+    }
+}
+
+// Allow ? operator to work on MultiError by converting to Error
+impl<T> From<MultiError> for Result<T, Error> {
+    fn from(multi_error: MultiError) -> Self {
+        Err(multi_error.into())
+    }
+}
+
 /// Round-robin load balancer for Electrum connections.
 ///
 /// The balancer will try each Electrum node until the provided
@@ -116,23 +226,6 @@ where
         })
     }
 
-    /// Helper function to determine if an error should trigger failover
-    /// TODO: This should not be in this file?
-    fn should_retry_on_error(error: &Error) -> bool {
-        // Check if this is a transaction not found error - these should NOT be retried
-        let error_str = format!("{:?}", error);
-        if error_str.contains("\"code\": Number(-5)")
-            || error_str.contains("No such mempool or blockchain transaction")
-            || error_str.contains("missing transaction")
-        {
-            trace!("Non-retryable error detected: transaction not found");
-            return false;
-        }
-
-        // For all other errors, retry by default
-        true
-    }
-
     /// Get the number of URLs (potential clients)
     pub fn client_count(&self) -> usize {
         self.urls.len()
@@ -153,14 +246,42 @@ where
         let balancer = self.clone();
         let kind = kind.to_string();
 
-        spawn_blocking(move || balancer.call(&kind, f))
-            .await
-            .map_err(|e| {
-                Error::IOError(std::io::Error::new(
+        match spawn_blocking(move || balancer.call(&kind, f)).await {
+            Ok(result) => result.map_err(|multi_error| multi_error.into()),
+            Err(e) => Err(Error::IOError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            )))
+        }
+    }
+
+    /// Execute the given closure using one of the Electrum clients asynchronously,
+    /// returning the full MultiError for detailed error analysis.
+    ///
+    /// Unlike `call_async`, this method exposes the full MultiError containing all
+    /// individual failures, allowing the caller to inspect and make decisions based
+    /// on the specific types of errors encountered.
+    #[instrument(level = "debug", skip(self, f), fields(operation = kind, total_clients = self.client_count()))]
+    pub async fn call_async_with_multi_error<F, T>(&self, kind: &str, f: F) -> Result<T, crate::bitcoin::electrum_balancer::MultiError>
+    where
+        F: Fn(&C) -> Result<T, Error> + Send + Sync + Clone + 'static,
+        T: Send + 'static,
+    {
+        let balancer = self.clone();
+        let kind_string = kind.to_string();
+        let kind_for_error = kind.to_string();
+
+        match spawn_blocking(move || balancer.call(&kind_string, f)).await {
+            Ok(result) => result,
+            Err(e) => {
+                let context = format!("Failed to spawn blocking task for operation '{}'", kind_for_error);
+                let error = Error::IOError(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     e.to_string(),
-                ))
-            })?
+                ));
+                Err(MultiError::new(vec![error], context))
+            }
+        }
     }
 
     /// Execute the given closure using one of the Electrum clients synchronously.
@@ -171,15 +292,15 @@ where
     /// If the closure returns an I/O error or certificate error the balancer will try the next
     /// node until all nodes have been exhausted. The last encountered error
     /// is returned in that case.
-   // TODO: Let this return a Vec<Error> instead of a single Error. The wallet can derive some data from the errors. (e.g transaction doesn't exist)
-    // TOOD: Still allow ? to be used on the Vec<Error> by converting it to a chained error on demand (when ? is used)
+    /// Now returns `MultiError` containing all individual failures, which can be inspected
+    /// by the caller or automatically converted to a single `Error` for compatibility.
     #[instrument(level = "debug", skip(self, f), fields(operation = kind, total_clients = self.client_count(), min_retries = self.config.min_retries))]
-    pub fn call<F, T>(&self, kind: &str, mut f: F) -> Result<T, Error>
+    pub fn call<F, T>(&self, kind: &str, mut f: F) -> Result<T, MultiError>
     where
         F: FnMut(&C) -> Result<T, Error>,
     {
         let num_clients = self.client_count();
-        let mut last_error = None;
+        let mut errors = Vec::new();
         let mut attempts = 0;
 
         // Try all electrum clients at least once, or min_retries (whichever is higher)
@@ -204,7 +325,7 @@ where
                         error = ?e,
                         "Client initialization failed"
                     );
-                    last_error = Some(e);
+                    errors.push(e);
                     continue;
                 }
             };
@@ -229,7 +350,7 @@ where
                         error = ?e,
                         "Electrum operation failed, trying next client"
                     );
-                    last_error = Some(e);
+                    errors.push(e);
                     continue;
                 }
             }
@@ -239,15 +360,18 @@ where
             attempts = attempts,
             total_attempts = total_attempts,
             total_clients = self.client_count(),
+            error_count = errors.len(),
             "All Electrum clients failed after exhausting retry attempts"
         );
 
-        Err(last_error.unwrap_or_else(|| {
-            Error::IOError(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "All Electrum nodes failed after exhausting retry attempts but no error was returned",
-            ))
-        }))
+        let context = format!(
+            "All {} Electrum clients failed after {} attempts for operation '{}'",
+            self.client_count(),
+            attempts,
+            kind
+        );
+
+        Err(MultiError::new(errors, context))
     }
 
     /// Execute the given closure on **all** Electrum nodes in parallel.
@@ -781,26 +905,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_should_retry_on_error() {
-        // Test retryable errors
-        let io_error = Error::IOError(std::io::Error::new(
-            std::io::ErrorKind::ConnectionRefused,
-            "Connection failed"
-        ));
-        assert!(ElectrumBalancer::<MockElectrumClient>::should_retry_on_error(&io_error));
-
-        // Test non-retryable errors (these strings need to match what's in the debug format)
-        let not_found_error = Error::Protocol("test message with \"code\": Number(-5) in it".into());
-        assert!(!ElectrumBalancer::<MockElectrumClient>::should_retry_on_error(&not_found_error));
-
-        let missing_tx_error = Error::Protocol("No such mempool or blockchain transaction".into());
-        assert!(!ElectrumBalancer::<MockElectrumClient>::should_retry_on_error(&missing_tx_error));
-
-        let missing_tx_error2 = Error::Protocol("missing transaction".into());
-        assert!(!ElectrumBalancer::<MockElectrumClient>::should_retry_on_error(&missing_tx_error2));
-    }
-
-    #[tokio::test]
     async fn test_join_all() {
         let urls = vec![
             "tcp://localhost:50001".to_string(),
@@ -896,5 +1000,90 @@ mod tests {
         // This should not panic (MockElectrumClient has default implementation)
         let txs = vec![create_dummy_transaction()];
         balancer.populate_tx_cache(txs);
+    }
+
+    #[tokio::test]
+    async fn test_multi_error_functionality() {
+        let urls = vec![
+            "tcp://localhost:50001".to_string(),
+            "tcp://localhost:50002".to_string(),
+            "tcp://localhost:50003".to_string(),
+        ];
+        
+        let factory = Arc::new(MockElectrumClientFactory::new());
+        factory.add_client(MockElectrumClient::new(urls[0].clone()).with_failure(MockErrorType::IOError));
+        factory.add_client(MockElectrumClient::new(urls[1].clone()).with_failure(MockErrorType::NonRetryable));
+        factory.add_client(MockElectrumClient::new(urls[2].clone()).with_failure(MockErrorType::IOError));
+        
+        let balancer = ElectrumBalancer::new_with_factory(urls, factory.clone()).await.unwrap();
+        
+        let result = balancer.call("test", |client| {
+            client.transaction_broadcast(&create_dummy_transaction())
+        });
+        
+        assert!(result.is_err());
+        let multi_error = result.unwrap_err();
+        
+        // Check that we have multiple errors
+        assert!(multi_error.len() > 1);
+        assert!(!multi_error.is_empty());
+        
+        // Check that we can inspect individual errors
+        let error_count = multi_error.errors.len();
+        assert!(error_count > 0);
+        
+        // Test the `any` method to find specific error types
+        let has_non_retryable = multi_error.any(|e| {
+            e.to_string().contains("transaction not found")
+        });
+        assert!(has_non_retryable);
+        
+        // Test converting to single error (should work with ?)
+        let single_error: Error = multi_error.clone().into();
+        assert!(!single_error.to_string().is_empty());
+        
+        // Test that the ? operator works
+        fn test_question_mark(multi_error: MultiError) -> Result<(), Error> {
+            Err(multi_error)?
+        }
+        
+        let result = test_question_mark(multi_error);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_call_async_with_multi_error() {
+        let urls = vec![
+            "tcp://localhost:50001".to_string(),
+            "tcp://localhost:50002".to_string(),
+        ];
+        
+        let factory = Arc::new(MockElectrumClientFactory::new());
+        factory.add_client(MockElectrumClient::new(urls[0].clone()).with_failure(MockErrorType::NonRetryable));
+        factory.add_client(MockElectrumClient::new(urls[1].clone()).with_failure(MockErrorType::IOError));
+        
+        let balancer = ElectrumBalancer::new_with_factory(urls, factory.clone()).await.unwrap();
+        
+        let result = balancer.call_async_with_multi_error("test", |client| {
+            client.transaction_broadcast(&create_dummy_transaction())
+        }).await;
+        
+        assert!(result.is_err());
+        let multi_error = result.unwrap_err();
+        
+        // Should have multiple errors due to retries (min_retries = 5, with 2 clients)
+        assert!(multi_error.len() > 2);
+        
+        // Check that there are "transaction not found" type errors
+        let has_not_found = multi_error.any(|e| {
+            e.to_string().contains("transaction not found")
+        });
+        assert!(has_not_found);
+        
+        // And I/O errors
+        let has_io_error = multi_error.any(|e| {
+            e.to_string().contains("Mock connection failed")
+        });
+        assert!(has_io_error);
     }
 }

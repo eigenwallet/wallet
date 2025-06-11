@@ -1769,6 +1769,7 @@ impl Client {
 
     /// Broadcast a transaction to the network.
     /// By default this broadcasts to all known electrum servers for maximum reliability.
+    // TODO: Make this async
     pub fn transaction_broadcast(&self, transaction: &Transaction) -> Result<Arc<Txid>> {
         // Use runtime to execute the async broadcast_all method
         let rt = tokio::runtime::Handle::current();
@@ -1844,7 +1845,7 @@ impl Client {
     pub async fn get_tx(&self, txid: Txid) -> Result<Option<Arc<Transaction>>> {
         match self
             .inner
-            .call_async("get_raw_transaction", move |client| {
+            .call_async_with_multi_error("get_raw_transaction", move |client| {
                 use bitcoin::consensus::Decodable;
                 client.inner.transaction_get_raw(&txid).and_then(|raw| {
                     let mut cursor = std::io::Cursor::new(&raw);
@@ -1864,31 +1865,41 @@ impl Client {
                 self.inner.populate_tx_cache(vec![(*tx).clone()]);
                 Ok(Some(tx))
             }
-            Err(err) => {
-                let err = anyhow::anyhow!(err);
+            Err(multi_error) => {
+                // Check if any error indicates the transaction doesn't exist
+                let has_not_found = multi_error.any(|error| {
+                    let error_str = error.to_string();
+                    
+                    // Check for specific error patterns that indicate "not found"
+                    if error_str.contains("\"code\": Number(-5)")
+                        || error_str.contains("No such mempool or blockchain transaction")
+                        || error_str.contains("missing transaction")
+                    {
+                        return true;
+                    }
 
-                // Try to parse the error code from the error message
-                match parse_rpc_error_code(&err) {
-                    Ok(error_code) => {
+                    // Also try to parse the RPC error code if possible
+                    let err_anyhow = anyhow::anyhow!(error_str);
+                    if let Ok(error_code) = parse_rpc_error_code(&err_anyhow) {
                         if error_code == i64::from(RpcErrorCode::RpcInvalidAddressOrKey) {
-                            return Ok(None);
+                            return true;
                         }
                     }
-                    Err(err) => {
-                        tracing::trace!("Failed to parse error code from error message: {:#}", err);
-                    }
-                }
 
-                // Alternatively check if the error contains "No such mempool or blockchain transaction"
-                if err
-                    .to_string()
-                    .contains("No such mempool or blockchain transaction")
-                    | err.to_string().contains("missing transaction")
-                {
-                    return Ok(None);
-                }
+                    false
+                });
 
-                Err(err.context("Failed to get transaction from the Electrum server"))
+                if has_not_found {
+                    tracing::trace!(
+                        txid = %txid,
+                        error_count = multi_error.len(),
+                        "Transaction not found indicated by one or more Electrum servers"
+                    );
+                    Ok(None)
+                } else {
+                    let err = anyhow::anyhow!(multi_error);
+                    Err(err.context("Failed to get transaction from the Electrum server"))
+                }
             }
         }
     }

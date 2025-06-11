@@ -242,11 +242,13 @@ async fn next_state(
             };
 
             // Check explicitly whether Alice has published the early refund transaction
-            // (Most likely redundant but cannot hurt)
-            if state3
+            // (Most likely redundant because we already do this below but cannot hurt)
+            // We only warn if this fail here
+            if let Ok(Some(_)) = state3
                 .check_for_tx_early_refund(bitcoin_wallet)
-                .await?
-                .is_some()
+                .await.inspect_err(|err| {
+                    tracing::warn!(?err, "Failed to check for early refund transaction");
+                })
             {
                 return Ok(BobState::BtcEarlyRefundPublished(
                     state3.cancel(monero_wallet_restore_blockheight),
