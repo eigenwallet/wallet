@@ -29,6 +29,7 @@ pub async fn init_tor_client(
     let runtime = TokioRustlsRuntime::current().expect("We are always running with tokio");
 
     tracing::debug!("Bootstrapping Tor client");
+    tracing::info!("Starting Tor client bootstrap process...");
 
     let tor_client = TorClient::with_runtime(runtime)
         .config(config)
@@ -47,11 +48,25 @@ pub async fn init_tor_client(
 
     // Start a task to monitor bootstrap events
     let progress_task = tokio::spawn(async move {
+        let mut last_logged_percentage = 0;
         loop {
             match bootstrap_events.next().await {
                 Some(event) => {
                     let status = event.to_tauri_bootstrap_status();
-                    progress_handle_clone.update(status);
+                    progress_handle_clone.update(status.clone());
+                    
+                    // Log clean progress messages, but only when percentage changes significantly
+                    let current_percentage = (status.frac * 100.0) as u8;
+                    if current_percentage >= last_logged_percentage + 10 || current_percentage == 100 {
+                        if let Some(blockage) = &status.blockage {
+                            tracing::info!("Tor bootstrap {}%: {}", current_percentage, blockage);
+                        } else if status.ready_for_traffic {
+                            tracing::info!("Tor bootstrap complete ({}%): Ready for connections", current_percentage);
+                        } else {
+                            tracing::info!("Tor bootstrap {}%: Establishing circuits...", current_percentage);
+                        }
+                        last_logged_percentage = current_percentage;
+                    }
                 }
                 None => continue,
             }
