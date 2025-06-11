@@ -678,7 +678,7 @@ impl Wallet {
         // The transaction was accepted by the mempool
         // We know this because otherwise Electrum would have rejected it
         //
-        
+
         // Mark the transaction as unconfirmed in the mempool
         // This ensures it is used to calculate the balance from here on
         // out
@@ -1696,7 +1696,9 @@ impl Client {
         // Call all electrum servers in parallel to get script history.
         let results = self
             .inner
-            .join_all("script_get_history", move |client| client.inner.script_get_history(script_clone.as_script()))
+            .join_all("script_get_history", move |client| {
+                client.inner.script_get_history(script_clone.as_script())
+            })
             .await?;
 
         // Collect all successful history entries from all servers.

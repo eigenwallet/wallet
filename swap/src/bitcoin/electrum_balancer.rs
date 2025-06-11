@@ -443,7 +443,9 @@ where
         );
 
         let results = self
-            .join_all("transaction_broadcast", move |client| client.transaction_broadcast(&tx))
+            .join_all("transaction_broadcast", move |client| {
+                client.transaction_broadcast(&tx)
+            })
             .await?;
 
         let success_count = results.iter().filter(|r| r.is_ok()).count();
@@ -1102,7 +1104,9 @@ mod tests {
             .unwrap();
 
         let results = balancer
-            .join_all("transaction_broadcast", |client| client.transaction_broadcast(&create_dummy_transaction()))
+            .join_all("transaction_broadcast", |client| {
+                client.transaction_broadcast(&create_dummy_transaction())
+            })
             .await;
 
         assert!(results.is_ok());
