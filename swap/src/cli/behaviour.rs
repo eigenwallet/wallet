@@ -6,6 +6,7 @@ use crate::network::swap_setup::bob;
 use crate::network::{
     cooperative_xmr_redeem_after_punish, encrypted_signature, quote, redial, transfer_proof,
 };
+use crate::network::redial::ConnectionProgressUpdate;
 use crate::protocol::bob::State2;
 use crate::{bitcoin, env};
 use anyhow::{anyhow, Error, Result};
@@ -42,6 +43,7 @@ pub enum OutEvent {
         reason: CooperativeXmrRedeemRejectReason,
         swap_id: uuid::Uuid,
     },
+    ConnectionProgress(ConnectionProgressUpdate),
     Failure {
         peer: PeerId,
         error: Error,

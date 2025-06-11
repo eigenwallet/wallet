@@ -8,6 +8,7 @@ import {
   approvalEventReceived,
   backgroundProgressEventReceived,
 } from "store/features/rpcSlice";
+import { connectionProgressUpdated } from "store/features/connectionSlice";
 import { swapProgressEventReceived } from "store/features/swapSlice";
 import logger from "utils/logger";
 import {
@@ -116,6 +117,10 @@ export async function setupBackgroundTasks(): Promise<void> {
 
       case "BackgroundProgress":
         store.dispatch(backgroundProgressEventReceived(eventData));
+        break;
+
+      case "ConnectionProgress":
+        store.dispatch(connectionProgressUpdated(eventData));
         break;
 
       default:

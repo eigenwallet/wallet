@@ -5,6 +5,7 @@ use crate::network::cooperative_xmr_redeem_after_punish::{self, Request, Respons
 use crate::network::encrypted_signature;
 use crate::network::quote::BidQuote;
 use crate::network::swap_setup::bob::NewSwap;
+use crate::network::ErrorCategory;
 use crate::protocol::bob::swap::has_already_processed_transfer_proof;
 use crate::protocol::bob::{BobState, State2};
 use crate::protocol::Database;
@@ -262,6 +263,38 @@ impl EventLoop {
 
                             if let Some(duration) = self.swarm.behaviour_mut().redial.until_next_redial() {
                                 tracing::info!(seconds_until_next_redial = %duration.as_secs(), "Waiting for next redial attempt");
+                            }
+                        }
+                        SwarmEvent::Behaviour(OutEvent::ConnectionProgress(progress_update)) => {
+                            // Enhanced connection progress logging
+                            let progress = &progress_update.progress;
+                            
+                            tracing::info!(
+                                peer_id = %progress_update.peer_id,
+                                current_attempt = progress.current_attempt,
+                                total_attempts = progress.total_attempts,
+                                state = ?progress.state,
+                                error_category = ?progress.error_category,
+                                elapsed_time = ?progress.elapsed_time(),
+                                "{}",
+                                progress.format_message()
+                            );
+
+                            // Log user suggestions for certain error types
+                            if matches!(progress.error_category, crate::network::ErrorCategory::Network | crate::network::ErrorCategory::Timeout) {
+                                let suggestions = progress.get_user_suggestions();
+                                if !suggestions.is_empty() {
+                                    tracing::info!("Troubleshooting suggestions: {}", suggestions.join(", "));
+                                }
+                            }
+
+                            // Warn if we've had many failed attempts
+                            if progress.total_attempts >= 10 && progress.total_attempts % 5 == 0 {
+                                tracing::warn!(
+                                    attempts = progress.total_attempts,
+                                    elapsed = ?progress.elapsed_time(),
+                                    "Persistent connection issues detected. Consider checking network connectivity or trying a different peer."
+                                );
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::OutboundRequestResponseFailure {peer, error, request_id, protocol}) => {
