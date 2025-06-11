@@ -56,6 +56,7 @@ export default function SwapDialog({
           flexDirection: "column",
           justifyContent: "space-between",
           flex: 1,
+          gap: "1rem"
         }}
       >
         {debug ? (
