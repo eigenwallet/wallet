@@ -457,6 +457,45 @@ impl From<RpcErrorCode> for i64 {
 }
 
 pub fn parse_rpc_error_code(error: &anyhow::Error) -> anyhow::Result<i64> {
+    // First try to extract an Electrum error from a MultiError if present
+    if let Some(multi_error) = error.downcast_ref::<crate::bitcoin::electrum_balancer::MultiError>() {
+        // Try to find the first Electrum error in the MultiError
+        for single_error in multi_error.iter() {
+            if let bdk_electrum::electrum_client::Error::Protocol(serde_json::Value::String(string)) = single_error {
+                let json = serde_json::from_str(
+                    &string
+                        .replace("sendrawtransaction RPC error:", "")
+                        .replace("daemon error:", ""),
+                )?;
+
+                let json_map = match json {
+                    serde_json::Value::Object(map) => map,
+                    _ => continue, // Try next error if this one isn't a JSON object
+                };
+
+                let error_code_value = match json_map.get("code") {
+                    Some(val) => val,
+                    None => continue, // Try next error if no error code field
+                };
+
+                let error_code_number = match error_code_value {
+                    serde_json::Value::Number(num) => num,
+                    _ => continue, // Try next error if error code isn't a number
+                };
+
+                if let Some(int) = error_code_number.as_i64() {
+                    return Ok(int);
+                }
+            }
+        }
+        // If we couldn't extract an RPC error code from any error in the MultiError
+        bail!(
+            "Error is of incorrect variant. We expected an Electrum error, but got: {}",
+            error
+        );
+    }
+
+    // Original logic for direct Electrum errors
     let string = match error.downcast_ref::<bdk_electrum::electrum_client::Error>() {
         Some(bdk_electrum::electrum_client::Error::Protocol(serde_json::Value::String(string))) => {
             string
