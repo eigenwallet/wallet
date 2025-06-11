@@ -652,12 +652,19 @@ impl Wallet {
         let total_count = broadcast_results.len();
 
         if successful_count == 0 {
-            return Err(anyhow::anyhow!(
+            // Collect all errors to create a MultiError
+            let errors: Vec<_> = broadcast_results
+                .into_iter()
+                .filter_map(|result| result.err())
+                .collect();
+
+            let context = format!(
                 "Bitcoin {} transaction {} failed to broadcast on all {} servers",
-                kind,
-                txid,
-                total_count
-            ));
+                kind, txid, total_count
+            );
+
+            let multi_error = crate::bitcoin::electrum_balancer::MultiError::new(errors, context);
+            return Err(anyhow::Error::from(multi_error));
         }
 
         tracing::info!(
@@ -1751,25 +1758,6 @@ impl Client {
         }
 
         Ok(results)
-    }
-
-    /// Broadcast a transaction to the network.
-    /// By default this broadcasts to all known electrum servers for maximum reliability.
-    // TODO: Make this async
-    pub fn transaction_broadcast(&self, transaction: &Transaction) -> Result<Arc<Txid>> {
-        // Use runtime to execute the async broadcast_all method
-        let rt = tokio::runtime::Handle::current();
-        let results = rt
-            .block_on(self.transaction_broadcast_all(transaction))
-            .context("Failed to broadcast transaction to any server")?;
-
-        // Check if at least one broadcast succeeded
-        let successful_txid = results
-            .into_iter()
-            .find_map(|result| result.ok())
-            .context("Transaction broadcast failed on all servers")?;
-
-        Ok(Arc::new(successful_txid))
     }
 
     /// Get the status of a script.

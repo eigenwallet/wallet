@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::task::spawn_blocking;
-use tracing::{debug, error, info, instrument, trace, warn};
+use tracing::{debug, error, instrument, trace, warn};
 
 /// Round-robin load balancer for Electrum connections.
 ///
@@ -335,7 +335,7 @@ where
         T: Send + 'static,
     {
         let start_time = Instant::now();
-        info!(
+        debug!(
             total_clients = self.client_count(),
             "Executing parallel requests on electrum clients"
         );
@@ -427,7 +427,7 @@ where
     /// The method returns a list of results in the same order as the
     /// configured nodes. Errors for individual nodes do not abort the
     /// others.
-    #[instrument(level = "info", skip(self, tx), fields(txid = %tx.compute_txid(), total_clients = self.client_count()))]
+    #[instrument(level = "debug", skip(self, tx), fields(txid = %tx.compute_txid(), total_clients = self.client_count()))]
     pub async fn broadcast_all(
         &self,
         tx: Transaction,
@@ -435,7 +435,7 @@ where
         let txid = tx.compute_txid();
         let start_time = Instant::now();
 
-        info!(
+        debug!(
             txid = %txid,
             total_clients = self.client_count(),
             "Broadcasting transaction to electrum clients"
@@ -448,7 +448,7 @@ where
         let success_count = results.iter().filter(|r| r.is_ok()).count();
 
         if success_count > 0 {
-            info!(
+            debug!(
                 txid = %txid,
                 successful_broadcasts = success_count,
                 total_attempts = results.len(),

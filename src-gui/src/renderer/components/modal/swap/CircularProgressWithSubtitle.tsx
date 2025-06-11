@@ -53,7 +53,10 @@ export function LinearProgressWithSubtitle({
           width: "10rem",
         }}
       >
-        <LinearProgress variant={value === 100 ? "indeterminate" : "determinate"} value={value} />
+        <LinearProgress
+          variant={value === 100 ? "indeterminate" : "determinate"}
+          value={value}
+        />
       </Box>
     </Box>
   );
