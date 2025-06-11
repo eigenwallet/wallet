@@ -448,16 +448,27 @@ impl From<RpcErrorCode> for i64 {
 }
 
 pub fn parse_rpc_error_code(error: &anyhow::Error) -> anyhow::Result<i64> {
-    let string = match error.downcast_ref::<bdk_electrum::electrum_client::Error>() {
-        Some(bdk_electrum::electrum_client::Error::Protocol(serde_json::Value::String(string))) => {
-            string
-        }
-        _ => bail!(
-            "Error is of incorrect variant. We expected an Electrum error, but got: {}",
-            error
-        ),
-    };
+    // First try to downcast directly
+    if let Some(bdk_electrum::electrum_client::Error::Protocol(serde_json::Value::String(string))) = 
+        error.downcast_ref::<bdk_electrum::electrum_client::Error>() {
+        return parse_rpc_error_string(string);
+    }
 
+    // If direct downcast fails, try to find the error in the chain
+    for cause in error.chain() {
+        if let Some(bdk_electrum::electrum_client::Error::Protocol(serde_json::Value::String(string))) 
+            = cause.downcast_ref::<bdk_electrum::electrum_client::Error>() {
+            return parse_rpc_error_string(string);
+        }
+    }
+    
+    bail!(
+        "Error is of incorrect variant. We expected an Electrum error, but got: {}",
+        error
+    )
+}
+
+fn parse_rpc_error_string(string: &str) -> anyhow::Result<i64> {
     let json = serde_json::from_str(&string.replace("sendrawtransaction RPC error:", ""))?;
 
     let json_map = match json {

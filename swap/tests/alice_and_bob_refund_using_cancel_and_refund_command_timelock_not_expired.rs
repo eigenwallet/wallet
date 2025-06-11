@@ -59,10 +59,14 @@ async fn given_alice_and_bob_manually_cancel_when_timelock_not_expired_errors() 
             .await
             .unwrap_err();
 
-        assert_eq!(
-            parse_rpc_error_code(&error).unwrap(),
-            i64::from(RpcErrorCode::RpcVerifyRejected)
-        );
+        // Check if any error in the chain contains the expected RPC error code
+        let expected_code = i64::from(RpcErrorCode::RpcVerifyRejected);
+        let has_expected_error = error.chain().any(|cause| {
+            parse_rpc_error_code(&anyhow::Error::msg(cause.to_string()))
+                .map(|code| code == expected_code)
+                .unwrap_or(false)
+        });
+        assert!(has_expected_error, "Expected RPC error code {} not found in error chain: {}", expected_code, error);
 
         let (bob_swap, bob_join_handle) = ctx
             .stop_and_resume_bob_from_db(bob_join_handle, swap_id)
