@@ -444,8 +444,8 @@ impl<T: Clone> TauriBackgroundProgressHandle<T> {
     /// Updates after finish() has been called will be ignored
     #[cfg(feature = "tauri")]
     pub fn update(&self, progress: T) {
+        // Silently fail if the background process has already been finished
         if self.is_finished.load(std::sync::atomic::Ordering::Relaxed) {
-            tracing::trace!(%self.id, "Ignoring update to background progress because it has already been finished");
             return;
         }
 
