@@ -328,14 +328,15 @@ where
     /// The closure is executed in a blocking task for each client.
     /// The resulting `Result`s are collected and returned in the same
     /// order as the nodes were provided during construction.
-    #[instrument(level = "debug", skip(self, f), fields(total_clients = self.client_count()))]
-    pub async fn join_all<F, T>(&self, f: F) -> Result<Vec<Result<T, Error>>, Error>
+    #[instrument(level = "debug", skip(self, f), fields(operation = kind, total_clients = self.client_count()))]
+    pub async fn join_all<F, T>(&self, kind: &str, f: F) -> Result<Vec<Result<T, Error>>, Error>
     where
         F: Fn(&C) -> Result<T, Error> + Send + Sync + Clone + 'static,
         T: Send + 'static,
     {
         let start_time = Instant::now();
         debug!(
+            operation = kind,
             total_clients = self.client_count(),
             "Executing parallel requests on electrum clients"
         );
@@ -442,7 +443,7 @@ where
         );
 
         let results = self
-            .join_all(move |client| client.transaction_broadcast(&tx))
+            .join_all("transaction_broadcast", move |client| client.transaction_broadcast(&tx))
             .await?;
 
         let success_count = results.iter().filter(|r| r.is_ok()).count();
@@ -1101,7 +1102,7 @@ mod tests {
             .unwrap();
 
         let results = balancer
-            .join_all(|client| client.transaction_broadcast(&create_dummy_transaction()))
+            .join_all("transaction_broadcast", |client| client.transaction_broadcast(&create_dummy_transaction()))
             .await;
 
         assert!(results.is_ok());
