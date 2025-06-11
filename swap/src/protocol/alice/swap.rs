@@ -440,7 +440,7 @@ where
                     // TODO: Actually ensure the transaction is published
                     // What about a wrapper function ensure_tx_published that repeats the tx submission until
                     // our subscription sees it in the mempool?
-                    
+
                     tracing::debug!(
                         "Assuming cancel transaction is already broadcasted because we failed to publish: {:#}",
                         e

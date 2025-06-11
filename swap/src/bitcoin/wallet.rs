@@ -1869,7 +1869,7 @@ impl Client {
                 // Check if any error indicates the transaction doesn't exist
                 let has_not_found = multi_error.any(|error| {
                     let error_str = error.to_string();
-                    
+
                     // Check for specific error patterns that indicate "not found"
                     if error_str.contains("\"code\": Number(-5)")
                         || error_str.contains("No such mempool or blockchain transaction")
