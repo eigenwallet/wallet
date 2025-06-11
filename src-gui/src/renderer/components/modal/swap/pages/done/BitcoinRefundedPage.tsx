@@ -61,7 +61,7 @@ function MultiBitcoinRefundedPage({
       {!btc_refund_finalized &&
         "Waiting for refund transaction to be confirmed"}
       {!btc_refund_finalized && <br />}
-      Refund address: ${swap.btc_refund_address}
+      Refund address: {swap.btc_refund_address}
     </>
   ) : null;
 
