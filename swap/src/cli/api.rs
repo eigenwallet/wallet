@@ -25,7 +25,6 @@ use tokio::task::JoinHandle;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
 use tracing::level_filters::LevelFilter;
 use tracing::Level;
-use url::Url;
 use uuid::Uuid;
 
 use super::watcher::Watcher;
