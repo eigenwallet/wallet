@@ -246,7 +246,8 @@ async fn next_state(
             // We only warn if this fail here
             if let Ok(Some(_)) = state3
                 .check_for_tx_early_refund(bitcoin_wallet)
-                .await.inspect_err(|err| {
+                .await
+                .inspect_err(|err| {
                     tracing::warn!(?err, "Failed to check for early refund transaction");
                 })
             {
