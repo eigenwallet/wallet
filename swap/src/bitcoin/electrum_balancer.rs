@@ -78,6 +78,29 @@ where
         Self::new_with_config_and_factory(urls, ElectrumBalancerConfig::default(), factory).await
     }
 
+    /// Get any client from the balancer
+    pub async fn get_any_client(&self) -> Result<Arc<C>, Error> {
+        // Try to initialize any client
+        for idx in 0..self.client_count() {
+            match self.get_or_init_client_async(idx).await {
+                Ok(client) => return Ok(client),
+                Err(e) => {
+                    trace!(
+                        server_url = self.urls[idx],
+                        error = ?e,
+                        "Failed to initialize client, trying next client"
+                    );
+                }
+            }
+        }
+
+        // Return error if no client could be initialized
+        Err(Error::IOError(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "No client could be initialized",
+        )))
+    }
+
     /// Create a new balancer from a list of Electrum URLs with custom configuration.
     /// Clients are initialized lazily on first use.
     pub async fn new_with_config_and_factory(

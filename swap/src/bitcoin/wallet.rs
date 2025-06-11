@@ -299,9 +299,9 @@ impl Wallet {
     /// which results in us having a bunch of large gaps in the SPKs
     const SCAN_STOP_GAP: u32 = 500;
     /// The batch size for syncing
-    const SCAN_BATCH_SIZE: u32 = 2;
+    const SCAN_BATCH_SIZE: u32 = 32;
     /// The number of maximum chunks to use when syncing
-    const SCAN_CHUNKS: u32 = 10;
+    const SCAN_CHUNKS: u32 = 5;
 
     /// Maximum time we are willing to spend retrying a wallet sync
     const SYNC_MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
@@ -516,43 +516,8 @@ impl Wallet {
         }).throttle_callback(10.0)).to_full_scan_callback(Self::SCAN_STOP_GAP, 100);
 
         let full_scan = wallet.start_full_scan().inspect(callback);
-
-        // TODO: Fix this. NEVER manualy CREATE BDK CLINET
-        // For full_scan, we create a new BDK electrum client using the first URL
-        // from our balancer. This is a one-time operation so load balancing isn't critical.
-        let bdk_client = {
-            let urls = client.inner.urls();
-            if urls.is_empty() {
-                return Err(anyhow::anyhow!("No electrum URLs available for full scan"));
-            }
-
-            let first_url = &urls[0];
-            let electrum_client = bdk_electrum::electrum_client::Client::new(first_url).map_err(|e| {
-                // Wrap connection errors with DNS resolution context
-                match &e {
-                    bdk_electrum::electrum_client::Error::IOError(io_err) if io_err.kind() == std::io::ErrorKind::NotFound => {
-                        bdk_electrum::electrum_client::Error::IOError(std::io::Error::new(
-                            std::io::ErrorKind::NotFound,
-                            format!("{} (Most likely DNS resolution error)", e),
-                        ))
-                    }
-                    bdk_electrum::electrum_client::Error::IOError(io_err) 
-                        if io_err.kind() == std::io::ErrorKind::TimedOut
-                        || io_err.kind() == std::io::ErrorKind::ConnectionRefused 
-                        || io_err.kind() == std::io::ErrorKind::ConnectionAborted
-                        || io_err.kind() == std::io::ErrorKind::Other => {
-                        bdk_electrum::electrum_client::Error::IOError(std::io::Error::new(
-                            io_err.kind(),
-                            format!("{} (Most likely DNS resolution error)", e),
-                        ))
-                    }
-                    _ => e, // Pass through other errors unchanged
-                }
-            })?;
-            bdk_electrum::BdkElectrumClient::new(electrum_client)
-        };
-
-        let full_scan_result = bdk_client.full_scan(
+        
+        let full_scan_response = client.inner.get_any_client().await?.full_scan(
             full_scan,
             Self::SCAN_STOP_GAP as usize,
             Self::SCAN_BATCH_SIZE as usize,
@@ -569,7 +534,7 @@ impl Wallet {
             .context("Failed to create wallet with persister")?;
 
         // Apply the full scan result to the wallet
-        wallet.apply_update(full_scan_result)?;
+        wallet.apply_update(full_scan_response)?;
         wallet.persist(&mut persister)?;
 
         progress_handle.finish();
@@ -855,6 +820,7 @@ impl Wallet {
         max_num_chunks: u32,
         batch_size: u32,
     ) -> Vec<SyncRequestBuilderFactory> {
+        #[allow(clippy::type_complexity)]
         let (spks, chain_tip): (Vec<((KeychainKind, u32), ScriptBuf)>, CheckPoint) = {
             let wallet = self.wallet.lock().await;
 
