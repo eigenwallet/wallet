@@ -306,6 +306,8 @@ where
                                 continue;
                             }
 
+                            tracing::debug!(%swap_id, %peer, "Received encrypted signature from Bob");
+
                             // Immediately acknowledge if we've already processed this encrypted signature
                             // This handles the case where Bob didn't receive our previous acknowledgment
                             // and is retrying sending the encrypted signature
@@ -338,6 +340,8 @@ where
                                 }
                             };
 
+                            tracing::debug!(%swap_id, "Forwarding encrypted signature to swap state machine");
+
                             let mut responder = match sender.send(msg.tx_redeem_encsig).await {
                                 Ok(responder) => responder,
                                 Err(_) => {
@@ -346,9 +350,11 @@ where
                                 }
                             };
 
+                            tracing::debug!(%swap_id, "Waiting for swap to acknowledge processing of encrypted signature");
+
                             self.inflight_encrypted_signatures.push(async move {
                                 let _ = responder.recv().await;
-
+                                tracing::debug!(%swap_id, "Swap acknowledged processing encrypted signature, sending response to Bob");
                                 channel
                             }.boxed());
                         }
@@ -708,12 +714,16 @@ impl EventLoopHandle {
 
         let (tx_redeem_encsig, responder) = receiver.recv().await?;
 
+        tracing::debug!(swap_id = %self.swap_id, "Alice's swap received and will process encrypted signature");
+
         // Acknowledge receipt of the encrypted signature
         // This notifies the EventLoop that the signature has been processed
         // The EventLoop can then send an acknowledgement back to Bob over the network
         responder
             .respond(())
             .context("Failed to acknowledge receipt of encrypted signature")?;
+
+        tracing::debug!(swap_id = %self.swap_id, "Alice's swap acknowledged processing encrypted signature");
 
         // Only take after successful receipt and acknowledgement
         self.recv_encrypted_signature.take();

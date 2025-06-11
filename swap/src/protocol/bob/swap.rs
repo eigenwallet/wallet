@@ -12,9 +12,11 @@ use crate::protocol::{bob, Database};
 use crate::{bitcoin, monero};
 use anyhow::{bail, Context as AnyContext, Result};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::select;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use backoff;
 
 const PRE_BTC_LOCK_APPROVAL_TIMEOUT_SECS: u64 = 120;
 
@@ -394,13 +396,17 @@ async fn next_state(
 
             // Alice has locked their Monero
             // Bob sends Alice the encrypted signature which allows her to sign and broadcast the Bitcoin redeem transaction
+            // We retry indefinitely until Alice confirms she has processed the signature
             select! {
-                result = event_loop_handle.send_encrypted_signature(state.tx_redeem_encsig()) => {
+                result = send_encrypted_signature_with_confirmation(event_loop_handle, state.tx_redeem_encsig()) => {
                     match result {
-                        Ok(_) => BobState::EncSigSent(state),
+                        Ok(_) => {
+                            tracing::info!("Alice confirmed receipt of encrypted signature");
+                            BobState::EncSigSent(state)
+                        },
                         Err(err) => {
-                            tracing::error!(%err, "Failed to send encrypted signature to Alice");
-                            bail!("Failed to send encrypted signature to Alice");
+                            tracing::error!(%err, "Failed to send encrypted signature to Alice and get confirmation");
+                            bail!("Failed to send encrypted signature to Alice and get confirmation");
                         }
                     }
                 },
@@ -633,4 +639,44 @@ async fn next_state(
             BobState::XmrRedeemed { tx_lock_id }
         }
     })
+}
+
+/// Send encrypted signature to Alice and retry until she confirms she has processed it.
+/// This is similar to how Alice retries sending transfer proofs until Bob acknowledges.
+async fn send_encrypted_signature_with_confirmation(
+    event_loop_handle: &mut EventLoopHandle,
+    encrypted_signature: bitcoin::EncryptedSignature,
+) -> Result<()> {
+    // We will retry indefinitely until Alice confirms she has processed the signature
+    let backoff = backoff::ExponentialBackoffBuilder::new()
+        .with_max_elapsed_time(None)
+        .with_max_interval(Duration::from_secs(60))
+        .build();
+
+    backoff::future::retry_notify(
+        backoff,
+        || async {
+            tracing::debug!("Sending encrypted signature to Alice");
+            
+            match event_loop_handle.send_encrypted_signature(encrypted_signature.clone()).await {
+                Ok(_) => {
+                    tracing::debug!("Alice confirmed receipt and processing of encrypted signature");
+                    Ok(())
+                },
+                Err(err) => {
+                    tracing::warn!(%err, "Failed to send encrypted signature or get confirmation from Alice");
+                    Err(backoff::Error::transient(err))
+                }
+            }
+        },
+        |err, wait_time: Duration| {
+            tracing::warn!(
+                error = ?err,
+                "Failed to send encrypted signature to Alice. Will retry in {} seconds",
+                wait_time.as_secs()
+            )
+        },
+    )
+    .await
+    .context("Failed to send encrypted signature to Alice after retries")
 }

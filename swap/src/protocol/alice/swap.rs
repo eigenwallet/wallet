@@ -278,7 +278,7 @@ where
                         })
                     }
 
-                    tracing::info!("Received encrypted signature");
+                    tracing::info!("Received encrypted signature from Bob");
 
                     AliceState::EncSigLearned {
                         monero_wallet_restore_blockheight,
