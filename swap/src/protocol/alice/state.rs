@@ -404,11 +404,11 @@ pub struct State3 {
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_redeem_fee: bitcoin::Amount,
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
-    tx_punish_fee: bitcoin::Amount,
+    pub tx_punish_fee: bitcoin::Amount,
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
-    tx_refund_fee: bitcoin::Amount,
+    pub tx_refund_fee: bitcoin::Amount,
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
-    tx_cancel_fee: bitcoin::Amount,
+    pub tx_cancel_fee: bitcoin::Amount,
 }
 
 impl State3 {
@@ -587,5 +587,32 @@ impl State3 {
             self.punish_timelock,
             self.tx_punish_fee,
         )
+    }
+}
+
+pub trait ReservesMonero {
+    fn reserved_monero(&self) -> monero::Amount;
+}
+
+impl ReservesMonero for AliceState {
+    /// Returns the Monero amount we need to reserve for this swap
+    /// i.e funds we should not use for other things
+    fn reserved_monero(&self) -> monero::Amount {
+        match self {
+            // We haven't seen proof yet that Bob has locked the Bitcoin
+            // We must assume he will not lock the Bitcoin to avoid being
+            // susceptible to a DoS attack
+            AliceState::Started { .. } => monero::Amount::ZERO,
+            // These are the only states where we have to assume we will have to lock
+            // our Monero, and we haven't done so yet.
+            AliceState::BtcLockTransactionSeen { state3 } | AliceState::BtcLocked { state3 } => {
+                // We reserve as much Monero as we need for the output of the lock transaction
+                // and as we need for the network fee
+                state3.xmr.min_conservative_balance_to_spend()
+            }
+            // For all other states we either have already locked the Monero
+            // or we can be sure that we don't have to lock our Monero in the future
+            _ => monero::Amount::ZERO,
+        }
     }
 }

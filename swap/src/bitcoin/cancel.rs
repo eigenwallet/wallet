@@ -5,6 +5,7 @@ use crate::bitcoin::{
 };
 use ::bitcoin::sighash::SighashCache;
 use ::bitcoin::transaction::Version;
+use ::bitcoin::Weight;
 use ::bitcoin::{
     locktime::absolute::LockTime as PackedLockTime, secp256k1, sighash::SegwitV0Sighash as Sighash,
     EcdsaSighashType, OutPoint, ScriptBuf, Sequence, TxIn, TxOut, Txid,
@@ -37,6 +38,10 @@ impl From<CancelTimelock> for u32 {
 impl CancelTimelock {
     pub const fn new(number_of_blocks: u32) -> Self {
         Self(number_of_blocks)
+    }
+
+    pub fn half(&self) -> CancelTimelock {
+        Self(self.0 / 2)
     }
 }
 
@@ -283,8 +288,8 @@ impl TxCancel {
         }
     }
 
-    pub fn weight() -> usize {
-        596
+    pub fn weight() -> Weight {
+        Weight::from_wu(596)
     }
 }
 

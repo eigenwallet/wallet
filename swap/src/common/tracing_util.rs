@@ -24,21 +24,29 @@ pub enum Format {
 /// Initialize tracing and enable logging messages according to these options.
 /// Besides printing to `stdout`, this will append to a log file.
 /// Said file will contain JSON-formatted logs of all levels,
-/// disregarding the arguments to this function.
+/// disregarding the arguments to this function. When `trace_stdout` is `true`,
+/// all tracing logs are also emitted to stdout.
 pub fn init(
     level_filter: LevelFilter,
     format: Format,
     dir: impl AsRef<Path>,
     tauri_handle: Option<TauriHandle>,
+    trace_stdout: bool,
 ) -> Result<()> {
-    let ALL_CRATES: Vec<&str> = vec![
-        "swap",
-        "asb",
-        "libp2p_community_tor",
-        "unstoppableswap-gui-rs",
-        "arti",
+    let TOR_CRATES: Vec<&str> = vec!["arti"];
+
+    let LIBP2P_CRATES: Vec<&str> = vec![
+        "libp2p",
+        "libp2p_swarm",
+        "libp2p_core",
+        "libp2p_tcp",
+        "libp2p_noise",
+        "libp2p_community_tor"
     ];
-    let OUR_CRATES: Vec<&str> = vec!["swap", "asb"];
+    
+    let OUR_CRATES: Vec<&str> = vec!["swap", "asb", "unstoppableswap-gui-rs"];
+
+    let ALL_CRATES = [LIBP2P_CRATES, TOR_CRATES, OUR_CRATES.clone()].concat();
 
     // General log file for non-verbose logs
     let file_appender: RollingFileAppender = tracing_appender::rolling::never(&dir, "swap-all.log");
@@ -95,23 +103,29 @@ pub fn init(
         .json()
         .with_filter(env_filter(level_filter, ALL_CRATES.clone())?);
 
-    // We only log the bare minimum to the terminal
-    // Crates: swap, asb
-    // Level: Passed in
-    let env_filtered = env_filter(level_filter, OUR_CRATES.clone())?;
-
-    // Apply the environment filter and box the layer for the terminal
+    // If trace_stdout is true, we log all messages to the terminal
+    // Otherwise, we only log the bare minimum
+    let terminal_layer_env_filter = match trace_stdout {
+        true => env_filter(LevelFilter::TRACE, ALL_CRATES.clone())?,
+        false => env_filter(level_filter, OUR_CRATES.clone())?,
+    };
     let final_terminal_layer = match format {
-        Format::Json => terminal_layer.json().with_filter(env_filtered).boxed(),
-        Format::Raw => terminal_layer.with_filter(env_filtered).boxed(),
+        Format::Json => terminal_layer
+            .json()
+            .with_filter(terminal_layer_env_filter)
+            .boxed(),
+        Format::Raw => terminal_layer
+            .with_filter(terminal_layer_env_filter)
+            .boxed(),
     };
 
-    tracing_subscriber::registry()
+    let subscriber = tracing_subscriber::registry()
         .with(file_layer)
         .with(tracing_file_layer)
         .with(final_terminal_layer)
-        .with(tauri_layer)
-        .try_init()?;
+        .with(tauri_layer);
+
+    subscriber.try_init()?;
 
     // Now we can use the tracing macros to log messages
     tracing::info!(%level_filter, logs_dir=%dir.as_ref().display(), "Initialized tracing. General logs will be written to swap-all.log, and verbose logs to tracing*.log");

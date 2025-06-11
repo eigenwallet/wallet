@@ -1,14 +1,13 @@
 import {
   Box,
   Link,
-  makeStyles,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableRow,
-} from "@material-ui/core";
-import { OpenInNew } from "@material-ui/icons";
+} from "@mui/material";
+import { OpenInNew } from "@mui/icons-material";
 import { GetSwapInfoResponse } from "models/tauriModel";
 import ActionableMonospaceTextBox from "renderer/components/other/ActionableMonospaceTextBox";
 import MonospaceTextBox from "renderer/components/other/MonospaceTextBox";
@@ -21,34 +20,21 @@ import {
 import { isTestnet } from "store/config";
 import { getBitcoinTxExplorerUrl } from "utils/conversionUtils";
 import SwapLogFileOpenButton from "./SwapLogFileOpenButton";
-
-const useStyles = makeStyles((theme) => ({
-  outer: {
-    display: "grid",
-    padding: theme.spacing(1),
-    gap: theme.spacing(1),
-  },
-  outerAddressBox: {
-    display: "flex",
-    flexDirection: "column",
-    gap: theme.spacing(1),
-  },
-  actionsOuter: {
-    display: "flex",
-    flexDirection: "row",
-    gap: theme.spacing(1),
-  },
-}));
+import ExportLogsButton from "./ExportLogsButton";
 
 export default function HistoryRowExpanded({
   swap,
 }: {
   swap: GetSwapInfoResponse;
 }) {
-  const classes = useStyles();
-
   return (
-    <Box className={classes.outer}>
+    <Box
+      sx={{
+        display: "grid",
+        padding: 1,
+        gap: 1,
+      }}
+    >
       <TableContainer>
         <Table>
           <TableBody>
@@ -94,7 +80,13 @@ export default function HistoryRowExpanded({
             <TableRow>
               <TableCell>Maker Address</TableCell>
               <TableCell>
-                <Box className={classes.outerAddressBox}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                  }}
+                >
                   {swap.seller.addresses.map((addr) => (
                     <ActionableMonospaceTextBox
                       key={addr}
@@ -113,18 +105,27 @@ export default function HistoryRowExpanded({
                   href={getBitcoinTxExplorerUrl(swap.tx_lock_id, isTestnet())}
                   target="_blank"
                 >
-                  <MonospaceTextBox>
-                    {swap.tx_lock_id}
-                  </MonospaceTextBox>
+                  <MonospaceTextBox>{swap.tx_lock_id}</MonospaceTextBox>
                 </Link>
               </TableCell>
             </TableRow>
           </TableBody>
         </Table>
       </TableContainer>
-      <Box className={classes.actionsOuter}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "row",
+          gap: 1,
+        }}
+      >
         <SwapLogFileOpenButton
           swapId={swap.swap_id}
+          variant="outlined"
+          size="small"
+        />
+        <ExportLogsButton
+          swap_id={swap.swap_id}
           variant="outlined"
           size="small"
         />

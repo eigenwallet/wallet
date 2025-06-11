@@ -69,15 +69,15 @@ impl WalletSnapshot {
             .unwrap_or(bitcoin_wallet.new_address().await?);
 
         let redeem_fee = bitcoin_wallet
-            .estimate_fee(bitcoin::TxRedeem::weight(), transfer_amount)
+            .estimate_fee(bitcoin::TxRedeem::weight(), Some(transfer_amount))
             .await?;
         let punish_fee = bitcoin_wallet
-            .estimate_fee(bitcoin::TxPunish::weight(), transfer_amount)
+            .estimate_fee(bitcoin::TxPunish::weight(), Some(transfer_amount))
             .await?;
 
         Ok(Self {
             balance,
-            lock_fee: monero::MONERO_FEE,
+            lock_fee: monero::CONSERVATIVE_MONERO_FEE,
             redeem_address,
             punish_address,
             redeem_fee,

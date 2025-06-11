@@ -1,22 +1,13 @@
-import { Box, Button, makeStyles, Typography } from "@material-ui/core";
+import { Box, Button, Typography } from "@mui/material";
 import { open } from "@tauri-apps/plugin-shell";
 import InfoBox from "../../modal/swap/InfoBox";
 
-const useStyles = makeStyles((theme) => ({
-  spacedBox: {
-    display: "flex",
-    gap: theme.spacing(1),
-  },
-}));
-
 const GITHUB_ISSUE_URL =
-  "https://github.com/UnstoppableSwap/unstoppableswap-gui/issues/new/choose";
+  "https://github.com/UnstoppableSwap/core/issues/new/choose";
 const MATRIX_ROOM_URL = "https://matrix.to/#/#unstoppableswap:matrix.org";
 export const DISCORD_URL = "https://discord.gg/aqSyyJ35UW";
 
 export default function ContactInfoBox() {
-  const classes = useStyles();
-
   return (
     <InfoBox
       title="Get in touch"
@@ -27,7 +18,7 @@ export default function ContactInfoBox() {
         </Typography>
       }
       additionalContent={
-        <Box className={classes.spacedBox}>
+        <Box sx={{ display: "flex", gap: 1 }}>
           <Button variant="outlined" onClick={() => open(GITHUB_ISSUE_URL)}>
             Open GitHub issue
           </Button>
