@@ -33,14 +33,20 @@ pub fn init(
     tauri_handle: Option<TauriHandle>,
     trace_stdout: bool,
 ) -> Result<()> {
-    let ALL_CRATES: Vec<&str> = vec![
-        "swap",
-        "asb",
-        "libp2p_community_tor",
-        "unstoppableswap-gui-rs",
-        "arti",
+    let TOR_CRATES: Vec<&str> = vec!["arti"];
+
+    let LIBP2P_CRATES: Vec<&str> = vec![
+        "libp2p",
+        "libp2p_swarm",
+        "libp2p_core",
+        "libp2p_tcp",
+        "libp2p_noise",
+        "libp2p_community_tor"
     ];
-    let OUR_CRATES: Vec<&str> = vec!["swap", "asb"];
+    
+    let OUR_CRATES: Vec<&str> = vec!["swap", "asb", "unstoppableswap-gui-rs"];
+
+    let ALL_CRATES = [LIBP2P_CRATES, TOR_CRATES, OUR_CRATES.clone()].concat();
 
     // General log file for non-verbose logs
     let file_appender: RollingFileAppender = tracing_appender::rolling::never(&dir, "swap-all.log");
