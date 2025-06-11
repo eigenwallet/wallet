@@ -684,4 +684,87 @@ mod tests {
 
         assert_eq!(pubkey.to_string(), point.to_string());
     }
+
+    #[test]
+    fn parse_rpc_error_code_direct_electrum_error() {
+        let rpc_error_json = r#"{"code":-26,"message":"non-BIP68-final"}"#;
+        let electrum_error = bdk_electrum::electrum_client::Error::Protocol(
+            serde_json::Value::String(format!("sendrawtransaction RPC error: {}", rpc_error_json))
+        );
+        let anyhow_error = anyhow::Error::new(electrum_error);
+
+        let result = parse_rpc_error_code(&anyhow_error);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), -26);
+    }
+
+    #[test]
+    fn parse_rpc_error_code_chained_electrum_error() {
+        let rpc_error_json = r#"{"code":-26,"message":"non-BIP68-final"}"#;
+        let electrum_error = bdk_electrum::electrum_client::Error::Protocol(
+            serde_json::Value::String(format!("sendrawtransaction RPC error: {}", rpc_error_json))
+        );
+        
+        // Wrap the electrum error in another error to simulate a multi-error chain
+        let wrapped_error = anyhow::Error::new(electrum_error)
+            .context("Bitcoin cancel transaction failed to broadcast on all servers");
+
+        let result = parse_rpc_error_code(&wrapped_error);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), -26);
+    }
+
+    #[test]
+    fn parse_rpc_error_code_different_error_codes() {
+        // Test parsing different error codes
+        let test_cases = vec![
+            (-25, "verify-error"),
+            (-26, "non-BIP68-final"),
+            (-27, "already-in-chain"),
+        ];
+
+        for (expected_code, message) in test_cases {
+            let rpc_error_json = format!(r#"{{"code":{},"message":"{}"}}"#, expected_code, message);
+            let electrum_error = bdk_electrum::electrum_client::Error::Protocol(
+                serde_json::Value::String(format!("sendrawtransaction RPC error: {}", rpc_error_json))
+            );
+            let anyhow_error = anyhow::Error::new(electrum_error);
+
+            let result = parse_rpc_error_code(&anyhow_error);
+            assert!(result.is_ok(), "Failed to parse error code {}", expected_code);
+            assert_eq!(result.unwrap(), expected_code);
+        }
+    }
+
+    #[test]
+    fn parse_rpc_error_code_non_electrum_error() {
+        let other_error = anyhow::Error::msg("Some other error");
+        let result = parse_rpc_error_code(&other_error);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Error is of incorrect variant"));
+    }
+
+    #[test]
+    fn parse_rpc_error_code_invalid_json() {
+        let electrum_error = bdk_electrum::electrum_client::Error::Protocol(
+            serde_json::Value::String("sendrawtransaction RPC error: invalid json".to_string())
+        );
+        let anyhow_error = anyhow::Error::new(electrum_error);
+
+        let result = parse_rpc_error_code(&anyhow_error);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_rpc_error_code_missing_code_field() {
+        let rpc_error_json = r#"{"message":"non-BIP68-final"}"#; // Missing "code" field
+        let electrum_error = bdk_electrum::electrum_client::Error::Protocol(
+            serde_json::Value::String(format!("sendrawtransaction RPC error: {}", rpc_error_json))
+        );
+        let anyhow_error = anyhow::Error::new(electrum_error);
+
+        let result = parse_rpc_error_code(&anyhow_error);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No error code field"));
+    }
 }
