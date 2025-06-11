@@ -145,8 +145,16 @@ jobs:
             librsvg2-dev
 
       - name: Build binary
-        if: matrix.target != 'armv7-unknown-linux-gnueabihf'
+        if: matrix.target != 'armv7-unknown-linux-gnueabihf' && matrix.target != 'x86_64-unknown-linux-gnu'
         run: cargo build -p swap --target ${{ matrix.target }}
+
+      - name: Install cross (x86_64)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo install cross --locked
+
+      - name: Build binary (x86_64)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cross build -p swap --target ${{ matrix.target }}
 
       - name: Install cross (armv7)
         if: matrix.target == 'armv7-unknown-linux-gnueabihf'

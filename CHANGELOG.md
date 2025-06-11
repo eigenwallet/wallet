@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Running your own [electrs](https://github.com/romanz/electrs/) server
   - Optionally providing 2-5 fallback servers. The order of the servers does matter. Electrum servers at the front of the list have priority and will be tried first. You should place your own server at the front of the list.
   - A list of public Electrum servers can be found [here](https://1209k.com/bitcoin-eye/ele.php?chain=btc)
+- CI: Linux binaries are now built using `cross` to target glibc 2.35 for Ubuntu 22.04 compatibility
+- CI: The `Cross.toml` config pins the Docker image to `glibc-2.35`
 
 ## [1.1.7] - 2025-06-04
 
