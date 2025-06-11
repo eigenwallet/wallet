@@ -8,7 +8,6 @@ use anyhow::{anyhow, bail, Context, Result};
 use bdk_chain::spk_client::{SyncRequest, SyncRequestBuilder};
 use bdk_chain::CheckPoint;
 use bdk_electrum::electrum_client::{ElectrumApi, GetHistoryRes};
-use bdk_electrum::BdkElectrumClient;
 
 use bdk_wallet::bitcoin::FeeRate;
 use bdk_wallet::bitcoin::Network;
