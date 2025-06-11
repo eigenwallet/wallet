@@ -261,9 +261,11 @@ where
                     errors.push(e);
 
                     // Only advance to next client on failure
-                    self.next.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
-                        Some((current + 1) % num_clients)
-                    }).expect("fetch_update should never fail");
+                    self.next
+                        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                            Some((current + 1) % num_clients)
+                        })
+                        .expect("fetch_update should never fail");
                     continue;
                 }
             };
@@ -291,9 +293,11 @@ where
                     errors.push(e);
 
                     // Only advance to next client on failure
-                    self.next.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
-                        Some((current + 1) % num_clients)
-                    }).expect("fetch_update should never fail");
+                    self.next
+                        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                            Some((current + 1) % num_clients)
+                        })
+                        .expect("fetch_update should never fail");
                     continue;
                 }
             }
@@ -580,11 +584,12 @@ impl ElectrumClientFactory<BdkElectrumClient<Client>> for BdkElectrumClientFacto
                         format!("{} (Most likely DNS resolution error)", e),
                     ))
                 }
-                Error::IOError(io_err) 
+                Error::IOError(io_err)
                     if io_err.kind() == std::io::ErrorKind::TimedOut
-                    || io_err.kind() == std::io::ErrorKind::ConnectionRefused 
-                    || io_err.kind() == std::io::ErrorKind::ConnectionAborted
-                    || io_err.kind() == std::io::ErrorKind::Other => {
+                        || io_err.kind() == std::io::ErrorKind::ConnectionRefused
+                        || io_err.kind() == std::io::ErrorKind::ConnectionAborted
+                        || io_err.kind() == std::io::ErrorKind::Other =>
+                {
                     Error::IOError(std::io::Error::new(
                         io_err.kind(),
                         format!("{} (Most likely DNS resolution error)", e),

@@ -41,9 +41,9 @@ pub fn init(
         "libp2p_core",
         "libp2p_tcp",
         "libp2p_noise",
-        "libp2p_community_tor"
+        "libp2p_community_tor",
     ];
-    
+
     let OUR_CRATES: Vec<&str> = vec!["swap", "asb", "unstoppableswap-gui-rs"];
 
     let ALL_CRATES = [LIBP2P_CRATES, TOR_CRATES, OUR_CRATES.clone()].concat();

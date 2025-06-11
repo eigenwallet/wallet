@@ -516,7 +516,7 @@ impl Wallet {
         }).throttle_callback(10.0)).to_full_scan_callback(Self::SCAN_STOP_GAP, 100);
 
         let full_scan = wallet.start_full_scan().inspect(callback);
-        
+
         let full_scan_response = client.inner.get_any_client().await?.full_scan(
             full_scan,
             Self::SCAN_STOP_GAP as usize,
