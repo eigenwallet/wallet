@@ -1666,7 +1666,7 @@ impl Client {
 
         // Iterate through each script we fetched and find the highest
         // returned entry at any Electrum node
-        for script_index in 0..scripts.len() {
+        for (script_index, script) in scripts.iter().enumerate() {
             let all_history_for_script: Vec<GetHistoryRes> = successful_results
                 .iter()
                 .filter_map(|server_result| server_result.get(script_index))
@@ -1687,8 +1687,7 @@ impl Client {
             }
 
             let final_history: Vec<GetHistoryRes> = best_history.into_values().collect();
-            self.script_history
-                .insert(scripts[script_index].clone(), final_history);
+            self.script_history.insert(script.clone(), final_history);
         }
 
         Ok(())

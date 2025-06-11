@@ -20,6 +20,7 @@ where
     C: ElectrumClientLike,
 {
     urls: Vec<String>,
+    #[allow(clippy::type_complexity)]
     clients: Arc<RwLock<Vec<Arc<OnceCell<Arc<C>>>>>>,
     next: Arc<Mutex<usize>>,
     config: ElectrumBalancerConfig,
@@ -324,7 +325,7 @@ where
                     let balancer = self.clone();
 
                     tokio::spawn(async move {
-                        let result = match balancer.get_or_init_client_async(idx).await {
+                        match balancer.get_or_init_client_async(idx).await {
                             Ok(client) => tokio::task::spawn_blocking(move || f(&client))
                                 .await
                                 .map_err(|e| {
@@ -334,9 +335,7 @@ where
                                     ))
                                 })?,
                             Err(e) => Err(e),
-                        };
-
-                        result
+                        }
                     })
                 })
                 .collect::<Vec<_>>()
