@@ -527,7 +527,28 @@ impl Wallet {
             }
 
             let first_url = &urls[0];
-            let electrum_client = bdk_electrum::electrum_client::Client::new(first_url)?;
+            let electrum_client = bdk_electrum::electrum_client::Client::new(first_url).map_err(|e| {
+                // Wrap connection errors with DNS resolution context
+                match &e {
+                    bdk_electrum::electrum_client::Error::IOError(io_err) if io_err.kind() == std::io::ErrorKind::NotFound => {
+                        bdk_electrum::electrum_client::Error::IOError(std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            format!("{} (Most likely DNS resolution error)", e),
+                        ))
+                    }
+                    bdk_electrum::electrum_client::Error::IOError(io_err) 
+                        if io_err.kind() == std::io::ErrorKind::TimedOut
+                        || io_err.kind() == std::io::ErrorKind::ConnectionRefused 
+                        || io_err.kind() == std::io::ErrorKind::ConnectionAborted
+                        || io_err.kind() == std::io::ErrorKind::Other => {
+                        bdk_electrum::electrum_client::Error::IOError(std::io::Error::new(
+                            io_err.kind(),
+                            format!("{} (Most likely DNS resolution error)", e),
+                        ))
+                    }
+                    _ => e, // Pass through other errors unchanged
+                }
+            })?;
             bdk_electrum::BdkElectrumClient::new(electrum_client)
         };
 

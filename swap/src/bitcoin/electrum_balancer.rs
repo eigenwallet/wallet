@@ -3,7 +3,8 @@ use bdk_electrum::BdkElectrumClient;
 use bitcoin::Transaction;
 use futures::future::join_all;
 use once_cell::sync::OnceCell;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::task::spawn_blocking;
 use tracing::{debug, error, info, instrument, trace, warn};
@@ -22,7 +23,7 @@ where
     urls: Vec<String>,
     #[allow(clippy::type_complexity)]
     clients: Arc<RwLock<Vec<Arc<OnceCell<Arc<C>>>>>>,
-    next: Arc<Mutex<usize>>,
+    next: AtomicUsize,
     config: ElectrumBalancerConfig,
     factory: Arc<dyn ElectrumClientFactory<C> + Send + Sync>,
 }
@@ -103,7 +104,7 @@ where
         Ok(Self {
             urls,
             clients: Arc::new(RwLock::new(clients)),
-            next: Arc::new(Mutex::new(0)),
+            next: AtomicUsize::new(0),
             config,
             factory,
         })
@@ -222,17 +223,14 @@ where
             attempts += 1;
 
             // Get current index without incrementing (sticky behavior)
-            let idx = {
-                let next = self.next.lock().expect("mutex poisoned");
-                *next
-            };
+            let idx = self.next.load(Ordering::SeqCst);
 
             // Get client for this index (will initialize if needed)
             let client = match self.get_or_init_client_sync(idx) {
                 Ok(client) => client,
                 Err(e) => {
                     trace!(
-                        client_index = idx,
+                        server_url = self.urls[idx],
                         attempt = attempt + 1,
                         error = ?e,
                         "Client initialization failed, switching to next client"
@@ -240,10 +238,9 @@ where
                     errors.push(e);
 
                     // Only advance to next client on failure
-                    {
-                        let mut next = self.next.lock().expect("mutex poisoned");
-                        *next = (*next + 1) % num_clients;
-                    }
+                    self.next.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                        Some((current + 1) % num_clients)
+                    }).expect("fetch_update should never fail");
                     continue;
                 }
             };
@@ -253,7 +250,7 @@ where
             match f(&client) {
                 Ok(res) => {
                     trace!(
-                        client_index = idx,
+                        server_url = self.urls[idx],
                         attempt = attempt + 1,
                         duration_ms = start.elapsed().as_millis(),
                         "Electrum operation successful (staying with this client)"
@@ -262,7 +259,7 @@ where
                 }
                 Err(e) => {
                     trace!(
-                        client_index = idx,
+                        server_url = self.urls[idx],
                         attempt = attempt + 1,
                         duration_ms = start.elapsed().as_millis(),
                         error = ?e,
@@ -271,10 +268,9 @@ where
                     errors.push(e);
 
                     // Only advance to next client on failure
-                    {
-                        let mut next = self.next.lock().expect("mutex poisoned");
-                        *next = (*next + 1) % num_clients;
-                    }
+                    self.next.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                        Some((current + 1) % num_clients)
+                    }).expect("fetch_update should never fail");
                     continue;
                 }
             }
@@ -487,7 +483,7 @@ where
         Self {
             urls: self.urls.clone(),
             clients: self.clients.clone(),
-            next: self.next.clone(),
+            next: AtomicUsize::new(self.next.load(Ordering::SeqCst)),
             config: self.config.clone(),
             factory: self.factory.clone(),
         }
@@ -552,7 +548,28 @@ impl ElectrumClientFactory<BdkElectrumClient<Client>> for BdkElectrumClientFacto
             .retry(0)
             .build();
 
-        let client = Client::from_config(url, client_config)?;
+        let client = Client::from_config(url, client_config).map_err(|e| {
+            // Wrap connection errors with DNS resolution context
+            match &e {
+                Error::IOError(io_err) if io_err.kind() == std::io::ErrorKind::NotFound => {
+                    Error::IOError(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("{} (Most likely DNS resolution error)", e),
+                    ))
+                }
+                Error::IOError(io_err) 
+                    if io_err.kind() == std::io::ErrorKind::TimedOut
+                    || io_err.kind() == std::io::ErrorKind::ConnectionRefused 
+                    || io_err.kind() == std::io::ErrorKind::ConnectionAborted
+                    || io_err.kind() == std::io::ErrorKind::Other => {
+                    Error::IOError(std::io::Error::new(
+                        io_err.kind(),
+                        format!("{} (Most likely DNS resolution error)", e),
+                    ))
+                }
+                _ => e, // Pass through other errors unchanged
+            }
+        })?;
         let bdk_client = BdkElectrumClient::new(client);
 
         Ok(Arc::new(bdk_client))
