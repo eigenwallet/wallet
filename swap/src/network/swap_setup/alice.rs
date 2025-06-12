@@ -79,13 +79,8 @@ impl WalletSnapshot {
             .await?;
 
         Ok(Self {
-<<<<<<< HEAD
             unlocked_balance: unlocked_balance.into(),
-            lock_fee: monero::MONERO_FEE,
-=======
-            balance,
             lock_fee: monero::CONSERVATIVE_MONERO_FEE,
->>>>>>> master
             redeem_address,
             punish_address,
             redeem_fee,

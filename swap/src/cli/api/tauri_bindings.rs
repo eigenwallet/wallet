@@ -700,16 +700,9 @@ pub enum BackgroundRefundState {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TauriSettings {
     /// The URL of the Monero node e.g `http://xmr.node:18081`
-<<<<<<< HEAD
-    pub monero_node_url: Option<Url>,
-    /// The URL of the Electrum RPC server e.g `ssl://bitcoin.com:50001`
-    #[typeshare(serialized_as = "string")]
-    pub electrum_rpc_url: Option<Url>,
-=======
     pub monero_node_url: Option<String>,
     /// The URLs of the Electrum RPC servers e.g `["ssl://bitcoin.com:50001", "ssl://backup.com:50001"]`
     pub electrum_rpc_urls: Vec<String>,
->>>>>>> master
     /// Whether to initialize and use a tor client.
     pub use_tor: bool,
 }

@@ -33,13 +33,6 @@ pub fn init(
     tauri_handle: Option<TauriHandle>,
     trace_stdout: bool,
 ) -> Result<()> {
-<<<<<<< HEAD
-    let ALL_CRATES: Vec<&str> = vec![
-        "monero_sys",
-        "monero_cpp",
-        "swap",
-        "asb",
-=======
     let TOR_CRATES: Vec<&str> = vec!["arti"];
 
     let LIBP2P_CRATES: Vec<&str> = vec![
@@ -49,7 +42,6 @@ pub fn init(
         "libp2p_core",
         "libp2p_tcp",
         "libp2p_noise",
->>>>>>> master
         "libp2p_community_tor",
         // Specific libp2p module targets that appear in logs
         "libp2p_core::transport",
@@ -74,12 +66,7 @@ pub fn init(
         "libp2p_rendezvous",
         "libp2p_dcutr",
     ];
-<<<<<<< HEAD
-    let OUR_CRATES: Vec<&str> = vec!["swap", "asb", "monero_sys"];
-=======
-
-    let OUR_CRATES: Vec<&str> = vec!["swap", "asb", "unstoppableswap-gui-rs"];
->>>>>>> master
+    let OUR_CRATES: Vec<&str> = vec!["swap", "asb", "monero_sys", "unstoppableswap-gui-rs"];
 
     // General log file for non-verbose logs
     let file_appender: RollingFileAppender = tracing_appender::rolling::never(&dir, "swap-all.log");
@@ -139,16 +126,12 @@ pub fn init(
         .with_timer(UtcTime::rfc_3339())
         .with_target(true)
         .json()
-<<<<<<< HEAD
-        .with_filter(env_filter(level_filter, OUR_CRATES.clone())?);
-=======
         .with_filter(env_filter_with_libp2p_info(
             level_filter,
             OUR_CRATES.clone(),
             LIBP2P_CRATES.clone(),
             TOR_CRATES.clone(),
         )?);
->>>>>>> master
 
     // If trace_stdout is true, we log all messages to the terminal
     // Otherwise, we only log the bare minimum

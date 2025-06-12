@@ -7,7 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<<<<<<< HEAD
 - We now call Monero function directly (via ffi bidnings) instead of using `monero-wallet-rpc`.
 - ASB: Since we don't communicate with `monero-wallet-rpc` anymore, the Monero wallet's will no longer be accessible by connecting to it.
 - ASB: The `wallet_url` option has been removed and replaced with the optional `daemon_url`, that specifies which Monero node the asb will connect to. If not specified, the asb will connect to a known public Monero node at random.
@@ -27,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | -------------------------- | -------------------------------- |
   | `asb logs \| my-script.sh` | `asb logs  2>&1 \| my-script.sh` |
   | `asb logs > output.txt`    | `asb logs > output.txt 2>&1`     |
-=======
+
 ## [2.0.0-beta.1] - 2025-06-11
 
 - BREAKING PROTOCOL CHANGE: Takers/GUIs running `>= 2.0.0` will not be able to initiate new swaps with makers/asbs running `< 2.0.0`. Please upgrade as soon as possible. Already started swaps from older versions are not be affected.
@@ -46,7 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ASB: Fix an issue where the asb would quote a max_swap_amount off by a couple of piconeros
 
 ## [1.1.4] - 2025-06-04
->>>>>>> master
 
 ## [1.1.3] - 2025-05-31
 

@@ -14,7 +14,6 @@ monero-sys = { path = "../monero-sys" }
 rand = "0.7"
 reqwest = "0.12.15"
 testcontainers = "0.15"
-<<<<<<< HEAD
 tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread",
     "time",
@@ -27,8 +26,3 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
     "env-filter",
     "tracing-log",
 ] }
-=======
-tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "time", "macros"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "ansi", "env-filter", "tracing-log"] }
->>>>>>> master
