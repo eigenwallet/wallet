@@ -94,6 +94,7 @@ jobs:
         run: |
           brew update
           brew install ${{ env.DEPS_MONERO_MACOS }} git
+          brew reinstall --build-from-source unbound expat 
 
       - name: Install Monero build dependencies (Windows)
         if: matrix.platform == env.WINDOWS
