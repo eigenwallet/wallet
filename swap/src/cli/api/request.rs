@@ -1114,6 +1114,7 @@ pub async fn list_sellers(
                 quote,
                 multiaddr,
                 peer_id,
+                version,
             }) => {
                 tracing::info!(
                     status = "Online",
@@ -1122,6 +1123,7 @@ pub async fn list_sellers(
                     max_quantity = %quote.max_quantity.to_string(),
                     address = %multiaddr.clone().to_string(),
                     peer_id = %peer_id,
+                    version = %version,
                     "Fetched peer status"
                 );
 
