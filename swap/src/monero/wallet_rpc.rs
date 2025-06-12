@@ -111,7 +111,7 @@ async fn choose_monero_daemon(network: Network) -> Result<MoneroDaemon, Error> {
                 return Ok(daemon.clone());
             }
             Err(err) => {
-                tracing::debug!(%err, %daemon, "Failed to connect to Monero daemon");
+                tracing::debug!(?err, %daemon, "Failed to connect to Monero daemon");
                 continue;
             }
             Ok(false) => continue,

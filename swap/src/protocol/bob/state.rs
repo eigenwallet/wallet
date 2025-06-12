@@ -46,7 +46,10 @@ pub enum BobState {
     BtcRedeemed(State5),
     CancelTimelockExpired(State6),
     BtcCancelled(State6),
+    BtcRefundPublished(State6),
+    BtcEarlyRefundPublished(State6),
     BtcRefunded(State6),
+    BtcEarlyRefunded(State6),
     XmrRedeemed {
         tx_lock_id: bitcoin::Txid,
     },
@@ -71,9 +74,12 @@ impl fmt::Display for BobState {
             BobState::BtcRedeemed(..) => write!(f, "btc is redeemed"),
             BobState::CancelTimelockExpired(..) => write!(f, "cancel timelock is expired"),
             BobState::BtcCancelled(..) => write!(f, "btc is cancelled"),
+            BobState::BtcRefundPublished { .. } => write!(f, "btc refund is published"),
+            BobState::BtcEarlyRefundPublished { .. } => write!(f, "btc early refund is published"),
             BobState::BtcRefunded(..) => write!(f, "btc is refunded"),
             BobState::XmrRedeemed { .. } => write!(f, "xmr is redeemed"),
             BobState::BtcPunished { .. } => write!(f, "btc is punished"),
+            BobState::BtcEarlyRefunded { .. } => write!(f, "btc is early refunded"),
             BobState::SafelyAborted => write!(f, "safely aborted"),
         }
     }
@@ -97,13 +103,17 @@ impl BobState {
             BobState::XmrLocked(state) | BobState::EncSigSent(state) => {
                 Some(state.expired_timelock(&bitcoin_wallet).await?)
             }
-            BobState::CancelTimelockExpired(state) | BobState::BtcCancelled(state) => {
+            BobState::CancelTimelockExpired(state)
+            | BobState::BtcCancelled(state)
+            | BobState::BtcRefundPublished(state)
+            | BobState::BtcEarlyRefundPublished(state) => {
                 Some(state.expired_timelock(&bitcoin_wallet).await?)
             }
             BobState::BtcPunished { .. } => Some(ExpiredTimelocks::Punish),
-            BobState::BtcRefunded(_) | BobState::BtcRedeemed(_) | BobState::XmrRedeemed { .. } => {
-                None
-            }
+            BobState::BtcRefunded(_)
+            | BobState::BtcEarlyRefunded { .. }
+            | BobState::BtcRedeemed(_)
+            | BobState::XmrRedeemed { .. } => None,
         })
     }
 }
@@ -280,6 +290,7 @@ impl State1 {
             self.b.public(),
             self.tx_cancel_fee,
         )?;
+
         let tx_refund =
             bitcoin::TxRefund::new(&tx_cancel, &self.refund_address, self.tx_refund_fee);
 
@@ -357,7 +368,9 @@ impl State2 {
             self.tx_cancel_fee,
         )
         .expect("valid cancel tx");
+
         let tx_cancel_sig = self.b.sign(tx_cancel.digest());
+
         let tx_punish = bitcoin::TxPunish::new(
             &tx_cancel,
             &self.punish_address,
@@ -366,9 +379,15 @@ impl State2 {
         );
         let tx_punish_sig = self.b.sign(tx_punish.digest());
 
+        let tx_early_refund =
+            bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee);
+
+        let tx_early_refund_sig = self.b.sign(tx_early_refund.digest());
+
         Message4 {
             tx_punish_sig,
             tx_cancel_sig,
+            tx_early_refund_sig,
         }
     }
 
@@ -511,6 +530,7 @@ impl State3 {
             tx_cancel_status,
         ))
     }
+
     pub fn attempt_cooperative_redeem(
         &self,
         s_a: monero::PrivateKey,
@@ -525,6 +545,23 @@ impl State3 {
             monero_wallet_restore_blockheight,
             lock_transfer_proof,
         }
+    }
+
+    pub fn construct_tx_early_refund(&self) -> bitcoin::TxEarlyRefund {
+        bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee)
+    }
+
+    pub async fn check_for_tx_early_refund(
+        &self,
+        bitcoin_wallet: &bitcoin::Wallet,
+    ) -> Result<Option<Arc<Transaction>>> {
+        let tx_early_refund = self.construct_tx_early_refund();
+        let tx = bitcoin_wallet
+            .get_raw_transaction(tx_early_refund.txid())
+            .await
+            .context("Failed to check for existence of tx_early_refund")?;
+
+        Ok(tx)
     }
 }
 
@@ -555,26 +592,33 @@ pub struct State4 {
 }
 
 impl State4 {
-    pub async fn check_for_tx_redeem(&self, bitcoin_wallet: &bitcoin::Wallet) -> Result<State5> {
+    pub async fn check_for_tx_redeem(
+        &self,
+        bitcoin_wallet: &bitcoin::Wallet,
+    ) -> Result<Option<State5>> {
         let tx_redeem =
             bitcoin::TxRedeem::new(&self.tx_lock, &self.redeem_address, self.tx_redeem_fee);
         let tx_redeem_encsig = self.b.encsign(self.S_a_bitcoin, tx_redeem.digest());
 
         let tx_redeem_candidate = bitcoin_wallet.get_raw_transaction(tx_redeem.txid()).await?;
 
-        let tx_redeem_sig =
-            tx_redeem.extract_signature_by_key(tx_redeem_candidate, self.b.public())?;
-        let s_a = bitcoin::recover(self.S_a_bitcoin, tx_redeem_sig, tx_redeem_encsig)?;
-        let s_a = monero::private_key_from_secp256k1_scalar(s_a.into());
+        if let Some(tx_redeem_candidate) = tx_redeem_candidate {
+            let tx_redeem_sig =
+                tx_redeem.extract_signature_by_key(tx_redeem_candidate, self.b.public())?;
+            let s_a = bitcoin::recover(self.S_a_bitcoin, tx_redeem_sig, tx_redeem_encsig)?;
+            let s_a = monero::private_key_from_secp256k1_scalar(s_a.into());
 
-        Ok(State5 {
-            s_a,
-            s_b: self.s_b,
-            v: self.v,
-            tx_lock: self.tx_lock.clone(),
-            monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
-            lock_transfer_proof: self.lock_transfer_proof.clone(),
-        })
+            Ok(Some(State5 {
+                s_a,
+                s_b: self.s_b,
+                v: self.v,
+                tx_lock: self.tx_lock.clone(),
+                monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
+                lock_transfer_proof: self.lock_transfer_proof.clone(),
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn tx_redeem_encsig(&self) -> bitcoin::EncryptedSignature {
@@ -586,7 +630,6 @@ impl State4 {
     pub async fn watch_for_redeem_btc(&self, bitcoin_wallet: &bitcoin::Wallet) -> Result<State5> {
         let tx_redeem =
             bitcoin::TxRedeem::new(&self.tx_lock, &self.redeem_address, self.tx_redeem_fee);
-        let tx_redeem_encsig = self.b.encsign(self.S_a_bitcoin, tx_redeem.digest());
 
         bitcoin_wallet
             .subscribe_to(tx_redeem.clone())
@@ -594,20 +637,10 @@ impl State4 {
             .wait_until_seen()
             .await?;
 
-        let tx_redeem_candidate = bitcoin_wallet.get_raw_transaction(tx_redeem.txid()).await?;
+        let state5 = self.check_for_tx_redeem(bitcoin_wallet).await?;
 
-        let tx_redeem_sig =
-            tx_redeem.extract_signature_by_key(tx_redeem_candidate, self.b.public())?;
-        let s_a = bitcoin::recover(self.S_a_bitcoin, tx_redeem_sig, tx_redeem_encsig)?;
-        let s_a = monero::private_key_from_secp256k1_scalar(s_a.into());
-
-        Ok(State5 {
-            s_a,
-            s_b: self.s_b,
-            v: self.v,
-            tx_lock: self.tx_lock.clone(),
-            monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
-            lock_transfer_proof: self.lock_transfer_proof.clone(),
+        state5.ok_or_else(|| {
+            anyhow!("Bitcoin redeem transaction was not found in the chain even though we previously saw it in the mempool. Our Electrum server might have cleared its mempool?")
         })
     }
 
@@ -650,6 +683,10 @@ impl State4 {
             tx_refund_fee: self.tx_refund_fee,
             tx_cancel_fee: self.tx_cancel_fee,
         }
+    }
+
+    pub fn construct_tx_early_refund(&self) -> bitcoin::TxEarlyRefund {
+        bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee)
     }
 }
 
@@ -729,11 +766,11 @@ pub struct State6 {
     s_b: monero::Scalar,
     v: monero::PrivateViewKey,
     pub monero_wallet_restore_blockheight: BlockHeight,
-    cancel_timelock: CancelTimelock,
+    pub cancel_timelock: CancelTimelock,
     punish_timelock: PunishTimelock,
     #[serde(with = "address_serde")]
     refund_address: bitcoin::Address,
-    tx_lock: bitcoin::TxLock,
+    pub tx_lock: bitcoin::TxLock,
     tx_cancel_sig_a: Signature,
     tx_refund_encsig: bitcoin::EncryptedSignature,
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
@@ -765,6 +802,7 @@ impl State6 {
             tx_cancel_status,
         ))
     }
+
     pub fn construct_tx_cancel(&self) -> Result<bitcoin::TxCancel> {
         bitcoin::TxCancel::new(
             &self.tx_lock,
@@ -774,13 +812,17 @@ impl State6 {
             self.tx_cancel_fee,
         )
     }
+
     pub async fn check_for_tx_cancel(
         &self,
         bitcoin_wallet: &bitcoin::Wallet,
-    ) -> Result<Arc<Transaction>> {
+    ) -> Result<Option<Arc<Transaction>>> {
         let tx_cancel = self.construct_tx_cancel()?;
 
-        let tx = bitcoin_wallet.get_raw_transaction(tx_cancel.txid()).await?;
+        let tx = bitcoin_wallet
+            .get_raw_transaction(tx_cancel.txid())
+            .await
+            .context("Failed to check for existence of tx_cancel")?;
 
         Ok(tx)
     }
@@ -810,10 +852,17 @@ impl State6 {
         Ok(signed_tx_refund_txid)
     }
 
-    pub fn signed_refund_transaction(&self) -> Result<Transaction> {
+    pub fn construct_tx_refund(&self) -> Result<bitcoin::TxRefund> {
         let tx_cancel = self.construct_tx_cancel()?;
+
         let tx_refund =
             bitcoin::TxRefund::new(&tx_cancel, &self.refund_address, self.tx_refund_fee);
+
+        Ok(tx_refund)
+    }
+
+    pub fn signed_refund_transaction(&self) -> Result<Transaction> {
+        let tx_refund = self.construct_tx_refund()?;
 
         let adaptor = Adaptor::<HashTranscript<Sha256>, Deterministic<Sha256>>::default();
 
@@ -823,7 +872,12 @@ impl State6 {
 
         let signed_tx_refund =
             tx_refund.add_signatures((self.A, sig_a), (self.b.public(), sig_b))?;
+
         Ok(signed_tx_refund)
+    }
+
+    pub fn construct_tx_early_refund(&self) -> bitcoin::TxEarlyRefund {
+        bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee)
     }
 
     pub fn tx_lock_id(&self) -> bitcoin::Txid {
@@ -842,5 +896,19 @@ impl State6 {
             monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
             lock_transfer_proof,
         }
+    }
+
+    pub async fn check_for_tx_early_refund(
+        &self,
+        bitcoin_wallet: &bitcoin::Wallet,
+    ) -> Result<Option<Arc<Transaction>>> {
+        let tx_early_refund = self.construct_tx_early_refund();
+
+        let tx = bitcoin_wallet
+            .get_raw_transaction(tx_early_refund.txid())
+            .await
+            .context("Failed to check for existence of tx_early_refund")?;
+
+        Ok(tx)
     }
 }

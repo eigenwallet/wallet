@@ -31,7 +31,9 @@ Consider joining the designated [Matrix chat](https://matrix.to/#/%23unstoppable
 
 ### Using Docker
 
-Running the ASB and its required services (Bitcoin node, Monero node, wallet RPC) can be complex to set up manually. We provide a Docker Compose solution that handles all of this automatically. See our [docker-compose repository](https://github.com/UnstoppableSwap/asb-docker-compose) for setup instructions and configuration details.
+Running the ASB and its required services (Bitcoin node, Monero node, wallet RPC) can be complex to set up manually.
+We provide a Docker Compose solution that handles all of this automatically.
+See our [docker-compose repository](https://github.com/UnstoppableSwap/asb-docker-compose) for setup instructions and configuration details.
 
 ## ASB Details
 
@@ -57,9 +59,9 @@ For example:
 ```toml
 [network]
 rendezvous_point = [
-   "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
-   "/dns4/discover2.unstoppableswap.net/tcp/8888/p2p/12D3KooWGRvf7qVQDrNR5nfYD6rKrbgeTi9x8RrbdxbmsPvxL4mw",
-   "/dns4/darkness.su/tcp/8888/p2p/12D3KooWFQAgVVS9t9UgL6v1sLprJVM7am5hFK7vy9iBCCoCBYmU"
+  "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
+  "/dns4/discover2.unstoppableswap.net/tcp/8888/p2p/12D3KooWGRvf7qVQDrNR5nfYD6rKrbgeTi9x8RrbdxbmsPvxL4mw",
+  "/dns4/darkness.su/tcp/8888/p2p/12D3KooWFQAgVVS9t9UgL6v1sLprJVM7am5hFK7vy9iBCCoCBYmU",
 ]
 external_addresses = ["/dns4/example.com/tcp/9939"]
 ```

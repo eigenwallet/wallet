@@ -10,7 +10,7 @@ export interface SettingsState {
   fetchFiatPrices: boolean;
   fiatCurrency: FiatCurrency;
   /// Whether to enable Tor for p2p connections
-  enableTor: boolean
+  enableTor: boolean;
   userHasSeenIntroduction: boolean;
 }
 
@@ -66,26 +66,35 @@ export enum FiatCurrency {
 
 export enum Network {
   Testnet = "testnet",
-  Mainnet = "mainnet"
+  Mainnet = "mainnet",
 }
 
 export enum Blockchain {
   Bitcoin = "bitcoin",
-  Monero = "monero"
+  Monero = "monero",
 }
 
 const initialState: SettingsState = {
   nodes: {
     [Network.Testnet]: {
       [Blockchain.Bitcoin]: [
+        "ssl://ax101.blockeng.ch:60002",
+        "ssl://blackie.c3-soft.com:57006",
+        "ssl://v22019051929289916.bestsrv.de:50002",
+        "tcp://v22019051929289916.bestsrv.de:50001",
+        "tcp://electrum.blockstream.info:60001",
+        "ssl://electrum.blockstream.info:60002",
         "ssl://blockstream.info:993",
         "tcp://blockstream.info:143",
-        "ssl://testnet.aranguren.org:51002",
+        "ssl://testnet.qtornado.com:51002",
+        "tcp://testnet.qtornado.com:51001",
         "tcp://testnet.aranguren.org:51001",
-        "ssl://bitcoin.stagemole.eu:5010",
-        "tcp://bitcoin.stagemole.eu:5000",
+        "ssl://testnet.aranguren.org:51002",
+        "ssl://testnet.qtornado.com:50002",
+        "ssl://bitcoin.devmole.eu:5010",
+        "tcp://bitcoin.devmole.eu:5000",
       ],
-      [Blockchain.Monero]: []
+      [Blockchain.Monero]: [],
     },
     [Network.Mainnet]: {
       [Blockchain.Bitcoin]: [
@@ -95,26 +104,38 @@ const initialState: SettingsState = {
         "ssl://b.1209k.com:50002",
         "tcp://electrum.coinucopia.io:50001",
       ],
-      [Blockchain.Monero]: []
-    }
+      [Blockchain.Monero]: [],
+    },
   },
-  theme: Theme.Darker,
+  theme: Theme.Dark,
   fetchFiatPrices: false,
   fiatCurrency: FiatCurrency.Usd,
   enableTor: true,
-  userHasSeenIntroduction: false
+  userHasSeenIntroduction: false,
 };
 
 const alertsSlice = createSlice({
   name: "settings",
   initialState,
   reducers: {
-    moveUpNode(slice, action: PayloadAction<{ network: Network, type: Blockchain, node: string }>) {
-      const index = slice.nodes[action.payload.network][action.payload.type].indexOf(action.payload.node);
+    moveUpNode(
+      slice,
+      action: PayloadAction<{
+        network: Network;
+        type: Blockchain;
+        node: string;
+      }>,
+    ) {
+      const index = slice.nodes[action.payload.network][
+        action.payload.type
+      ].indexOf(action.payload.node);
       if (index > 0) {
-        const temp = slice.nodes[action.payload.network][action.payload.type][index];
-        slice.nodes[action.payload.network][action.payload.type][index] = slice.nodes[action.payload.network][action.payload.type][index - 1];
-        slice.nodes[action.payload.network][action.payload.type][index - 1] = temp;
+        const temp =
+          slice.nodes[action.payload.network][action.payload.type][index];
+        slice.nodes[action.payload.network][action.payload.type][index] =
+          slice.nodes[action.payload.network][action.payload.type][index - 1];
+        slice.nodes[action.payload.network][action.payload.type][index - 1] =
+          temp;
       }
     },
     setTheme(slice, action: PayloadAction<Theme>) {
@@ -126,26 +147,48 @@ const alertsSlice = createSlice({
     setFiatCurrency(slice, action: PayloadAction<FiatCurrency>) {
       slice.fiatCurrency = action.payload;
     },
-    addNode(slice, action: PayloadAction<{ network: Network, type: Blockchain, node: string }>) {
+    addNode(
+      slice,
+      action: PayloadAction<{
+        network: Network;
+        type: Blockchain;
+        node: string;
+      }>,
+    ) {
       // Make sure the node is not already in the list
-      if (slice.nodes[action.payload.network][action.payload.type].includes(action.payload.node)) {
+      if (
+        slice.nodes[action.payload.network][action.payload.type].includes(
+          action.payload.node,
+        )
+      ) {
         return;
       }
       // Add the node to the list
-      slice.nodes[action.payload.network][action.payload.type].push(action.payload.node);
+      slice.nodes[action.payload.network][action.payload.type].push(
+        action.payload.node,
+      );
     },
-    removeNode(slice, action: PayloadAction<{ network: Network, type: Blockchain, node: string }>) {
-      slice.nodes[action.payload.network][action.payload.type] = slice.nodes[action.payload.network][action.payload.type].filter(node => node !== action.payload.node);
+    removeNode(
+      slice,
+      action: PayloadAction<{
+        network: Network;
+        type: Blockchain;
+        node: string;
+      }>,
+    ) {
+      slice.nodes[action.payload.network][action.payload.type] = slice.nodes[
+        action.payload.network
+      ][action.payload.type].filter((node) => node !== action.payload.node);
     },
     setUserHasSeenIntroduction(slice, action: PayloadAction<boolean>) {
-      slice.userHasSeenIntroduction = action.payload
+      slice.userHasSeenIntroduction = action.payload;
     },
     resetSettings(_) {
       return initialState;
     },
     setTorEnabled(slice, action: PayloadAction<boolean>) {
       slice.enableTor = action.payload;
-    }
+    },
   },
 });
 

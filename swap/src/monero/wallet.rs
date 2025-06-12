@@ -195,6 +195,126 @@ impl Wallets {
                 listener,
             )
             .await
+            .context("Failed to refresh generated wallet for sweeping to destination address")?;
+
+        // Sweep all the funds from the generated wallet to the specified destination address
+        let sweep_result = self
+            .sweep_all(destination_address)
+            .await
+            .context("Failed to transfer Monero to destination address")?;
+
+        for tx in &sweep_result {
+            tracing::info!(
+                %tx,
+                monero_address = %destination_address,
+                "Monero transferred to destination address");
+        }
+
+        self.re_open().await?;
+
+        Ok(sweep_result)
+    }
+
+    /// Transfer a specified amount of monero to a specified address.
+    pub async fn transfer(&self, request: TransferRequest) -> Result<TransferProof> {
+        let TransferRequest {
+            public_spend_key,
+            public_view_key,
+            amount,
+        } = request;
+
+        let destination_address =
+            Address::standard(self.network, public_spend_key, public_view_key.into());
+
+        let res = self
+            .inner
+            .transfer_single(0, amount.as_piconero(), &destination_address.to_string())
+            .await?;
+
+        tracing::debug!(
+            %amount,
+            to = %public_spend_key,
+            tx_id = %res.tx_hash,
+            "Successfully initiated Monero transfer"
+        );
+
+        Ok(TransferProof::new(
+            TxHash(res.tx_hash),
+            res.tx_key
+                .context("Missing tx_key in `transfer` response")?,
+        ))
+    }
+
+    /// Send all funds from the currently loaded wallet to a specified address.
+    pub async fn sweep_all(&self, address: Address) -> Result<Vec<TxHash>> {
+        let sweep_all = self.inner.sweep_all(address.to_string()).await?;
+
+        let tx_hashes = sweep_all.tx_hash_list.into_iter().map(TxHash).collect();
+        Ok(tx_hashes)
+    }
+
+    /// Get the balance of the primary account.
+    pub async fn get_balance(&self) -> Result<wallet::GetBalance> {
+        Ok(self.inner.get_balance(0).await?)
+    }
+
+    pub async fn block_height(&self) -> Result<BlockHeight> {
+        Ok(self.inner.get_height().await?)
+    }
+
+    /// Checks if the wallet-rpc is alive by checking if the version is available
+    pub async fn is_alive(&self) -> Result<bool> {
+        Ok(self.inner.get_version().await.is_ok())
+    }
+
+    pub fn get_main_address(&self) -> Address {
+        self.main_address
+    }
+
+    pub async fn refresh(&self, max_attempts: usize) -> Result<Refreshed> {
+        const RETRY_INTERVAL: Duration = Duration::from_secs(1);
+
+        for i in 1..=max_attempts {
+            tracing::info!(name = %self.main_wallet, attempt=i, "Syncing Monero wallet");
+
+            let result = self.inner.refresh().await;
+
+            match result {
+                Ok(refreshed) => {
+                    tracing::info!(name = %self.main_wallet, "Monero wallet synced");
+                    return Ok(refreshed);
+                }
+                Err(error) => {
+                    let attempts_left = max_attempts - i;
+
+                    // We would not want to fail here if the height is not available
+                    // as it is not critical for the operation of the wallet.
+                    // We can just log a warning and continue.
+                    let height = match self.inner.get_height().await {
+                        Ok(height) => height.to_string(),
+                        Err(_) => {
+                            tracing::warn!(name = %self.main_wallet, "Failed to fetch Monero wallet height during sync");
+                            "unknown".to_string()
+                        }
+                    };
+
+                    tracing::warn!(attempt=i, %height, %attempts_left, name = %self.main_wallet, %error, "Failed to sync Monero wallet");
+
+                    if attempts_left == 0 {
+                        return Err(error.into());
+                    }
+                }
+            }
+
+            tokio::time::sleep(RETRY_INTERVAL).await;
+        }
+        unreachable!("Loop should have returned by now");
+    }
+
+    pub async fn stop(&self) -> Result<()> {
+        self.inner.stop_wallet().await?;
+
+        Ok(())
     }
 }
 
