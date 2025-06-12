@@ -1,6 +1,6 @@
-# Verifying a Tauri `.sig` (Minisign) file
+# Verifying the signature of the GUI
 
-Verifying downloads is a good habit. The signature files that accompany our binaries are sometimes wrapped in an additional `base64` layer. This guide shows how to decode that wrapper and then verify the Minisign file.
+Verifying downloads is a good habit. The signature files that accompany our GUI binaries are wrapped in an additional `base64` layer. This guide shows how to decode that wrapper and then verify the Minisign file.
 
 ## Prerequisites
 
@@ -13,23 +13,12 @@ Verifying downloads is a good habit. The signature files that accompany our bina
 
 ```text
 UnstoppableSwap_2.0.0-beta.2_amd64.AppImage        # the binary you will verify
-UnstoppableSwap_2.0.0-beta.2_amd64.AppImage.sig    # looks like Minisign … but is itself base64
+UnstoppableSwap_2.0.0-beta.2_amd64.AppImage.sig    # contains a base64 encoded signature
 ```
-
-> **Why the extra base64?**
-> Some CDN build pipelines wrap the plain 2-line `.minisig` file in another layer of base64 so it survives *any* transport that might mangle new-lines. Minisign can’t read that wrapper directly.
 
 ## Step-by-step
 
-1. **Inspect** the first few bytes:
-
-   ```bash
-   head -n1 UnstoppableSwap_2.0.0-beta.2_amd64.AppImage.sig
-   ```
-
-   If you see a long block of `A–Z a–z 0–9 +/=` characters (no words), it’s still base64.
-
-2. **Decode once**:
+1. **Decode base64**:
 
    ```bash
    base64 -D -i UnstoppableSwap_2.0.0-beta.2_amd64.AppImage.sig \
@@ -45,16 +34,16 @@ UnstoppableSwap_2.0.0-beta.2_amd64.AppImage.sig    # looks like Minisign … but
    4LKsm8VRcErR…
    ```
 
-3. **Grab the public key** (two options):
+2. **Grab the public key** (two options):
 
    *From code:* `tauri.conf.json → plugins.updater.pubkey`
 
    ```bash
    # prints raw 56-byte key
-   jq -r '.plugins.updater.pubkey' tauri.conf.json | base64 -D
+   jq -r '.plugins.updater.pubkey' src-tauri/tauri.conf.json | base64 -D
    ```
 
-   *or* copy the key you already have:
+   *or* copy the key from below:
 
    ```text
    RWRc8dYGEB0Ipl37n2fWnO3gtVgUoPkY6XUS0C1ppRsgRUYsmSGtcECA
@@ -79,13 +68,5 @@ UnstoppableSwap_2.0.0-beta.2_amd64.AppImage.sig    # looks like Minisign … but
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `Untrusted signature comment too long` | Fed Minisign the *outer* base64 file | Decode the `.sig` first (Step 2) |
+| `Untrusted signature comment too long` | Fed Minisign the *outer* base64 file | Decode the `.sig` first (Step 1) |
 | `Signature mismatch` | Wrong public key | Re-extract the key from `tauri.conf.json` and make sure there’s no extra whitespace |
-| `minisign: invalid base64` | Corrupted download | Re-download both the `.AppImage` and `.sig` |
-
-## Conceptual recap
-
-- **Minisign** expects a 2-line ASCII file (<1 kB).
-- Tauri (and some release pipelines) sometimes wrap that file in **another** base64 layer → you must strip it.
-- Public keys in Tauri configs are themselves base64-encoded and need one decode step before you hand them to Minisign.
-
