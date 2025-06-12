@@ -77,7 +77,7 @@ export default function UpdaterDialog() {
   }, []);
 
   // If no update is available, don't render the dialog
-  if (!availableUpdate?.available) return null;
+  if (availableUpdate === null) return null;
 
   function hideNotification() {
     setAvailableUpdate(null);
