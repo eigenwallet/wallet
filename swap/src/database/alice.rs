@@ -79,7 +79,9 @@ pub enum AliceEndState {
     SafelyAborted,
     BtcRedeemed,
     XmrRefunded,
-    BtcEarlyRefunded { state3: alice::State3 },
+    BtcEarlyRefunded {
+        state3: alice::State3,
+    },
     BtcPunished {
         state3: alice::State3,
         transfer_proof: TransferProof,

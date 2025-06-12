@@ -8,7 +8,6 @@ pub use wallet::{Daemon, Wallet, Wallets, WatchRequest};
 
 use crate::bitcoin;
 use anyhow::{bail, Result};
-use typeshare::typeshare;
 use rand::{CryptoRng, RngCore};
 use rust_decimal::prelude::*;
 use rust_decimal::Decimal;
@@ -17,6 +16,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::ops::{Add, Mul, Sub};
 use std::str::FromStr;
+use typeshare::typeshare;
 
 pub const PICONERO_OFFSET: u64 = 1_000_000_000_000;
 

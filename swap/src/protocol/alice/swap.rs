@@ -131,16 +131,22 @@ where
                 .with_max_interval(Duration::from_secs(30))
                 .build();
 
-            let transfer_proof = backoff::future::retry_notify(backoff, || async {
-                // We check the status of the Bitcoin lock transaction
-                // If the swap is cancelled, there is no need to lock the Monero funds anymore
-                // because there is no way for the swap to succeed.
-                if !matches!(
-                    state3.expired_timelocks(bitcoin_wallet).await.context("Failed to check for expired timelocks before locking Monero").map_err(backoff::Error::transient)?,
-                    ExpiredTimelocks::None { .. }
-                ) {
-                    return Ok(None);
-                }
+            let transfer_proof = backoff::future::retry_notify(
+                backoff,
+                || async {
+                    // We check the status of the Bitcoin lock transaction
+                    // If the swap is cancelled, there is no need to lock the Monero funds anymore
+                    // because there is no way for the swap to succeed.
+                    if !matches!(
+                        state3
+                            .expired_timelocks(bitcoin_wallet)
+                            .await
+                            .context("Failed to check for expired timelocks before locking Monero")
+                            .map_err(backoff::Error::transient)?,
+                        ExpiredTimelocks::None { .. }
+                    ) {
+                        return Ok(None);
+                    }
 
                     // Record the current monero wallet block height so we don't have to scan from
                     // block 0 for scenarios where we create a refund wallet.

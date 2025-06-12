@@ -200,9 +200,11 @@ impl Wallets {
 
     pub async fn block_height(&self) -> Result<BlockHeight> {
         Ok(BlockHeight {
-            height: self.main_wallet.blockchain_height().await.context(
-                "Failed to get blockchain height",
-            )?,
+            height: self
+                .main_wallet
+                .blockchain_height()
+                .await
+                .context("Failed to get blockchain height")?,
         })
     }
 }

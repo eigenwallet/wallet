@@ -8,7 +8,6 @@ use crate::protocol::alice::swap::has_already_processed_enc_sig;
 use crate::protocol::alice::{AliceState, ReservesMonero, State3, Swap};
 use crate::protocol::{Database, State};
 use crate::{bitcoin, env, kraken, monero};
-use monero::Amount;
 use anyhow::{anyhow, Context, Result};
 use futures::future;
 use futures::future::{BoxFuture, FutureExt};
@@ -17,6 +16,7 @@ use libp2p::request_response::{OutboundFailure, OutboundRequestId, ResponseChann
 use libp2p::swarm::SwarmEvent;
 use libp2p::{PeerId, Swarm};
 use moka::future::Cache;
+use monero::Amount;
 use rust_decimal::Decimal;
 use std::collections::HashMap;
 use std::convert::{Infallible, TryInto};
@@ -530,8 +530,9 @@ where
         };
 
         let monero_wallet = self.monero_wallet.clone();
-        let get_unlocked_balance =
-            || async { unlocked_monero_balance_with_timeout(monero_wallet.main_wallet().await).await };
+        let get_unlocked_balance = || async {
+            unlocked_monero_balance_with_timeout(monero_wallet.main_wallet().await).await
+        };
 
         let result = make_quote(
             min_buy,
