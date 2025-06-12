@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - docs: add instructions for verifying Tauri signature files
+- docs: document new `electrum_rpc_urls` and `use_mempool_space_fee_estimation` options
 
 ## [2.0.0-beta.2] - 2025-06-11
 
