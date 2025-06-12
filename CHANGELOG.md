@@ -27,6 +27,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | `asb logs \| my-script.sh` | `asb logs  2>&1 \| my-script.sh` |
   | `asb logs > output.txt`    | `asb logs > output.txt 2>&1`     |
 
+## [2.0.0-beta.1] - 2025-06-11
+
+- BREAKING PROTOCOL CHANGE: Takers/GUIs running `>= 2.0.0` will not be able to initiate new swaps with makers/asbs running `< 2.0.0`. Please upgrade as soon as possible. Already started swaps from older versions are not be affected.
+  - Taker and Maker now collaboratively sign a `tx_refund_early` Bitcoin transaction in the negotiation phase which allows the maker to refund the Bitcoin for the taker without having to wait for the 12h cancel timelock to expire.
+  - `tx_refund_early` will only be published if the maker has not locked their Monero yet. This allows swaps to be refunded quickly if the maker doesn't have enough funds available or their daemon is not fully synced. The taker can then use the refunded Bitcoin to start a new swap.
+- ASB: The maker will take Monero funds needed for ongoing swaps into consideration when making a quote. A warning will be displayed if the Monero funds do not cover all ongoing swaps.
+- ASB: Return a zero quote when quoting fails instead of letting the request time out
+- GUI + CLI + ASB: We now do load balancing over multiple Electrum servers. This improves the reliability of all our interactions with the Bitcoin network. When transactions are published they are broadcast to all servers in parallel.
+- ASB: The `electrum_rpc_url` option has been removed. A new `electrum_rpc_urls` option has been added. Use it to specify a list of Electrum servers to use. If you want you can continue using a single server by providing a single URL. For most makers we recommend:
+  - Running your own [electrs](https://github.com/romanz/electrs/) server
+  - Optionally providing 2-5 fallback servers. The order of the servers does matter. Electrum servers at the front of the list have priority and will be tried first. You should place your own server at the front of the list.
+  - A list of public Electrum servers can be found [here](https://1209k.com/bitcoin-eye/ele.php?chain=btc)
+
+## [1.1.7] - 2025-06-04
+
+- ASB: Fix an issue where the asb would quote a max_swap_amount off by a couple of piconeros
+
+## [1.1.4] - 2025-06-04
+
 ## [1.1.3] - 2025-05-31
 
 - The Bitcoin fee estimation is now more accurate. It uses a combination of `estimatesmartfee` from Bitcoin Core and `mempool.get_fee_histogram` from Electrum to ensure our distance from the mempool tip is appropriate. If our Electrum server doesn't support fee estimation, we use the mempool.space API. The mempool space API can be disabled using the `bitcoin.use_mempool_space_fee_estimation` option in the config file. It defaults to `true`.
@@ -90,7 +109,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0-rc.12] - 2025-01-14
 
 - GUI: Fixed a bug where the CLI wasn't passed the correct Monero node.
--
 
 ## [1.0.0-rc.11] - 2024-12-22
 
@@ -512,7 +530,10 @@ It is possible to migrate critical data from the old db to the sqlite but there 
 - Fixed an issue where Alice would not verify if Bob's Bitcoin lock transaction is semantically correct, i.e. pays the agreed upon amount to an output owned by both of them.
   Fixing this required a **breaking change** on the network layer and hence old versions are not compatible with this version.
 
-[unreleased]: https://github.com/UnstoppableSwap/core/compare/1.1.3...HEAD
+[unreleased]: https://github.com/UnstoppableSwap/core/compare/2.0.0-beta.1...HEAD
+[2.0.0-beta.1]: https://github.com/UnstoppableSwap/core/compare/1.1.7...2.0.0-beta.1
+[1.1.7]: https://github.com/UnstoppableSwap/core/compare/1.1.4...1.1.7
+[1.1.4]: https://github.com/UnstoppableSwap/core/compare/1.1.3...1.1.4
 [1.1.3]: https://github.com/UnstoppableSwap/core/compare/1.1.2...1.1.3
 [1.1.2]: https://github.com/UnstoppableSwap/core/compare/1.1.1...1.1.2
 [1.1.1]: https://github.com/UnstoppableSwap/core/compare/1.1.0...1.1.1

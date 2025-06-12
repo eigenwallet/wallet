@@ -9,7 +9,6 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use monero::{Address, Network};
-
 pub use monero_sys::{Daemon, WalletHandle as Wallet};
 use uuid::Uuid;
 
@@ -194,7 +193,19 @@ impl Wallets {
                 watch_request.confirmation_target,
                 listener,
             )
-            .await
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn block_height(&self) -> Result<BlockHeight> {
+        Ok(BlockHeight {
+            height: self
+                .main_wallet
+                .blockchain_height()
+                .await
+                .context("Failed to get blockchain height")?,
+        })
     }
 }
 

@@ -64,7 +64,7 @@ jobs:
       - name: Check formatting
         uses: dprint/check@v2.2
         with:
-          dprint-version: 0.39.1
+          dprint-version: 0.50.0
 
       - name: Run clippy with default features
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -420,6 +420,10 @@ jobs:
             test_name: alice_manually_redeems_after_enc_sig_learned
           - package: swap
             test_name: happy_path_bob_offline_while_alice_redeems_btc
+          - package: swap
+            test_name: alice_empty_balance_after_started_btc_early_refund
+          - package: swap
+            test_name: alice_broken_wallet_rpc_after_started_btc_early_refund
           - package: monero-sys
             test_name: harness_test
     runs-on: ubuntu-latest-m

@@ -30,6 +30,12 @@ pub struct WalletHandle {
     call_sender: UnboundedSender<Call>,
 }
 
+impl std::fmt::Display for WalletHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "WalletHandle")
+    }
+}
+
 /// A wrapper around a wallet that can be used to call methods on it.
 /// It must live in a single thread due to ffi constraints [1].
 ///

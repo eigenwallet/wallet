@@ -111,7 +111,7 @@ async fn choose_monero_daemon(network: Network) -> Result<MoneroDaemon, Error> {
                 return Ok(daemon.clone());
             }
             Err(err) => {
-                tracing::debug!(%err, %daemon, "Failed to connect to Monero daemon");
+                tracing::debug!(?err, %daemon, "Failed to connect to Monero daemon");
                 continue;
             }
             Ok(false) => continue,
@@ -124,30 +124,6 @@ async fn choose_monero_daemon(network: Network) -> Result<MoneroDaemon, Error> {
 /// Public wrapper around [`choose_monero_daemon`].
 pub async fn choose_monero_node(network: Network) -> Result<MoneroDaemon, Error> {
     choose_monero_daemon(network).await
-}
-
-fn extract_host_and_port(address: String) -> Result<(String, u16), Error> {
-    // Strip the protocol (anything before "://")
-    let stripped_address = if let Some(pos) = address.find("://") {
-        address[(pos + 3)..].to_string()
-    } else {
-        address
-    };
-
-    // Split the remaining address into parts (host and port)
-    let parts: Vec<&str> = stripped_address.split(':').collect();
-
-    if parts.len() == 2 {
-        let host = parts[0].to_string();
-        let port = parts[1].parse::<u16>()?;
-
-        return Ok((host, port));
-    }
-
-    bail!(
-        "Could not extract host and port from address: {}",
-        stripped_address
-    )
 }
 
 #[cfg(test)]

@@ -81,6 +81,19 @@ bindings:
 fmt:
 	dprint fmt
 
+# Run eslint for the GUI frontend
+check_gui_eslint:
+	cd src-gui && yarn run eslint
+
+# Run the typescript type checker for the GUI frontend
+check_gui_tsc:
+	cd src-gui && yarn run tsc --noEmit
+
+# Run the checks for the GUI frontend
+check_gui:
+	just check_gui_eslint || true
+	just check_gui_tsc
+
 # Sometimes you have to prune the docker network to get the integration tests to work
 docker-prune-network:
 	docker network prune -f
