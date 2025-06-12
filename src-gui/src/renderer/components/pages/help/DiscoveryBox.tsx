@@ -8,19 +8,11 @@ import { useAppDispatch } from "store/hooks";
 import { discoveredMakersByRendezvous } from "store/features/makersSlice";
 import { useSnackbar } from "notistack";
 
-const useStyles = makeStyles((theme) => ({
-  title: {
-    display: "flex",
-    alignItems: "center",
-    gap: theme.spacing(1),
-  },
-  button: {
-    marginTop: theme.spacing(2),
-  },
+const StyledPromiseButton = styled(PromiseInvokeButton)(({ theme }) => ({
+  marginTop: theme.spacing(2),
 }));
 
 export default function DiscoveryBox() {
-  const classes = useStyles();
   const rendezvousPoints = useSettings((s) => s.rendezvousPoints);
   const dispatch = useAppDispatch();
   const { enqueueSnackbar } = useSnackbar();
@@ -44,7 +36,11 @@ export default function DiscoveryBox() {
 
   return (
     <InfoBox
-      title={<Box className={classes.title}>Discover Makers</Box>}
+      title={
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          Discover Makers
+        </Box>
+      }
       mainContent={
         <Typography variant="subtitle2">
           By connecting to rendezvous points run by volunteers, you can discover
@@ -56,17 +52,16 @@ export default function DiscoveryBox() {
         </Typography>
       }
       additionalContent={
-        <PromiseInvokeButton
+        <StyledPromiseButton
           variant="contained"
           color="primary"
           onInvoke={handleDiscovery}
           disabled={rendezvousPoints.length === 0}
           startIcon={<Search />}
-          className={classes.button}
           displayErrorSnackbar
         >
           Discover Makers
-        </PromiseInvokeButton>
+        </StyledPromiseButton>
       }
       icon={null}
       loading={false}
