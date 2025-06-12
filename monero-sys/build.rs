@@ -130,6 +130,7 @@ fn main() {
         println!("cargo:rustc-link-search=native=/opt/homebrew/lib");
         println!("cargo:rustc-link-search=native=/opt/homebrew/opt/unbound/lib");
         println!("cargo:rustc-link-search=native=/opt/homebrew/opt/expat/lib");
+        println!("cargo:rustc-link-search=native=/opt/homebrew/Cellar/protobuf@21/21.12_1/lib/");
     }
 
     // Link libwallet and libwallet_api statically
@@ -180,7 +181,7 @@ fn main() {
 
     // Link protobuf dynamically
     // I haven't figured out how to link it statically
-    println!("cargo:rustc-link-lib=dylib=protobuf");
+    println!("cargo:rustc-link-lib=static=protobuf");
 
     #[cfg(target_os = "macos")]
     {
