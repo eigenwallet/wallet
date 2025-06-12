@@ -2,7 +2,7 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { Theme } from "renderer/components/theme";
 
 const DEFAULT_RENDEZVOUS_POINTS = [
-"/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE"
+  "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
 ];
 
 export interface SettingsState {
@@ -158,7 +158,9 @@ const alertsSlice = createSlice({
       slice.rendezvousPoints.push(action.payload);
     },
     removeRendezvousPoint(slice, action: PayloadAction<string>) {
-      slice.rendezvousPoints = slice.rendezvousPoints.filter(point => point !== action.payload);
+      slice.rendezvousPoints = slice.rendezvousPoints.filter(
+        (point) => point !== action.payload,
+      );
     },
     addNode(
       slice,

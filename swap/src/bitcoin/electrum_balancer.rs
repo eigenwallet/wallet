@@ -263,7 +263,7 @@ where
             let idx = self.next.load(Ordering::SeqCst);
 
             // Get client for this index
-            let client = self.get_or_init_client_sync(idx).map_err(|e| {
+            let client = self.get_or_init_client_sync(idx).map_err(|err| {
                 trace!(
                     server_url = self.urls[idx],
                     attempt = errors.len(),
@@ -271,7 +271,7 @@ where
                     "Client initialization failed, switching to next client"
                 );
 
-                errors.push(e);
+                errors.push(err);
 
                 BackoffError::transient(())
             })?;

@@ -16,7 +16,7 @@ use structopt::{clap, StructOpt};
 use uuid::Uuid;
 
 use super::api::request::GetLogsArgs;
-use super::api::{Context, ContextBuilder};
+use super::api::ContextBuilder;
 
 // See: https://1209k.com/bitcoin-eye/ele.php?chain=btc
 const DEFAULT_ELECTRUM_RPC_URL: &str = "ssl://blockstream.info:700";
@@ -246,10 +246,12 @@ where
                     .build()
                     .await?,
             );
-            
-            ListSellersArgs { rendezvous_points: vec![rendezvous_point] }
-                .request(context.clone())
-                .await?;
+
+            ListSellersArgs {
+                rendezvous_points: vec![rendezvous_point],
+            }
+            .request(context.clone())
+            .await?;
 
             Ok(context)
         }
