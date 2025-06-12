@@ -1,8 +1,7 @@
-import { Box, Typography } from "@mui/material";
+import { Box, Typography, styled } from "@mui/material";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import { useSettings } from "store/hooks";
 import { Search } from "@mui/icons-material";
-import { makeStyles } from "@mui/styles";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { listSellersAtRendezvousPoint } from "renderer/rpc";
 import { useAppDispatch } from "store/hooks";

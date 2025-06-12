@@ -267,7 +267,7 @@ where
                 trace!(
                     server_url = self.urls[idx],
                     attempt = errors.len(),
-                    error = ?e,
+                    error = ?err,
                     "Client initialization failed, switching to next client"
                 );
 

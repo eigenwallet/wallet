@@ -49,7 +49,7 @@ export const PRESET_RENDEZVOUS_POINTS = [
 export async function fetchSellersAtPresetRendezvousPoints() {
   await Promise.all(
     PRESET_RENDEZVOUS_POINTS.map(async (rendezvousPoint) => {
-      const response = await listSellersAtRendezvousPoint(rendezvousPoint);
+      const response = await listSellersAtRendezvousPoint([rendezvousPoint]);
       store.dispatch(discoveredMakersByRendezvous(response.sellers));
 
       logger.info(
