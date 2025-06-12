@@ -67,7 +67,7 @@ pub fn init(
         "libp2p_dcutr",
     ];
 
-    let OUR_CRATES: Vec<&str> = vec!["swap", "asb", "unstoppableswap-gui-rs"];
+    let OUR_CRATES: Vec<&str> = vec!["swap", "asb", "unstoppableswap-gui-rs", "tauri-plugin-updater"];
 
     // General log file for non-verbose logs
     let file_appender: RollingFileAppender = tracing_appender::rolling::never(&dir, "swap-all.log");

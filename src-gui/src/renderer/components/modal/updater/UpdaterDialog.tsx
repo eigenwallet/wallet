@@ -66,6 +66,7 @@ export default function UpdaterDialog() {
     // Check for updates when component mounts
     check()
       .then((updateResponse) => {
+        console.log("updateResponse", updateResponse);
         setAvailableUpdate(updateResponse);
       })
       .catch((err) => {
