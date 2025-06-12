@@ -360,8 +360,7 @@ async fn next_state(
             // Clone these so that we can move them into the listener closure
             let transfer_proof_clone = lock_transfer_proof.clone();
             let watch_request = state.lock_xmr_watch_request(lock_transfer_proof.clone());
-            // Work around
-            let lock_transfer_proof_2 = lock_transfer_proof.clone();
+
             let watch_future = monero_wallet.wait_until_confirmed(
                 watch_request,
                 Some(move |confirmations| {
@@ -381,7 +380,7 @@ async fn next_state(
                 received_xmr = watch_future => {
                     match received_xmr {
                         Ok(()) =>
-                            BobState::XmrLocked(state.xmr_locked(monero_wallet_restore_blockheight, lock_transfer_proof_2.clone())),
+                            BobState::XmrLocked(state.xmr_locked(monero_wallet_restore_blockheight, transfer_proof_clone.clone())),
                         Err(err) if err.to_string().contains("amount mismatch") => {
                             // Alice locked insufficient Monero
                             tracing::warn!(%err, "Insufficient Monero have been locked!");

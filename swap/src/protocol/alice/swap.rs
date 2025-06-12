@@ -187,8 +187,7 @@ where
                     )
                 },
             )
-            .await
-            .expect("We should never run out of retries while locking Monero");
+            .await;
 
             match transfer_proof {
                 // If the transfer was successful, we transition to the next state

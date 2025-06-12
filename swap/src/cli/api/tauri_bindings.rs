@@ -4,6 +4,7 @@ use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
 use anyhow::{anyhow, Context, Result};
 use bitcoin::Txid;
 use serde::{Deserialize, Serialize};
+use url::Url;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -700,7 +701,7 @@ pub enum BackgroundRefundState {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TauriSettings {
     /// The URL of the Monero node e.g `http://xmr.node:18081`
-    pub monero_node_url: Option<String>,
+    pub monero_node_url: Option<Url>,
     /// The URLs of the Electrum RPC servers e.g `["ssl://bitcoin.com:50001", "ssl://backup.com:50001"]`
     pub electrum_rpc_urls: Vec<String>,
     /// Whether to initialize and use a tor client.

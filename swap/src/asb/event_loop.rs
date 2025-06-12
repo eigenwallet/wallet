@@ -8,6 +8,7 @@ use crate::protocol::alice::swap::has_already_processed_enc_sig;
 use crate::protocol::alice::{AliceState, ReservesMonero, State3, Swap};
 use crate::protocol::{Database, State};
 use crate::{bitcoin, env, kraken, monero};
+use monero::Amount;
 use anyhow::{anyhow, Context, Result};
 use futures::future;
 use futures::future::{BoxFuture, FutureExt};

@@ -13,6 +13,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::Arc;
 use structopt::{clap, StructOpt};
+use url::Url;
 use uuid::Uuid;
 
 use super::api::request::GetLogsArgs;
