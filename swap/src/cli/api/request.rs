@@ -1085,11 +1085,7 @@ pub async fn list_sellers(
     let ListSellersArgs { rendezvous_points } = list_sellers;
     let rendezvous_nodes: Vec<_> = rendezvous_points
         .iter()
-        .filter_map(|rendezvous_point| {
-            rendezvous_point
-                .split_peer_id()
-                .map(|(peer_id, addr)| (peer_id, addr))
-        })
+        .filter_map(|rendezvous_point| rendezvous_point.split_peer_id())
         .collect();
 
     let identity = context
@@ -1132,7 +1128,7 @@ pub async fn list_sellers(
                 // without having to re-discover the peer at the rendezvous point
                 context
                     .db
-                    .insert_address(peer_id.clone(), multiaddr.clone())
+                    .insert_address(*peer_id, multiaddr.clone())
                     .await?;
             }
             SellerStatus::Unreachable(UnreachableSeller { peer_id }) => {

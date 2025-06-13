@@ -1,4 +1,4 @@
-import { MakerStatus } from "models/apiModel";
+import { MakerStatus, ExtendedMakerStatus } from "models/apiModel";
 import { SellerStatus } from "models/tauriModel";
 import { isTestnet } from "store/config";
 import { splitPeerIdFromMultiAddress } from "./parseUtils";
@@ -49,7 +49,7 @@ export function secondsToDays(seconds: number): number {
 // the models returned by the public registry and the models used internally.
 export function rendezvousSellerToMakerStatus(
   seller: SellerStatus,
-): MakerStatus | null {
+): ExtendedMakerStatus | null {
   if (seller.type === "Unreachable") {
     return null;
   }
@@ -61,6 +61,7 @@ export function rendezvousSellerToMakerStatus(
     peerId: seller.content.peer_id,
     multiAddr: seller.content.multiaddr,
     testnet: isTestnet(),
+    version: seller.content.version,
   };
 }
 

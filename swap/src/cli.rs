@@ -17,7 +17,7 @@ mod tests {
     use super::*;
     use crate::asb;
     use crate::asb::rendezvous::RendezvousNode;
-    use crate::cli::list_sellers::{Seller, SellerStatus};
+    use crate::cli::list_sellers::{QuoteWithAddress, SellerStatus};
     use crate::network::quote;
     use crate::network::quote::BidQuote;
     use crate::network::rendezvous::XmrBtcNamespace;
@@ -29,10 +29,17 @@ mod tests {
         ConnectionDenied, ConnectionId, FromSwarm, THandlerInEvent, THandlerOutEvent, ToSwarm,
     };
     use libp2p::{identity, rendezvous, request_response, Multiaddr, PeerId};
+    use semver::Version;
     use std::collections::HashSet;
-    use std::iter::FromIterator;
     use std::task::Poll;
     use std::time::Duration;
+
+    // Test-only struct for compatibility
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    struct Seller {
+        multiaddr: Multiaddr,
+        status: SellerStatus,
+    }
 
     #[tokio::test]
     #[ignore]
@@ -63,8 +70,20 @@ mod tests {
             .unwrap()
             .unwrap();
 
+        // Convert SellerStatus to test Seller struct
+        let actual_sellers: Vec<Seller> = sellers
+            .into_iter()
+            .map(|status| Seller {
+                multiaddr: match &status {
+                    SellerStatus::Online(quote_with_addr) => quote_with_addr.multiaddr.clone(),
+                    SellerStatus::Unreachable(_) => "/ip4/0.0.0.0/tcp/0".parse().unwrap(), // placeholder
+                },
+                status,
+            })
+            .collect();
+
         assert_eq!(
-            HashSet::<Seller>::from_iter(sellers),
+            HashSet::<Seller>::from_iter(actual_sellers),
             HashSet::<Seller>::from_iter([expected_seller_1, expected_seller_2])
         )
     }
@@ -126,9 +145,15 @@ mod tests {
             }
         });
 
+        let full_address = asb_address.with(Protocol::P2p(asb_peer_id));
         Seller {
-            multiaddr: asb_address.with(Protocol::P2p(asb_peer_id)),
-            status: SellerStatus::Online(static_quote),
+            multiaddr: full_address.clone(),
+            status: SellerStatus::Online(QuoteWithAddress {
+                multiaddr: full_address,
+                peer_id: asb_peer_id,
+                quote: static_quote,
+                version: Version::parse("1.0.0").unwrap(),
+            }),
         }
     }
 

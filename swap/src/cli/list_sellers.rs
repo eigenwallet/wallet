@@ -5,19 +5,28 @@ use crate::protocol::Database;
 use anyhow::Result;
 use arti_client::TorClient;
 use futures::StreamExt;
+use libp2p::identify;
 use libp2p::multiaddr::Protocol;
 use libp2p::request_response;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use libp2p::{identity, ping, rendezvous, Multiaddr, PeerId, Swarm};
+use semver::Version;
 use serde::Serialize;
 use serde_with::{serde_as, DisplayFromStr};
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 use tor_rtcompat::tokio::TokioRustlsRuntime;
 use typeshare::typeshare;
+
+/// Builds an identify config for the CLI with appropriate protocol and agent versions.
+/// This allows peers to identify our client version and protocol compatibility.
+fn build_identify_config(identity: identity::Keypair) -> identify::Config {
+    let protocol_version = "/comit/xmr/btc/1.0.0".to_string();
+    let agent_version = format!("cli/{}", env!("CARGO_PKG_VERSION"));
+    identify::Config::new(protocol_version, identity.public()).with_agent_version(agent_version)
+}
 
 /// Returns sorted list of sellers, with [Online](Status::Online) listed first.
 ///
@@ -39,6 +48,7 @@ pub async fn list_sellers(
         rendezvous: rendezvous::client::Behaviour::new(identity.clone()),
         quote: quote::cli(),
         ping: ping::Behaviour::new(ping::Config::new().with_timeout(Duration::from_secs(60))),
+        identify: identify::Behaviour::new(build_identify_config(identity.clone())),
     };
     let swarm = swarm::cli(identity, maybe_tor_client, behaviour).await?;
 
@@ -72,6 +82,11 @@ pub struct QuoteWithAddress {
 
     /// The quote of the seller
     pub quote: BidQuote,
+
+    /// The version of the seller's agent
+    #[serde_as(as = "DisplayFromStr")]
+    #[typeshare(serialized_as = "string")]
+    pub version: Version,
 }
 
 #[typeshare]
@@ -96,18 +111,7 @@ enum OutEvent {
     Rendezvous(rendezvous::client::Event),
     Quote(quote::OutEvent),
     Ping(ping::Event),
-}
-
-impl From<rendezvous::client::Event> for OutEvent {
-    fn from(event: rendezvous::client::Event) -> Self {
-        OutEvent::Rendezvous(event)
-    }
-}
-
-impl From<quote::OutEvent> for OutEvent {
-    fn from(event: quote::OutEvent) -> Self {
-        OutEvent::Quote(event)
-    }
+    Identify(Box<identify::Event>),
 }
 
 #[derive(NetworkBehaviour)]
@@ -117,15 +121,309 @@ struct Behaviour {
     rendezvous: rendezvous::client::Behaviour,
     quote: quote::Behaviour,
     ping: ping::Behaviour,
+    identify: identify::Behaviour,
 }
 
-#[derive(Debug)]
-enum QuoteStatus {
-    // We have not yet received a quote from the peer
-    Pending,
+#[derive(Debug, Clone)]
+enum PeerState {
+    /// Initial state with just the peer ID
+    Initial { peer_id: PeerId },
+    /// We have received a reachable address
+    HasAddress {
+        peer_id: PeerId,
+        reachable_addresses: Vec<Multiaddr>,
+    },
+    /// We have received the version
+    HasVersion {
+        peer_id: PeerId,
+        version: Version,
+        reachable_addresses: Vec<Multiaddr>,
+    },
+    /// We have received the quote
+    HasQuote {
+        peer_id: PeerId,
+        quote: BidQuote,
+        reachable_addresses: Vec<Multiaddr>,
+    },
+    /// We have received both address and version
+    HasAddressAndVersion {
+        peer_id: PeerId,
+        version: Version,
+        reachable_addresses: Vec<Multiaddr>,
+    },
+    /// We have received both address and quote
+    HasAddressAndQuote {
+        peer_id: PeerId,
+        quote: BidQuote,
+        reachable_addresses: Vec<Multiaddr>,
+    },
+    /// We have received both version and quote
+    HasVersionAndQuote {
+        peer_id: PeerId,
+        version: Version,
+        quote: BidQuote,
+        reachable_addresses: Vec<Multiaddr>,
+    },
+    /// We have received all three: address, version, and quote
+    Complete {
+        peer_id: PeerId,
+        version: Version,
+        quote: BidQuote,
+        reachable_addresses: Vec<Multiaddr>,
+    },
+    /// The peer failed with an error
+    Failed {
+        peer_id: PeerId,
+        error_message: String,
+        reachable_addresses: Vec<Multiaddr>,
+    },
+}
 
-    // We have received a quote from the peer. Or we have received that the peer is unreachable
-    Received(Option<BidQuote>),
+/// Extracts the semver version from a user agent string.
+/// Example input: "asb/2.0.0 (xmr-btc-swap-mainnet)"
+/// Returns None if the version cannot be parsed.
+fn extract_semver_from_agent_str(agent_str: &str) -> Option<Version> {
+    // Split on '/' and take the second part
+    let version_str = agent_str.split('/').nth(1)?;
+    // Split on whitespace and take the first part
+    let version_str = version_str.split_whitespace().next()?;
+    // Parse the version string
+    Version::parse(version_str).ok()
+}
+
+impl PeerState {
+    fn new(peer_id: PeerId) -> Self {
+        Self::Initial { peer_id }
+    }
+
+    fn add_reachable_address(self, address: Multiaddr) -> Self {
+        let reachable_addresses = self.get_reachable_addresses();
+        let mut new_reachable_addresses = reachable_addresses.clone();
+
+        if !new_reachable_addresses.contains(&address) {
+            new_reachable_addresses.push(address);
+        }
+
+        match self {
+            Self::Initial { peer_id } => Self::HasAddress {
+                peer_id,
+                reachable_addresses: new_reachable_addresses,
+            },
+            Self::HasVersion {
+                peer_id, version, ..
+            } => Self::HasAddressAndVersion {
+                peer_id,
+                version,
+                reachable_addresses: new_reachable_addresses,
+            },
+            Self::HasQuote { peer_id, quote, .. } => Self::HasAddressAndQuote {
+                peer_id,
+                quote,
+                reachable_addresses: new_reachable_addresses,
+            },
+            Self::HasVersionAndQuote {
+                peer_id,
+                version,
+                quote,
+                ..
+            } => Self::Complete {
+                peer_id,
+                version,
+                quote,
+                reachable_addresses: new_reachable_addresses,
+            },
+            Self::HasAddress { peer_id, .. } => Self::HasAddress {
+                peer_id,
+                reachable_addresses: new_reachable_addresses,
+            },
+            Self::HasAddressAndVersion {
+                peer_id, version, ..
+            } => Self::HasAddressAndVersion {
+                peer_id,
+                version,
+                reachable_addresses: new_reachable_addresses,
+            },
+            Self::HasAddressAndQuote { peer_id, quote, .. } => Self::HasAddressAndQuote {
+                peer_id,
+                quote,
+                reachable_addresses: new_reachable_addresses,
+            },
+            Self::Complete {
+                peer_id,
+                version,
+                quote,
+                ..
+            } => Self::Complete {
+                peer_id,
+                version,
+                quote,
+                reachable_addresses: new_reachable_addresses,
+            },
+            Self::Failed {
+                peer_id,
+                error_message,
+                ..
+            } => Self::Failed {
+                peer_id,
+                error_message,
+                reachable_addresses: new_reachable_addresses,
+            },
+        }
+    }
+
+    fn apply_quote(self, quote_result: Result<BidQuote>) -> Self {
+        match (self, quote_result) {
+            (state, Ok(quote)) => {
+                let reachable_addresses = state.get_reachable_addresses();
+                match state {
+                    Self::Initial { peer_id } => Self::HasQuote {
+                        peer_id,
+                        quote,
+                        reachable_addresses,
+                    },
+                    Self::HasAddress { peer_id, .. } => Self::HasAddressAndQuote {
+                        peer_id,
+                        quote,
+                        reachable_addresses,
+                    },
+                    Self::HasVersion {
+                        peer_id, version, ..
+                    } => Self::HasVersionAndQuote {
+                        peer_id,
+                        version,
+                        quote,
+                        reachable_addresses,
+                    },
+                    Self::HasAddressAndVersion {
+                        peer_id, version, ..
+                    } => Self::Complete {
+                        peer_id,
+                        version,
+                        quote,
+                        reachable_addresses,
+                    },
+                    Self::HasQuote { .. }
+                    | Self::HasAddressAndQuote { .. }
+                    | Self::HasVersionAndQuote { .. }
+                    | Self::Complete { .. } => state,
+                    Self::Failed { .. } => state,
+                }
+            }
+            (state, Err(error)) => {
+                let reachable_addresses = state.get_reachable_addresses();
+                Self::Failed {
+                    peer_id: state.get_peer_id(),
+                    error_message: error.to_string(),
+                    reachable_addresses,
+                }
+            }
+        }
+    }
+
+    fn apply_version(self, version: String) -> Self {
+        let reachable_addresses = self.get_reachable_addresses();
+
+        match extract_semver_from_agent_str(version.as_str()) {
+            Some(version) => match self {
+                Self::Initial { peer_id } => Self::HasVersion {
+                    peer_id,
+                    version,
+                    reachable_addresses,
+                },
+                Self::HasAddress { peer_id, .. } => Self::HasAddressAndVersion {
+                    peer_id,
+                    version,
+                    reachable_addresses,
+                },
+                Self::HasQuote { peer_id, quote, .. } => Self::HasVersionAndQuote {
+                    peer_id,
+                    version,
+                    quote,
+                    reachable_addresses,
+                },
+                Self::HasAddressAndQuote { peer_id, quote, .. } => Self::Complete {
+                    peer_id,
+                    version,
+                    quote,
+                    reachable_addresses,
+                },
+                Self::HasVersion { .. }
+                | Self::HasAddressAndVersion { .. }
+                | Self::HasVersionAndQuote { .. }
+                | Self::Complete { .. } => self,
+                Self::Failed { .. } => self,
+            },
+            None => self.mark_failed(format!(
+                "Failed to parse version from user agent: {}",
+                version
+            )),
+        }
+    }
+
+    fn mark_failed(self, error_message: String) -> Self {
+        let reachable_addresses = self.get_reachable_addresses();
+        Self::Failed {
+            peer_id: self.get_peer_id(),
+            error_message,
+            reachable_addresses,
+        }
+    }
+
+    fn get_peer_id(&self) -> PeerId {
+        match self {
+            Self::Initial { peer_id }
+            | Self::HasAddress { peer_id, .. }
+            | Self::HasVersion { peer_id, .. }
+            | Self::HasQuote { peer_id, .. }
+            | Self::HasAddressAndVersion { peer_id, .. }
+            | Self::HasAddressAndQuote { peer_id, .. }
+            | Self::HasVersionAndQuote { peer_id, .. }
+            | Self::Complete { peer_id, .. }
+            | Self::Failed { peer_id, .. } => *peer_id,
+        }
+    }
+
+    fn get_reachable_addresses(&self) -> Vec<Multiaddr> {
+        match self {
+            Self::Initial { .. } => Vec::new(),
+            Self::HasAddress {
+                reachable_addresses,
+                ..
+            }
+            | Self::HasVersion {
+                reachable_addresses,
+                ..
+            }
+            | Self::HasQuote {
+                reachable_addresses,
+                ..
+            }
+            | Self::HasAddressAndVersion {
+                reachable_addresses,
+                ..
+            }
+            | Self::HasAddressAndQuote {
+                reachable_addresses,
+                ..
+            }
+            | Self::HasVersionAndQuote {
+                reachable_addresses,
+                ..
+            }
+            | Self::Complete {
+                reachable_addresses,
+                ..
+            }
+            | Self::Failed {
+                reachable_addresses,
+                ..
+            } => reachable_addresses.clone(),
+        }
+    }
+
+    fn is_pending(&self) -> bool {
+        !matches!(self, Self::Complete { .. } | Self::Failed { .. })
+    }
 }
 
 #[derive(Debug)]
@@ -160,8 +458,9 @@ struct EventLoop {
     /// The addresses of peers that have been discovered and are reachable
     reachable_asb_address: HashMap<PeerId, Multiaddr>,
 
-    /// The status of the quote for each peer
-    asb_quote_status: HashMap<PeerId, QuoteStatus>,
+    /// The state of each peer
+    /// The state contains a mini state machine
+    peer_states: HashMap<PeerId, PeerState>,
 
     /// The queue of peers to dial
     /// When we discover a peer we add it is then dialed by the event loop
@@ -181,7 +480,7 @@ impl EventLoop {
             rendezvous_points,
             namespace,
             reachable_asb_address: Default::default(),
-            asb_quote_status: Default::default(),
+            peer_states: Default::default(),
             to_request_quote: dial_queue,
         }
     }
@@ -224,6 +523,7 @@ impl EventLoop {
 
             if let Err(e) = self.swarm.dial(dial_opts) {
                 tracing::error!(%peer_id, %multiaddr, error = %e, "Failed to dial rendezvous point");
+
                 self.rendezvous_points_status
                     .insert(*peer_id, RendezvousPointStatus::Failed);
             }
@@ -240,17 +540,17 @@ impl EventLoop {
                         continue;
                     }
 
-                    // If we already have an entry for this peer in asb_quote_status, we skip it
+                    // If we already have an entry for this peer, we skip it
                     // We probably discovered a peer at a rendezvous point which we already have an entry for locally
-                    if self.asb_quote_status.contains_key(&peer_id) {
+                    if self.peer_states.contains_key(&peer_id) {
                         tracing::warn!(%peer_id, "Skipping quote request for peer. We already have an entry for this peer");
                         continue;
                     }
 
-                    // Change the status to pending
-                    self.asb_quote_status.insert(peer_id, QuoteStatus::Pending);
+                    // Initialize peer state
+                    self.peer_states.insert(peer_id, PeerState::new(peer_id));
 
-                    // Add all known addresses to the swarm
+                    // Add all known addresses of this peer to the swarm
                     for multiaddr in multiaddresses {
                         self.swarm.add_peer_address(peer_id, multiaddr);
                     }
@@ -277,14 +577,20 @@ impl EventLoop {
                                 );
                             } else {
                                 let address = endpoint.get_remote_address();
-                                tracing::debug!(%peer_id, %address, "Connection established to peer");
+                                tracing::debug!(%peer_id, %address, "Connection established to peer for list-sellers");
                                 self.reachable_asb_address.insert(peer_id, address.clone());
+
+                                // Update the peer state with the reachable address
+                                if let Some(state) = self.peer_states.remove(&peer_id) {
+                                    let new_state = state.add_reachable_address(address.clone());
+                                    self.peer_states.insert(peer_id, new_state);
+                                }
                             }
                         }
                         SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                             if let Some(peer_id) = peer_id {
                                 if let Some(rendezvous_point) = self.get_rendezvous_point(&peer_id) {
-                                    tracing::error!(
+                                    tracing::warn!(
                                         %peer_id,
                                         %rendezvous_point,
                                         "Failed to connect to rendezvous point: {}",
@@ -294,33 +600,29 @@ impl EventLoop {
                                     // Update the status of the rendezvous point to failed
                                     self.rendezvous_points_status.insert(peer_id, RendezvousPointStatus::Failed);
                                 } else {
-                                    tracing::error!(
+                                    tracing::warn!(
                                         %peer_id,
                                         "Failed to connect to peer: {}",
                                         error
                                     );
 
-                                    match self.asb_quote_status.entry(peer_id) {
-                                        Entry::Occupied(mut entry) => {
-                                            entry.insert(QuoteStatus::Received(None));
-                                        },
-                                        _ => {
-                                            tracing::debug!(%peer_id, %error, "Connection error with unexpected peer");
-                                        }
+                                    if let Some(state) = self.peer_states.remove(&peer_id) {
+                                        let failed_state = state.mark_failed(format!("Failed to connect to peer: {}", error));
+                                        self.peer_states.insert(peer_id, failed_state);
                                     }
                                 }
                             } else {
-                                tracing::debug!("Failed to connect (no peer id): {}", error);
+                                tracing::warn!("Failed to connect (no peer id): {}", error);
                             }
                         }
                         SwarmEvent::Behaviour(OutEvent::Rendezvous(
-                                                  libp2p::rendezvous::client::Event::Discovered { registrations, rendezvous_node, .. },
-                                              )) => {
+                            libp2p::rendezvous::client::Event::Discovered { registrations, rendezvous_node, .. },
+                        )) => {
+                            tracing::debug!(%rendezvous_node, num_peers = %registrations.len(), "Discovered peers at rendezvous point");
+
                             for registration in registrations {
                                 let peer = registration.record.peer_id();
-                                let addresses = registration.record.addresses().into_iter().map(|addr| self.ensure_multiaddr_has_p2p_suffix(peer, addr.clone())).collect::<Vec<_>>();
-
-                                tracing::info!(%peer, ?addresses, "Discovered peer at rendezvous point");
+                                let addresses = registration.record.addresses().iter().map(|addr| self.ensure_multiaddr_has_p2p_suffix(peer, addr.clone())).collect::<Vec<_>>();
 
                                 self.to_request_quote.push_back((peer, addresses));
                             }
@@ -328,7 +630,9 @@ impl EventLoop {
                             // Update the status of the rendezvous point to success
                             self.rendezvous_points_status.insert(rendezvous_node, RendezvousPointStatus::Success);
                         }
-                        SwarmEvent::Behaviour(OutEvent::Rendezvous(libp2p::rendezvous::client::Event::DiscoverFailed { rendezvous_node, .. })) => {
+                        SwarmEvent::Behaviour(OutEvent::Rendezvous(
+                            libp2p::rendezvous::client::Event::DiscoverFailed { rendezvous_node, .. },
+                        )) => {
                             self.rendezvous_points_status.insert(rendezvous_node, RendezvousPointStatus::Failed);
                         }
                         SwarmEvent::Behaviour(OutEvent::Quote(quote_response)) => {
@@ -336,13 +640,12 @@ impl EventLoop {
                                 request_response::Event::Message { peer, message } => {
                                     match message {
                                         request_response::Message::Response { response, .. } => {
-                                            if self.asb_quote_status.insert(peer, QuoteStatus::Received(Some(response))).is_none() {
-                                                tracing::error!(%peer, "Received bid quote from unexpected peer, this record will be removed!");
-                                                self.asb_quote_status.remove(&peer);
-                                                continue;
+                                            if let Some(state) = self.peer_states.remove(&peer) {
+                                                let new_state = state.apply_quote(Ok(response));
+                                                self.peer_states.insert(peer, new_state);
+                                            } else {
+                                                tracing::warn!(%peer, "Received bid quote from unexpected peer, this record will be removed!");
                                             }
-
-                                            tracing::debug!(%peer, quote = ?response, "Received quote from peer");
                                         }
                                         request_response::Message::Request { .. } => unreachable!("we only request quotes, not respond")
                                     }
@@ -350,11 +653,12 @@ impl EventLoop {
                                 request_response::Event::OutboundFailure { peer, error, .. } => {
                                     if self.is_rendezvous_point(&peer) {
                                         tracing::debug!(%peer, "Outbound failure when communicating with rendezvous node: {:#}", error);
-                                    } else {
-                                        tracing::debug!(%peer, "Ignoring seller, because unable to request quote: {:#}", error);
 
-                                        // Update the status of the quote to failed
-                                        self.asb_quote_status.insert(peer, QuoteStatus::Received(None));
+                                        // Update the status of the rendezvous point to failed
+                                        self.rendezvous_points_status.insert(peer, RendezvousPointStatus::Failed);
+                                    } else if let Some(state) = self.peer_states.remove(&peer) {
+                                        let failed_state = state.apply_quote(Err(anyhow::anyhow!("Quote request failed: {}", error)));
+                                        self.peer_states.insert(peer, failed_state);
                                     }
                                 }
                                 request_response::Event::InboundFailure { peer, error, .. } => {
@@ -363,14 +667,31 @@ impl EventLoop {
 
                                         // Update the status of the rendezvous point to failed
                                         self.rendezvous_points_status.insert(peer, RendezvousPointStatus::Failed);
-                                    } else {
-                                        tracing::debug!(%peer, "Ignoring seller, because unable to request quote: {:#}", error);
-
-                                        // Update the status of the quote to failed
-                                        self.asb_quote_status.insert(peer, QuoteStatus::Received(None));
+                                    } else if let Some(state) = self.peer_states.remove(&peer) {
+                                        let failed_state = state.mark_failed(format!("Inbound failure: {}", error));
+                                        self.peer_states.insert(peer, failed_state);
                                     }
                                 },
                                 request_response::Event::ResponseSent { .. } => unreachable!()
+                            }
+                        }
+                        SwarmEvent::Behaviour(OutEvent::Identify(event)) => {
+                            match *event {
+                                identify::Event::Received { peer_id, info } => {
+                                    if let Some(state) = self.peer_states.remove(&peer_id) {
+                                        let new_state = state.apply_version(info.agent_version);
+                                        self.peer_states.insert(peer_id, new_state);
+                                    }
+                                }
+                                identify::Event::Error { peer_id, error } => {
+                                    tracing::error!(%peer_id, error = %error, "Error when identifying peer");
+
+                                    if let Some(state) = self.peer_states.remove(&peer_id) {
+                                        let failed_state = state.mark_failed(format!("Error when identifying peer: {}", error));
+                                        self.peer_states.insert(peer_id, failed_state);
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                         _ => {}
@@ -402,27 +723,33 @@ impl EventLoop {
             }
 
             let all_quotes_fetched = self
-                .asb_quote_status
-                .iter()
-                .map(|(peer_id, quote_status)| match quote_status {
-                    QuoteStatus::Pending => Err(StillPending {}),
-                    QuoteStatus::Received(Some(quote)) => {
-                        let address = self
-                            .reachable_asb_address
-                            .get(peer_id)
-                            .expect("if we got a quote we must have stored an address");
+                .peer_states
+                .values()
+                .map(|peer_state| match peer_state {
+                    state if state.is_pending() => Err(StillPending {}),
+                    PeerState::Complete {
+                        peer_id,
+                        version,
+                        quote,
+                        reachable_addresses,
+                    } => Ok(SellerStatus::Online(QuoteWithAddress {
+                        peer_id: *peer_id,
+                        multiaddr: reachable_addresses[0].clone(),
+                        quote: *quote,
+                        version: version.clone(),
+                    })),
+                    PeerState::Failed {
+                        peer_id,
+                        error_message,
+                        ..
+                    } => {
+                        tracing::warn!(%peer_id, error = %error_message, "Peer failed");
 
-                        Ok(SellerStatus::Online(QuoteWithAddress {
-                            peer_id: *peer_id,
-                            multiaddr: address.clone(),
-                            quote: quote.clone(),
-                        }))
-                    }
-                    QuoteStatus::Received(None) => {
                         Ok(SellerStatus::Unreachable(UnreachableSeller {
                             peer_id: *peer_id,
                         }))
                     }
+                    _ => unreachable!("All cases should be covered above"),
                 })
                 .collect::<Result<Vec<_>, _>>();
 
@@ -440,6 +767,24 @@ impl EventLoop {
 #[derive(Debug)]
 struct StillPending {}
 
+impl From<rendezvous::client::Event> for OutEvent {
+    fn from(event: rendezvous::client::Event) -> Self {
+        OutEvent::Rendezvous(event)
+    }
+}
+
+impl From<quote::OutEvent> for OutEvent {
+    fn from(event: quote::OutEvent) -> Self {
+        OutEvent::Quote(event)
+    }
+}
+
+impl From<identify::Event> for OutEvent {
+    fn from(event: identify::Event) -> Self {
+        OutEvent::Identify(Box::new(event))
+    }
+}
+
 impl From<ping::Event> for OutEvent {
     fn from(event: ping::Event) -> Self {
         OutEvent::Ping(event)
@@ -449,50 +794,632 @@ impl From<ping::Event> for OutEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::anyhow;
+
+    // Helper function to create a test multiaddr
+    fn test_multiaddr() -> Multiaddr {
+        "/ip4/127.0.0.1/tcp/8080".parse().unwrap()
+    }
+
+    // Helper function to create a test PeerId
+    fn test_peer_id() -> PeerId {
+        PeerId::random()
+    }
+
+    // Helper function to create a test BidQuote
+    fn test_bid_quote() -> BidQuote {
+        BidQuote {
+            price: bitcoin::Amount::from_sat(50000),
+            min_quantity: bitcoin::Amount::from_sat(1000),
+            max_quantity: bitcoin::Amount::from_sat(100000),
+        }
+    }
+
+    // Helper function to create a test Version
+    fn test_version() -> Version {
+        Version::parse("1.2.3").unwrap()
+    }
+
+    mod extract_semver_tests {
+        use super::*;
+
+        #[test]
+        fn extract_semver_from_asb_agent_string() {
+            assert_eq!(
+                extract_semver_from_agent_str("asb/2.0.0 (xmr-btc-swap-mainnet)"),
+                Some(Version::parse("2.0.0").unwrap())
+            );
+        }
+
+        #[test]
+        fn extract_semver_from_cli_agent_string() {
+            assert_eq!(
+                extract_semver_from_agent_str("cli/1.5.2"),
+                Some(Version::parse("1.5.2").unwrap())
+            );
+        }
+
+        #[test]
+        fn extract_semver_with_prerelease() {
+            assert_eq!(
+                extract_semver_from_agent_str("asb/2.1.0-beta.1 (xmr-btc-swap-testnet)"),
+                Some(Version::parse("2.1.0-beta.1").unwrap())
+            );
+        }
+
+        #[test]
+        fn extract_semver_invalid_format() {
+            assert_eq!(extract_semver_from_agent_str("invalid-format"), None);
+        }
+
+        #[test]
+        fn extract_semver_no_slash() {
+            assert_eq!(extract_semver_from_agent_str("asb-2.0.0"), None);
+        }
+
+        #[test]
+        fn extract_semver_invalid_version() {
+            assert_eq!(extract_semver_from_agent_str("asb/invalid.version"), None);
+        }
+
+        #[test]
+        fn extract_semver_empty_version() {
+            assert_eq!(extract_semver_from_agent_str("asb/"), None);
+        }
+    }
+
+    mod peer_state_tests {
+        use super::*;
+
+        #[test]
+        fn new_peer_state_starts_as_initial() {
+            let peer_id = test_peer_id();
+            let state = PeerState::new(peer_id);
+
+            assert!(matches!(state, PeerState::Initial { .. }));
+            assert_eq!(state.get_peer_id(), peer_id);
+            assert_eq!(state.get_reachable_addresses(), Vec::<Multiaddr>::new());
+            assert!(state.is_pending());
+        }
+
+        #[test]
+        fn initial_add_address_transitions_to_has_address() {
+            let peer_id = test_peer_id();
+            let address = test_multiaddr();
+            let state = PeerState::new(peer_id);
+
+            let new_state = state.add_reachable_address(address.clone());
+
+            match &new_state {
+                PeerState::HasAddress {
+                    peer_id: p,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert_eq!(*reachable_addresses, vec![address]);
+                }
+                _ => panic!("Expected HasAddress state"),
+            }
+            assert!(new_state.is_pending());
+        }
+
+        #[test]
+        fn initial_apply_quote_transitions_to_has_quote() {
+            let peer_id = test_peer_id();
+            let quote = test_bid_quote();
+            let state = PeerState::new(peer_id);
+
+            let new_state = state.apply_quote(Ok(quote));
+
+            match &new_state {
+                PeerState::HasQuote {
+                    peer_id: p,
+                    quote: q,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert_eq!(*q, quote);
+                    assert_eq!(*reachable_addresses, Vec::<Multiaddr>::new());
+                }
+                _ => panic!("Expected HasQuote state"),
+            }
+            assert!(new_state.is_pending());
+        }
+
+        #[test]
+        fn initial_apply_version_transitions_to_has_version() {
+            let peer_id = test_peer_id();
+            let version_str = "asb/1.2.3".to_string();
+            let state = PeerState::new(peer_id);
+
+            let new_state = state.apply_version(version_str);
+
+            match &new_state {
+                PeerState::HasVersion {
+                    peer_id: p,
+                    version,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert_eq!(*version, Version::parse("1.2.3").unwrap());
+                    assert_eq!(*reachable_addresses, Vec::<Multiaddr>::new());
+                }
+                _ => panic!("Expected HasVersion state"),
+            }
+            assert!(new_state.is_pending());
+        }
+
+        #[test]
+        fn has_address_apply_quote_transitions_to_has_address_and_quote() {
+            let peer_id = test_peer_id();
+            let address = test_multiaddr();
+            let quote = test_bid_quote();
+
+            let state = PeerState::HasAddress {
+                peer_id,
+                reachable_addresses: vec![address.clone()],
+            };
+
+            let new_state = state.apply_quote(Ok(quote));
+
+            match &new_state {
+                PeerState::HasAddressAndQuote {
+                    peer_id: p,
+                    quote: q,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert_eq!(*q, quote);
+                    assert_eq!(*reachable_addresses, vec![address]);
+                }
+                _ => panic!("Expected HasAddressAndQuote state"),
+            }
+            assert!(new_state.is_pending());
+        }
+
+        #[test]
+        fn has_address_apply_version_transitions_to_has_address_and_version() {
+            let peer_id = test_peer_id();
+            let address = test_multiaddr();
+            let version_str = "cli/2.1.0".to_string();
+
+            let state = PeerState::HasAddress {
+                peer_id,
+                reachable_addresses: vec![address.clone()],
+            };
+
+            let new_state = state.apply_version(version_str);
+
+            match &new_state {
+                PeerState::HasAddressAndVersion {
+                    peer_id: p,
+                    version,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert_eq!(*version, Version::parse("2.1.0").unwrap());
+                    assert_eq!(*reachable_addresses, vec![address]);
+                }
+                _ => panic!("Expected HasAddressAndVersion state"),
+            }
+            assert!(new_state.is_pending());
+        }
+
+        #[test]
+        fn has_version_apply_quote_transitions_to_has_version_and_quote() {
+            let peer_id = test_peer_id();
+            let version = test_version();
+            let quote = test_bid_quote();
+
+            let state = PeerState::HasVersion {
+                peer_id,
+                version: version.clone(),
+                reachable_addresses: vec![],
+            };
+
+            let new_state = state.apply_quote(Ok(quote));
+
+            match &new_state {
+                PeerState::HasVersionAndQuote {
+                    peer_id: p,
+                    version: v,
+                    quote: q,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert_eq!(*v, version);
+                    assert_eq!(*q, quote);
+                    assert_eq!(*reachable_addresses, Vec::<Multiaddr>::new());
+                }
+                _ => panic!("Expected HasVersionAndQuote state"),
+            }
+            assert!(new_state.is_pending());
+        }
+
+        #[test]
+        fn has_quote_apply_version_transitions_to_has_version_and_quote() {
+            let peer_id = test_peer_id();
+            let quote = test_bid_quote();
+            let version_str = "asb/3.0.0".to_string();
+
+            let state = PeerState::HasQuote {
+                peer_id,
+                quote,
+                reachable_addresses: vec![],
+            };
+
+            let new_state = state.apply_version(version_str);
+
+            match &new_state {
+                PeerState::HasVersionAndQuote {
+                    peer_id: p,
+                    version,
+                    quote: q,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert_eq!(*version, Version::parse("3.0.0").unwrap());
+                    assert_eq!(*q, quote);
+                    assert_eq!(*reachable_addresses, Vec::<Multiaddr>::new());
+                }
+                _ => panic!("Expected HasVersionAndQuote state"),
+            }
+            assert!(new_state.is_pending());
+        }
+
+        #[test]
+        fn has_address_and_version_apply_quote_transitions_to_complete() {
+            let peer_id = test_peer_id();
+            let address = test_multiaddr();
+            let version = test_version();
+            let quote = test_bid_quote();
+
+            let state = PeerState::HasAddressAndVersion {
+                peer_id,
+                version: version.clone(),
+                reachable_addresses: vec![address.clone()],
+            };
+
+            let new_state = state.apply_quote(Ok(quote));
+
+            match &new_state {
+                PeerState::Complete {
+                    peer_id: p,
+                    version: v,
+                    quote: q,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert_eq!(*v, version);
+                    assert_eq!(*q, quote);
+                    assert_eq!(*reachable_addresses, vec![address]);
+                }
+                _ => panic!("Expected Complete state"),
+            }
+            assert!(!new_state.is_pending());
+        }
+
+        #[test]
+        fn has_address_and_quote_apply_version_transitions_to_complete() {
+            let peer_id = test_peer_id();
+            let address = test_multiaddr();
+            let quote = test_bid_quote();
+            let version_str = "cli/1.0.0".to_string();
+
+            let state = PeerState::HasAddressAndQuote {
+                peer_id,
+                quote,
+                reachable_addresses: vec![address.clone()],
+            };
+
+            let new_state = state.apply_version(version_str);
+
+            match &new_state {
+                PeerState::Complete {
+                    peer_id: p,
+                    version,
+                    quote: q,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert_eq!(*version, Version::parse("1.0.0").unwrap());
+                    assert_eq!(*q, quote);
+                    assert_eq!(*reachable_addresses, vec![address]);
+                }
+                _ => panic!("Expected Complete state"),
+            }
+            assert!(!new_state.is_pending());
+        }
+
+        #[test]
+        fn has_version_and_quote_add_address_transitions_to_complete() {
+            let peer_id = test_peer_id();
+            let address = test_multiaddr();
+            let version = test_version();
+            let quote = test_bid_quote();
+
+            let state = PeerState::HasVersionAndQuote {
+                peer_id,
+                version: version.clone(),
+                quote,
+                reachable_addresses: vec![],
+            };
+
+            let new_state = state.add_reachable_address(address.clone());
+
+            match &new_state {
+                PeerState::Complete {
+                    peer_id: p,
+                    version: v,
+                    quote: q,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert_eq!(*v, version);
+                    assert_eq!(*q, quote);
+                    assert_eq!(*reachable_addresses, vec![address]);
+                }
+                _ => panic!("Expected Complete state"),
+            }
+            assert!(!new_state.is_pending());
+        }
+
+        #[test]
+        fn apply_failed_quote_transitions_to_failed() {
+            let peer_id = test_peer_id();
+            let address = test_multiaddr();
+            let error = anyhow!("Network error");
+
+            let state = PeerState::HasAddress {
+                peer_id,
+                reachable_addresses: vec![address.clone()],
+            };
+
+            let new_state = state.apply_quote(Err(error));
+
+            match &new_state {
+                PeerState::Failed {
+                    peer_id: p,
+                    error_message,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert_eq!(error_message, "Network error");
+                    assert_eq!(*reachable_addresses, vec![address]);
+                }
+                _ => panic!("Expected Failed state"),
+            }
+            assert!(!new_state.is_pending());
+        }
+
+        #[test]
+        fn apply_invalid_version_transitions_to_failed() {
+            let peer_id = test_peer_id();
+            let invalid_version = "invalid-version-string".to_string();
+
+            let state = PeerState::new(peer_id);
+            let new_state = state.apply_version(invalid_version.clone());
+
+            match &new_state {
+                PeerState::Failed {
+                    peer_id: p,
+                    error_message,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(*p, peer_id);
+                    assert!(error_message.contains("Failed to parse version"));
+                    assert!(error_message.contains(&invalid_version));
+                    assert_eq!(*reachable_addresses, Vec::<Multiaddr>::new());
+                }
+                _ => panic!("Expected Failed state"),
+            }
+            assert!(!new_state.is_pending());
+        }
+
+        #[test]
+        fn mark_failed_from_any_state() {
+            let peer_id = test_peer_id();
+            let address = test_multiaddr();
+            let error_message = "Connection timeout".to_string();
+
+            // Test from Initial
+            let state = PeerState::new(peer_id);
+            let failed = state.mark_failed(error_message.clone());
+            assert!(matches!(failed, PeerState::Failed { .. }));
+            assert!(!failed.is_pending());
+
+            // Test from HasAddress
+            let state = PeerState::HasAddress {
+                peer_id,
+                reachable_addresses: vec![address.clone()],
+            };
+            let failed = state.mark_failed(error_message.clone());
+            match failed {
+                PeerState::Failed {
+                    peer_id: p,
+                    error_message: msg,
+                    reachable_addresses,
+                } => {
+                    assert_eq!(p, peer_id);
+                    assert_eq!(msg, error_message);
+                    assert_eq!(reachable_addresses, vec![address.clone()]);
+                }
+                _ => panic!("Expected Failed state"),
+            }
+
+            // Test from Complete
+            let state = PeerState::Complete {
+                peer_id,
+                version: test_version(),
+                quote: test_bid_quote(),
+                reachable_addresses: vec![address.clone()],
+            };
+            let failed = state.mark_failed(error_message.clone());
+            assert!(matches!(failed, PeerState::Failed { .. }));
+        }
+
+        #[test]
+        fn add_duplicate_address_does_not_duplicate() {
+            let peer_id = test_peer_id();
+            let address = test_multiaddr();
+
+            let state = PeerState::HasAddress {
+                peer_id,
+                reachable_addresses: vec![address.clone()],
+            };
+
+            let new_state = state.add_reachable_address(address.clone());
+
+            match new_state {
+                PeerState::HasAddress {
+                    reachable_addresses,
+                    ..
+                } => {
+                    assert_eq!(reachable_addresses.len(), 1);
+                    assert_eq!(reachable_addresses[0], address);
+                }
+                _ => panic!("Expected HasAddress state"),
+            }
+        }
+
+        #[test]
+        fn add_multiple_addresses() {
+            let peer_id = test_peer_id();
+            let address1 = test_multiaddr();
+            let address2: Multiaddr = "/ip4/192.168.1.1/tcp/9090".parse().unwrap();
+
+            let state = PeerState::HasAddress {
+                peer_id,
+                reachable_addresses: vec![address1.clone()],
+            };
+
+            let new_state = state.add_reachable_address(address2.clone());
+
+            match &new_state {
+                PeerState::HasAddress {
+                    reachable_addresses,
+                    ..
+                } => {
+                    assert_eq!(reachable_addresses.len(), 2);
+                    assert!(reachable_addresses.contains(&address1));
+                    assert!(reachable_addresses.contains(&address2));
+                }
+                _ => panic!("Expected HasAddress state"),
+            }
+        }
+
+        #[test]
+        fn operations_on_complete_state_are_idempotent() {
+            let peer_id = test_peer_id();
+            let address = test_multiaddr();
+            let version = test_version();
+            let quote = test_bid_quote();
+
+            let state = PeerState::Complete {
+                peer_id,
+                version: version.clone(),
+                quote,
+                reachable_addresses: vec![address.clone()],
+            };
+
+            // Apply quote again - should remain unchanged
+            let new_quote = BidQuote {
+                price: bitcoin::Amount::from_sat(99999),
+                min_quantity: bitcoin::Amount::from_sat(1),
+                max_quantity: bitcoin::Amount::from_sat(1000),
+            };
+            let new_state = state.apply_quote(Ok(new_quote));
+
+            match &new_state {
+                PeerState::Complete { quote: q, .. } => {
+                    assert_eq!(*q, quote); // Original quote, not new_quote
+                }
+                _ => panic!("Expected Complete state to remain unchanged"),
+            }
+
+            // Apply version again - should remain unchanged
+            let new_state = new_state.apply_version("asb/9.9.9".to_string());
+            match &new_state {
+                PeerState::Complete { version: v, .. } => {
+                    assert_eq!(*v, version); // Original version
+                }
+                _ => panic!("Expected Complete state to remain unchanged"),
+            }
+        }
+
+        #[test]
+        fn operations_on_failed_state_are_idempotent() {
+            let peer_id = test_peer_id();
+            let address = test_multiaddr();
+            let error_message = "Original error".to_string();
+
+            let state = PeerState::Failed {
+                peer_id,
+                error_message: error_message.clone(),
+                reachable_addresses: vec![address.clone()],
+            };
+
+            // Apply quote - should remain failed
+            let new_state = state.apply_quote(Ok(test_bid_quote()));
+            match &new_state {
+                PeerState::Failed {
+                    error_message: msg, ..
+                } => {
+                    assert_eq!(msg, &error_message);
+                }
+                _ => panic!("Expected Failed state to remain unchanged"),
+            }
+
+            // Apply version - should remain failed
+            let new_state = new_state.apply_version("asb/1.0.0".to_string());
+            match &new_state {
+                PeerState::Failed {
+                    error_message: msg, ..
+                } => {
+                    assert_eq!(msg, &error_message);
+                }
+                _ => panic!("Expected Failed state to remain unchanged"),
+            }
+        }
+    }
+
+    mod rendezvous_point_status_tests {
+        use super::*;
+
+        #[test]
+        fn rendezvous_point_status_completion() {
+            assert!(!RendezvousPointStatus::Dialed.is_complete());
+            assert!(RendezvousPointStatus::Failed.is_complete());
+            assert!(RendezvousPointStatus::Success.is_complete());
+        }
+    }
 
     #[test]
     fn sellers_sort_with_unreachable_coming_last() {
         let mut list = vec![
-            Seller {
-                multiaddr: "/ip4/127.0.0.1/tcp/1234".parse().unwrap(),
-                status: SellerStatus::Unreachable,
-            },
-            Seller {
-                multiaddr: Multiaddr::empty(),
-                status: SellerStatus::Unreachable,
-            },
-            Seller {
+            SellerStatus::Unreachable(UnreachableSeller {
+                peer_id: PeerId::random(),
+            }),
+            SellerStatus::Unreachable(UnreachableSeller {
+                peer_id: PeerId::random(),
+            }),
+            SellerStatus::Online(QuoteWithAddress {
                 multiaddr: "/ip4/127.0.0.1/tcp/5678".parse().unwrap(),
-                status: SellerStatus::Online(BidQuote {
+                peer_id: PeerId::random(),
+                quote: BidQuote {
                     price: Default::default(),
                     min_quantity: Default::default(),
                     max_quantity: Default::default(),
-                }),
-            },
+                },
+                version: Version::parse("1.0.0").unwrap(), // Fixed: Use valid semver
+            }),
         ];
 
         list.sort();
 
-        assert_eq!(
-            list,
-            vec![
-                Seller {
-                    multiaddr: "/ip4/127.0.0.1/tcp/5678".parse().unwrap(),
-                    status: SellerStatus::Online(BidQuote {
-                        price: Default::default(),
-                        min_quantity: Default::default(),
-                        max_quantity: Default::default(),
-                    })
-                },
-                Seller {
-                    multiaddr: Multiaddr::empty(),
-                    status: SellerStatus::Unreachable
-                },
-                Seller {
-                    multiaddr: "/ip4/127.0.0.1/tcp/1234".parse().unwrap(),
-                    status: SellerStatus::Unreachable
-                },
-            ]
-        )
+        // Check that online sellers come first
+        assert!(matches!(list[0], SellerStatus::Online(_)));
+        assert!(matches!(list[1], SellerStatus::Unreachable(_)));
+        assert!(matches!(list[2], SellerStatus::Unreachable(_)));
     }
 }
