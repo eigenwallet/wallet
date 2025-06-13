@@ -97,3 +97,7 @@ check_gui:
 # Sometimes you have to prune the docker network to get the integration tests to work
 docker-prune-network:
 	docker network prune -f
+
+# Install dependencies required for building monero-sys
+prepare_mac_os_brew_dependencies:
+	cd dev_scripts && chmod +x ./brew_dependencies_install.sh && ./brew_dependencies_install.sh

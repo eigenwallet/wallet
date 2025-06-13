@@ -179,8 +179,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static=nghttp2");
     println!("cargo:rustc-link-lib=static=event");
 
-    // Link protobuf dynamically
-    // I haven't figured out how to link it statically
+    // Link protobuf statically
     println!("cargo:rustc-link-lib=static=protobuf");
 
     #[cfg(target_os = "macos")]
