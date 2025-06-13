@@ -28,6 +28,9 @@ RUN apt-get update && \
         libusb-1.0-0-dev \
         libprotobuf-dev \
         protobuf-compiler \
+        libnghttp2-dev \
+        libevent-dev \
+        libexpat1-dev \
         ccache && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
@@ -35,16 +38,17 @@ RUN apt-get update && \
 COPY . .
 
 # Update submodules recursively
-RUN git submodule sync --recursive && git submodule update --init --recursive
+# Force update to handle any local changes in submodules
+RUN git submodule sync --recursive && git submodule update --init --recursive --force
 
 WORKDIR /build/swap
 
-RUN cargo build -vv --release --bin=asb
+RUN cargo build -vv --bin=asb
 
 FROM debian:bookworm-slim
 
 WORKDIR /data
 
-COPY --from=builder /build/target/release/asb /bin/asb
+COPY --from=builder /build/target/debug/asb /bin/asb
 
 ENTRYPOINT ["asb"]
