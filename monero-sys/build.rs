@@ -1,6 +1,8 @@
 use cmake::Config;
 
 fn main() {
+    let is_github_actions: bool = std::env::var("GITHUB_ACTIONS").is_ok();
+
     // Only rerun this when the bridge.rs or static_bridge.h file changes.
     println!("cargo:rerun-if-changed=src/bridge.rs");
     println!("cargo:rerun-if-changed=src/bridge.h");
@@ -29,7 +31,10 @@ fn main() {
         .define("GTEST_HAS_ABSL", "OFF")
         // Use lightweight crypto library
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
-        .build_arg("-j1")
+        .build_arg(match is_github_actions {
+            true => "-j1",
+            false => "-j4",
+        })
         .build();
 
     let monero_build_dir = output_directory.join("build");
