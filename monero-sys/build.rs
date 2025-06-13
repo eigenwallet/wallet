@@ -16,14 +16,16 @@ fn main() {
         .define("BUILD_TESTS", "OFF")
         .define("Boost_USE_STATIC_LIBS", "ON")
         .define("Boost_USE_STATIC_RUNTIME", "ON")
-        // Disable support for ALL hardware wallets
+        //// Disable support for ALL hardware wallets
+        // Disable Trezor support
         .define("TREZOR_DEBUG", "OFF")
-        .define("USE_DEVICE_TREZOR", "OFF") // Force stub library to be built
-        .define("USE_DEVICE_TREZOR_LIBUSB", "OFF") // Disable Trezor LibUSB
-        .define("USE_DEVICE_TREZOR_UDP_RELEASE", "OFF") // Disable Trezor UDP
-        .define("USE_DEVICE_TREZOR_DEBUG", "OFF") // Disable Trezor debug
-        .define("HIDAPI_FOUND", "FALSE") // Force HIDAPI to be not found
-        .define("USE_DEVICE_LEDGER", "OFF") // Disable Ledger device support
+        .define("USE_DEVICE_TREZOR", "OFF")
+        .define("USE_DEVICE_TREZOR_LIBUSB", "OFF")
+        .define("USE_DEVICE_TREZOR_UDP_RELEASE", "OFF") 
+        .define("USE_DEVICE_TREZOR_DEBUG", "OFF")
+        // Disable Ledger support
+        .define("USE_DEVICE_LEDGER", "OFF")
+        .define("CMAKE_DISABLE_FIND_PACKAGE_HIDAPI", "ON") // Prevent CMake from finding HIDAPI
         .define("GTEST_HAS_ABSL", "OFF")
         // Use lightweight crypto library
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
