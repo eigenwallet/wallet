@@ -1,0 +1,35 @@
+id: net.unstoppableswap.gui
+
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+
+command: unstoppableswap-gui-rs
+finish-args:
+  - --socket=wayland # Permission needed to show the window
+  - --socket=fallback-x11 # Permission needed to show the window
+  - --device=dri # OpenGL, not necessary for all projects
+  - --share=ipc
+  - --talk-name=org.kde.StatusNotifierWatcher # Optional: needed only if your app uses the tray icon
+  - --filesystem=xdg-run/tray-icon:create # Optional: needed only if your app uses the tray icon - see an alternative way below
+  - --filesystem=~/.local/share/xmr-btc-swap # Read-write access to application data directory
+
+modules:
+  - name: binary
+    buildsystem: simple
+    sources:
+      - type: file
+        url: https://github.com/UnstoppableSwap/core/releases/download/2.0.3/UnstoppableSwap_2.0.3_amd64.deb
+        sha256: dae3ac67a22f6907acf8560643470d625c92ce3c8dc1fff77ea9370c9ccdf962 # This is required if you are using a remote source
+        only-arches: [x86_64] #This source is only used on x86_64 Computers
+        # This path points to the binary file which was created in the .deb bundle.
+        # Tauri also creates a folder which corresponds to the content of the unpacked .deb.
+    build-commands:
+      - ar -x *.deb
+      - tar -xf data.tar.gz
+      - 'install -Dm755 usr/bin/unstoppableswap-gui /app/bin/unstoppableswap-gui'
+      - install -Dm644 usr/share/applications/unstoppableswap-gui.desktop /app/share/applications/net.unstoppableswap.gui.desktop
+      - install -Dm644 usr/share/icons/hicolor/128x128/apps/unstoppableswap-gui.png /app/share/icons/hicolor/128x128/apps/net.unstoppableswap.gui.png
+      - install -Dm644 usr/share/icons/hicolor/32x32/apps/unstoppableswap-gui.png /app/share/icons/hicolor/32x32/apps/net.unstoppableswap.gui.png
+      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/unstoppableswap-gui.png /app/share/icons/hicolor/256x256@2/apps/net.unstoppableswap.gui.png
+      - install -Dm644 net.unstoppableswap.gui.metainfo.xml /app/share/metainfo/net.unstoppableswap.gui.metainfo.xml
