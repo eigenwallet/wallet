@@ -22,7 +22,7 @@ pub use ::bitcoin::{Address, AddressType, Network, Transaction, Txid};
 pub use ecdsa_fun::adaptor::EncryptedSignature;
 pub use ecdsa_fun::fun::Scalar;
 pub use ecdsa_fun::Signature;
-pub type Wallet<P = bdk_wallet::rusqlite::Connection, C = wallet::Client> = wallet::Wallet<P, C>;
+pub use wallet::Wallet;
 
 #[cfg(test)]
 pub use wallet::TestWalletBuilder;
