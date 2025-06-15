@@ -20,18 +20,6 @@ export default function DiscoveryBox() {
   const handleDiscovery = async () => {
     const { sellers } = await listSellersAtRendezvousPoint(rendezvousPoints);
     dispatch(discoveredMakersByRendezvous(sellers));
-
-    const amountOnline = sellers.filter(
-      (seller) => seller.type === "Online",
-    ).length;
-    const amountUnreachable = sellers.filter(
-      (seller) => seller.type === "Unreachable",
-    ).length;
-
-    enqueueSnackbar(
-      `Discovered ${amountOnline + amountUnreachable} makers. ${amountOnline} of which are online, ${amountUnreachable} of which are unreachable.`,
-      { variant: "success" },
-    );
   };
 
   return (

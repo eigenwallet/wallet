@@ -64,6 +64,7 @@ mod tests {
             None,
             identity::Keypair::generate_ed25519(),
             None,
+            None,
         );
         let sellers = tokio::time::timeout(Duration::from_secs(15), list_sellers)
             .await

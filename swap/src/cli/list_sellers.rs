@@ -1,3 +1,7 @@
+use crate::cli::api::tauri_bindings::{
+    ListSellersProgress, TauriBackgroundProgress, TauriBackgroundProgressHandle, TauriEmitter,
+    TauriHandle,
+};
 use crate::network::quote::BidQuote;
 use crate::network::rendezvous::XmrBtcNamespace;
 use crate::network::{quote, swarm};
@@ -43,6 +47,7 @@ pub async fn list_sellers(
     maybe_tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
     identity: identity::Keypair,
     db: Option<Arc<dyn Database + Send + Sync>>,
+    tauri_handle: Option<TauriHandle>,
 ) -> Result<Vec<SellerStatus>> {
     let behaviour = Behaviour {
         rendezvous: rendezvous::client::Behaviour::new(identity.clone()),
@@ -61,7 +66,13 @@ pub async fn list_sellers(
         None => VecDeque::new(),
     };
 
-    let event_loop = EventLoop::new(swarm, rendezvous_points, namespace, external_dial_queue);
+    let event_loop = EventLoop::new(
+        swarm,
+        rendezvous_points,
+        namespace,
+        external_dial_queue,
+        tauri_handle,
+    );
     let sellers = event_loop.run().await;
 
     Ok(sellers)
@@ -465,6 +476,9 @@ struct EventLoop {
     /// The queue of peers to dial
     /// When we discover a peer we add it is then dialed by the event loop
     to_request_quote: VecDeque<(PeerId, Vec<Multiaddr>)>,
+
+    /// Background progress handle for UI updates
+    progress_handle: Option<TauriBackgroundProgressHandle<ListSellersProgress>>,
 }
 
 impl EventLoop {
@@ -473,7 +487,11 @@ impl EventLoop {
         rendezvous_points: Vec<(PeerId, Multiaddr)>,
         namespace: XmrBtcNamespace,
         dial_queue: VecDeque<(PeerId, Vec<Multiaddr>)>,
+        tauri_handle: Option<TauriHandle>,
     ) -> Self {
+        let progress_handle =
+            tauri_handle.new_background_process(TauriBackgroundProgress::ListSellers);
+
         Self {
             swarm,
             rendezvous_points_status: Default::default(),
@@ -482,6 +500,7 @@ impl EventLoop {
             reachable_asb_address: Default::default(),
             peer_states: Default::default(),
             to_request_quote: dial_queue,
+            progress_handle: Some(progress_handle),
         }
     }
 
@@ -496,6 +515,55 @@ impl EventLoop {
             .iter()
             .find(|(rendezvous_peer_id, _)| rendezvous_peer_id == peer_id)
             .map(|(_, multiaddr)| multiaddr.clone())
+    }
+
+    fn get_progress(&self) -> ListSellersProgress {
+        let rendezvous_connected = self
+            .rendezvous_points_status
+            .values()
+            .filter(|status| matches!(status, RendezvousPointStatus::Success))
+            .count()
+            .try_into()
+            .unwrap_or(u32::MAX);
+
+        let rendezvous_failed = self
+            .rendezvous_points_status
+            .values()
+            .filter(|status| matches!(status, RendezvousPointStatus::Failed))
+            .count()
+            .try_into()
+            .unwrap_or(u32::MAX);
+
+        let quotes_received = self
+            .peer_states
+            .values()
+            .filter(|state| matches!(state, PeerState::Complete { .. }))
+            .count()
+            .try_into()
+            .unwrap_or(u32::MAX);
+
+        let quotes_failed = self
+            .peer_states
+            .values()
+            .filter(|state| matches!(state, PeerState::Failed { .. }))
+            .count()
+            .try_into()
+            .unwrap_or(u32::MAX);
+
+        ListSellersProgress {
+            rendezvous_points_connected: rendezvous_connected,
+            rendezvous_points_total: self.rendezvous_points.len().try_into().unwrap_or(u32::MAX),
+            rendezvous_points_failed: rendezvous_failed,
+            peers_discovered: self.peer_states.len().try_into().unwrap_or(u32::MAX),
+            quotes_received,
+            quotes_failed,
+        }
+    }
+
+    fn emit_progress(&self) {
+        if let Some(ref progress_handle) = self.progress_handle {
+            progress_handle.update(self.get_progress());
+        }
     }
 
     fn ensure_multiaddr_has_p2p_suffix(&self, peer_id: PeerId, multiaddr: Multiaddr) -> Multiaddr {
@@ -530,20 +598,20 @@ impl EventLoop {
         }
 
         loop {
+            self.emit_progress();
+
             tokio::select! {
                 Some((peer_id, multiaddresses)) = async { self.to_request_quote.pop_front() } => {
                     // We do not allow an overlap of rendezvous points and quote requests
                     // because if we do we cannot distinguish between a quote request and a rendezvous point later on
                     // because we are missing state information to
                     if self.is_rendezvous_point(&peer_id) {
-                        tracing::warn!(%peer_id, "Skipping quote request for rendezvous point. We do not allow an overlap of rendezvous points and quote requests");
                         continue;
                     }
 
                     // If we already have an entry for this peer, we skip it
                     // We probably discovered a peer at a rendezvous point which we already have an entry for locally
                     if self.peer_states.contains_key(&peer_id) {
-                        tracing::warn!(%peer_id, "Skipping quote request for peer. We already have an entry for this peer");
                         continue;
                     }
 
@@ -756,6 +824,9 @@ impl EventLoop {
             match all_quotes_fetched {
                 Ok(mut sellers) => {
                     sellers.sort();
+                    if let Some(ref progress_handle) = self.progress_handle {
+                        progress_handle.finish();
+                    }
                     break sellers;
                 }
                 Err(StillPending {}) => continue,

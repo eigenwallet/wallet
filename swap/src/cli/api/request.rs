@@ -1101,6 +1101,7 @@ pub async fn list_sellers(
         context.tor_client.clone(),
         identity,
         Some(context.db.clone()),
+        context.tauri_handle(),
     )
     .await?;
 
@@ -1112,7 +1113,7 @@ pub async fn list_sellers(
                 peer_id,
                 version,
             }) => {
-                tracing::info!(
+                tracing::debug!(
                     status = "Online",
                     price = %quote.price.to_string(),
                     min_quantity = %quote.min_quantity.to_string(),
@@ -1132,7 +1133,7 @@ pub async fn list_sellers(
                     .await?;
             }
             SellerStatus::Unreachable(UnreachableSeller { peer_id }) => {
-                tracing::info!(
+                tracing::debug!(
                     status = "Unreachable",
                     peer_id = %peer_id.to_string(),
                     "Fetched peer status"

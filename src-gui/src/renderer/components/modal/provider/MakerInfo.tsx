@@ -86,14 +86,12 @@ export default function MakerInfo({ maker }: { maker: ExtendedMakerStatus }) {
             <Chip label={`${Math.round(maker.uptime * 100)}% uptime`} />
           </Tooltip>
         )}
-        {maker.age ? (
+        {maker.age && (
           <Chip
             label={`Went online ${Math.round(secondsToDays(maker.age))} ${
               maker.age === 1 ? "day" : "days"
             } ago`}
           />
-        ) : (
-          <Chip label="Discovered via rendezvous point" />
         )}
         {maker.recommended === true && (
           <Tooltip title="This maker has shown to be exceptionally reliable">
