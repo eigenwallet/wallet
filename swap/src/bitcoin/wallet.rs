@@ -298,8 +298,8 @@ pub trait EstimateFeeRate {
 }
 
 /// A caching wrapper around EstimateFeeRate implementations.
-/// 
-/// Uses Moka cache with TTL (Time To Live) expiration for both fee rate estimates 
+///
+/// Uses Moka cache with TTL (Time To Live) expiration for both fee rate estimates
 /// and minimum relay fees to reduce the frequency of network calls to Electrum and mempool.space APIs.
 #[derive(Clone)]
 pub struct CachedFeeEstimator<T> {
@@ -318,14 +318,18 @@ impl<T> CachedFeeEstimator<T> {
     pub fn new(inner: T) -> Self {
         Self {
             inner,
-            fee_cache: Arc::new(moka::future::Cache::builder()
-                .max_capacity(Self::MAX_CACHE_SIZE)
-                .time_to_live(Self::CACHE_DURATION)
-                .build()),
-            min_relay_cache: Arc::new(moka::future::Cache::builder()
-                .max_capacity(1) // Only one min relay fee value
-                .time_to_live(Self::CACHE_DURATION)
-                .build()),
+            fee_cache: Arc::new(
+                moka::future::Cache::builder()
+                    .max_capacity(Self::MAX_CACHE_SIZE)
+                    .time_to_live(Self::CACHE_DURATION)
+                    .build(),
+            ),
+            min_relay_cache: Arc::new(
+                moka::future::Cache::builder()
+                    .max_capacity(1) // Only one min relay fee value
+                    .time_to_live(Self::CACHE_DURATION)
+                    .build(),
+            ),
         }
     }
 }
@@ -629,7 +633,8 @@ impl Wallet {
 
         // Create cached fee estimators
         let cached_electrum_fee_estimator = Arc::new(CachedFeeEstimator::new(client.clone()));
-        let cached_mempool_fee_estimator = Arc::new(mempool_client.clone().map(CachedFeeEstimator::new));
+        let cached_mempool_fee_estimator =
+            Arc::new(mempool_client.clone().map(CachedFeeEstimator::new));
 
         Ok(Wallet {
             wallet: wallet.into_arc_mutex_async(),
@@ -1181,7 +1186,9 @@ where
     /// If either of the clients fail but the other is successful, we use the successful one.
     /// If both clients fail, we return an error
     async fn combined_fee_rate(&self) -> Result<FeeRate> {
-        let electrum_future = self.cached_electrum_fee_estimator.estimate_feerate(self.target_block);
+        let electrum_future = self
+            .cached_electrum_fee_estimator
+            .estimate_feerate(self.target_block);
         let mempool_future = async {
             match self.cached_mempool_fee_estimator.as_ref() {
                 Some(mempool_client) => mempool_client
@@ -2943,7 +2950,7 @@ impl TestWalletBuilder {
         );
 
         let cached_electrum_fee_estimator = Arc::new(CachedFeeEstimator::new(client.clone()));
-        
+
         let wallet = Wallet {
             wallet: bdk_core_wallet.into_arc_mutex_async(),
             electrum_client: client.into_arc_mutex_async(),
@@ -3506,7 +3513,8 @@ TRACE swap::bitcoin::wallet: Bitcoin transaction status changed txid=00000000000
             let mock = MockFeeEstimator::new(
                 FeeRate::from_sat_per_vb(25).unwrap(),
                 FeeRate::from_sat_per_vb(1).unwrap(),
-            ).with_delay(Duration::from_millis(50)); // Add delay to simulate network call
+            )
+            .with_delay(Duration::from_millis(50)); // Add delay to simulate network call
 
             let cached = CachedFeeEstimator::new(mock.clone());
 
@@ -3534,7 +3542,12 @@ TRACE swap::bitcoin::wallet: Bitcoin transaction status changed txid=00000000000
 
             // The underlying estimator should still only have been called once
             // since all subsequent requests should hit the cache
-            assert_eq!(mock.estimate_call_count(), 1, "Expected exactly 1 call, got {}", mock.estimate_call_count());
+            assert_eq!(
+                mock.estimate_call_count(),
+                1,
+                "Expected exactly 1 call, got {}",
+                mock.estimate_call_count()
+            );
         }
 
         #[tokio::test]
@@ -3575,7 +3588,7 @@ TRACE swap::bitcoin::wallet: Bitcoin transaction status changed txid=00000000000
             // Wait for cache to expire (2 minutes + small buffer)
             // Note: In a real test environment, you might want to use a shorter TTL
             // or mock the time. For now, we'll just verify the cache works within TTL.
-            
+
             // Immediate second call should use cache
             let _fee2 = cached.estimate_feerate(6).await.unwrap();
             assert_eq!(mock.estimate_call_count(), 1);
@@ -3626,7 +3639,7 @@ TRACE swap::bitcoin::wallet: Bitcoin transaction status changed txid=00000000000
             // Request some of the earlier targets - some might have been evicted
             // Due to LRU eviction, the earliest entries might be gone
             let _fee = cached.estimate_feerate(1).await.unwrap();
-            
+
             // The exact behavior depends on Moka's eviction policy,
             // but we should see that the cache is working within its limits
             assert!(mock.estimate_call_count() >= 15);
