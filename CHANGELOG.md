@@ -26,6 +26,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | -------------------------- | -------------------------------- |
   | `asb logs \| my-script.sh` | `asb logs  2>&1 \| my-script.sh` |
   | `asb logs > output.txt`    | `asb logs > output.txt 2>&1`     |
+- GUI: Improved peer discovery: We can now connect to multiple rendezvous points at once. We also cache peers we have previously connected to locally and will attempt to connect to them again in the future, even if they aren't registered with a rendezvous point anymore.
+
+## [2.0.3] - 2025-06-12
+
+## [2.0.2] - 2025-06-12
+
+- GUI: Fix issue where auto updater would not display the update
+- ASB + GUI + CLI: Increase request_timeout to 7s, min_retries to 10 for Electrum load balancer
+
+## [2.0.0] - 2025-06-12
+
+- GUI: Build Flatpak bundle in release workflow
+- docs: add instructions for verifying Tauri signature files
+- docs: document new `electrum_rpc_urls` and `use_mempool_space_fee_estimation` options
+- docs: Instructions for verifying GUI (Tauri) signature files
+
+## [2.0.0-beta.2] - 2025-06-11
 
 ## [2.0.0-beta.1] - 2025-06-11
 
@@ -530,7 +547,11 @@ It is possible to migrate critical data from the old db to the sqlite but there 
 - Fixed an issue where Alice would not verify if Bob's Bitcoin lock transaction is semantically correct, i.e. pays the agreed upon amount to an output owned by both of them.
   Fixing this required a **breaking change** on the network layer and hence old versions are not compatible with this version.
 
-[unreleased]: https://github.com/UnstoppableSwap/core/compare/2.0.0-beta.1...HEAD
+[unreleased]: https://github.com/UnstoppableSwap/core/compare/2.0.3...HEAD
+[2.0.3]: https://github.com/UnstoppableSwap/core/compare/2.0.2...2.0.3
+[2.0.2]: https://github.com/UnstoppableSwap/core/compare/2.0.0...2.0.2
+[2.0.0]: https://github.com/UnstoppableSwap/core/compare/2.0.0-beta.2...2.0.0
+[2.0.0-beta.2]: https://github.com/UnstoppableSwap/core/compare/2.0.0-beta.1...2.0.0-beta.2
 [2.0.0-beta.1]: https://github.com/UnstoppableSwap/core/compare/1.1.7...2.0.0-beta.1
 [1.1.7]: https://github.com/UnstoppableSwap/core/compare/1.1.4...1.1.7
 [1.1.4]: https://github.com/UnstoppableSwap/core/compare/1.1.3...1.1.4
