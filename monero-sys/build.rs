@@ -69,6 +69,7 @@ fn main() {
         "cargo:rustc-link-search=native={}",
         monero_build_dir.join("external/randomx").display()
     );
+    println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu");
 
     println!(
         "cargo:rustc-link-search=native={}",
