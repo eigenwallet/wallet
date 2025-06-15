@@ -8,7 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - We now call Monero function directly (via FFI bindings) instead of using `monero-wallet-rpc`.
-- ASB: Since we don't communicate with `monero-wallet-rpc` anymore, the Monero wallet's will no longer be accessible by connecting to it.
+- ASB: Since we don't communicate with `monero-wallet-rpc` anymore, the Monero wallet's will no longer be accessible by connecting to it. If you are using the asb-docker-compose setup, run this command to migrate the wallet files from the volume of the monero-wallet-rpc container to the volume of the asb container:
+  ```bash
+  # On testnet
+  cp /var/lib/docker/volumes/testnet_stagenet_monero-wallet-rpc-data/_data/* /var/lib/docker/volumes/testnet_testnet_asb-data/_data/monero/wallets
+  # On mainnet
+  cp /var/lib/docker/volumes/mainnet_mainnet_monero-wallet-rpc-data/_data/* /var/lib/docker/volumes/mainnet_mainnet_asb-data/_data/monero/wallets
+  ```
 - ASB: The `wallet_url` option has been removed and replaced with the optional `daemon_url`, that specifies which Monero node the asb will connect to. If not specified, the asb will connect to a known public Monero node at random.
 - ASB: Add a `export-monero-wallet` command which gives the Monero wallet's seed and restore height. Export this seed into a wallet software of your own choosing to manage your Monero funds.
   The seed is a 25 word mnemonic. Example:
