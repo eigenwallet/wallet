@@ -420,7 +420,7 @@ where
                             tracing::error!(
                                 %peer,
                                 %request_id,
-                                %error,
+                                ?error,
                                 %protocol,
                                 "Failed to send request-response request to peer");
 
@@ -432,14 +432,14 @@ where
                             tracing::error!(
                                 %peer,
                                 %request_id,
-                                %error,
+                                ?error,
                                 %protocol,
                                 "Failed to receive request-response request from peer");
                         }
                         SwarmEvent::Behaviour(OutEvent::Failure {peer, error}) => {
                             tracing::error!(
                                 %peer,
-                                "Communication error: {:#}", error);
+                                "Communication error: {:?}", error);
                         }
                         SwarmEvent::ConnectionEstablished { peer_id: peer, endpoint, .. } => {
                             tracing::trace!(%peer, address = %endpoint.get_remote_address(), "New connection established");
@@ -452,16 +452,16 @@ where
                                     // We have an established connection to the peer, so we can add the transfer proof to the queue
                                     // This is then polled in the next iteration of the event loop, and attempted to be sent to the peer
                                     if let Err(e) = self.outgoing_transfer_proofs_sender.send((peer, transfer_proof, responder)) {
-                                        tracing::error!(%peer, error = %e, "Failed to forward buffered transfer proof to event loop channel");
+                                        tracing::error!(%peer, error = ?e, "Failed to forward buffered transfer proof to event loop channel");
                                     }
                                 }
                             }
                         }
                         SwarmEvent::IncomingConnectionError { send_back_addr: address, error, .. } => {
-                            tracing::trace!(%address, "Failed to set up connection with peer: {:#}", error);
+                            tracing::trace!(%address, "Failed to set up connection with peer: {:?}", error);
                         }
                         SwarmEvent::ConnectionClosed { peer_id: peer, num_established: 0, endpoint, cause: Some(error), connection_id } => {
-                            tracing::trace!(%peer, address = %endpoint.get_remote_address(), %connection_id, "Lost connection to peer: {:#}", error);
+                            tracing::trace!(%peer, address = %endpoint.get_remote_address(), %connection_id, "Lost connection to peer: {:?}", error);
                         }
                         SwarmEvent::ConnectionClosed { peer_id: peer, num_established: 0, endpoint, cause: None, connection_id } => {
                             tracing::trace!(%peer, address = %endpoint.get_remote_address(), %connection_id,  "Successfully closed connection");
@@ -581,7 +581,7 @@ where
         match self.db.insert_peer_id(swap_id, bob_peer_id).await {
             Ok(_) => {
                 if let Err(error) = self.swap_sender.send(swap).await {
-                    tracing::warn!(%swap_id, "Failed to start swap: {}", error);
+                    tracing::warn!(%swap_id, "Failed to start swap: {:?}", error);
                 }
             }
             Err(error) => {
