@@ -1,6 +1,6 @@
 # This Dockerfile builds the asb binary
 
-FROM rust:1.82.0-slim-bookworm AS builder
+FROM ubuntu:24.04 AS builder
 
 WORKDIR /build
 
@@ -9,6 +9,7 @@ WORKDIR /build
 RUN apt-get update && \
     apt-get install -y \
         git \
+        curl \
         clang \
         libsnappy-dev \
         build-essential \
@@ -35,6 +36,10 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Install Rust 1.82
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.82.0
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 COPY . .
 
 # Update submodules recursively
@@ -45,7 +50,7 @@ WORKDIR /build/swap
 
 RUN cargo build -vv --bin=asb
 
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
 WORKDIR /data
 
