@@ -144,6 +144,12 @@ fn main() {
         println!("cargo:rustc-link-search=native=/opt/homebrew/opt/unbound/lib");
         println!("cargo:rustc-link-search=native=/opt/homebrew/opt/expat/lib");
         println!("cargo:rustc-link-search=native=/opt/homebrew/Cellar/protobuf@21/21.12_1/lib/");
+        
+        // Add search paths for clang runtime libraries
+        println!("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/15.0.0/lib/darwin");
+        println!("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/16.0.0/lib/darwin");
+        println!("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/17.0.0/lib/darwin");
+        println!("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/18.0.0/lib/darwin");
     }
 
     // Link libwallet and libwallet_api statically
@@ -198,32 +204,6 @@ fn main() {
 
     #[cfg(target_os = "macos")]
     {
-        // Locate the Clang built-ins directory that contains libclang_rt.osx.*
-        let clang = std::process::Command::new("xcrun")
-            .args(["--find", "clang"])
-            .output()
-            .expect("failed to run xcrun --find clang");
-        let clang_bin = std::path::PathBuf::from(String::from_utf8(clang.stdout).unwrap().trim());
-
-        // <toolchain>/usr/bin/clang -> strip /bin/clang -> <toolchain>/usr
-        let mut clang_dir = clang_bin;
-        clang_dir.pop(); // bin
-        clang_dir.pop(); // usr
-
-        // lib/clang/<version>/lib/darwin
-        let builtins_dir = clang_dir.join("lib").join("clang");
-        // Highest version sub-directory
-        let version_dir = std::fs::read_dir(&builtins_dir)
-            .expect("read clang directory")
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().ok().map(|t| t.is_dir()).unwrap_or(false))
-            .max_by_key(|e| e.file_name()) // pick latest version
-            .expect("no clang version dirs found")
-            .path();
-        let darwin_dir = version_dir.join("lib").join("darwin");
-
-        println!("cargo:rustc-link-search=native={}", darwin_dir.display());
-
         // Static archive is always present, dylib only on some versions.
         println!("cargo:rustc-link-lib=static=clang_rt.osx");
 
