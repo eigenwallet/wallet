@@ -24,7 +24,7 @@ fn main() {
         .define("USE_DEVICE_TREZOR_MANDATORY", "OFF")
         .define("USE_DEVICE_TREZOR_PROTOBUF_TEST", "OFF")
         .define("USE_DEVICE_TREZOR_LIBUSB", "OFF")
-        .define("USE_DEVICE_TREZOR_UDP_RELEASE", "OFF") 
+        .define("USE_DEVICE_TREZOR_UDP_RELEASE", "OFF")
         .define("USE_DEVICE_TREZOR_DEBUG", "OFF")
         .define("TREZOR_DEBUG", "OFF")
         // Prevent CMake from finding dependencies that could enable Trezor
