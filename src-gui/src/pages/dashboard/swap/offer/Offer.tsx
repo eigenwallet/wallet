@@ -32,7 +32,8 @@ export default function Offer({
     (r) => r.content.details.content.swap_id === activeSwapId,
   );
 
-  const { btc_lock_amount, xmr_receive_amount, btc_network_fee} = (request?.content.details.content as LockBitcoinDetails) || {
+  const { btc_lock_amount, xmr_receive_amount, btc_network_fee } = (request
+    ?.content.details.content as LockBitcoinDetails) || {
     btc_lock_amount: 0,
     xmr_receive_amount: 0,
     btc_network_fee: 0,
@@ -45,56 +46,55 @@ export default function Offer({
           Confirm your offer to start the swap
         </Typography>
         {request ? (
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 2,
-            mt: 2,
-          }}
-        >
-          <Typography variant="body1">You send</Typography>
-          <Typography sx={{ textAlign: "right" }} variant="body1">
-            {btc_lock_amount} BTC
-          </Typography>
-          <Divider sx={{ gridColumn: "span 2" }} />
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 2,
+              mt: 2,
+            }}
+          >
+            <Typography variant="body1">You send</Typography>
+            <Typography sx={{ textAlign: "right" }} variant="body1">
+              {btc_lock_amount} BTC
+            </Typography>
+            <Divider sx={{ gridColumn: "span 2" }} />
 
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-            <Typography variant="body1">Fee</Typography>
-            <IconButton
-              onClick={() => setFeeExpanded(!feeExpanded)}
-              disableFocusRipple
-            >
-              {feeExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            </IconButton>
-          </Box>
-          <Typography sx={{ textAlign: "right" }} variant="body1">
-            {btc_network_fee} BTC
-          </Typography>
-          {feeExpanded && (
-            <>
-              <Typography variant="body2">Network Fee</Typography>
-              <Typography sx={{ textAlign: "right" }} variant="body2">
-                {request.content.details.content.btc_network_fee} BTC
-              </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              <Typography variant="body1">Fee</Typography>
+              <IconButton
+                onClick={() => setFeeExpanded(!feeExpanded)}
+                disableFocusRipple
+              >
+                {feeExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              </IconButton>
+            </Box>
+            <Typography sx={{ textAlign: "right" }} variant="body1">
+              {btc_network_fee} BTC
+            </Typography>
+            {feeExpanded && (
+              <>
+                <Typography variant="body2">Network Fee</Typography>
+                <Typography sx={{ textAlign: "right" }} variant="body2">
+                  {request.content.details.content.btc_network_fee} BTC
+                </Typography>
 
-              {/* <Typography variant="body2">Developer Tax</Typography>
+                {/* <Typography variant="body2">Developer Tax</Typography>
               <Typography sx={{ textAlign: "right" }} variant="body2">
                 {request.content.details.content.developer_tax} BTC
               </Typography> */}
-            </>
-          )}
-          <Divider sx={{ gridColumn: "span 2" }} />
+              </>
+            )}
+            <Divider sx={{ gridColumn: "span 2" }} />
 
-          <Typography variant="body1">You receive</Typography>
-          <Typography sx={{ textAlign: "right" }} variant="body1">
-            {xmr_receive_amount} XMR
-          </Typography>
-        </Box>
+            <Typography variant="body1">You receive</Typography>
+            <Typography sx={{ textAlign: "right" }} variant="body1">
+              {xmr_receive_amount} XMR
+            </Typography>
+          </Box>
         ) : (
           <CircularProgress />
         )}
-
       </DialogContent>
       <DialogActions>
         <Button variant="outlined" onClick={onBack}>

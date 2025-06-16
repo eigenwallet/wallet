@@ -10,6 +10,10 @@ import SwapOverview from "../components/SwapOverview";
 import { useAppSelector, useAllMakers, useAppDispatch } from "store/hooks";
 import { setSelectedMaker } from "store/features/makersSlice";
 import { Maker } from "models/apiModel";
+import {
+  ListSellersDialogOpenButton,
+  MakerSubmitDialogOpenButton,
+} from "renderer/components/modal/provider/MakerListDialog";
 
 export default function SelectMaker({
   onNext,
@@ -54,7 +58,7 @@ export default function SelectMaker({
             }}
           >
             <Typography variant="h3">Select a Maker</Typography>
-            <Button variant="text">Connect to Rendezvous Point</Button>
+            <ListSellersDialogOpenButton />
           </Box>
           <Typography variant="body1">Best offer</Typography>
           <MakerOfferItem
@@ -79,6 +83,7 @@ export default function SelectMaker({
               />
             ))}
           </Box>
+          <MakerSubmitDialogOpenButton />
         </Box>
       </DialogContent>
       <DialogActions>
