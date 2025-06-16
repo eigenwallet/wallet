@@ -47,5 +47,12 @@ export const startSwapSlice = createSlice({
   },
 });
 
-export const { setBtcAmount, setRedeemAddress, setOffer, setMaker, setStep, reset } = startSwapSlice.actions;
+export const {
+  setBtcAmount,
+  setRedeemAddress,
+  setOffer,
+  setMaker,
+  setStep,
+  reset,
+} = startSwapSlice.actions;
 export default startSwapSlice.reducer;

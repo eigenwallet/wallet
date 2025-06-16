@@ -14,22 +14,27 @@ export default function SwapAmountSelector({
   const xmrBtcRate = useAppSelector((state) => state.rates.xmrBtcRate);
   const btcAmount = useAppSelector((state) => state.startSwap.btcAmount);
   const dispatch = useAppDispatch();
-  const [amounts, setAmounts] = useState<{ btc: number; xmr: number }>({ 
-    btc: btcAmount, 
-    xmr: 0
+  const [amounts, setAmounts] = useState<{ btc: number; xmr: number }>({
+    btc: btcAmount,
+    xmr: 0,
   });
-  
+
   // Track which field was last updated to prevent infinite loops
-  const lastUpdatedField = useRef<'btc' | 'xmr' | null>(null);
+  const lastUpdatedField = useRef<"btc" | "xmr" | null>(null);
 
   // Update BTC amount when XMR changes (only if XMR was the last updated field)
   useEffect(() => {
-    if (xmrBtcRate && amounts.xmr !== undefined && amounts.xmr !== null && lastUpdatedField.current === 'xmr') {
+    if (
+      xmrBtcRate &&
+      amounts.xmr !== undefined &&
+      amounts.xmr !== null &&
+      lastUpdatedField.current === "xmr"
+    ) {
       const newBtc = Number((amounts.xmr * xmrBtcRate).toFixed(8));
       dispatch(setBtcAmount(newBtc));
-      setAmounts(prev => ({
+      setAmounts((prev) => ({
         ...prev,
-        btc: newBtc
+        btc: newBtc,
       }));
       lastUpdatedField.current = null; // Reset to prevent further updates
     }
@@ -37,12 +42,17 @@ export default function SwapAmountSelector({
 
   // Update XMR amount when BTC changes (only if BTC was the last updated field)
   useEffect(() => {
-    if (xmrBtcRate && amounts.btc !== undefined && amounts.btc !== null && lastUpdatedField.current === 'btc') {
+    if (
+      xmrBtcRate &&
+      amounts.btc !== undefined &&
+      amounts.btc !== null &&
+      lastUpdatedField.current === "btc"
+    ) {
       dispatch(setBtcAmount(amounts.btc));
       const newXmr = Number((amounts.btc / xmrBtcRate).toFixed(12));
-      setAmounts(prev => ({
+      setAmounts((prev) => ({
         ...prev,
-        xmr: newXmr
+        xmr: newXmr,
       }));
       lastUpdatedField.current = null; // Reset to prevent further updates
     }
@@ -65,17 +75,17 @@ export default function SwapAmountSelector({
         onChange={(e) => {
           const value = Number(e.target.value);
           if (!isNaN(value)) {
-            lastUpdatedField.current = 'btc'; // Mark BTC as last updated
-            setAmounts(prev => ({ ...prev, btc: value }));
+            lastUpdatedField.current = "btc"; // Mark BTC as last updated
+            setAmounts((prev) => ({ ...prev, btc: value }));
           }
         }}
         type="number"
         slotProps={{
           htmlInput: {
-            inputMode: 'decimal',
-            step: '0.00001',
-            min: '0'
-          }
+            inputMode: "decimal",
+            step: "0.00001",
+            min: "0",
+          },
         }}
         sx={{
           gridColumn: "1 / 2",
@@ -111,17 +121,17 @@ export default function SwapAmountSelector({
           onChange={(e) => {
             const value = Number(e.target.value);
             if (!isNaN(value)) {
-              lastUpdatedField.current = 'xmr'; // Mark XMR as last updated
-              setAmounts(prev => ({ ...prev, xmr: value }));
+              lastUpdatedField.current = "xmr"; // Mark XMR as last updated
+              setAmounts((prev) => ({ ...prev, xmr: value }));
             }
           }}
           type="number"
           slotProps={{
             htmlInput: {
-              inputMode: 'decimal',
-              step: '0.00001',
-              min: '0'
-            }
+              inputMode: "decimal",
+              step: "0.00001",
+              min: "0",
+            },
           }}
           sx={{
             gridColumn: "3 / 4",

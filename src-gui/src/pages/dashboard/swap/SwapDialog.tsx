@@ -37,7 +37,9 @@ export default function SwapDialog({
       <DialogTitle>
         <Typography variant="h2">Swap</Typography>
       </DialogTitle>
-      {step === StartSwapStep.DepositBitcoin && <GetBitcoin onNext={handleNext} />}
+      {step === StartSwapStep.DepositBitcoin && (
+        <GetBitcoin onNext={handleNext} />
+      )}
       {step === StartSwapStep.SelectMaker && (
         <SelectMaker onNext={handleNext} onBack={handleBack} />
       )}

@@ -7,6 +7,9 @@ import {
 } from "@mui/material";
 import MakerOfferItem from "../components/MakerOfferItem";
 import SwapOverview from "../components/SwapOverview";
+import { useAppSelector, useAllMakers, useAppDispatch } from "store/hooks";
+import { setSelectedMaker } from "store/features/makersSlice";
+import { Maker } from "models/apiModel";
 
 export default function SelectMaker({
   onNext,
@@ -15,6 +18,23 @@ export default function SelectMaker({
   onNext: () => void;
   onBack: () => void;
 }) {
+  const makers = useAllMakers();
+  const selectedMaker = useAppSelector((state) => state.makers.selectedMaker);
+  const dispatch = useAppDispatch();
+
+  if (
+    makers === null ||
+    makers === undefined ||
+    selectedMaker === null ||
+    selectedMaker === undefined
+  ) {
+    return <div>Loading...</div>;
+  }
+
+  function handleSelectMaker(maker: Maker) {
+    dispatch(setSelectedMaker(maker));
+  }
+
   return (
     <>
       <DialogContent>
@@ -37,7 +57,11 @@ export default function SelectMaker({
             <Button variant="text">Connect to Rendezvous Point</Button>
           </Box>
           <Typography variant="body1">Best offer</Typography>
-          <MakerOfferItem />
+          <MakerOfferItem
+            maker={selectedMaker!}
+            checked={true}
+            onSelect={handleSelectMaker}
+          />
           <Typography variant="body1">Other offers</Typography>
           <Box
             sx={{
@@ -46,8 +70,14 @@ export default function SelectMaker({
               gap: 1,
             }}
           >
-            <MakerOfferItem />
-            <MakerOfferItem />
+            {makers.map((maker) => (
+              <MakerOfferItem
+                key={maker.peerId}
+                maker={maker}
+                checked={selectedMaker?.peerId === maker.peerId}
+                onSelect={handleSelectMaker}
+              />
+            ))}
           </Box>
         </Box>
       </DialogContent>

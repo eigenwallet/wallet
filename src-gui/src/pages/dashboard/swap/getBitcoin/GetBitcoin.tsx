@@ -53,8 +53,12 @@ export default function GetBitcoin({ onNext }: { onNext: () => void }) {
                 gap: 2,
               }}
             >
-              <ActionableMonospaceTextBox content="1234567890" />
-              <ActionableMonospaceTextBox content="1234567890" />
+              <Typography variant="subtitle2">
+                Bitcoin Receive Address
+              </Typography>
+              <ActionableMonospaceTextBox content="1234" />
+              <Typography variant="subtitle2">Bitcoin Amount</Typography>
+              <ActionableMonospaceTextBox content="1234" />
             </Box>
           </Box>
         </Box>
