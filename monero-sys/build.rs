@@ -19,15 +19,19 @@ fn main() {
         .define("Boost_USE_STATIC_LIBS", "ON")
         .define("Boost_USE_STATIC_RUNTIME", "ON")
         //// Disable support for ALL hardware wallets
-        // Disable Trezor support
-        .define("TREZOR_DEBUG", "OFF")
+        // Disable Trezor support completely
         .define("USE_DEVICE_TREZOR", "OFF")
+        .define("USE_DEVICE_TREZOR_MANDATORY", "OFF")
+        .define("USE_DEVICE_TREZOR_PROTOBUF_TEST", "OFF")
         .define("USE_DEVICE_TREZOR_LIBUSB", "OFF")
         .define("USE_DEVICE_TREZOR_UDP_RELEASE", "OFF") 
         .define("USE_DEVICE_TREZOR_DEBUG", "OFF")
+        .define("TREZOR_DEBUG", "OFF")
+        // Prevent CMake from finding dependencies that could enable Trezor
+        .define("CMAKE_DISABLE_FIND_PACKAGE_LibUSB", "ON")
         // Disable Ledger support
         .define("USE_DEVICE_LEDGER", "OFF")
-        .define("CMAKE_DISABLE_FIND_PACKAGE_HIDAPI", "ON") // Prevent CMake from finding HIDAPI
+        .define("CMAKE_DISABLE_FIND_PACKAGE_HIDAPI", "ON")
         .define("GTEST_HAS_ABSL", "OFF")
         // Use lightweight crypto library
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
@@ -119,6 +123,7 @@ fn main() {
         "cargo:rustc-link-search=native={}",
         monero_build_dir.join("src/device").display()
     );
+    // device_trezor search path (stub version when disabled)
     println!(
         "cargo:rustc-link-search=native={}",
         monero_build_dir.join("src/device_trezor").display()
@@ -164,6 +169,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static=hardforks");
     println!("cargo:rustc-link-lib=static=blockchain_db");
     println!("cargo:rustc-link-lib=static=device");
+    // Link device_trezor (stub version when USE_DEVICE_TREZOR=OFF)
     println!("cargo:rustc-link-lib=static=device_trezor");
     println!("cargo:rustc-link-lib=static=mnemonics");
     println!("cargo:rustc-link-lib=static=rpc_base");
