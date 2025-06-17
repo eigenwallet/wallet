@@ -326,6 +326,7 @@ fn forward_cpp_log(
 
     // Sometimes C++ still issues log messages after the rust side is i.e. panicking (especially in tests).
     // We have to ignore those because tracing is no longer functional.
+    // TODO: Is this a performance issue?
 
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
