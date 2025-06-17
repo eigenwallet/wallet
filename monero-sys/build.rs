@@ -142,29 +142,11 @@ fn main() {
 
     #[cfg(target_os = "macos")]
     {
-        // Dynamically detect Homebrew installation prefix (works on both Apple Silicon and Intel Macs)
-        let brew_prefix = std::process::Command::new("brew")
-            .arg("--prefix")
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|| "/opt/homebrew".into());
-
-        // add homebrew search paths using dynamic prefix
-        println!("cargo:rustc-link-search=native={}/lib", brew_prefix);
-        println!(
-            "cargo:rustc-link-search=native={}/opt/unbound/lib",
-            brew_prefix
-        );
-        println!(
-            "cargo:rustc-link-search=native={}/opt/expat/lib",
-            brew_prefix
-        );
-        println!(
-            "cargo:rustc-link-search=native={}/Cellar/protobuf@21/21.12_1/lib/",
-            brew_prefix
-        );
+        // add homebrew search paths/
+        println!("cargo:rustc-link-search=native=/opt/homebrew/lib");
+        println!("cargo:rustc-link-search=native=/opt/homebrew/opt/unbound/lib");
+        println!("cargo:rustc-link-search=native=/opt/homebrew/opt/expat/lib");
+        println!("cargo:rustc-link-search=native=/opt/homebrew/Cellar/protobuf@21/21.12_1/lib/");
 
         // Add search paths for clang runtime libraries
         println!("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/15.0.0/lib/darwin");
@@ -245,21 +227,7 @@ fn main() {
         .include("src") // Include the bridge.h file
         .include("monero/src") // Includes the monero headers
         .include("monero/external/easylogging++") // Includes the easylogging++ headers
-        .include("monero/contrib/epee/include"); // Includes the epee headers for net/http_client.h
-
-    #[cfg(target_os = "macos")]
-    {
-        // Use the same dynamic brew prefix for include paths
-        let brew_prefix = std::process::Command::new("brew")
-            .arg("--prefix")
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|| "/opt/homebrew".into());
-
-        build.include(format!("{}/include", brew_prefix)); // Homebrew include path for Boost
-    }
-
-    build.compile("monero-sys");
+        .include("monero/contrib/epee/include") // Includes the epee headers for net/http_client.h
+        .include("/opt/homebrew/include") // Homebrew include path for Boost
+        .compile("monero-sys");
 }
