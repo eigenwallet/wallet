@@ -27,9 +27,15 @@ async fn fund_transfer_and_check_tx_key() {
     monero.init_wallet("bob", vec![fund_bob]).await.unwrap();
     monero.start_miner().await.unwrap();
 
+    tracing::info!("Waiting for Alice to catch up");
+
+    wait_for_wallet_to_catch_up(alice_wallet, fund_alice).await;
+
     // check alice balance
     let got_alice_balance = alice_wallet.balance().await.unwrap();
-    assert_eq!(got_alice_balance, fund_alice);
+    assert_eq!(got_alice_balance, fund_alice, "Alice not funded");
+
+    tracing::info!("Transferring funds from Alice to Bob");
 
     // transfer from alice to bob
     let bob_address = bob_wallet.address().await.unwrap();
@@ -38,24 +44,25 @@ async fn fund_transfer_and_check_tx_key() {
         .await
         .unwrap();
 
+    tracing::info!("Waiting for Bob to catch up");
+
     wait_for_wallet_to_catch_up(bob_wallet, send_to_bob).await;
 
     let got_bob_balance = bob_wallet.balance().await.unwrap();
-    assert_eq!(got_bob_balance, send_to_bob);
-
-    // No RPC client available anymore; balance assertion above is sufficient to prove receipt.
+    assert_eq!(send_to_bob, got_bob_balance, "Funds not transferred to Bob");
 }
 
 async fn wait_for_wallet_to_catch_up(wallet: &MoneroWalletRpc, expected_balance: u64) {
-    let max_retry = 15;
-    let mut retry = 0;
-    loop {
-        retry += 1;
+    for _ in 0..15 {
+        tracing::info!(
+            current_height = wallet.blockchain_height().await.unwrap(),
+            "Waiting for wallet to catch up"
+        );
         let balance = wallet.balance().await.unwrap();
-        if balance == expected_balance || max_retry == retry {
+        if balance == expected_balance {
             break;
         }
         wallet.refresh().await.unwrap();
-        sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_secs(2)).await;
     }
 }

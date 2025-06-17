@@ -455,7 +455,11 @@ impl MoneroWallet {
         self.refresh().await?;
 
         let total = self.wallet.total_balance().await.as_pico();
-        tracing::debug!("Wallet balance (total): {}", Amount::from_pico(total));
+        tracing::debug!(
+            "Wallet `{}` balance (total): {}",
+            self.name,
+            Amount::from_pico(total)
+        );
         Ok(total)
     }
 
@@ -485,6 +489,10 @@ impl MoneroWallet {
             .transfer(address, amount)
             .await
             .context("Failed to perform transfer")
+    }
+
+    pub async fn blockchain_height(&self) -> Result<u64> {
+        self.wallet.blockchain_height().await
     }
 }
 
