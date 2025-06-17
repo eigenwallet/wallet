@@ -301,15 +301,18 @@ where
             state3,
         } => match state3.expired_timelocks(bitcoin_wallet).await? {
             ExpiredTimelocks::None { .. } => {
+                tracing::info!("Locked Monero, waiting for confirmations");
                 monero_wallet
                     .wait_until_confirmed(
                         state3.lock_xmr_watch_request(transfer_proof.clone(), 1),
-                        no_listener(), // TODO: Add a listener with status updates
+                        Some(|confirmations| {
+                            tracing::debug!(%confirmations, "Monero lock tx got new confirmation")
+                        }),
                     )
                     .await
                     .with_context(|| {
                         format!(
-                            "Failed to watch for transfer of XMR in transaction {}",
+                            "Couldn't wait until Monero transaction was confirmed ({})",
                             transfer_proof.tx_hash()
                         )
                     })?;
