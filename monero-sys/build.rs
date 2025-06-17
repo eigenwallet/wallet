@@ -153,9 +153,18 @@ fn main() {
 
         // add homebrew search paths using dynamic prefix
         println!("cargo:rustc-link-search=native={}/lib", brew_prefix);
-        println!("cargo:rustc-link-search=native={}/opt/unbound/lib", brew_prefix);
-        println!("cargo:rustc-link-search=native={}/opt/expat/lib", brew_prefix);
-        println!("cargo:rustc-link-search=native={}/Cellar/protobuf@21/21.12_1/lib/", brew_prefix);
+        println!(
+            "cargo:rustc-link-search=native={}/opt/unbound/lib",
+            brew_prefix
+        );
+        println!(
+            "cargo:rustc-link-search=native={}/opt/expat/lib",
+            brew_prefix
+        );
+        println!(
+            "cargo:rustc-link-search=native={}/Cellar/protobuf@21/21.12_1/lib/",
+            brew_prefix
+        );
 
         // Add search paths for clang runtime libraries
         println!("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/15.0.0/lib/darwin");
@@ -248,7 +257,7 @@ fn main() {
             .and_then(|o| String::from_utf8(o.stdout).ok())
             .map(|s| s.trim().to_string())
             .unwrap_or_else(|| "/opt/homebrew".into());
-        
+
         build.include(format!("{}/include", brew_prefix)); // Homebrew include path for Boost
     }
 
