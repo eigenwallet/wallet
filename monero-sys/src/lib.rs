@@ -1352,7 +1352,9 @@ impl FfiWallet {
     /// Sweep all funds from the wallet to a specified address.
     /// Returns a list of transaction ids of the created transactions.
     fn sweep(&mut self, address: &monero::Address) -> anyhow::Result<Vec<String>> {
-        tracing::info!("Sweeping funds to {}", address);
+        tracing::info!("Sweeping funds to {}, refreshing wallet first", address);
+
+        self.refresh_blocking()?;
 
         let_cxx_string!(address = address.to_string());
 
