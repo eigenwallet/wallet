@@ -1,7 +1,7 @@
 mod bitcoind;
 mod electrs;
 
-use ::monero::Address;
+
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use bitcoin_harness::{BitcoindRpcApi, Client};
@@ -14,6 +14,7 @@ use monero_sys::Daemon;
 use std::cmp::Ordering;
 use std::fmt;
 use std::path::PathBuf;
+
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -143,6 +144,7 @@ where
         bob_starting_balances,
         bob_bitcoin_wallet,
         bob_monero_wallet,
+        monerod_container_id: containers._monerod_container.id().to_string(),
     };
 
     testfn(test).await.unwrap()
@@ -590,6 +592,9 @@ pub struct TestContext {
     bob_starting_balances: StartingBalances,
     bob_bitcoin_wallet: Arc<bitcoin::Wallet>,
     bob_monero_wallet: Arc<monero::Wallets>,
+
+    // Store the container ID as String instead of reference
+    monerod_container_id: String,
 }
 
 impl TestContext {
@@ -871,41 +876,37 @@ impl TestContext {
     }
 
     pub async fn stop_alice_monero_wallet_rpc(&self) {
-        self.alice_monero_wallet.lock().await.stop().await.unwrap();
-
-        // Wait until the monero-wallet-rpc is fully stopped
-        // stop_wallet() internally sets a flag in the monero-wallet-rpc (`m_stop`) which
-        // is only checked every once in a while
-        loop {
-            if !self
-                .alice_monero_wallet
-                .lock()
-                .await
-                .is_alive()
-                .await
-                .unwrap()
-            {
-                tracing::info!("Alice Monero Wallet RPC stopped");
-                break;
-            }
-
-            tokio::time::sleep(Duration::from_secs(1)).await;
+        tracing::info!("Killing monerod container");
+        
+        // Use Docker CLI to forcefully kill the container
+        let output = tokio::process::Command::new("docker")
+            .args(&["kill", &self.monerod_container_id])
+            .output()
+            .await
+            .expect("Failed to execute docker kill command");
+            
+        if output.status.success() {
+            tracing::info!("Successfully killed monerod container: {}", &self.monerod_container_id);
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::error!("Failed to kill monerod container {}: {}", &self.monerod_container_id, stderr);
         }
     }
 
     pub async fn empty_alice_monero_wallet(&self) {
-        self.alice_monero_wallet
-            .lock()
+        let burn_address = monero::Address::from_str("49LEH26DJGuCyr8xzRAzWPUryzp7bpccC7Hie1DiwyfJEyUKvMFAethRLybDYrFdU1eHaMkKQpUPebY4WT3cSjEvThmpjPa").unwrap();
+        let wallet = self.alice_monero_wallet.main_wallet().await;
+        
+        wallet
+            .sweep(&burn_address)
             .await
-            .re_open()
-            .await
-            .unwrap();
-        self.alice_monero_wallet.lock().await.sweep_all(Address::from_str("49LEH26DJGuCyr8xzRAzWPUryzp7bpccC7Hie1DiwyfJEyUKvMFAethRLybDYrFdU1eHaMkKQpUPebY4WT3cSjEvThmpjPa").unwrap()).await.unwrap();
+            .expect("Failed to empty alice monero wallet to burn address");
     }
 
     pub async fn assert_alice_monero_wallet_empty(&self) {
+        let wallet = self.alice_monero_wallet.main_wallet().await;
         assert_eventual_balance(
-            &*self.alice_monero_wallet.lock().await,
+            &*wallet,
             Ordering::Equal,
             monero::Amount::ZERO,
         )

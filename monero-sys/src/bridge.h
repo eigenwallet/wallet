@@ -117,7 +117,7 @@ namespace Monero
     inline PendingTransaction *createTransaction(
         Wallet &wallet,
         const std::string &dest_address,
-        u_int64_t amount)
+        uint64_t amount)
     {
         return wallet.createTransaction(dest_address, "", Monero::optional<uint64_t>(amount), 0, PendingTransaction::Priority_Default);
     }

@@ -65,6 +65,7 @@ pub fn init(
         "libp2p_gossipsub",
         "libp2p_rendezvous",
         "libp2p_dcutr",
+        "monero_cpp",
     ];
     let OUR_CRATES: Vec<&str> = vec!["swap", "asb", "monero_sys", "unstoppableswap-gui-rs"];
 

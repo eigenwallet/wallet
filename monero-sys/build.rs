@@ -11,7 +11,9 @@ fn main() {
     let mut config = Config::new("monero");
     let output_directory = config
         .build_target("wallet_api")
-        .define("CMAKE_RELEASE_TYPE", "Release")
+        // Builds currently fail in Release mode
+        // .define("CMAKE_BUILD_TYPE", "Release")
+        // .define("CMAKE_RELEASE_TYPE", "Release")
         // Force building static libraries
         .define("STATIC", "ON")
         .define("BUILD_SHARED_LIBS", "OFF")
@@ -19,21 +21,25 @@ fn main() {
         .define("Boost_USE_STATIC_LIBS", "ON")
         .define("Boost_USE_STATIC_RUNTIME", "ON")
         //// Disable support for ALL hardware wallets
-        // Disable Trezor support
-        .define("TREZOR_DEBUG", "OFF")
+        // Disable Trezor support completely
         .define("USE_DEVICE_TREZOR", "OFF")
+        .define("USE_DEVICE_TREZOR_MANDATORY", "OFF")
+        .define("USE_DEVICE_TREZOR_PROTOBUF_TEST", "OFF")
         .define("USE_DEVICE_TREZOR_LIBUSB", "OFF")
         .define("USE_DEVICE_TREZOR_UDP_RELEASE", "OFF")
         .define("USE_DEVICE_TREZOR_DEBUG", "OFF")
+        .define("TREZOR_DEBUG", "OFF")
+        // Prevent CMake from finding dependencies that could enable Trezor
+        .define("CMAKE_DISABLE_FIND_PACKAGE_LibUSB", "ON")
         // Disable Ledger support
         .define("USE_DEVICE_LEDGER", "OFF")
-        .define("CMAKE_DISABLE_FIND_PACKAGE_HIDAPI", "ON") // Prevent CMake from finding HIDAPI
+        .define("CMAKE_DISABLE_FIND_PACKAGE_HIDAPI", "ON")
         .define("GTEST_HAS_ABSL", "OFF")
         // Use lightweight crypto library
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
         .build_arg(match is_github_actions {
             true => "-j1",
-            false => "-j4",
+            false => "-j",
         })
         .build();
 
@@ -119,6 +125,7 @@ fn main() {
         "cargo:rustc-link-search=native={}",
         monero_build_dir.join("src/device").display()
     );
+    // device_trezor search path (stub version when disabled)
     println!(
         "cargo:rustc-link-search=native={}",
         monero_build_dir.join("src/device_trezor").display()
@@ -134,11 +141,35 @@ fn main() {
 
     #[cfg(target_os = "macos")]
     {
-        // add homebrew search paths/
-        println!("cargo:rustc-link-search=native=/opt/homebrew/lib");
-        println!("cargo:rustc-link-search=native=/opt/homebrew/opt/unbound/lib");
-        println!("cargo:rustc-link-search=native=/opt/homebrew/opt/expat/lib");
-        println!("cargo:rustc-link-search=native=/opt/homebrew/Cellar/protobuf@21/21.12_1/lib/");
+        // Dynamically detect Homebrew installation prefix (works on both Apple Silicon and Intel Macs)
+        let brew_prefix = std::process::Command::new("brew")
+            .arg("--prefix")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| "/opt/homebrew".into());
+
+        // add homebrew search paths using dynamic prefix
+        println!("cargo:rustc-link-search=native={}/lib", brew_prefix);
+        println!(
+            "cargo:rustc-link-search=native={}/opt/unbound/lib",
+            brew_prefix
+        );
+        println!(
+            "cargo:rustc-link-search=native={}/opt/expat/lib",
+            brew_prefix
+        );
+        println!(
+            "cargo:rustc-link-search=native={}/Cellar/protobuf@21/21.12_1/lib/",
+            brew_prefix
+        );
+
+        // Add search paths for clang runtime libraries
+        println !("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/15.0.0/lib/darwin");
+        println !("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/16.0.0/lib/darwin");
+        println !("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/17.0.0/lib/darwin");
+        println !("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/18.0.0/lib/darwin");
     }
 
     // Link libwallet and libwallet_api statically
@@ -164,6 +195,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static=hardforks");
     println!("cargo:rustc-link-lib=static=blockchain_db");
     println!("cargo:rustc-link-lib=static=device");
+    // Link device_trezor (stub version when USE_DEVICE_TREZOR=OFF)
     println!("cargo:rustc-link-lib=static=device_trezor");
     println!("cargo:rustc-link-lib=static=mnemonics");
     println!("cargo:rustc-link-lib=static=rpc_base");
@@ -192,32 +224,6 @@ fn main() {
 
     #[cfg(target_os = "macos")]
     {
-        // Locate the Clang built-ins directory that contains libclang_rt.osx.*
-        let clang = std::process::Command::new("xcrun")
-            .args(["--find", "clang"])
-            .output()
-            .expect("failed to run xcrun --find clang");
-        let clang_bin = std::path::PathBuf::from(String::from_utf8(clang.stdout).unwrap().trim());
-
-        // <toolchain>/usr/bin/clang -> strip /bin/clang -> <toolchain>/usr
-        let mut clang_dir = clang_bin;
-        clang_dir.pop(); // bin
-        clang_dir.pop(); // usr
-
-        // lib/clang/<version>/lib/darwin
-        let builtins_dir = clang_dir.join("lib").join("clang");
-        // Highest version sub-directory
-        let version_dir = std::fs::read_dir(&builtins_dir)
-            .expect("read clang directory")
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().ok().map(|t| t.is_dir()).unwrap_or(false))
-            .max_by_key(|e| e.file_name()) // pick latest version
-            .expect("no clang version dirs found")
-            .path();
-        let darwin_dir = version_dir.join("lib").join("darwin");
-
-        println!("cargo:rustc-link-search=native={}", darwin_dir.display());
-
         // Static archive is always present, dylib only on some versions.
         println!("cargo:rustc-link-lib=static=clang_rt.osx");
 
@@ -240,6 +246,21 @@ fn main() {
         .include("monero/external/easylogging++") // Includes the easylogging++ headers
         .include("monero/contrib/epee/include") // Includes the epee headers for net/http_client.h
         .include("/opt/homebrew/include") // Homebrew include path for Boost
-        .flag("-fPIC") // Position independent code
-        .compile("monero-sys");
+        .flag("-fPIC"); // Position independent code
+
+    #[cfg(target_os = "macos")]
+    {
+        // Use the same dynamic brew prefix for include paths
+        let brew_prefix = std::process::Command::new("brew")
+            .arg("--prefix")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| "/opt/homebrew".into());
+
+        build.include(format!("{}/include", brew_prefix)); // Homebrew include path for Boost
+    }
+
+    build.compile("monero-sys");
 }
