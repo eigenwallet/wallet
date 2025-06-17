@@ -5,7 +5,7 @@
 //!  - wait for transactions to be confirmed
 //!  - send money from one wallet to another.
 
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};
 use monero::{Address, Network};
@@ -72,6 +72,8 @@ impl Wallets {
         if regtest {
             main_wallet.unsafe_prepare_for_regtest().await;
         }
+
+        let main_wallet = Arc::new(main_wallet);
 
         let wallets = Self {
             wallet_dir,
