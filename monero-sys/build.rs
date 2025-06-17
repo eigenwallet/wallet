@@ -144,7 +144,7 @@ fn main() {
         println!("cargo:rustc-link-search=native=/opt/homebrew/opt/unbound/lib");
         println!("cargo:rustc-link-search=native=/opt/homebrew/opt/expat/lib");
         println!("cargo:rustc-link-search=native=/opt/homebrew/Cellar/protobuf@21/21.12_1/lib/");
-        
+
         // Add search paths for clang runtime libraries
         println!("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/15.0.0/lib/darwin");
         println!("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/16.0.0/lib/darwin");
