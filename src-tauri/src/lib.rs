@@ -19,6 +19,7 @@ use swap::cli::{
     },
     command::{Bitcoin, Monero},
 };
+use tauri::Url;
 use tauri::{async_runtime::RwLock, Manager, RunEvent};
 use tauri_plugin_dialog::DialogExt;
 use zip::{write::SimpleFileOptions, ZipWriter};
@@ -141,7 +142,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     // We need to set a value for the Tauri state right at the start
     // If we don't do this, Tauri commands will panic at runtime if no value is present
-    app_handle.manage::<RwLock<State>>(RwLock::new(State::new()));
+    let state = RwLock::new(State::new());
+    app_handle.manage::<RwLock<State>>(state);
 
     Ok(())
 }
@@ -366,6 +368,27 @@ async fn initialize_context(
         .context("Context is already being initialized")
         .to_string_result()?;
 
+    // Determine which Monero node to use:
+    // - If a specific node URL is provided in settings, use that
+    // - If None, start and use the local RPC pool
+    let monero_node_url = if let Some(provided_url) = settings.monero_node_url.clone() {
+        // User provided a specific node URL
+        Some(provided_url)
+    } else {
+        // No specific node provided, start RPC pool and use it
+        match monero_rpc_pool::start_server_on_random_port(None).await {
+            Ok(server_info) => {
+                let rpc_url = format!("http://{}:{}", server_info.host, server_info.port);
+                tracing::info!("Monero RPC Pool started on {}", rpc_url);
+                rpc_url.parse().ok()
+            }
+            Err(e) => {
+                tracing::error!("Failed to start Monero RPC Pool: {}", e);
+                None
+            }
+        }
+    };
+
     // Get app handle and create a Tauri handle
     let tauri_handle = TauriHandle::new(app_handle.clone());
 
@@ -378,7 +401,7 @@ async fn initialize_context(
             bitcoin_target_block: None,
         })
         .with_monero(Monero {
-            monero_node_address: settings.monero_node_url.clone(),
+            monero_node_address: monero_node_url,
         })
         .with_json(false)
         .with_debug(true)

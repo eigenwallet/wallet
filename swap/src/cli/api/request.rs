@@ -1353,6 +1353,9 @@ struct UnknownMoneroNetwork(String);
 
 impl CheckMoneroNodeArgs {
     pub async fn request(self) -> Result<CheckMoneroNodeResponse> {
+        let url = self.url.clone();
+        let network_str = self.network.clone();
+
         let network = match self.network.to_lowercase().as_str() {
             // When the GUI says testnet, it means monero stagenet
             "mainnet" => Network::Mainnet,
@@ -1376,8 +1379,14 @@ impl CheckMoneroNodeArgs {
         match monero_daemon.is_available(&CLIENT).await {
             Ok(available) => Ok(CheckMoneroNodeResponse { available }),
             Err(e) => {
-                tracing::error!(error=%e, "Failed to check monero node availability");
-                
+                tracing::error!(
+                    url = %url,
+                    network = %network_str,
+                    error = ?e,
+                    error_chain = %format!("{:#}", e),
+                    "Failed to check monero node availability"
+                );
+
                 Ok(CheckMoneroNodeResponse { available: false })
             }
         }

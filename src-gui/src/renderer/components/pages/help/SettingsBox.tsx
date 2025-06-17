@@ -20,6 +20,9 @@ import {
   useTheme,
   Switch,
   SelectChangeEvent,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import {
   addNode,
@@ -35,11 +38,13 @@ import {
   setFiatCurrency,
   setTheme,
   setTorEnabled,
+  setUseMoneroRpcPool,
 } from "store/features/settingsSlice";
 import { useAppDispatch, useNodes, useSettings } from "store/hooks";
 import ValidatedTextField from "renderer/components/other/ValidatedTextField";
+import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import HelpIcon from "@mui/icons-material/HelpOutline";
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { Theme } from "renderer/components/theme";
 import {
   Add,
@@ -48,10 +53,12 @@ import {
   Edit,
   HourglassEmpty,
 } from "@mui/icons-material";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { getNetwork } from "store/config";
 import { currencySymbol } from "utils/formatUtils";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import { isValidMultiAddressWithPeerId } from "utils/parseUtils";
+import { getMoneroNodeStatus } from "renderer/rpc";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -83,6 +90,7 @@ export default function SettingsBox() {
               <TableBody>
                 <TorSettings />
                 <ElectrumRpcUrlSetting />
+                <MoneroRpcPoolSetting />
                 <MoneroNodeUrlSetting />
                 <FetchFiatPricesSetting />
                 <ThemeSetting />
@@ -285,38 +293,157 @@ function SettingLabel({
 }
 
 /**
- * A setting that allows you to select the Monero Node URL to use.
+ * A setting that allows you to toggle between using the Monero RPC Pool and custom nodes.
  */
-function MoneroNodeUrlSetting() {
-  const network = getNetwork();
-  const [tableVisible, setTableVisible] = useState(false);
+function MoneroRpcPoolSetting() {
+  const useMoneroRpcPool = useSettings((s) => s.useMoneroRpcPool);
+  const dispatch = useAppDispatch();
 
-  const isValid = (url: string) => isValidUrl(url, ["http"]);
+  const handleChange = (
+    event: React.MouseEvent<HTMLElement>,
+    newValue: string,
+  ) => {
+    if (newValue !== null) {
+      dispatch(setUseMoneroRpcPool(newValue === "pool"));
+    }
+  };
 
   return (
     <TableRow>
       <TableCell>
         <SettingLabel
-          label="Custom Monero Node URL"
-          tooltip="This is the URL of the Monero node that the GUI will connect to. Ensure the node is listening for RPC connections over HTTP. If you leave this field empty, the GUI will choose from a list of known nodes at random."
+          label="Monero Node Selection"
+          tooltip="Choose between using a load-balanced pool of Monero nodes for better reliability, or configure custom Monero nodes."
         />
       </TableCell>
       <TableCell>
-        <IconButton onClick={() => setTableVisible(!tableVisible)} size="large">
-          <Edit />
-        </IconButton>
-        {tableVisible ? (
-          <NodeTableModal
-            open={tableVisible}
-            onClose={() => setTableVisible(false)}
-            network={network}
-            blockchain={Blockchain.Monero}
-            isValid={isValid}
+        <ToggleButtonGroup
+          color="primary"
+          value={useMoneroRpcPool ? "pool" : "custom"}
+          exclusive
+          onChange={handleChange}
+          aria-label="Monero node selection"
+          size="small"
+        >
+          <ToggleButton value="pool">Pool (Recommended)</ToggleButton>
+          <ToggleButton value="custom">Custom</ToggleButton>
+        </ToggleButtonGroup>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/**
+ * A setting that allows you to select the Monero Node URL to use.
+ * Only shown when RPC pool is disabled.
+ */
+function MoneroNodeUrlSetting() {
+  const network = getNetwork();
+  const useMoneroRpcPool = useSettings((s) => s.useMoneroRpcPool);
+  const moneroNodes = useSettings((s) => s.nodes[network][Blockchain.Monero]);
+  const dispatch = useAppDispatch();
+  const [moneroNodeUrl, setMoneroNodeUrl] = useState("");
+  const [nodeStatus, setNodeStatus] = useState<boolean | undefined>(undefined);
+
+  const isValid = (url: string) => isValidUrl(url, ["http"]);
+
+  // Load the first custom monero node URL when component mounts
+  useEffect(() => {
+    if (moneroNodes.length > 0) {
+      setMoneroNodeUrl(moneroNodes[0]);
+    }
+  }, [moneroNodes]);
+
+  const handleMoneroNodeUrlChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    // Don't update if RPC pool is enabled
+    if (useMoneroRpcPool) {
+      return;
+    }
+
+    const url = event.target.value;
+    setMoneroNodeUrl(url);
+    // Reset status when URL changes
+    setNodeStatus(undefined);
+
+    // Update the settings store with the new URL
+    if (url && isValid(url)) {
+      // Clear existing nodes and add the new one
+      moneroNodes.forEach((node) => {
+        dispatch(removeNode({ network, type: Blockchain.Monero, node }));
+      });
+      dispatch(addNode({ network, type: Blockchain.Monero, node: url }));
+    }
+  };
+
+  const checkNodeStatus = async (): Promise<boolean> => {
+    if (!moneroNodeUrl || !isValid(moneroNodeUrl)) {
+      setNodeStatus(false);
+      return false;
+    }
+
+    try {
+      const status = await getMoneroNodeStatus(moneroNodeUrl, network);
+      setNodeStatus(status);
+      return status;
+    } catch (error) {
+      console.error("Failed to check monero node status:", error);
+      setNodeStatus(false);
+      return false;
+    }
+  };
+
+  return (
+    <TableRow>
+      <TableCell>
+        <SettingLabel
+          label="Monero Node URL"
+          tooltip={
+            useMoneroRpcPool
+              ? "This setting is disabled because Monero RPC pool is enabled. Disable the RPC pool to configure a custom node."
+              : "URL of the Monero node to connect to. Must use HTTP protocol. Leave empty to use a random public node."
+          }
+        />
+      </TableCell>
+      <TableCell>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <TextField
+            value={moneroNodeUrl}
+            onChange={handleMoneroNodeUrlChange}
             placeholder={PLACEHOLDER_MONERO_NODE_URL}
+            fullWidth
+            variant="outlined"
+            size="small"
+            disabled={useMoneroRpcPool}
+            error={
+              moneroNodeUrl && !isValid(moneroNodeUrl) && !useMoneroRpcPool
+            }
+            helperText={
+              useMoneroRpcPool
+                ? null
+                : moneroNodeUrl && !isValid(moneroNodeUrl)
+                  ? "Invalid URL format"
+                  : ""
+            }
           />
-        ) : (
-          <></>
-        )}
+          <NodeStatus status={nodeStatus} />
+          <PromiseInvokeButton
+            onInvoke={checkNodeStatus}
+            isIconButton={true}
+            disabled={
+              useMoneroRpcPool || !moneroNodeUrl || !isValid(moneroNodeUrl)
+            }
+            tooltipTitle={
+              useMoneroRpcPool
+                ? "Disabled while RPC pool is enabled"
+                : "Check node status"
+            }
+            displayErrorSnackbar={true}
+            requiresContext={false}
+            endIcon={<RefreshIcon />}
+          />
+        </Box>
       </TableCell>
     </TableRow>
   );

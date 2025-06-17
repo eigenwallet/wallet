@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // In verbose mode, show DEBUG from our crate and WARN from everything else
         EnvFilter::new("monero_rpc_pool=debug,warn")
     } else {
-        // In normal mode, show INFO from our crate and ERROR from everything else  
+        // In normal mode, show INFO from our crate and ERROR from everything else
         EnvFilter::new("monero_rpc_pool=info,error")
     };
 

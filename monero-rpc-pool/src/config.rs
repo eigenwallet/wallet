@@ -12,13 +12,7 @@ impl Default for Config {
         Self {
             host: "127.0.0.1".to_string(),
             port: 18081,
-            nodes: vec![
-                "https://node.moneroworld.com:18089".to_string(),
-                "https://node1.moneroworld.com:18089".to_string(),
-                "https://node2.moneroworld.com:18089".to_string(),
-                "https://xmr-node.cakewallet.com:18081".to_string(),
-                "https://opennode.xmr-tw.org:18089".to_string(),
-            ],
+            nodes: vec![], // Empty by default - rely on discovery
         }
     }
 }
@@ -30,6 +24,15 @@ impl Config {
             host: host.unwrap_or(default.host),
             port: port.unwrap_or(default.port),
             nodes: nodes.unwrap_or(default.nodes),
+        }
+    }
+
+    /// Creates a new config suitable for library usage with automatic discovery
+    pub fn for_library(host: Option<String>, port: Option<u16>) -> Self {
+        Self {
+            host: host.unwrap_or_else(|| "127.0.0.1".to_string()),
+            port: port.unwrap_or(0), // 0 for random port
+            nodes: vec![],           // Empty - rely on discovery
         }
     }
 }
