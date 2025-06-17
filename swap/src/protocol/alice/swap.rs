@@ -311,7 +311,7 @@ where
                     .await
                     .with_context(|| {
                         format!(
-                            "Couldn't wait until Monero transaction was confirmed ({})",
+                            "Failed to wait until Monero transaction was confirmed ({})",
                             transfer_proof.tx_hash()
                         )
                     })?;
