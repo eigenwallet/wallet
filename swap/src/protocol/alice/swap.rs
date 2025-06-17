@@ -8,7 +8,6 @@ use crate::asb::{EventLoopHandle, LatestRate};
 use crate::bitcoin::ExpiredTimelocks;
 use crate::common::retry;
 use crate::env::Config;
-use crate::monero::wallet::no_listener;
 use crate::monero::TransferProof;
 use crate::protocol::alice::{AliceState, Swap};
 use crate::{bitcoin, monero};

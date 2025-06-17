@@ -18,7 +18,7 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use backoff::{future, retry, retry_notify};
+use backoff::{future, retry_notify};
 use cxx::let_cxx_string;
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
@@ -583,7 +583,7 @@ impl WalletHandle {
         listener: Option<impl Fn(u64) + Send + 'static>,
     ) -> anyhow::Result<()> {
         tracing::info!(%txid, %destination_address, amount=%expected_amount, %confirmations, "Waiting until transaction is confirmed");
-        
+
         const DEFAULT_CHECK_INTERVAL_SECS: u64 = 15;
 
         let mut poll_interval = tokio::time::interval(tokio::time::Duration::from_secs(
@@ -720,7 +720,7 @@ impl WalletManager {
         daemon: Daemon,
     ) -> anyhow::Result<FfiWallet> {
         tracing::debug!(%path, "Opening or creating wallet");
-        
+
         // If we haven't loaded the wallet, but it already exists, open it.
         if self.wallet_exists(path) {
             tracing::debug!(wallet=%path, "Wallet already exists, opening it");
@@ -778,7 +778,7 @@ impl WalletManager {
         daemon: Daemon,
     ) -> Result<FfiWallet> {
         tracing::debug!(%path, "Creating wallet from keys");
-        
+
         if self.wallet_exists(path) {
             tracing::info!(wallet=%path, "Wallet already exists, opening it");
 
@@ -853,7 +853,7 @@ impl WalletManager {
         daemon: Daemon,
     ) -> anyhow::Result<FfiWallet> {
         tracing::debug!(%path, "Recovering wallet from seed");
-        
+
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
         let_cxx_string!(mnemonic = mnemonic);
@@ -884,7 +884,7 @@ impl WalletManager {
     /// Close a wallet, storing the wallet state.
     fn close_wallet(&mut self, wallet: &mut FfiWallet) -> anyhow::Result<()> {
         tracing::info!(wallet=%wallet.filename(), "Closing wallet");
-        
+
         // Safety: we know we have a valid, unique pointer to the wallet
         let success = unsafe { self.inner.pinned().closeWallet(wallet.inner.inner, true) }
             .context("Failed to close wallet: Ffi call failed with exception")?;
@@ -908,7 +908,7 @@ impl WalletManager {
         daemon: Daemon,
     ) -> anyhow::Result<FfiWallet> {
         tracing::debug!(%path, "Opening wallet");
-        
+
         let_cxx_string!(path = path);
         let_cxx_string!(password = password.unwrap_or(""));
         let network_type = network_type.into();
@@ -953,7 +953,7 @@ impl WalletManager {
     /// Check if a wallet exists at the given path.
     pub fn wallet_exists(&mut self, path: &str) -> bool {
         tracing::debug!(%path, "Checking if wallet exists");
-        
+
         let_cxx_string!(path = path);
         self.inner
             .pinned()
@@ -1008,7 +1008,7 @@ impl FfiWallet {
                     .map_err(backoff::Error::transient)
             },
             |e, duration: Duration| tracing::error!(error=%e, "Failed to initialize wallet, retrying in {} secs", duration.as_secs()),
-        )   
+        )
         .map_err(|e| anyhow!("Failed to initialize wallet: {e}"))?;
         tracing::debug!("Initialized wallet, setting daemon address");
 
@@ -1056,7 +1056,7 @@ impl FfiWallet {
 
     fn set_daemon_address(&mut self, address: &str) -> anyhow::Result<()> {
         tracing::debug!(%address, "Setting daemon address");
-        
+
         let_cxx_string!(address = address);
         let raw_wallet = &mut self.inner;
 
@@ -1148,10 +1148,14 @@ impl FfiWallet {
             }
             ffi::ConnectionStatus::Disconnected => {
                 tracing::trace!("Daemon is disconnected");
-                false},
+                false
+            }
             // Fallback since C++ allows any other value.
             status => {
-                tracing::error!("Unknown connection status, interpreting as disconnected: `{}`", status.repr);
+                tracing::error!(
+                    "Unknown connection status, interpreting as disconnected: `{}`",
+                    status.repr
+                );
                 false
             }
         }

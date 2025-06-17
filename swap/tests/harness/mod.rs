@@ -880,7 +880,7 @@ impl TestContext {
 
         // Use Docker CLI to forcefully kill the container
         let output = tokio::process::Command::new("docker")
-            .args(&["kill", &self.monerod_container_id])
+            .args(["kill", &self.monerod_container_id])
             .output()
             .await
             .expect("Failed to execute docker kill command");

@@ -12,7 +12,7 @@ use monero::{Address, Network};
 pub use monero_sys::{Daemon, WalletHandle as Wallet};
 use uuid::Uuid;
 
-use crate::cli::api::tauri_bindings::{TauriBackgroundProgress, TauriEmitter, TauriHandle};
+use crate::cli::api::tauri_bindings::TauriHandle;
 
 use super::{BlockHeight, TransferProof, TxHash};
 
@@ -32,6 +32,7 @@ pub struct Wallets {
     regtest: bool,
     /// A handle we use to send status updates to the UI i.e. when
     /// waiting for a transaction to be confirmed.
+    #[expect(dead_code)]
     tauri_handle: Option<TauriHandle>,
 }
 

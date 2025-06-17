@@ -3,7 +3,7 @@ use crate::bitcoin::{
     TxEarlyRefund, TxPunish, TxRedeem, TxRefund, Txid,
 };
 use crate::env::Config;
-use crate::monero::wallet::{no_listener, TransferRequest, WatchRequest};
+use crate::monero::wallet::{TransferRequest, WatchRequest};
 use crate::monero::BlockHeight;
 use crate::monero::TransferProof;
 use crate::monero_ext::ScalarExt;
