@@ -23,7 +23,7 @@ fn main() {
         .define("TREZOR_DEBUG", "OFF")
         .define("USE_DEVICE_TREZOR", "OFF")
         .define("USE_DEVICE_TREZOR_LIBUSB", "OFF")
-        .define("USE_DEVICE_TREZOR_UDP_RELEASE", "OFF") 
+        .define("USE_DEVICE_TREZOR_UDP_RELEASE", "OFF")
         .define("USE_DEVICE_TREZOR_DEBUG", "OFF")
         // Disable Ledger support
         .define("USE_DEVICE_LEDGER", "OFF")
@@ -240,5 +240,6 @@ fn main() {
         .include("monero/external/easylogging++") // Includes the easylogging++ headers
         .include("monero/contrib/epee/include") // Includes the epee headers for net/http_client.h
         .include("/opt/homebrew/include") // Homebrew include path for Boost
+        .flag("-fPIC") // Position independent code
         .compile("monero-sys");
 }

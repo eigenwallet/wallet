@@ -656,7 +656,9 @@ impl Wallet {
         // We need to do this because easylogging++ may send logs after we end this thread, leading
         // to a tracing panic.
 
-        bridge::log::uninstall_log_callback();
+        bridge::log::uninstall_log_callback()
+            .context("Failed to uninstall log callback: FFI call failed with exception")
+            .expect("Shouldn't panic");
     }
 }
 
@@ -670,12 +672,12 @@ impl WalletManager {
     pub fn new(daemon: Daemon, span_name: &str) -> anyhow::Result<Self> {
         // Install the log callback to route c++ logs to tracing.
         let_cxx_string!(span_name = span_name);
-        bridge::log::install_log_callback(&span_name);
+        bridge::log::install_log_callback(&span_name)
+            .context("Failed to install log callback: FFI call failed with exception")?;
 
-        let manager = ffi::getWalletManager();
-        if manager.is_null() {
-            bail!("Failed to get wallet manager, got null pointer");
-        }
+        let manager = ffi::getWalletManager()
+            .context("Couldn't get wallet manager: FFi call failed with exception")?;
+
         let mut manager = Self {
             inner: RawWalletManager::new(manager),
         };
@@ -719,10 +721,11 @@ impl WalletManager {
         let_cxx_string!(language = "English");
         let network_type = network.into();
 
-        let wallet_pointer =
-            self.inner
-                .pinned()
-                .createWallet(&path, &password, &language, network_type, kdf_rounds);
+        let wallet_pointer = self
+            .inner
+            .pinned()
+            .createWallet(&path, &password, &language, network_type, kdf_rounds)
+            .context("Failed to create wallet: FFI call failed with exception")?;
 
         if wallet_pointer.is_null() {
             anyhow::bail!("Failed to create wallet, got null pointer");
@@ -782,17 +785,21 @@ impl WalletManager {
         let_cxx_string!(spend_key = spend_key.to_string());
         let kdf_rounds = Self::DEFAULT_KDF_ROUNDS;
 
-        let wallet_pointer = self.inner.pinned().createWalletFromKeys(
-            &path,
-            &password,
-            &language,
-            network_type,
-            restore_height,
-            &address,
-            &view_key,
-            &spend_key,
-            kdf_rounds,
-        );
+        let wallet_pointer = self
+            .inner
+            .pinned()
+            .createWalletFromKeys(
+                &path,
+                &password,
+                &language,
+                network_type,
+                restore_height,
+                &address,
+                &view_key,
+                &spend_key,
+                kdf_rounds,
+            )
+            .context("Failed to create wallet from keys: FFI call failed with exception")?;
 
         if wallet_pointer.is_null() {
             anyhow::bail!("Failed to create wallet from keys, got null pointer");
@@ -824,15 +831,19 @@ impl WalletManager {
         let_cxx_string!(seed_offset = "");
 
         let network_type = network.into();
-        let wallet_pointer = self.inner.pinned().recoveryWallet(
-            &path,
-            &password,
-            &mnemonic,
-            network_type,
-            restore_height,
-            Self::DEFAULT_KDF_ROUNDS,
-            &seed_offset,
-        );
+        let wallet_pointer = self
+            .inner
+            .pinned()
+            .recoveryWallet(
+                &path,
+                &password,
+                &mnemonic,
+                network_type,
+                restore_height,
+                Self::DEFAULT_KDF_ROUNDS,
+                &seed_offset,
+            )
+            .context("Failed to recover wallet from seed: FFI call failed with exception")?;
 
         let raw_wallet = RawWallet::new(wallet_pointer);
         let wallet = FfiWallet::new(raw_wallet, background_sync, daemon)
@@ -844,7 +855,8 @@ impl WalletManager {
     /// Close a wallet, storing the wallet state.
     fn close_wallet(&mut self, wallet: &mut FfiWallet) -> anyhow::Result<()> {
         // Safety: we know we have a valid, unique pointer to the wallet
-        let success = unsafe { self.inner.pinned().closeWallet(wallet.inner.inner, true) };
+        let success = unsafe { self.inner.pinned().closeWallet(wallet.inner.inner, true) }
+            .context("Failed to close wallet: Ffi call failed with exception")?;
 
         if !success {
             anyhow::bail!("Failed to close wallet");
@@ -877,7 +889,8 @@ impl WalletManager {
                 kdf_rounds,
                 std::ptr::null_mut(),
             )
-        };
+        }
+        .context("Failed to open wallet: FFI call failed with exception")?;
 
         if wallet_pointer.is_null() {
             anyhow::bail!("Failed to open wallet: got null pointer")
@@ -897,13 +910,21 @@ impl WalletManager {
 
         let_cxx_string!(address = address);
 
-        self.inner.pinned().setDaemonAddress(&address);
+        self.inner
+            .pinned()
+            .setDaemonAddress(&address)
+            .context("Failed to set daemon address: FFI call failed with exception")
+            .expect("Shouldn't panic");
     }
 
     /// Check if a wallet exists at the given path.
     pub fn wallet_exists(&mut self, path: &str) -> bool {
         let_cxx_string!(path = path);
-        self.inner.pinned().walletExists(&path)
+        self.inner
+            .pinned()
+            .walletExists(&path)
+            .context("Failed to check if wallet exists: FFI call failed with exception")
+            .expect("Wallet check should never fail")
     }
 }
 
@@ -966,14 +987,20 @@ impl FfiWallet {
 
     /// Get the path to the wallet file.
     pub fn path(&self) -> String {
-        ffi::walletPath(&self.inner).to_string()
+        ffi::walletPath(&self.inner)
+            .context("Failed to get wallet path: FFI call failed with exception")
+            .expect("Wallet path should never fail")
+            .to_string()
     }
 
     /// Get the address for the given account and address index.
     /// address(0, 0) is the main address.
     /// We don't use anything besides the main address so this is a private method (for now).
     fn address(&self, account_index: u32, address_index: u32) -> monero::Address {
-        let address = ffi::address(&self.inner, account_index, address_index);
+        let address = ffi::address(&self.inner, account_index, address_index)
+            .context("Failed to get wallet address: FFI call failed with exception")
+            .expect("Wallet address should never fail");
+
         monero::Address::from_str(&address.to_string()).expect("wallet's own address to be valid")
     }
 
@@ -981,7 +1008,8 @@ impl FfiWallet {
         let_cxx_string!(address = address);
         let raw_wallet = &mut self.inner;
 
-        let success = ffi::setWalletDaemon(raw_wallet.pinned(), &address);
+        let success = ffi::setWalletDaemon(raw_wallet.pinned(), &address)
+            .context("Failed to set daemon address: FFI call failed with exception")?;
 
         if !success {
             self.check_error().context("Failed to set daemon address")?;
@@ -1006,15 +1034,18 @@ impl FfiWallet {
 
         let raw_wallet = &mut self.inner;
 
-        let success = raw_wallet.pinned().init(
-            &daemon_address,
-            0,
-            &daemon_username,
-            &daemon_password,
-            ssl,
-            false,
-            &proxy_address,
-        );
+        let success = raw_wallet
+            .pinned()
+            .init(
+                &daemon_address,
+                0,
+                &daemon_username,
+                &daemon_password,
+                ssl,
+                false,
+                &proxy_address,
+            )
+            .context("Couldn't `init` wallet: FFI call failed with exception")?;
 
         if !success {
             self.check_error().context("Failed to initialize wallet")?;
@@ -1028,7 +1059,11 @@ impl FfiWallet {
     ///
     /// Returns a zeroed sync progress if the daemon is not connected.
     fn sync_progress(&self) -> SyncProgress {
-        let current_block = self.inner.blockChainHeight();
+        let current_block = self
+            .inner
+            .blockChainHeight()
+            .context("Failed to get current block height: FFI call failed with exception")
+            .expect("Shouldn't panic");
         let target_block = self.daemon_blockchain_height().unwrap_or(0);
 
         if target_block == 0 {
@@ -1039,7 +1074,12 @@ impl FfiWallet {
     }
 
     fn connected(&self) -> bool {
-        match self.inner.connected() {
+        match self
+            .inner
+            .connected()
+            .context("Failed to get connection status: FFI call failed with exception")
+            .expect("Shouldn't panic")
+        {
             ffi::ConnectionStatus::Connected => true,
             ffi::ConnectionStatus::WrongVersion => {
                 tracing::warn!("Version mismatch with daemon");
@@ -1060,31 +1100,51 @@ impl FfiWallet {
     ///
     /// _Do not use for anything besides testing._
     fn set_trusted_daemon(&mut self, trusted: bool) {
-        self.inner.pinned().setTrustedDaemon(trusted);
+        self.inner
+            .pinned()
+            .setTrustedDaemon(trusted)
+            .context("Failed to set trusted daemon: FFI call failed with exception")
+            .expect("Shouldn't panic");
     }
 
     /// Force a full sync of the wallet.
     /// Use only for regtest environments, utterly slow otherwise.
     fn force_full_sync(&mut self) {
-        self.inner.pinned().setRefreshFromBlockHeight(0);
+        self.inner
+            .pinned()
+            .setRefreshFromBlockHeight(0)
+            .context("Failed to set refresh from block height: FFI call failed with exception")
+            .expect("Shouldn't panic");
     }
 
     /// Start the background refresh thread (refreshes every 10 seconds).
     fn start_refresh(&mut self) {
-        self.inner.pinned().startRefresh();
+        self.inner
+            .pinned()
+            .startRefresh()
+            .context("Failed to start refresh: FFI call failed with exception")
+            .expect("Shouldn't panic");
     }
 
     /// Refresh the wallet asynchronously.
     /// Same as start_refresh except that the background thread only
     /// refreshes once. Maybe?
     fn refresh_async(&mut self) {
-        self.inner.pinned().refreshAsync();
+        self.inner
+            .pinned()
+            .refreshAsync()
+            .context("Failed to refresh wallet asynchronously: FFI call failed with exception")
+            .expect("Shouldn't panic");
     }
 
     /// Refresh the wallet synchronously.
     /// No possibility for progress reporting.
     fn refresh_blocking(&mut self) -> anyhow::Result<()> {
-        let success = self.inner.pinned().refresh();
+        let success = self
+            .inner
+            .pinned()
+            .refresh()
+            .context("Failed to refresh wallet: FFI call failed with exception")?;
 
         if !success {
             let connected = self.connected();
@@ -1098,12 +1158,18 @@ impl FfiWallet {
 
     /// Get the wallet creation height.
     fn creation_height(&self) -> u64 {
-        self.inner.getRefreshFromBlockHeight()
+        self.inner
+            .getRefreshFromBlockHeight()
+            .context("Failed to get refresh from block height: FFI call failed with exception")
+            .expect("Shouldn't panic")
     }
 
     /// Get the current blockchain height.
     fn blockchain_height(&self) -> u64 {
-        self.inner.blockChainHeight()
+        self.inner
+            .blockChainHeight()
+            .context("Failed to get blockchain height: FFI call failed with exception")
+            .expect("Shouldn't panic")
     }
 
     /// Get the daemon's blockchain height.
@@ -1115,7 +1181,14 @@ impl FfiWallet {
 
         // Here we actually use the _target_ height -- incase the remote node is
         // currently catching up we want to work with the height it ends up at.
-        match self.inner.daemonBlockChainTargetHeight() {
+        match self
+            .inner
+            .daemonBlockChainTargetHeight()
+            .context(
+                "Failed to get daemon blockchain target height: FFI call failed with exception",
+            )
+            .expect("Shouldn't panic")
+        {
             0 => None,
             height => Some(height),
         }
@@ -1123,13 +1196,21 @@ impl FfiWallet {
 
     /// Get the total balance across all accounts.
     fn total_balance(&mut self) -> monero::Amount {
-        let balance = self.inner.balanceAll();
+        let balance = self
+            .inner
+            .balanceAll()
+            .context("Failed to get total balance: FFI call failed with exception")
+            .expect("Shouldn't panic");
         monero::Amount::from_pico(balance)
     }
 
     /// Get the total unlocked balance across all accounts in atomic units.
     fn unlocked_balance(&mut self) -> monero::Amount {
-        let balance = self.inner.unlockedBalanceAll();
+        let balance = self
+            .inner
+            .unlockedBalanceAll()
+            .context("Failed to get unlocked balance: FFI call failed with exception")
+            .expect("Shouldn't panic");
         monero::Amount::from_pico(balance)
     }
 
@@ -1166,7 +1247,13 @@ impl FfiWallet {
     ///
     /// _Do not use for anything besides testing._
     fn allow_mismatched_daemon_version(&mut self) {
-        self.inner.pinned().setAllowMismatchedDaemonVersion(true);
+        self.inner
+            .pinned()
+            .setAllowMismatchedDaemonVersion(true)
+            .context(
+                "Failed to set allow mismatched daemon version: FFI call failed with exception",
+            )
+            .expect("Shouldn't panic");
     }
 
     /// Check the status of a transaction.
@@ -1194,7 +1281,8 @@ impl FfiWallet {
             &mut received,
             &mut in_pool,
             &mut confirmations,
-        );
+        )
+        .context("Failed to check tx key: FFI call failed with exception")?;
 
         if !success {
             self.check_error().context("Failed to check tx key")?;
@@ -1216,7 +1304,8 @@ impl FfiWallet {
         let_cxx_string!(tx_id = tx_id);
 
         let raw_wallet = &mut self.inner;
-        let success = ffi::scanTransaction(raw_wallet.pinned(), &tx_id);
+        let success = ffi::scanTransaction(raw_wallet.pinned(), &tx_id)
+            .context("Failed to scan transaction: FFI call failed with exception")?;
 
         if !success {
             self.check_error().context("Failed to scan transaction")?;
@@ -1247,15 +1336,15 @@ impl FfiWallet {
         }
 
         // First we need to create a pending transaction.
-        let mut pending_tx = PendingTransaction(ffi::createTransaction(
-            self.inner.pinned(),
-            &address,
-            amount,
-        ));
+        let mut pending_tx = PendingTransaction(
+            ffi::createTransaction(self.inner.pinned(), &address, amount)
+                .context("Failed to create transaction: FFI call failed with exception")?,
+        );
 
         // Get the txid from the pending transaction before we publish,
         // otherwise it might be null.
-        let txid = ffi::pendingTransactionTxId(&pending_tx) // UniquePtr<CxxString>
+        let txid = ffi::pendingTransactionTxId(&pending_tx)
+            .context("Failed to get txid from pending transaction: FFI call failed with exception")?
             .to_string();
 
         // Publish the transaction
@@ -1271,7 +1360,9 @@ impl FfiWallet {
 
         // Fetch the tx key from the wallet.
         let_cxx_string!(txid_cxx = txid.clone());
-        let tx_key = ffi::walletGetTxKey(&self.inner, &txid_cxx).to_string();
+        let tx_key = ffi::walletGetTxKey(&self.inner, &txid_cxx)
+            .context("Failed to get tx key from wallet: FFI call failed with exception")?
+            .to_string();
 
         // Get current blockchain height (wallet height).
         let height = self.blockchain_height();
@@ -1296,12 +1387,15 @@ impl FfiWallet {
         let_cxx_string!(address = address.to_string());
 
         // Create the sweep transaction
-        let mut pending_tx =
-            PendingTransaction(ffi::createSweepTransaction(self.inner.pinned(), &address));
+        let mut pending_tx = PendingTransaction(
+            ffi::createSweepTransaction(self.inner.pinned(), &address)
+                .context("Failed to create sweep transaction: FFI call failed with exception")?,
+        );
 
         // Get the txids from the pending transaction before we publish,
         // otherwise it might be null.
         let txids: Vec<String> = ffi::pendingTransactionTxIds(&pending_tx)
+            .context("Failed to get txids of pending transaction: FFI call failed with exception")?
             .into_iter()
             .map(|s| s.to_string())
             .collect();
@@ -1321,7 +1415,13 @@ impl FfiWallet {
     /// Always call this before dropping a pending transaction object,
     /// otherwise we leak memory.
     fn dispose_transaction(&mut self, tx: PendingTransaction) {
-        unsafe { self.inner.pinned().disposeTransaction(tx.0) };
+        unsafe {
+            self.inner
+                .pinned()
+                .disposeTransaction(tx.0)
+                .context("Failed to dispose transaction: FFI call failed with exception")
+                .expect("Shouldn't panic");
+        }
     }
 
     /// Return `Ok` when the wallet is ok, otherwise return the error.
@@ -1336,7 +1436,8 @@ impl FfiWallet {
         let_cxx_string!(error_string_ref = &mut error_string);
 
         self.inner
-            .statusWithErrorString(&mut status, error_string_ref);
+            .statusWithErrorString(&mut status, error_string_ref)
+            .context("Failed to get wallet status: FFI call failed with exception")?;
 
         // If the status is ok, we return None
         if status == 0 {
@@ -1362,7 +1463,10 @@ impl FfiWallet {
     /// Get the seed of the wallet.
     fn seed(&self) -> String {
         let_cxx_string!(seed = "");
-        ffi::walletSeed(&self.inner, &seed).to_string()
+        ffi::walletSeed(&self.inner, &seed)
+            .context("Failed to get wallet seed: FFI call failed with exception")
+            .expect("Shouldn't panic")
+            .to_string()
     }
 }
 
@@ -1374,8 +1478,14 @@ impl PendingTransaction {
     /// This is a convenience method we use for retrieving errors after
     /// a method call failed.
     fn check_error(&self) -> anyhow::Result<()> {
-        let status = self.status();
-        let error_string = ffi::pendingTransactionErrorString(self);
+        let status = self
+            .status()
+            .context("Failed to get pending transaction status: FFI call failed with exception")?;
+        let error_string = ffi::pendingTransactionErrorString(self)
+            .context(
+                "Failed to get pending transaction error string: FFI call failed with exception",
+            )?
+            .to_string();
 
         if status == 0 {
             return Ok(());
@@ -1397,7 +1507,9 @@ impl PendingTransaction {
 
         // Then we commit it to the blockchain.
         let_cxx_string!(filename = ""); // Empty filename means we commit to the blockchain
-        let success = self.pinned().commit(&filename, false);
+        let success = self.pinned().commit(&filename, false).context(
+            "Failed to commit transaction to blockchain: FFI call failed with exception",
+        )?;
 
         if success {
             Ok(())

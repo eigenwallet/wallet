@@ -60,7 +60,7 @@ pub mod ffi {
         type WalletListener;
 
         /// Get the wallet manager.
-        fn getWalletManager() -> *mut WalletManager;
+        fn getWalletManager() -> Result<*mut WalletManager>;
 
         /// Create a new wallet.
         fn createWallet(
@@ -70,7 +70,7 @@ pub mod ffi {
             language: &CxxString,
             network_type: NetworkType,
             kdf_rounds: u64,
-        ) -> *mut Wallet;
+        ) -> Result<*mut Wallet>;
 
         /// Create a new wallet from keys.
         #[allow(clippy::too_many_arguments)]
@@ -85,7 +85,7 @@ pub mod ffi {
             view_key: &CxxString,
             spend_key: &CxxString,
             kdf_rounds: u64,
-        ) -> *mut Wallet;
+        ) -> Result<*mut Wallet>;
 
         /// Recover a wallet from a mnemonic seed (electrum seed).
         #[allow(clippy::too_many_arguments)]
@@ -98,7 +98,7 @@ pub mod ffi {
             restore_height: u64,
             kdf_rounds: u64,
             seed_offset: &CxxString,
-        ) -> *mut Wallet;
+        ) -> Result<*mut Wallet>;
 
         ///virtual Wallet * openWallet(const std::string &path, const std::string &password, NetworkType nettype, uint64_t kdf_rounds = 1, WalletListener * listener = nullptr) = 0;
         unsafe fn openWallet(
@@ -108,35 +108,38 @@ pub mod ffi {
             network_type: NetworkType,
             kdf_rounds: u64,
             listener: *mut WalletListener,
-        ) -> *mut Wallet;
+        ) -> Result<*mut Wallet>;
 
         /// Close a wallet, optionally storing the wallet state.
         unsafe fn closeWallet(
             self: Pin<&mut WalletManager>,
             wallet: *mut Wallet,
             store: bool,
-        ) -> bool;
+        ) -> Result<bool>;
 
         /// Check whether a wallet exists at the given path.
-        fn walletExists(self: Pin<&mut WalletManager>, path: &CxxString) -> bool;
+        fn walletExists(self: Pin<&mut WalletManager>, path: &CxxString) -> Result<bool>;
 
         /// Set the address of the remote node ("daemon").
-        fn setDaemonAddress(self: Pin<&mut WalletManager>, address: &CxxString);
+        fn setDaemonAddress(self: Pin<&mut WalletManager>, address: &CxxString) -> Result<()>;
 
         /// Get the path of the wallet.
-        fn walletPath(wallet: &Wallet) -> UniquePtr<CxxString>;
+        fn walletPath(wallet: &Wallet) -> Result<UniquePtr<CxxString>>;
 
         /// Get the status of the wallet and an error string if there is one.
         fn statusWithErrorString(
             self: &Wallet,
             status: &mut i32,
             error_string: Pin<&mut CxxString>,
-        );
+        ) -> Result<()>;
 
         /// Address for the given account and address index.
         /// address(0, 0) is the main address.
-        fn address(wallet: &Wallet, account_index: u32, address_index: u32)
-            -> UniquePtr<CxxString>;
+        fn address(
+            wallet: &Wallet,
+            account_index: u32,
+            address_index: u32,
+        ) -> Result<UniquePtr<CxxString>>;
 
         /// Initialize the wallet by connecting to the specified remote node (daemon).
         #[allow(clippy::too_many_arguments)]
@@ -149,52 +152,55 @@ pub mod ffi {
             use_ssl: bool,
             light_wallet: bool,
             proxy_address: &CxxString,
-        ) -> bool;
+        ) -> Result<bool>;
 
         /// Get the seed of the wallet.
-        fn walletSeed(wallet: &Wallet, seed_offset: &CxxString) -> UniquePtr<CxxString>;
+        fn walletSeed(wallet: &Wallet, seed_offset: &CxxString) -> Result<UniquePtr<CxxString>>;
 
         /// Get the wallet creation height.
-        fn getRefreshFromBlockHeight(self: &Wallet) -> u64;
+        fn getRefreshFromBlockHeight(self: &Wallet) -> Result<u64>;
 
         /// Check whether the wallet is connected to the daemon.
-        fn connected(self: &Wallet) -> ConnectionStatus;
+        fn connected(self: &Wallet) -> Result<ConnectionStatus>;
 
         /// Start the background refresh thread (refreshes every 10 seconds).
-        fn startRefresh(self: Pin<&mut Wallet>);
+        fn startRefresh(self: Pin<&mut Wallet>) -> Result<()>;
 
         /// Refresh the wallet asynchronously.
-        fn refreshAsync(self: Pin<&mut Wallet>);
+        fn refreshAsync(self: Pin<&mut Wallet>) -> Result<()>;
 
         /// Set the daemon address.
-        fn setWalletDaemon(wallet: Pin<&mut Wallet>, daemon_address: &CxxString) -> bool;
+        fn setWalletDaemon(wallet: Pin<&mut Wallet>, daemon_address: &CxxString) -> Result<bool>;
 
         /// Set whether the daemon is trusted.
-        fn setTrustedDaemon(self: Pin<&mut Wallet>, trusted: bool);
+        fn setTrustedDaemon(self: Pin<&mut Wallet>, trusted: bool) -> Result<()>;
 
         /// Get the current blockchain height.
-        fn blockChainHeight(self: &Wallet) -> u64;
+        fn blockChainHeight(self: &Wallet) -> Result<u64>;
 
         /// Get the daemon's blockchain height.
-        fn daemonBlockChainTargetHeight(self: &Wallet) -> u64;
+        fn daemonBlockChainTargetHeight(self: &Wallet) -> Result<u64>;
 
         /// Check if wallet was ever synchronized.
-        fn synchronized(self: &Wallet) -> bool;
+        fn synchronized(self: &Wallet) -> Result<bool>;
 
         /// Get the total balance across all accounts in atomic units (piconero).
-        fn balanceAll(self: &Wallet) -> u64;
+        fn balanceAll(self: &Wallet) -> Result<u64>;
 
         /// Get the total unlocked balance across all accounts in atomic units (piconero).
-        fn unlockedBalanceAll(self: &Wallet) -> u64;
+        fn unlockedBalanceAll(self: &Wallet) -> Result<u64>;
 
         /// Refresh the wallet synchronously.
-        fn refresh(self: Pin<&mut Wallet>) -> bool;
+        fn refresh(self: Pin<&mut Wallet>) -> Result<bool>;
 
         /// Force a specific restore height.
-        fn setRefreshFromBlockHeight(self: Pin<&mut Wallet>, height: u64);
+        fn setRefreshFromBlockHeight(self: Pin<&mut Wallet>, height: u64) -> Result<()>;
 
         /// Set whether to allow mismatched daemon versions.
-        fn setAllowMismatchedDaemonVersion(self: Pin<&mut Wallet>, allow_mismatch: bool);
+        fn setAllowMismatchedDaemonVersion(
+            self: Pin<&mut Wallet>,
+            allow_mismatch: bool,
+        ) -> Result<()>;
 
         /// Check whether a transaction is in the mempool / confirmed.
         fn checkTxKey(
@@ -205,48 +211,53 @@ pub mod ffi {
             received: &mut u64,
             in_pool: &mut bool,
             confirmations: &mut u64,
-        ) -> bool;
+        ) -> Result<bool>;
 
         /// Scan for a specified list of transactions.
-        fn scanTransaction(wallet: Pin<&mut Wallet>, tx_id: &CxxString) -> bool;
+        fn scanTransaction(wallet: Pin<&mut Wallet>, tx_id: &CxxString) -> Result<bool>;
 
         /// Create a new transaction.
         fn createTransaction(
             wallet: Pin<&mut Wallet>,
             dest_address: &CxxString,
             amount: u64,
-        ) -> *mut PendingTransaction;
+        ) -> Result<*mut PendingTransaction>;
 
         /// Create a sweep transaction.
         fn createSweepTransaction(
             wallet: Pin<&mut Wallet>,
             dest_address: &CxxString,
-        ) -> *mut PendingTransaction;
+        ) -> Result<*mut PendingTransaction>;
 
         /// Get the status of a pending transaction.
-        fn status(self: &PendingTransaction) -> i32;
+        fn status(self: &PendingTransaction) -> Result<i32>;
 
         /// Get the error string of a pending transaction.
-        fn pendingTransactionErrorString(tx: &PendingTransaction) -> UniquePtr<CxxString>;
+        fn pendingTransactionErrorString(tx: &PendingTransaction) -> Result<UniquePtr<CxxString>>;
 
         /// Get the first transaction id of a pending transaction (if any).
-        fn pendingTransactionTxId(tx: &PendingTransaction) -> UniquePtr<CxxString>;
+        fn pendingTransactionTxId(tx: &PendingTransaction) -> Result<UniquePtr<CxxString>>;
 
         /// Get all transaction ids of a pending transaction.
-        fn pendingTransactionTxIds(tx: &PendingTransaction) -> UniquePtr<CxxVector<CxxString>>;
+        fn pendingTransactionTxIds(
+            tx: &PendingTransaction,
+        ) -> Result<UniquePtr<CxxVector<CxxString>>>;
 
         /// Get the transaction key (r) for a given txid.
-        fn walletGetTxKey(wallet: &Wallet, txid: &CxxString) -> UniquePtr<CxxString>;
+        fn walletGetTxKey(wallet: &Wallet, txid: &CxxString) -> Result<UniquePtr<CxxString>>;
 
         /// Commit a pending transaction to the blockchain.
         fn commit(
             self: Pin<&mut PendingTransaction>,
             filename: &CxxString,
             overwrite: bool,
-        ) -> bool;
+        ) -> Result<bool>;
 
         /// Dispose of a pending transaction object.
-        unsafe fn disposeTransaction(self: Pin<&mut Wallet>, tx: *mut PendingTransaction);
+        unsafe fn disposeTransaction(
+            self: Pin<&mut Wallet>,
+            tx: *mut PendingTransaction,
+        ) -> Result<()>;
     }
 }
 
@@ -298,8 +309,8 @@ pub mod log {
         include!("easylogging++.h");
         include!("bridge.h");
 
-        fn install_log_callback(span_name: &CxxString);
-        fn uninstall_log_callback();
+        fn install_log_callback(span_name: &CxxString) -> Result<()>;
+        fn uninstall_log_callback() -> Result<()>;
     }
 }
 
