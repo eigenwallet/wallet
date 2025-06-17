@@ -89,6 +89,8 @@ pub fn init(
         .with_ansi(false)
         .with_timer(UtcTime::rfc_3339())
         .with_target(false)
+        .with_file(true)
+        .with_line_number(true)
         .json()
         .with_filter(env_filter(level_filter, OUR_CRATES.clone())?);
 
@@ -100,6 +102,8 @@ pub fn init(
         .with_ansi(false)
         .with_timer(UtcTime::rfc_3339())
         .with_target(false)
+        .with_file(true)
+        .with_line_number(true)
         .json()
         .with_filter(env_filter_with_libp2p_info(
             LevelFilter::TRACE,
@@ -116,7 +120,9 @@ pub fn init(
         .with_writer(std::io::stderr)
         .with_ansi(is_terminal)
         .with_timer(UtcTime::rfc_3339())
-        .with_target(true);
+        .with_target(true)
+        .with_file(true)
+        .with_line_number(true);
 
     // Layer for writing to the Tauri guest. This will be displayed in the GUI.
     // Crates: All crates with libp2p at INFO+ level
@@ -126,6 +132,8 @@ pub fn init(
         .with_ansi(false)
         .with_timer(UtcTime::rfc_3339())
         .with_target(true)
+        .with_file(true)
+        .with_line_number(true)
         .json()
         .with_filter(env_filter_with_libp2p_info(
             level_filter,

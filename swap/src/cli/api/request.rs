@@ -1373,11 +1373,14 @@ impl CheckMoneroNodeArgs {
             return Ok(CheckMoneroNodeResponse { available: false });
         };
 
-        let Ok(available) = monero_daemon.is_available(&CLIENT).await else {
-            return Ok(CheckMoneroNodeResponse { available: false });
-        };
-
-        Ok(CheckMoneroNodeResponse { available })
+        match monero_daemon.is_available(&CLIENT).await {
+            Ok(available) => Ok(CheckMoneroNodeResponse { available }),
+            Err(e) => {
+                tracing::error!(error=%e, "Failed to check monero node availability");
+                
+                Ok(CheckMoneroNodeResponse { available: false })
+            }
+        }
     }
 }
 
