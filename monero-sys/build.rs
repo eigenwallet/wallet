@@ -11,10 +11,9 @@ fn main() {
     let mut config = Config::new("monero");
     let output_directory = config
         .build_target("wallet_api")
-        // Unsure which of these is the correct one to use
-        // Lets use both for now
-        .define("CMAKE_BUILD_TYPE", "Release")
-        .define("CMAKE_RELEASE_TYPE", "Release")
+        // Builds currently fail in Release mode
+        // .define("CMAKE_BUILD_TYPE", "Release")
+        // .define("CMAKE_RELEASE_TYPE", "Release")
         // Force building static libraries
         .define("STATIC", "ON")
         .define("BUILD_SHARED_LIBS", "OFF")
