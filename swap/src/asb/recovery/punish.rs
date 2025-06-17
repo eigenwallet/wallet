@@ -49,13 +49,6 @@ pub async fn punish(
 
     let txid = state3.punish_btc(&bitcoin_wallet).await?;
 
-    // Problem: we need the lock transfer proof in BtcPunished.
-    // For that, we need to pass it to the state.
-    // We want to be able to punish from any state.
-    // But: not every state has the transfer proof saved.
-
-    // So we kinda have to get the transfer proof from the database.
-
     let state = AliceState::BtcPunished {
         state3: state3.clone(),
         transfer_proof,

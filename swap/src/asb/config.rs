@@ -37,7 +37,7 @@ impl GetDefaults for Testnet {
             data_dir: default_asb_data_dir()?.join("testnet"),
             listen_address_tcp: Multiaddr::from_str("/ip4/0.0.0.0/tcp/9939")?,
             electrum_rpc_url: Url::parse("ssl://electrum.blockstream.info:60002")?,
-            monero_daemon_address: Url::parse("node.sethforprivacy.com:38089")?,
+            monero_daemon_address: Url::parse("http://node.sethforprivacy.com:38089")?,
             price_ticker_ws_url: Url::parse("wss://ws.kraken.com")?,
             bitcoin_confirmation_target: 1,
         };
@@ -386,8 +386,8 @@ pub fn query_user_for_initial_config(testnet: bool) -> Result<Config> {
         }
     }
 
-    let monero_wallet_rpc_url = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Enter Monero Wallet RPC URL or hit enter to use default")
+    let monero_daemon_url = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Enter Monero daemon url or hit enter to use default")
         .default(defaults.monero_daemon_address)
         .interact_text()?;
 
@@ -458,7 +458,7 @@ pub fn query_user_for_initial_config(testnet: bool) -> Result<Config> {
             use_mempool_space_fee_estimation: true,
         },
         monero: Monero {
-            daemon_url: monero_wallet_rpc_url,
+            daemon_url: monero_daemon_url,
             finality_confirmations: None,
             network: monero_network,
         },
