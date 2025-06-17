@@ -1177,7 +1177,7 @@ impl FfiWallet {
     /// Returns the height of the blockchain, if connected.
     /// Returns None if not connected.
     fn daemon_blockchain_height(&self) -> Option<u64> {
-        tracing::debug!(connected=%self.connected(), "Getting daemon blockchain height");
+        tracing::trace!(connected=%self.connected(), "Getting daemon blockchain height");
 
         // Here we actually use the _target_ height -- incase the remote node is
         // currently catching up we want to work with the height it ends up at.
@@ -1215,30 +1215,11 @@ impl FfiWallet {
     }
 
     /// Check if the wallet is synced with the daemon.
-    ///
-    /// The original implementation trusted `wallet->synchronized()` from the C++
-    /// layer, but in practice this flag is set after the very first refresh and
-    /// does **not** take newly mined blocks into account. This led to false
-    /// positives where the Rust side considered the wallet synced even though
-    /// it still had to scan additional blocks, resulting in `balance == 0`.
-    ///
-    /// We now regard the wallet as synced **only** when the wallet's perceived
-    /// height has caught up with the daemon height.  In regtest environments
-    /// the wallet may occasionally overshoot the target height, therefore we
-    /// accept `current >= target`.
     fn synchronized(&self) -> bool {
-        let current = self.blockchain_height();
-        let target = self.daemon_blockchain_height().unwrap_or(0);
-
-        // If the daemon height is unknown (0) we definitely aren't synced yet.
-        if target == 0 {
-            return false;
-        }
-
-        // Consider the wallet synced when it has reached (or surpassed) the
-        // daemon height.  This inherently covers the case where the wallet is
-        // fully caught up and avoids relying on the flaky C++ flag.
-        current >= target
+        self.inner
+            .synchronized()
+            .context("Failed to check if wallet is synchronized: FFI call failed with exception")
+            .expect("Shouldn't panic")
     }
 
     /// Set the allow mismatched daemon version flag.
@@ -1325,15 +1306,6 @@ impl FfiWallet {
     ) -> anyhow::Result<TxReceipt> {
         let_cxx_string!(address = address.to_string());
         let amount = amount.as_pico();
-
-        tracing::info!(
-            "Transferring {} to {}, refreshing wallet first",
-            amount,
-            address
-        );
-        if let Err(err) = self.refresh_blocking() {
-            tracing::error!(%err, "Failed to refresh wallet, attempting transfer anyway");
-        }
 
         // First we need to create a pending transaction.
         let mut pending_tx = PendingTransaction(
