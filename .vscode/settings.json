@@ -1,5 +1,4 @@
 {
-<<<<<<< HEAD
     "files.associations": {
         "optional": "cpp",
         "vector": "cpp",
@@ -69,12 +68,7 @@
         "unordered_map": "cpp",
         "unordered_set": "cpp",
         "variant": "cpp",
-        "algorithm": "cpp"
-    },
-    "cmake.sourceDirectory": "/Users/me/code/xmr-btc-swap/monero-sys/monero/src/blockchain_db"
-=======
-    "rust-analyzer.check.command": "check",
-    "rust-analyzer.check.extraArgs": ["--lib", "--bins"],
-    "rust-analyzer.cargo.buildScripts.enable": true
->>>>>>> master
+        "algorithm": "cpp",
+        "*.rs": "cpp"
+    }
 }
