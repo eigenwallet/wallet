@@ -1,8 +1,7 @@
 use axum::{
     body::Body,
-    extract::Path,
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, Method},
     response::Response,
 };
 use std::{error::Error, time::Instant};
@@ -26,8 +25,8 @@ impl std::fmt::Display for HandlerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             HandlerError::NoNodes => write!(f, "No nodes available"),
-            HandlerError::PoolError(msg) => write!(f, "Pool error: {}", msg),
-            HandlerError::RequestError(msg) => write!(f, "Request error: {}", msg),
+            HandlerError::PoolError(msg) => write!(f, "Pool error: {:?}", msg),
+            HandlerError::RequestError(msg) => write!(f, "Request error: {:?}", msg),
             HandlerError::AllRequestsFailed => write!(f, "All requests failed"),
         }
     }
@@ -37,18 +36,12 @@ fn is_jsonrpc_error(body: &[u8]) -> bool {
     // Try to parse as JSON
     if let Ok(json) = serde_json::from_slice::<serde_json::Value>(body) {
         // Check if there's an "error" field
-        if let Some(error) = json.get("error") {
-            error!("JSON-RPC error detected: {}", error);
-            return true;
-        }
-        return false;
+        return json.get("error").is_some();
     }
     
-    // If we can't parse JSON, that's also an error for JSON-RPC endpoints
-    error!("Failed to parse JSON response: {}", String::from_utf8_lossy(body));
+    // If we can't parse JSON, treat it as an error
     true
 }
-
 
 async fn raw_http_request(
     node_url: &str,
@@ -63,28 +56,12 @@ async fn raw_http_request(
         .map_err(|e| HandlerError::RequestError(e.to_string()))?;
 
     let url = format!("{}{}", node_url, path);
-    
-    // Log the full request details
-    debug!("Making {} request to: {}", method, url);
-    if let Some(body_bytes) = body {
-        debug!("Request body ({} bytes): {}", body_bytes.len(), String::from_utf8_lossy(body_bytes));
-    }
-    debug!("Request headers: {:?}", headers);
 
-    // Do not differentiate between POST and GET here, allow all methods
-    let mut request_builder = match method {
-        "POST" => client.post(&url),
-        "GET" => client.get(&url),
-        _ => return Err(HandlerError::RequestError("Unsupported method".to_string())),
-    };
+    // Use generic request method to support any HTTP verb
+    let http_method = method.parse::<reqwest::Method>()
+        .map_err(|e| HandlerError::RequestError(format!("Invalid method '{}': {}", method, e)))?;
     
-    // Add specific debugging for gettransactions endpoint
-    if path.contains("gettransactions") {
-        error!("GETTRANSACTIONS DEBUG: Making request to {}", url);
-        if let Some(body_bytes) = body {
-            error!("GETTRANSACTIONS DEBUG: Request body: {}", String::from_utf8_lossy(body_bytes));
-        }
-    }
+    let mut request_builder = client.request(http_method, &url);
 
     // Forward body if present
     if let Some(body_bytes) = body {
@@ -126,32 +103,12 @@ async fn raw_http_request(
         .send()
         .await
         .map_err(|e| {
-            // Preserve detailed error information including the full error chain
-            let mut error_msg = e.to_string();
-            let mut current_source = e.source();
-            let mut depth = 0;
-            while let Some(source) = current_source {
-                depth += 1;
-                error_msg.push_str(&format!(" -> [{}] {}", depth, source));
-                current_source = source.source();
-                if depth > 5 { // Prevent infinite loops
-                    break;
-                }
-            }
-            
-            // Also include error type information
-            error_msg.push_str(&format!(" (type: {})", std::any::type_name_of_val(&e)));
-            
-            error!("Raw HTTP request failed for URL {}: {}", url, error_msg);
-            HandlerError::RequestError(error_msg)
+            HandlerError::RequestError(e.to_string())
         })?;
 
     // Convert to axum Response preserving everything
     let status = response.status();
     let response_headers = response.headers().clone();
-    
-    debug!("Response status: {}", status);
-    debug!("Response headers: {:?}", response_headers);
     
     let body_bytes = response
         .bytes()
@@ -161,12 +118,10 @@ async fn raw_http_request(
             if let Some(source) = e.source() {
                 error_msg.push_str(&format!(" (source: {})", source));
             }
-            error!("Failed to read response body for URL {}: {}", url, error_msg);
+
             HandlerError::RequestError(error_msg)
         })?;
     
-    debug!("Response body ({} bytes): {}", body_bytes.len(), String::from_utf8_lossy(&body_bytes));
-
     let mut axum_response = Response::new(Body::from(body_bytes));
     *axum_response.status_mut() =
         StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
@@ -224,31 +179,26 @@ async fn single_raw_request(
                         .map_err(|e| HandlerError::RequestError(e.to_string()))?;
                     
                     if is_jsonrpc_error(&body_bytes) {
-                        debug!("Node {} returned JSON-RPC error ({}ms)", node_url, latency_ms);
                         record_failure(state, &node_url).await;
                         return Err(HandlerError::RequestError("JSON-RPC error".to_string()));
                     }
                     
                     // Reconstruct response with the body we consumed
                     let response = Response::from_parts(parts, Body::from(body_bytes));
-                    debug!("Node {} returned success status: {} ({}ms)", node_url, response.status(), latency_ms);
                     record_success(state, &node_url, latency_ms).await;
                     Ok((response, node_url, latency_ms))
                 } else {
                     // For non-JSON-RPC endpoints, HTTP success is enough
-                    debug!("Node {} returned success status: {} ({}ms)", node_url, response.status(), latency_ms);
                     record_success(state, &node_url, latency_ms).await;
                     Ok((response, node_url, latency_ms))
                 }
             } else {
                 // Non-200 status codes are failures
-                debug!("Node {} returned non-success status: {}", node_url, response.status());
                 record_failure(state, &node_url).await;
                 Err(HandlerError::RequestError(format!("HTTP {}", response.status())))
             }
         }
         Err(e) => {
-            error!("Request to node {} failed: {}", node_url, e);
             record_failure(state, &node_url).await;
             Err(e)
         }
@@ -277,7 +227,6 @@ async fn race_requests(
             .map(|node| node.full_url)
             .collect();
         
-        debug!("Got exclusive pool of {} nodes for request", pool.len());
         pool
     };
 
@@ -445,42 +394,26 @@ async fn proxy_request(
 }
 
 #[axum::debug_handler]
-pub async fn simple_rpc_handler(
+pub async fn simple_proxy_handler(
     State(state): State<AppState>,
+    method: Method,
+    uri: axum::http::Uri,
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
     let body_size = body.len();
     let request_id = Uuid::new_v4();
-    
-    async move {
-        debug!("Raw RPC request: {} bytes", body_size);
-        proxy_request(&state, "/json_rpc", "POST", &headers, Some(&body)).await
-    }
-    .instrument(info_span!("rpc_request", request_id = %request_id, body_size = body_size))
-    .await
-}
+    let path = uri.path().to_string();
+    let method_str = method.to_string();
+    let path_clone = path.clone();
 
-#[axum::debug_handler]
-pub async fn simple_http_handler(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(endpoint): Path<String>,
-    body: axum::body::Bytes,
-) -> Response {
-    let endpoint_clone = endpoint.clone();
-    let endpoint_for_span = endpoint.clone();
-    let request_id = Uuid::new_v4();
-    
     async move {
-        debug!("Raw HTTP request: /{}", endpoint_clone);
+        debug!("Proxying {} {} ({} bytes)", method, path, body_size);
 
         let body_option = (!body.is_empty()).then_some(&body[..]);
-        let method = if body_option.is_some() { "POST" } else { "GET" };
-
-        proxy_request(&state, &format!("/{}", endpoint_clone), method, &headers, body_option).await
+        proxy_request(&state, &path, method.as_str(), &headers, body_option).await
     }
-    .instrument(info_span!("http_request", request_id = %request_id, endpoint = %endpoint_for_span))
+    .instrument(info_span!("proxy_request", request_id = %request_id, method = %method_str, path = %path_clone, body_size = body_size))
     .await
 }
 
