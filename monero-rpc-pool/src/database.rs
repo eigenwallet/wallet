@@ -598,7 +598,7 @@ impl Database {
         // This avoids the dynamic SQL complexity
         let extra_factor = 3; // Fetch 3x more to account for exclusions
         let fetch_limit = limit * extra_factor;
-        
+
         let all_nodes = sqlx::query_as::<_, MoneroNode>(
             r#"
             SELECT 

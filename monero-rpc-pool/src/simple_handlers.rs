@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{HeaderMap, StatusCode, Method},
+    http::{HeaderMap, Method, StatusCode},
     response::Response,
 };
 use std::{error::Error, time::Instant};
@@ -38,7 +38,7 @@ fn is_jsonrpc_error(body: &[u8]) -> bool {
         // Check if there's an "error" field
         return json.get("error").is_some();
     }
-    
+
     // If we can't parse JSON, treat it as an error
     true
 }
@@ -58,9 +58,10 @@ async fn raw_http_request(
     let url = format!("{}{}", node_url, path);
 
     // Use generic request method to support any HTTP verb
-    let http_method = method.parse::<reqwest::Method>()
+    let http_method = method
+        .parse::<reqwest::Method>()
         .map_err(|e| HandlerError::RequestError(format!("Invalid method '{}': {}", method, e)))?;
-    
+
     let mut request_builder = client.request(http_method, &url);
 
     // Forward body if present
@@ -89,8 +90,8 @@ async fn raw_http_request(
         // If we are not forwarding a body (e.g. GET request) then forwarding `content-length` or
         // `content-type` with an absent body makes many Monero nodes hang waiting for bytes and
         // eventually close the connection.  This manifests as the time-outs we have observed.
-        let is_body_header_without_body = body.is_none()
-            && matches!(header_name_lc.as_str(), "content-length" | "content-type");
+        let is_body_header_without_body =
+            body.is_none() && matches!(header_name_lc.as_str(), "content-length" | "content-type");
 
         if !is_hop_by_hop && !is_body_header_without_body {
             if let Ok(header_value) = std::str::from_utf8(value.as_bytes()) {
@@ -102,26 +103,21 @@ async fn raw_http_request(
     let response = request_builder
         .send()
         .await
-        .map_err(|e| {
-            HandlerError::RequestError(e.to_string())
-        })?;
+        .map_err(|e| HandlerError::RequestError(e.to_string()))?;
 
     // Convert to axum Response preserving everything
     let status = response.status();
     let response_headers = response.headers().clone();
-    
-    let body_bytes = response
-        .bytes()
-        .await
-        .map_err(|e| {
-            let mut error_msg = format!("Failed to read response body: {}", e);
-            if let Some(source) = e.source() {
-                error_msg.push_str(&format!(" (source: {})", source));
-            }
 
-            HandlerError::RequestError(error_msg)
-        })?;
-    
+    let body_bytes = response.bytes().await.map_err(|e| {
+        let mut error_msg = format!("Failed to read response body: {}", e);
+        if let Some(source) = e.source() {
+            error_msg.push_str(&format!(" (source: {})", source));
+        }
+
+        HandlerError::RequestError(error_msg)
+    })?;
+
     let mut axum_response = Response::new(Body::from(body_bytes));
     *axum_response.status_mut() =
         StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
@@ -169,20 +165,21 @@ async fn single_raw_request(
         Ok(response) => {
             let elapsed = start_time.elapsed();
             let latency_ms = elapsed.as_millis() as f64;
-            
+
             // Check HTTP status code - only 200 is success!
             if response.status().is_success() {
                 // For JSON-RPC endpoints, also check for JSON-RPC errors
                 if path == "/json_rpc" {
                     let (parts, body_stream) = response.into_parts();
-                    let body_bytes = axum::body::to_bytes(body_stream, usize::MAX).await
+                    let body_bytes = axum::body::to_bytes(body_stream, usize::MAX)
+                        .await
                         .map_err(|e| HandlerError::RequestError(e.to_string()))?;
-                    
+
                     if is_jsonrpc_error(&body_bytes) {
                         record_failure(state, &node_url).await;
                         return Err(HandlerError::RequestError("JSON-RPC error".to_string()));
                     }
-                    
+
                     // Reconstruct response with the body we consumed
                     let response = Response::from_parts(parts, Body::from(body_bytes));
                     record_success(state, &node_url, latency_ms).await;
@@ -195,7 +192,10 @@ async fn single_raw_request(
             } else {
                 // Non-200 status codes are failures
                 record_failure(state, &node_url).await;
-                Err(HandlerError::RequestError(format!("HTTP {}", response.status())))
+                Err(HandlerError::RequestError(format!(
+                    "HTTP {}",
+                    response.status()
+                )))
             }
         }
         Err(e) => {
@@ -220,13 +220,16 @@ async fn race_requests(
     // Get the exclusive pool of 20 nodes once at the beginning
     let available_pool = {
         let node_pool_guard = state.node_pool.read().await;
-        let reliable_nodes = node_pool_guard.get_top_reliable_nodes(POOL_SIZE).await
+        let reliable_nodes = node_pool_guard
+            .get_top_reliable_nodes(POOL_SIZE)
+            .await
             .map_err(|e| HandlerError::PoolError(e.to_string()))?;
-        
-        let pool: Vec<String> = reliable_nodes.into_iter()
+
+        let pool: Vec<String> = reliable_nodes
+            .into_iter()
             .map(|node| node.full_url)
             .collect();
-        
+
         pool
     };
 
@@ -341,7 +344,7 @@ async fn race_requests(
                 return Ok(response);
             }
             Err(e) => {
-                // Since we don't know which specific node failed in the race, 
+                // Since we don't know which specific node failed in the race,
                 // record the error generically for this batch
                 let batch_description = if current_nodes.len() == 1 {
                     current_nodes[0].clone()
@@ -350,7 +353,8 @@ async fn race_requests(
                 };
                 collected_errors.push((batch_description, e.clone()));
                 debug!(
-                    "Request failed: {} - retrying with different nodes from pool...", e
+                    "Request failed: {} - retrying with different nodes from pool...",
+                    e
                 );
                 continue;
             }
@@ -362,7 +366,7 @@ async fn race_requests(
         .iter()
         .map(|(batch, error)| format!("{}: {}", batch, error))
         .collect();
-    
+
     error!(
         "All {} requests failed after trying {} nodes. Detailed errors:\n{}",
         method,

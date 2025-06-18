@@ -40,7 +40,7 @@ impl NodeDiscovery {
         match network {
             "mainnet" => {
                 info!("Fetching nodes from monero.fail API for mainnet");
-                
+
                 // Use the JSON API for mainnet
                 let response = self
                     .client
@@ -60,7 +60,7 @@ impl NodeDiscovery {
             }
             "stagenet" => {
                 info!("Using hardcoded stagenet nodes (monero.fail doesn't support stagenet)");
-                
+
                 // Create a JSON structure matching monero.fail format for stagenet nodes
                 let stagenet_nodes_json = serde_json::json!([
                     {"host": "node2.monerodevs.org", "port": 38089},
@@ -74,8 +74,9 @@ impl NodeDiscovery {
                     {"host": "125.229.105.12", "port": 38081},
                     {"host": "node3.monerodevs.org", "port": 38089}
                 ]);
-                
-                self.process_node_data(&stagenet_nodes_json, "stagenet").await?;
+
+                self.process_node_data(&stagenet_nodes_json, "stagenet")
+                    .await?;
             }
             "testnet" => {
                 info!("Testnet node discovery not supported, skipping");
@@ -98,7 +99,11 @@ impl NodeDiscovery {
                         node_obj.get("host").and_then(|v| v.as_str()),
                         node_obj.get("port").and_then(|v| v.as_u64()),
                     ) {
-                        let scheme = if port == 18089 || port == 443 { "https" } else { "http" };
+                        let scheme = if port == 18089 || port == 443 {
+                            "https"
+                        } else {
+                            "http"
+                        };
 
                         match self.db.upsert_node(scheme, host, port as i64).await {
                             Ok(_) => success_count += 1,
@@ -140,7 +145,6 @@ impl NodeDiscovery {
                                 // Extract network information from get_info response
                                 let discovered_network = self.extract_network_from_info(result);
 
-
                                 Ok(HealthCheckOutcome {
                                     was_successful: true,
                                     latency,
@@ -154,13 +158,11 @@ impl NodeDiscovery {
                                 })
                             }
                         }
-                        Err(e) => {
-                            Ok(HealthCheckOutcome {
-                                was_successful: false,
-                                latency,
-                                discovered_network: None,
-                            })
-                        }
+                        Err(e) => Ok(HealthCheckOutcome {
+                            was_successful: false,
+                            latency,
+                            discovered_network: None,
+                        }),
                     }
                 } else {
                     Ok(HealthCheckOutcome {
@@ -170,13 +172,11 @@ impl NodeDiscovery {
                     })
                 }
             }
-            Err(e) => {
-                Ok(HealthCheckOutcome {
-                    was_successful: false,
-                    latency,
-                    discovered_network: None,
-                })
-            }
+            Err(e) => Ok(HealthCheckOutcome {
+                was_successful: false,
+                latency,
+                discovered_network: None,
+            }),
         }
     }
 
@@ -302,7 +302,10 @@ impl NodeDiscovery {
         loop {
             interval.tick().await;
 
-            info!("Running periodic node discovery for network: {}", target_network);
+            info!(
+                "Running periodic node discovery for network: {}",
+                target_network
+            );
 
             // Discover new nodes from sources
             if let Err(e) = self.discover_nodes_from_sources(target_network).await {
