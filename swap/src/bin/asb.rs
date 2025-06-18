@@ -483,16 +483,10 @@ async fn init_monero_wallet(
         // Start the monero-rpc-pool and use it
         tracing::info!("Starting Monero RPC Pool for ASB");
 
-        let network_str = match env_config.monero_network {
-            monero::Network::Mainnet => "mainnet".to_string(),
-            monero::Network::Stagenet => "stagenet".to_string(),
-            monero::Network::Testnet => "testnet".to_string(),
-        };
-
         let (server_info, _status_receiver, _task_manager) =
             monero_rpc_pool::start_server_with_random_port(
                 monero_rpc_pool::config::Config::default(),
-                network_str,
+                env_config.monero_network,
             )
             .await
             .context("Failed to start Monero RPC Pool for ASB")?;
