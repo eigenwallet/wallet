@@ -10,24 +10,30 @@ use uuid::Uuid;
 
 use crate::AppState;
 
-// TODO: Only have a single handler for all requests (no simple_handler vs smart_pool)
-
-// TODO: Actually pass in the errors here?
 #[derive(Debug, Clone)]
 enum HandlerError {
     NoNodes,
     PoolError(String),
     RequestError(String),
-    AllRequestsFailed,
+    AllRequestsFailed(Vec<(String, String)>), // Vec of (node_url, error_message)
 }
 
 impl std::fmt::Display for HandlerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             HandlerError::NoNodes => write!(f, "No nodes available"),
-            HandlerError::PoolError(msg) => write!(f, "Pool error: {:?}", msg),
-            HandlerError::RequestError(msg) => write!(f, "Request error: {:?}", msg),
-            HandlerError::AllRequestsFailed => write!(f, "All requests failed"),
+            HandlerError::PoolError(msg) => write!(f, "Pool error: {}", msg),
+            HandlerError::RequestError(msg) => write!(f, "Request error: {}", msg),
+            HandlerError::AllRequestsFailed(errors) => {
+                write!(f, "All requests failed: [")?;
+                for (i, (node, error)) in errors.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", node, error)?;
+                }
+                write!(f, "]")
+            }
         }
     }
 }
@@ -41,6 +47,15 @@ fn is_jsonrpc_error(body: &[u8]) -> bool {
 
     // If we can't parse JSON, treat it as an error
     true
+}
+
+fn extract_jsonrpc_method(body: &[u8]) -> Option<String> {
+    if let Ok(json) = serde_json::from_slice::<serde_json::Value>(body) {
+        if let Some(method) = json.get("method").and_then(|m| m.as_str()) {
+            return Some(method.to_string());
+        }
+    }
+    None
 }
 
 async fn raw_http_request(
@@ -212,10 +227,16 @@ async fn race_requests(
     headers: &HeaderMap,
     body: Option<&[u8]>,
 ) -> Result<Response, HandlerError> {
+    // Extract JSON-RPC method for better logging
+    let jsonrpc_method = if path == "/json_rpc" && body.is_some() {
+        extract_jsonrpc_method(body.unwrap())
+    } else {
+        None
+    };
     const POOL_SIZE: usize = 20;
     let mut tried_nodes = std::collections::HashSet::new();
     let mut pool_index = 0;
-    let mut collected_errors: Vec<(String, HandlerError)> = Vec::new();
+    let mut collected_errors: Vec<(String, String)> = Vec::new();
 
     // Get the exclusive pool of 20 nodes once at the beginning
     let available_pool = {
@@ -303,13 +324,23 @@ async fn race_requests(
             break;
         }
 
-        debug!(
-            "Racing {} requests to {}: {} nodes (tried {} so far)",
-            method,
-            path,
-            requests.len(),
-            tried_nodes.len()
-        );
+        match &jsonrpc_method {
+            Some(rpc_method) => debug!(
+                "Racing {} requests to {} (JSON-RPC: {}): {} nodes (tried {} so far)",
+                method,
+                path,
+                rpc_method,
+                requests.len(),
+                tried_nodes.len()
+            ),
+            None => debug!(
+                "Racing {} requests to {}: {} nodes (tried {} so far)",
+                method,
+                path,
+                requests.len(),
+                tried_nodes.len()
+            ),
+        }
 
         // Handle the requests based on how many we have
         let result = match requests.len() {
@@ -333,25 +364,30 @@ async fn race_requests(
 
         match result {
             Ok((response, winning_node, latency_ms)) => {
-                debug!(
-                    "{} response from {} ({}ms) - SUCCESS after trying {} nodes!",
-                    method,
-                    winning_node,
-                    latency_ms,
-                    tried_nodes.len()
-                );
+                match &jsonrpc_method {
+                    Some(rpc_method) => {
+                        debug!(
+                        "{} response from {} ({}ms) - SUCCESS after trying {} nodes! JSON-RPC: {}",
+                        method, winning_node, latency_ms, tried_nodes.len(), rpc_method
+                    )
+                    }
+                    None => debug!(
+                        "{} response from {} ({}ms) - SUCCESS after trying {} nodes!",
+                        method,
+                        winning_node,
+                        latency_ms,
+                        tried_nodes.len()
+                    ),
+                }
                 record_success(state, &winning_node, latency_ms).await;
                 return Ok(response);
             }
             Err(e) => {
                 // Since we don't know which specific node failed in the race,
-                // record the error generically for this batch
-                let batch_description = if current_nodes.len() == 1 {
-                    current_nodes[0].clone()
-                } else {
-                    format!("batch_of_{}", current_nodes.len())
-                };
-                collected_errors.push((batch_description, e.clone()));
+                // record the error for all nodes in this batch
+                for node_url in &current_nodes {
+                    collected_errors.push((node_url.clone(), e.to_string()));
+                }
                 debug!(
                     "Request failed: {} - retrying with different nodes from pool...",
                     e
@@ -364,18 +400,26 @@ async fn race_requests(
     // Log detailed error information
     let detailed_errors: Vec<String> = collected_errors
         .iter()
-        .map(|(batch, error)| format!("{}: {}", batch, error))
+        .map(|(node, error)| format!("{}: {}", node, error))
         .collect();
 
-    error!(
-        "All {} requests failed after trying {} nodes. Detailed errors:\n{}",
-        method,
-        tried_nodes.len(),
-        detailed_errors.join("\n")
-    );
+    match &jsonrpc_method {
+        Some(rpc_method) => error!(
+            "All {} requests failed after trying {} nodes (JSON-RPC: {}). Detailed errors:\n{}",
+            method,
+            tried_nodes.len(),
+            rpc_method,
+            detailed_errors.join("\n")
+        ),
+        None => error!(
+            "All {} requests failed after trying {} nodes. Detailed errors:\n{}",
+            method,
+            tried_nodes.len(),
+            detailed_errors.join("\n")
+        ),
+    }
 
-    // TODO: Return one of the real errors here that we got from the nodes
-    Err(HandlerError::AllRequestsFailed)
+    Err(HandlerError::AllRequestsFailed(collected_errors))
 }
 
 /// Forward a request to the node pool, returning either a successful response or a simple
@@ -411,13 +455,37 @@ pub async fn simple_proxy_handler(
     let method_str = method.to_string();
     let path_clone = path.clone();
 
-    async move {
-        debug!("Proxying {} {} ({} bytes)", method, path, body_size);
+    // Extract JSON-RPC method for tracing span
+    let body_option = (!body.is_empty()).then_some(&body[..]);
+    let jsonrpc_method = if path == "/json_rpc" && body_option.is_some() {
+        extract_jsonrpc_method(&body)
+    } else {
+        None
+    };
+    let jsonrpc_method_for_span = jsonrpc_method
+        .as_ref()
+        .map(|s| s.as_str())
+        .unwrap_or("N/A")
+        .to_string();
 
-        let body_option = (!body.is_empty()).then_some(&body[..]);
+    async move {
+        match &jsonrpc_method {
+            Some(rpc_method) => debug!(
+                "Proxying {} {} ({} bytes) - JSON-RPC method: {}",
+                method, path, body_size, rpc_method
+            ),
+            None => debug!("Proxying {} {} ({} bytes)", method, path, body_size),
+        }
+
         proxy_request(&state, &path, method.as_str(), &headers, body_option).await
     }
-    .instrument(info_span!("proxy_request", request_id = %request_id, method = %method_str, path = %path_clone, body_size = body_size))
+    .instrument(info_span!("proxy_request",
+        request_id = %request_id,
+        method = %method_str,
+        path = %path_clone,
+        body_size = body_size,
+        jsonrpc_method = %jsonrpc_method_for_span
+    ))
     .await
 }
 

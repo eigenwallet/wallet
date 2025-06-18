@@ -146,20 +146,6 @@ async fn next_state(
             BobState::SwapSetupCompleted(state2)
         }
         BobState::SwapSetupCompleted(state2) => {
-            // Record the current monero wallet block height so we don't have to scan from
-            // block 0 once we create the redeem wallet.
-            // This has to be done **before** the Bitcoin is locked in order to ensure that
-            // if Bob goes offline the recorded wallet-height is correct.
-            // If we only record this later, it can happen that Bob publishes the Bitcoin
-            // transaction, goes offline, while offline Alice publishes Monero.
-            // If the Monero transaction gets confirmed before Bob comes online again then
-            // Bob would record a wallet-height that is past the lock transaction height,
-            // which can lead to the wallet not detect the transaction.
-            let monero_wallet_restore_blockheight = monero_wallet
-                .blockchain_height()
-                .await
-                .context("Failed to fetch current Monero blockheight")?;
-
             let xmr_receive_amount = state2.xmr;
 
             // Alice and Bob have exchanged info
@@ -194,6 +180,20 @@ async fn next_state(
                 Ok(true) => {
                     tracing::debug!("User approved swap offer");
 
+                    // Record the current monero wallet block height so we don't have to scan from
+                                // block 0 once we create the redeem wallet.
+                                // This has to be done **before** the Bitcoin is locked in order to ensure that
+                                // if Bob goes offline the recorded wallet-height is correct.
+                                // If we only record this later, it can happen that Bob publishes the Bitcoin
+                                // transaction, goes offline, while offline Alice publishes Monero.
+                                // If the Monero transaction gets confirmed before Bob comes online again then
+                                // Bob would record a wallet-height that is past the lock transaction height,
+                                // which can lead to the wallet not detect the transaction.
+                    let monero_wallet_restore_blockheight = monero_wallet
+                        .blockchain_height()
+                        .await
+                        .context("Failed to fetch current Monero blockheight")?;
+
                     // Publish the signed Bitcoin lock transaction
                     let (..) = bitcoin_wallet.broadcast(signed_tx, "lock").await?;
 
@@ -224,7 +224,7 @@ async fn next_state(
                 swap_id,
                 TauriSwapProgressEvent::BtcLockTxInMempool {
                     btc_lock_txid: state3.tx_lock_id(),
-                    btc_lock_confirmations: 0,
+                    btc_lock_confirmations: None,
                 },
             );
 
@@ -289,7 +289,7 @@ async fn next_state(
                         swap_id,
                         TauriSwapProgressEvent::BtcLockTxInMempool {
                             btc_lock_txid: state3.tx_lock_id(),
-                            btc_lock_confirmations: u64::from(confirmed.confirmations()),
+                            btc_lock_confirmations: Some(u64::from(confirmed.confirmations())),
                         },
                     );
                 }
@@ -334,7 +334,7 @@ async fn next_state(
                 swap_id,
                 TauriSwapProgressEvent::XmrLockTxInMempool {
                     xmr_lock_txid: lock_transfer_proof.tx_hash(),
-                    xmr_lock_tx_confirmations: 0,
+                    xmr_lock_tx_confirmations: None,
                 },
             );
 
@@ -369,7 +369,7 @@ async fn next_state(
                         swap_id,
                         TauriSwapProgressEvent::XmrLockTxInMempool {
                             xmr_lock_txid: lock_transfer_proof.clone().tx_hash(),
-                            xmr_lock_tx_confirmations: confirmations,
+                            xmr_lock_tx_confirmations: Some(confirmations),
                         },
                     );
                 }),

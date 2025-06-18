@@ -6,13 +6,13 @@ use axum::{
     Router,
 };
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 pub mod config;
 pub mod database;
 pub mod discovery;
-// pub mod handlers;
 pub mod pool;
 pub mod simple_handlers;
 
@@ -27,6 +27,19 @@ pub struct AppState {
     pub node_pool: Arc<RwLock<NodePool>>,
 }
 
+/// Manages background tasks for the RPC pool
+pub struct TaskManager {
+    pub status_update_handle: JoinHandle<()>,
+    pub discovery_handle: JoinHandle<()>,
+}
+
+impl Drop for TaskManager {
+    fn drop(&mut self) {
+        self.status_update_handle.abort();
+        self.discovery_handle.abort();
+    }
+}
+
 /// Information about a running RPC pool server
 #[derive(Debug, Clone)]
 pub struct ServerInfo {
@@ -38,7 +51,11 @@ pub struct ServerInfo {
 async fn create_app_with_receiver(
     config: Config,
     network: String,
-) -> Result<(Router, tokio::sync::broadcast::Receiver<PoolStatus>)> {
+) -> Result<(
+    Router,
+    tokio::sync::broadcast::Receiver<PoolStatus>,
+    TaskManager,
+)> {
     // Initialize database
     let db = Database::new().await?;
 
@@ -67,30 +84,9 @@ async fn create_app_with_receiver(
         }
     }
 
-    // Start initial health check in parallel (non-blocking)
-    let discovery_health_check = discovery.clone();
-    let network_health_check = network.clone();
+    // Start background tasks
     let node_pool_for_health_check = node_pool.clone();
-
-    // TODO: Store the handles in a struct and drop them when the app is dropped
-    // tokio::spawn(async move {
-    //     info!(
-    //         "Performing initial health check for network: {}...",
-    //         network_health_check
-    //     );
-    //     if let Err(e) = discovery_health_check
-    //         .health_check_all_nodes(&network_health_check)
-    //         .await
-    //     {
-    //         error!(
-    //             "Failed initial health check for network {}: {}",
-    //             network_health_check, e
-    //         );
-    //     }
-    // });
-
-    // Periodically send status updates (ever 10s)
-    tokio::spawn(async move {
+    let status_update_handle = tokio::spawn(async move {
         loop {
             // Publish status update after health check
             let pool_guard = node_pool_for_health_check.read().await;
@@ -105,8 +101,7 @@ async fn create_app_with_receiver(
     // Start periodic discovery task
     let discovery_clone = discovery.clone();
     let network_clone = network.clone();
-    let _node_pool_for_periodic = node_pool.clone();
-    tokio::spawn(async move {
+    let discovery_handle = tokio::spawn(async move {
         if let Err(e) = discovery_clone
             .periodic_discovery_task(&network_clone)
             .await
@@ -118,6 +113,11 @@ async fn create_app_with_receiver(
         }
     });
 
+    let task_manager = TaskManager {
+        status_update_handle,
+        discovery_handle,
+    };
+
     let app_state = AppState { node_pool };
 
     // Build the app
@@ -127,11 +127,13 @@ async fn create_app_with_receiver(
         .layer(CorsLayer::permissive())
         .with_state(app_state);
 
-    Ok((app, status_receiver))
+    Ok((app, status_receiver, task_manager))
 }
 
 pub async fn create_app(config: Config, network: String) -> Result<Router> {
-    let (app, _) = create_app_with_receiver(config, network).await?;
+    let (app, _, _task_manager) = create_app_with_receiver(config, network).await?;
+    // Note: task_manager is dropped here, so tasks will be aborted when this function returns
+    // This is intentional for the simple create_app use case
     Ok(app)
 }
 
@@ -149,19 +151,24 @@ pub async fn run_server(config: Config, network: String) -> Result<()> {
 }
 
 /// Start a server with a random port for library usage
-/// Returns the server info with the actual port used and a receiver for pool status updates
+/// Returns the server info with the actual port used, a receiver for pool status updates, and task manager
 /// TODO: Network should be part of the config and have a proper type
 pub async fn start_server_with_random_port(
     config: Config,
     network: String,
-) -> Result<(ServerInfo, tokio::sync::broadcast::Receiver<PoolStatus>)> {
+) -> Result<(
+    ServerInfo,
+    tokio::sync::broadcast::Receiver<PoolStatus>,
+    TaskManager,
+)> {
     // Clone the host before moving config
     let host = config.host.clone();
 
     // If port is 0, the system will assign a random available port
     let config_with_random_port = Config { port: 0, ..config };
 
-    let (app, status_receiver) = create_app_with_receiver(config_with_random_port, network).await?;
+    let (app, status_receiver, task_manager) =
+        create_app_with_receiver(config_with_random_port, network).await?;
 
     // Bind to port 0 to get a random available port
     let listener = tokio::net::TcpListener::bind(format!("{}:0", host)).await?;
@@ -184,5 +191,5 @@ pub async fn start_server_with_random_port(
         }
     });
 
-    Ok((server_info, status_receiver))
+    Ok((server_info, status_receiver, task_manager))
 }

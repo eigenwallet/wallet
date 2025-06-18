@@ -384,7 +384,7 @@ async fn initialize_context(
         )
         .await
         {
-            Ok((server_info, mut status_receiver)) => {
+            Ok((server_info, mut status_receiver, _task_manager)) => {
                 let rpc_url = format!("http://{}:{}", server_info.host, server_info.port);
                 tracing::info!("Monero RPC Pool started on {}", rpc_url);
 

@@ -2,14 +2,40 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use reqwest::Client;
+use serde::Deserialize;
 use serde_json::Value;
 use tracing::{debug, error, info, warn};
 use url;
 
-// TODO: Have a set of hardcoded nodes for bootstrapping
-// and if we cant reach monero.fail
-
 use crate::database::{Database, MoneroNode};
+
+#[derive(Debug, Deserialize)]
+struct MoneroFailResponse {
+    monero: MoneroNodes,
+}
+
+#[derive(Debug, Deserialize)]
+struct MoneroNodes {
+    clear: Vec<String>,
+    #[serde(default)]
+    web_compatible: Vec<String>,
+}
+
+// Hardcoded bootstrap nodes for fallback when monero.fail is unreachable
+const BOOTSTRAP_MAINNET_NODES: &[(&str, u16)] = &[
+    ("node.supportxmr.com", 18081),
+    ("nodes.hashvault.pro", 18081),
+    ("xmr-node.cakewallet.com", 18081),
+    ("node.xmr.to", 18081),
+    ("opennode.xmr-tw.org", 18089),
+];
+
+const BOOTSTRAP_STAGENET_NODES: &[(&str, u16)] = &[
+    ("node2.monerodevs.org", 38089),
+    ("stagenet.xmr-tw.org", 38081),
+    ("node.monerodevs.org", 38089),
+    ("node3.monerodevs.org", 38089),
+];
 
 #[derive(Debug)]
 pub struct HealthCheckOutcome {
@@ -41,42 +67,38 @@ impl NodeDiscovery {
             "mainnet" => {
                 info!("Fetching nodes from monero.fail API for mainnet");
 
-                // Use the JSON API for mainnet
-                let response = self
-                    .client
-                    .get("https://monero.fail/nodes.json?chain=monero&network=mainnet")
-                    .send()
-                    .await?;
+                // Try to fetch from monero.fail first
+                let api_result = async {
+                    let response = self
+                        .client
+                        .get("https://monero.fail/nodes.json?chain=monero&network=mainnet")
+                        .send()
+                        .await?;
 
-                if !response.status().is_success() {
-                    return Err(anyhow::anyhow!(
-                        "Failed to fetch nodes: HTTP {}",
-                        response.status()
-                    ));
+                    if !response.status().is_success() {
+                        return Err(anyhow::anyhow!(
+                            "Failed to fetch nodes: HTTP {}",
+                            response.status()
+                        ));
+                    }
+
+                    let nodes_data: Value = response.json().await?;
+                    self.process_node_data(&nodes_data, "mainnet").await
                 }
+                .await;
 
-                let nodes_data: Value = response.json().await?;
-                self.process_node_data(&nodes_data, "mainnet").await?;
+                // If API fetch fails, fall back to bootstrap nodes
+                if let Err(e) = api_result {
+                    warn!(
+                        "Failed to fetch from monero.fail API: {}, falling back to bootstrap nodes",
+                        e
+                    );
+                    self.insert_bootstrap_nodes("mainnet").await?;
+                }
             }
             "stagenet" => {
-                info!("Using hardcoded stagenet nodes (monero.fail doesn't support stagenet)");
-
-                // Create a JSON structure matching monero.fail format for stagenet nodes
-                let stagenet_nodes_json = serde_json::json!([
-                    {"host": "node2.monerodevs.org", "port": 38089},
-                    {"host": "stagenet.xmr-tw.org", "port": 38081},
-                    {"host": "stagenet.xmr.ditatompel.com", "port": 443},
-                    {"host": "3.10.182.182", "port": 38081},
-                    {"host": "xmr-lux.boldsuck.org", "port": 38081},
-                    {"host": "ykqlrp7lumcik3ubzz3nfsahkbplfgqshavmgbxb4fauexqzat6idjad.onion", "port": 38081},
-                    {"host": "node.monerodevs.org", "port": 38089},
-                    {"host": "ct36dsbe3oubpbebpxmiqz4uqk6zb6nhmkhoekileo4fts23rvuse2qd.onion", "port": 38081},
-                    {"host": "125.229.105.12", "port": 38081},
-                    {"host": "node3.monerodevs.org", "port": 38089}
-                ]);
-
-                self.process_node_data(&stagenet_nodes_json, "stagenet")
-                    .await?;
+                info!("Using bootstrap stagenet nodes");
+                self.insert_bootstrap_nodes("stagenet").await?;
             }
             "testnet" => {
                 info!("Testnet node discovery not supported, skipping");
@@ -85,6 +107,94 @@ impl NodeDiscovery {
                 warn!("Unknown network '{}', skipping discovery", network);
             }
         }
+        Ok(())
+    }
+
+    /// Fetch nodes from monero.fail API
+    pub async fn fetch_nodes_from_network(&self, network: &str) -> Result<Vec<String>> {
+        let url = format!(
+            "https://monero.fail/nodes.json?chain=monero&network={}",
+            network
+        );
+
+        info!("Fetching nodes from: {}", url);
+
+        let response = self
+            .client
+            .get(&url)
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("HTTP error: {}", response.status()));
+        }
+
+        let monero_fail_response: MoneroFailResponse = response.json().await?;
+
+        // Combine clear and web_compatible nodes, preferring web_compatible (HTTPS) when available
+        let mut nodes = monero_fail_response.monero.web_compatible;
+        nodes.extend(monero_fail_response.monero.clear);
+
+        // Remove duplicates while preserving order (web_compatible first)
+        let mut unique_nodes = Vec::new();
+        for node in nodes {
+            if !unique_nodes.contains(&node) {
+                unique_nodes.push(node);
+            }
+        }
+
+        if unique_nodes.is_empty() {
+            return Err(anyhow::anyhow!("No nodes found in response"));
+        }
+
+        info!(
+            "Fetched {} nodes for {} network",
+            unique_nodes.len(),
+            network
+        );
+        Ok(unique_nodes)
+    }
+
+    /// Insert bootstrap nodes for the specified network
+    async fn insert_bootstrap_nodes(&self, network: &str) -> Result<()> {
+        let bootstrap_nodes = match network {
+            "mainnet" => BOOTSTRAP_MAINNET_NODES,
+            "stagenet" => BOOTSTRAP_STAGENET_NODES,
+            _ => {
+                warn!("No bootstrap nodes available for network: {}", network);
+                return Ok(());
+            }
+        };
+
+        let mut success_count = 0;
+        for &(host, port) in bootstrap_nodes {
+            let scheme = if port == 18089 || port == 38089 || port == 443 {
+                "https"
+            } else {
+                "http"
+            };
+
+            match self.db.upsert_node(scheme, host, port as i64).await {
+                Ok(_) => {
+                    success_count += 1;
+                    // Set the network for bootstrap nodes since we know they're for this network
+                    let full_url = format!("{}://{}:{}", scheme, host, port);
+                    if let Err(e) = self.db.update_node_network(&full_url, network).await {
+                        warn!(
+                            "Failed to set network for bootstrap node {}: {}",
+                            full_url, e
+                        );
+                    }
+                }
+                Err(e) => error!("Failed to insert bootstrap node {}:{}: {}", host, port, e),
+            }
+        }
+
+        info!(
+            "Inserted {} bootstrap nodes for {} network",
+            success_count, network
+        );
         Ok(())
     }
 
@@ -158,7 +268,7 @@ impl NodeDiscovery {
                                 })
                             }
                         }
-                        Err(e) => Ok(HealthCheckOutcome {
+                        Err(_e) => Ok(HealthCheckOutcome {
                             was_successful: false,
                             latency,
                             discovered_network: None,
@@ -172,7 +282,7 @@ impl NodeDiscovery {
                     })
                 }
             }
-            Err(e) => Ok(HealthCheckOutcome {
+            Err(_e) => Ok(HealthCheckOutcome {
                 was_successful: false,
                 latency,
                 discovered_network: None,
@@ -276,7 +386,7 @@ impl NodeDiscovery {
                     }
                     checked_count += 1;
                 }
-                Err(e) => {
+                Err(_e) => {
                     self.db
                         .record_health_check(&node.full_url, false, None)
                         .await?;

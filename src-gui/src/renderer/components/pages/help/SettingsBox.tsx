@@ -23,6 +23,8 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Chip,
+  LinearProgress,
 } from "@mui/material";
 import {
   addNode,
@@ -53,12 +55,13 @@ import {
   Edit,
   HourglassEmpty,
 } from "@mui/icons-material";
-import RefreshIcon from "@mui/icons-material/Refresh";
+
 import { getNetwork } from "store/config";
 import { currencySymbol } from "utils/formatUtils";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import { isValidMultiAddressWithPeerId } from "utils/parseUtils";
-import { getMoneroNodeStatus } from "renderer/rpc";
+
+import { useAppSelector } from "store/hooks";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -276,15 +279,21 @@ function ElectrumRpcUrlSetting() {
 function SettingLabel({
   label,
   tooltip,
+  disabled = false,
 }: {
   label: ReactNode;
   tooltip: string | null;
+  disabled?: boolean;
 }) {
+  const opacity = disabled ? 0.5 : 1;
+
   return (
-    <Box style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+    <Box
+      style={{ display: "flex", alignItems: "center", gap: "0.5rem", opacity }}
+    >
       <Box>{label}</Box>
       <Tooltip title={tooltip}>
-        <IconButton size="small">
+        <IconButton size="small" disabled={disabled}>
           <HelpIcon />
         </IconButton>
       </Tooltip>
@@ -338,112 +347,45 @@ function MoneroRpcPoolSetting() {
  * Only shown when RPC pool is disabled.
  */
 function MoneroNodeUrlSetting() {
+  const [tableVisible, setTableVisible] = useState(false);
   const network = getNetwork();
   const useMoneroRpcPool = useSettings((s) => s.useMoneroRpcPool);
-  const moneroNodes = useSettings((s) => s.nodes[network][Blockchain.Monero]);
-  const dispatch = useAppDispatch();
-  const [moneroNodeUrl, setMoneroNodeUrl] = useState("");
-  const [nodeStatus, setNodeStatus] = useState<boolean | undefined>(undefined);
 
   const isValid = (url: string) => isValidUrl(url, ["http"]);
-
-  // Load the first custom monero node URL when component mounts
-  useEffect(() => {
-    if (moneroNodes.length > 0) {
-      setMoneroNodeUrl(moneroNodes[0]);
-    }
-  }, [moneroNodes]);
-
-  const handleMoneroNodeUrlChange = (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    // Don't update if RPC pool is enabled
-    if (useMoneroRpcPool) {
-      return;
-    }
-
-    const url = event.target.value;
-    setMoneroNodeUrl(url);
-    // Reset status when URL changes
-    setNodeStatus(undefined);
-
-    // Update the settings store with the new URL
-    if (url && isValid(url)) {
-      // Clear existing nodes and add the new one
-      moneroNodes.forEach((node) => {
-        dispatch(removeNode({ network, type: Blockchain.Monero, node }));
-      });
-      dispatch(addNode({ network, type: Blockchain.Monero, node: url }));
-    }
-  };
-
-  const checkNodeStatus = async (): Promise<boolean> => {
-    if (!moneroNodeUrl || !isValid(moneroNodeUrl)) {
-      setNodeStatus(false);
-      return false;
-    }
-
-    try {
-      const status = await getMoneroNodeStatus(moneroNodeUrl, network);
-      setNodeStatus(status);
-      return status;
-    } catch (error) {
-      console.error("Failed to check monero node status:", error);
-      setNodeStatus(false);
-      return false;
-    }
-  };
 
   return (
     <TableRow>
       <TableCell>
         <SettingLabel
-          label="Monero Node URL"
+          label="Custom Monero Node URL"
           tooltip={
             useMoneroRpcPool
-              ? "This setting is disabled because Monero RPC pool is enabled. Disable the RPC pool to configure a custom node."
-              : "URL of the Monero node to connect to. Must use HTTP protocol. Leave empty to use a random public node."
+              ? "This setting is disabled because Monero RPC pool is enabled. Disable the RPC pool to configure custom nodes."
+              : "This is the URL of the Monero node that the GUI will connect to. It is used to sync Monero transactions. If you leave this field empty, the GUI will choose from a list of known servers at random."
           }
+          disabled={useMoneroRpcPool}
         />
       </TableCell>
       <TableCell>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <TextField
-            value={moneroNodeUrl}
-            onChange={handleMoneroNodeUrlChange}
+        <IconButton
+          onClick={() => setTableVisible(true)}
+          size="large"
+          disabled={useMoneroRpcPool}
+        >
+          {<Edit />}
+        </IconButton>
+        {tableVisible ? (
+          <NodeTableModal
+            open={tableVisible}
+            onClose={() => setTableVisible(false)}
+            network={network}
+            blockchain={Blockchain.Monero}
+            isValid={isValid}
             placeholder={PLACEHOLDER_MONERO_NODE_URL}
-            fullWidth
-            variant="outlined"
-            size="small"
-            disabled={useMoneroRpcPool}
-            error={
-              moneroNodeUrl && !isValid(moneroNodeUrl) && !useMoneroRpcPool
-            }
-            helperText={
-              useMoneroRpcPool
-                ? null
-                : moneroNodeUrl && !isValid(moneroNodeUrl)
-                  ? "Invalid URL format"
-                  : ""
-            }
           />
-          <NodeStatus status={nodeStatus} />
-          <PromiseInvokeButton
-            onInvoke={checkNodeStatus}
-            isIconButton={true}
-            disabled={
-              useMoneroRpcPool || !moneroNodeUrl || !isValid(moneroNodeUrl)
-            }
-            tooltipTitle={
-              useMoneroRpcPool
-                ? "Disabled while RPC pool is enabled"
-                : "Check node status"
-            }
-            displayErrorSnackbar={true}
-            requiresContext={false}
-            endIcon={<RefreshIcon />}
-          />
-        </Box>
+        ) : (
+          <></>
+        )}
       </TableCell>
     </TableRow>
   );
@@ -507,7 +449,7 @@ function NodeTableModal({
           When the daemon is started, it will attempt to connect to the first
           available {blockchain} node in this list. If you leave this field
           empty or all nodes are unavailable, it will choose from a list of
-          known nodes at random. Requires a restart to take effect.
+          known nodes at random.
         </Typography>
         <NodeTable
           network={network}
@@ -538,38 +480,6 @@ function Circle({ color, radius = 6 }: { color: string; radius?: number }) {
       </svg>
     </span>
   );
-}
-
-/**
- * Displays a status indicator for a node
- */
-function NodeStatus({ status }: { status: boolean | undefined }) {
-  const theme = useTheme();
-
-  switch (status) {
-    case true:
-      return (
-        <Tooltip
-          title={"This node is available and responding to RPC requests"}
-        >
-          <Circle color={theme.palette.success.dark} />
-        </Tooltip>
-      );
-    case false:
-      return (
-        <Tooltip
-          title={"This node is not available or not responding to RPC requests"}
-        >
-          <Circle color={theme.palette.error.dark} />
-        </Tooltip>
-      );
-    default:
-      return (
-        <Tooltip title={"The status of this node is currently unknown"}>
-          <HourglassEmpty />
-        </Tooltip>
-      );
-  }
 }
 
 /**
@@ -642,7 +552,9 @@ function NodeTable({
               </TableCell>
               {/* Node status icon */}
               <TableCell align="center">
-                <NodeStatus status={nodeStatuses[blockchain][node]} />
+                <Circle
+                  color={nodeStatuses[blockchain][node] ? "green" : "red"}
+                />
               </TableCell>
               {/* Remove and move buttons */}
               <TableCell>
@@ -709,7 +621,7 @@ export function TorSettings() {
       <TableCell>
         <SettingLabel
           label="Use Tor"
-          tooltip="Tor (The Onion Router) is a decentralized network allowing for anonymous browsing. If enabled, the app will use its internal Tor client to hide your IP address from the maker. Requires a restart to take effect."
+          tooltip="Route network traffic through Tor to hide your IP address from the maker."
         />
       </TableCell>
 

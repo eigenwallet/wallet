@@ -536,6 +536,86 @@ impl Database {
         Ok(nodes)
     }
 
+    /// Get identified nodes with successful health checks (optimized version)
+    pub async fn get_identified_nodes_with_success(
+        &self,
+        network: &str,
+    ) -> Result<Vec<MoneroNode>> {
+        let nodes = sqlx::query_as::<_, MoneroNode>(
+            r#"
+            SELECT 
+                n.*,
+                COALESCE(stats.success_count, 0) as success_count,
+                COALESCE(stats.failure_count, 0) as failure_count,
+                stats.last_success,
+                stats.last_failure,
+                stats.last_checked,
+                CASE WHEN reliable_nodes.node_id IS NOT NULL THEN 1 ELSE 0 END as is_reliable,
+                stats.avg_latency_ms,
+                stats.min_latency_ms,
+                stats.max_latency_ms,
+                stats.last_latency_ms
+            FROM monero_nodes n
+            LEFT JOIN (
+                SELECT 
+                    node_id,
+                    SUM(CASE WHEN was_successful THEN 1 ELSE 0 END) as success_count,
+                    SUM(CASE WHEN NOT was_successful THEN 1 ELSE 0 END) as failure_count,
+                    MAX(CASE WHEN was_successful THEN timestamp END) as last_success,
+                    MAX(CASE WHEN NOT was_successful THEN timestamp END) as last_failure,
+                    MAX(timestamp) as last_checked,
+                    AVG(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as avg_latency_ms,
+                    MIN(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as min_latency_ms,
+                    MAX(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as max_latency_ms,
+                    (SELECT latency_ms FROM health_checks hc2 WHERE hc2.node_id = health_checks.node_id ORDER BY timestamp DESC LIMIT 1) as last_latency_ms
+                FROM health_checks 
+                GROUP BY node_id
+            ) stats ON n.id = stats.node_id
+            LEFT JOIN (
+                SELECT DISTINCT node_id FROM (
+                    SELECT 
+                        n2.id as node_id,
+                        COALESCE(s2.success_count, 0) as success_count,
+                        COALESCE(s2.failure_count, 0) as failure_count,
+                        s2.avg_latency_ms,
+                        (CAST(COALESCE(s2.success_count, 0) AS REAL) / CAST(COALESCE(s2.success_count, 0) + COALESCE(s2.failure_count, 0) AS REAL)) * 
+                        (MIN(COALESCE(s2.success_count, 0) + COALESCE(s2.failure_count, 0), 200) / 200.0) * 0.8 +
+                        CASE 
+                            WHEN s2.avg_latency_ms IS NOT NULL THEN (1.0 - (MIN(s2.avg_latency_ms, 2000) / 2000.0)) * 0.2
+                            ELSE 0.0 
+                        END as reliability_score
+                    FROM monero_nodes n2
+                    LEFT JOIN (
+                        SELECT 
+                            node_id,
+                            SUM(CASE WHEN was_successful THEN 1 ELSE 0 END) as success_count,
+                            SUM(CASE WHEN NOT was_successful THEN 1 ELSE 0 END) as failure_count,
+                            AVG(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as avg_latency_ms
+                        FROM health_checks 
+                        GROUP BY node_id
+                    ) s2 ON n2.id = s2.node_id
+                    WHERE n2.network = ? AND (COALESCE(s2.success_count, 0) + COALESCE(s2.failure_count, 0)) > 0
+                    ORDER BY reliability_score DESC
+                    LIMIT 4
+                )
+            ) reliable_nodes ON n.id = reliable_nodes.node_id
+            WHERE n.network = ? AND COALESCE(stats.success_count, 0) > 0
+            ORDER BY stats.avg_latency_ms ASC, stats.success_count DESC
+            "#,
+        )
+        .bind(network)
+        .bind(network)
+        .fetch_all(&self.pool)
+        .await?;
+
+        debug!(
+            "Retrieved {} identified nodes with successful health checks for network {}",
+            nodes.len(),
+            network
+        );
+        Ok(nodes)
+    }
+
     /// Get random nodes excluding specific IDs
     pub async fn get_random_nodes(
         &self,

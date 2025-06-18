@@ -369,3 +369,9 @@ export async function saveLogFiles(
 ): Promise<void> {
   await invokeUnsafe<void>("save_txt_files", { zipFileName, content });
 }
+
+export async function saveFilesInDialog(files: Record<string, string>) {
+  await invokeUnsafe<void>("save_txt_files", {
+    files,
+  });
+}

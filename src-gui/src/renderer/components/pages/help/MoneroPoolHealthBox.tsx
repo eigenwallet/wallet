@@ -64,7 +64,7 @@ export default function MoneroPoolHealthBox() {
           size="small"
         />
         <Chip
-          label={`${overallSuccessRate.toFixed(1)}% Success Rate`}
+          label={`${(100 - overallSuccessRate).toFixed(1)}% Retry Rate`}
           color={
             overallSuccessRate > 80
               ? "success"
@@ -82,9 +82,17 @@ export default function MoneroPoolHealthBox() {
   const renderTopNodes = () => {
     if (!poolStatus || poolStatus.top_reliable_nodes.length === 0) {
       return (
-        <Typography variant="body2" color="text.secondary">
-          No reliable nodes available
-        </Typography>
+        <>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Typography variant="h6" sx={{ fontSize: "1rem" }}>
+              🚧
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Bootstrapping remote Monero node registry... But you can already
+              start swapping!
+            </Typography>
+          </Box>
+        </>
       );
     }
 
@@ -129,6 +137,34 @@ export default function MoneroPoolHealthBox() {
     );
   };
 
+  // Show bootstrapping message when no data is available
+  if (!poolStatus && !isLoading) {
+    return (
+      <InfoBox
+        title={
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <NetworkWifiIcon />
+            Monero Pool Health
+          </Box>
+        }
+        mainContent={
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Typography variant="h2" sx={{ fontSize: "1.5rem" }}>
+              🚧
+            </Typography>
+            <Typography variant="subtitle2">
+              Bootstrapping pool health monitoring. You can already start using
+              the app!
+            </Typography>
+          </Box>
+        }
+        additionalContent={null}
+        icon={null}
+        loading={false}
+      />
+    );
+  }
+
   return (
     <InfoBox
       title={
@@ -165,12 +201,7 @@ export default function MoneroPoolHealthBox() {
             </Box>
           )}
 
-          <Box>
-            <Typography variant="body2" sx={{ mb: 1, fontWeight: "medium" }}>
-              Top Reliable Nodes
-            </Typography>
-            {renderTopNodes()}
-          </Box>
+          <Box>{renderTopNodes()}</Box>
         </Box>
       }
       icon={null}

@@ -167,14 +167,13 @@ impl NodePool {
             limit
         );
 
-        // Step 2: If primary fetch failed, fall back to any identified nodes with successful health checks
-        // TODO: Instead of is_empty, use top_nodes.len() < limit
-        if top_nodes.is_empty() {
-            debug!("Primary fetch returned no nodes, falling back to any identified nodes with successful health checks");
-            top_nodes = self.db.get_identified_nodes(&self.network).await?;
-            // Filter to only nodes with at least one successful health check
-            // TODO: This should be done in the database query! Too slow!
-            top_nodes.retain(|node| node.success_count > 0);
+        // Step 2: If primary fetch didn't return enough nodes, fall back to any identified nodes with successful health checks
+        if top_nodes.len() < limit {
+            debug!("Primary fetch returned insufficient nodes, falling back to any identified nodes with successful health checks");
+            top_nodes = self
+                .db
+                .get_identified_nodes_with_success(&self.network)
+                .await?;
 
             debug!(
                 "Fallback fetch returned {} nodes with successful health checks for network {}",

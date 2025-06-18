@@ -1,38 +1,32 @@
 use clap::Parser;
-use serde::Deserialize;
 use tracing::{error, info, warn};
 use tracing_subscriber::{self, EnvFilter};
 
 use monero_rpc_pool::database::Database;
+use monero_rpc_pool::discovery::NodeDiscovery;
 use monero_rpc_pool::{config::Config, run_server};
 use url;
 
-// TODO: use the type from monero-rs here
-#[derive(Debug, Clone, clap::ValueEnum)]
-enum Network {
-    Mainnet,
-    Stagenet,
-}
+use monero::Network;
 
-impl std::fmt::Display for Network {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Network::Mainnet => write!(f, "mainnet"),
-            Network::Stagenet => write!(f, "stagenet"),
-        }
+fn parse_network(s: &str) -> Result<Network, String> {
+    match s.to_lowercase().as_str() {
+        "mainnet" => Ok(Network::Mainnet),
+        "stagenet" => Ok(Network::Stagenet),
+        "testnet" => Ok(Network::Testnet),
+        _ => Err(format!(
+            "Invalid network: {}. Must be mainnet, stagenet, or testnet",
+            s
+        )),
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct MoneroFailResponse {
-    monero: MoneroNodes,
-}
-
-#[derive(Debug, Deserialize)]
-struct MoneroNodes {
-    clear: Vec<String>,
-    #[serde(default)]
-    web_compatible: Vec<String>,
+fn network_to_string(network: &Network) -> String {
+    match network {
+        Network::Mainnet => "mainnet".to_string(),
+        Network::Stagenet => "stagenet".to_string(),
+        Network::Testnet => "testnet".to_string(),
+    }
 }
 
 #[derive(Parser)]
@@ -54,59 +48,12 @@ struct Args {
 
     #[arg(short, long, default_value = "mainnet")]
     #[arg(help = "Network to use for automatic node discovery")]
+    #[arg(value_parser = parse_network)]
     network: Network,
 
     #[arg(short, long)]
     #[arg(help = "Enable verbose logging")]
     verbose: bool,
-}
-
-// TODO: This needs to be moved into the discovery module
-async fn fetch_nodes_from_network(
-    network: &Network,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let url = format!(
-        "https://monero.fail/nodes.json?chain=monero&network={}",
-        network
-    );
-
-    info!("Fetching nodes from: {}", url);
-
-    let client = reqwest::Client::new();
-    let response = client
-        .get(&url)
-        .timeout(std::time::Duration::from_secs(30))
-        .send()
-        .await?;
-
-    if !response.status().is_success() {
-        return Err(format!("HTTP error: {}", response.status()).into());
-    }
-
-    let monero_fail_response: MoneroFailResponse = response.json().await?;
-
-    // Combine clear and web_compatible nodes, preferring web_compatible (HTTPS) when available
-    let mut nodes = monero_fail_response.monero.web_compatible;
-    nodes.extend(monero_fail_response.monero.clear);
-
-    // Remove duplicates while preserving order (web_compatible first)
-    let mut unique_nodes = Vec::new();
-    for node in nodes {
-        if !unique_nodes.contains(&node) {
-            unique_nodes.push(node);
-        }
-    }
-
-    if unique_nodes.is_empty() {
-        return Err("No nodes found in response".into());
-    }
-
-    info!(
-        "Fetched {} nodes for {} network",
-        unique_nodes.len(),
-        network
-    );
-    Ok(unique_nodes)
 }
 
 #[tokio::main]
@@ -133,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nodes = if let Some(manual_nodes) = args.nodes {
         info!(
             "Using manually specified nodes for network: {}",
-            args.network
+            network_to_string(&args.network)
         );
 
         // Insert manual nodes into database with network information
@@ -166,13 +113,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         parsed_nodes
     } else {
-        info!("Fetching nodes for {} network", args.network);
-        match fetch_nodes_from_network(&args.network).await {
+        info!(
+            "Fetching nodes for {} network",
+            network_to_string(&args.network)
+        );
+        let db = Database::new().await?;
+        let discovery = NodeDiscovery::new(db.clone());
+
+        match discovery
+            .fetch_nodes_from_network(&network_to_string(&args.network))
+            .await
+        {
             Ok(fetched_nodes) => {
                 info!("Successfully fetched {} nodes", fetched_nodes.len());
 
-                // Insert fetched nodes into database
-                let db = Database::new().await?;
                 let mut inserted_nodes = Vec::new();
 
                 for node_url in &fetched_nodes {
@@ -211,20 +165,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::from_args(Some(args.host), Some(args.port), Some(nodes));
 
-    // TODO: Put this into a single log message
-    info!("Starting Monero RPC Pool");
-    info!("Configuration:");
-    info!("  Host: {}", config.host);
-    info!("  Port: {}", config.port);
-    info!("  Network: {}", args.network);
-    info!("  Nodes: {} configured", config.nodes.len());
-    if args.verbose && !config.nodes.is_empty() {
-        for (i, node) in config.nodes.iter().enumerate() {
-            info!("    {}: {}", i + 1, node);
-        }
-    }
+    let node_list = if args.verbose && !config.nodes.is_empty() {
+        let nodes_formatted: Vec<String> = config
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(i, node)| format!("    {}: {}", i + 1, node))
+            .collect();
+        format!("\n{}", nodes_formatted.join("\n"))
+    } else {
+        String::new()
+    };
 
-    if let Err(e) = run_server(config, args.network.to_string()).await {
+    info!(
+        "Starting Monero RPC Pool\nConfiguration:\n  Host: {}\n  Port: {}\n  Network: {}\n  Nodes: {} configured{}",
+        config.host, config.port, network_to_string(&args.network), config.nodes.len(), node_list
+    );
+
+    if let Err(e) = run_server(config, network_to_string(&args.network)).await {
         eprintln!("Server error: {}", e);
         std::process::exit(1);
     }

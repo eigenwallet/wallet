@@ -5933,6 +5933,7 @@ dependencies = [
  "clap 4.5.38",
  "dirs 5.0.1",
  "futures",
+ "monero",
  "monero-rpc",
  "rand 0.8.5",
  "regex",

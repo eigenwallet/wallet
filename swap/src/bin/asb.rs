@@ -44,6 +44,28 @@ use uuid::Uuid;
 
 const DEFAULT_WALLET_NAME: &str = "asb-wallet";
 
+trait IntoDaemon {
+    fn into_daemon(self) -> Result<Daemon>;
+}
+
+impl IntoDaemon for url::Url {
+    fn into_daemon(self) -> Result<Daemon> {
+        let address = self.to_string();
+        let ssl = self.scheme() == "https";
+
+        Ok(Daemon { address, ssl })
+    }
+}
+
+impl IntoDaemon for monero_rpc_pool::ServerInfo {
+    fn into_daemon(self) -> Result<Daemon> {
+        let address = format!("http://{}:{}", self.host, self.port);
+        let ssl = false; // Pool server always uses HTTP locally
+
+        Ok(Daemon { address, ssl })
+    }
+}
+
 #[tokio::main]
 pub async fn main() -> Result<()> {
     rustls::crypto::ring::default_provider()
@@ -467,42 +489,32 @@ async fn init_monero_wallet(
             monero::Network::Testnet => "testnet".to_string(),
         };
 
-        match monero_rpc_pool::start_server_with_random_port(
-            monero_rpc_pool::config::Config::default(),
-            network_str,
-        )
-        .await
-        {
-            Ok((server_info, _status_receiver)) => {
-                let pool_url = format!("http://{}:{}", server_info.host, server_info.port);
-                tracing::info!("Monero RPC Pool started for ASB on {}", pool_url);
+        let (server_info, _status_receiver, _task_manager) =
+            monero_rpc_pool::start_server_with_random_port(
+                monero_rpc_pool::config::Config::default(),
+                network_str,
+            )
+            .await
+            .context("Failed to start Monero RPC Pool for ASB")?;
 
-                Daemon {
-                    address: pool_url,
-                    ssl: false,
-                }
-            }
-            Err(e) => {
-                tracing::error!("Failed to start Monero RPC Pool for ASB: {}", e);
-                tracing::info!("Falling back to direct daemon connection");
+        let pool_url = format!("http://{}:{}", server_info.host, server_info.port);
+        tracing::info!("Monero RPC Pool started for ASB on {}", pool_url);
 
-                Daemon {
-                    address: config.monero.daemon_url.to_string(),
-                    ssl: config.monero.daemon_url.as_str().contains("https"),
-                }
-            }
-        }
+        server_info
+            .into_daemon()
+            .context("Failed to convert ServerInfo to Daemon")?
     } else {
-        // Use the configured daemon URL directly
         tracing::info!(
             "Using direct Monero daemon connection: {}",
             config.monero.daemon_url
         );
 
-        Daemon {
-            address: config.monero.daemon_url.to_string(),
-            ssl: config.monero.daemon_url.as_str().contains("https"),
-        }
+        config
+            .monero
+            .daemon_url
+            .clone()
+            .into_daemon()
+            .context("Failed to convert daemon URL to Daemon")?
     };
 
     let manager = monero::Wallets::new(
