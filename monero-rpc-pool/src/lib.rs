@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::{
-    routing::{get, post},
+    routing::{any, get},
     Router,
 };
 use tokio::sync::RwLock;
@@ -20,7 +20,7 @@ use config::Config;
 use database::Database;
 use discovery::NodeDiscovery;
 use pool::{NodePool, PoolStatus};
-use simple_handlers::{simple_http_handler, simple_rpc_handler, simple_stats_handler};
+use simple_handlers::{simple_proxy_handler, simple_stats_handler};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -122,11 +122,8 @@ async fn create_app_with_receiver(
 
     // Build the app
     let app = Router::new()
-        // TODO: Route ALL types of requests here (POST, GET, etc, no need to differentiate)
-        .route("/json_rpc", post(simple_rpc_handler))
         .route("/stats", get(simple_stats_handler))
-        .route("/*path", get(simple_http_handler))
-        .route("/*path", post(simple_http_handler))
+        .route("/*path", any(simple_proxy_handler))
         .layer(CorsLayer::permissive())
         .with_state(app_state);
 
