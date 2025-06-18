@@ -1192,7 +1192,7 @@ pub async fn monero_recovery(
     }
 }
 
-#[tracing::instrument(fields(method = "get_current_swap"), skip(_context))]
+#[tracing::instrument(fields(method = "get_current_swap"), skip(context))]
 pub async fn get_current_swap(context: Arc<Context>) -> Result<serde_json::Value> {
     Ok(json!({
         "swap_id": context.swap_lock.get_current_swap_id().await,

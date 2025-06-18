@@ -714,6 +714,8 @@ pub struct TauriSettings {
     pub electrum_rpc_urls: Vec<String>,
     /// Whether to initialize and use a tor client.
     pub use_tor: bool,
+    /// Whether to use the Monero RPC pool instead of custom nodes.
+    pub use_monero_rpc_pool: bool,
 }
 
 #[typeshare]

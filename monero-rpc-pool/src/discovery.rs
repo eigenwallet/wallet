@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -76,10 +77,11 @@ impl NodeDiscovery {
         let mut nodes = monero_fail_response.monero.web_compatible;
         nodes.extend(monero_fail_response.monero.clear);
 
-        // Remove duplicates
+        // Remove duplicates using HashSet for O(n) complexity
+        let mut seen = HashSet::new();
         let mut unique_nodes = Vec::new();
         for node in nodes {
-            if !unique_nodes.contains(&node) {
+            if seen.insert(node.clone()) {
                 unique_nodes.push(node);
             }
         }
@@ -330,7 +332,21 @@ impl NodeDiscovery {
         for node_url in nodes.iter() {
             if let Ok(url) = url::Url::parse(node_url) {
                 let scheme = url.scheme();
-                let host = url.host_str().unwrap_or("");
+                
+                // Validate scheme - must be http or https
+                if !matches!(scheme, "http" | "https") {
+                    continue;
+                }
+                
+                // Validate host - must be non-empty
+                let Some(host) = url.host_str() else {
+                    continue;
+                };
+                if host.is_empty() {
+                    continue;
+                }
+                
+                // Validate port - must be present
                 let Some(port) = url.port() else {
                     continue;
                 };

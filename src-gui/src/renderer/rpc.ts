@@ -223,43 +223,20 @@ export async function initializeContext() {
   const bitcoinNodes =
     store.getState().settings.nodes[network][Blockchain.Bitcoin];
 
-  // For Monero nodes, check if we should use RPC pool or custom nodes
+  // For Monero nodes, get the configured node URL and pool setting
   const useMoneroRpcPool = store.getState().settings.useMoneroRpcPool;
-  let moneroNode = null;
-
-  if (!useMoneroRpcPool) {
-    // Using custom nodes - check availability and use the first working one
-    const moneroNodes =
-      store.getState().settings.nodes[network][Blockchain.Monero];
-
-    if (moneroNodes.length > 0) {
-      try {
-        moneroNode = await Promise.any(
-          moneroNodes.map(async (node) => {
-            const isAvailable = await getNodeStatus(
-              node,
-              Blockchain.Monero,
-              network,
-            );
-            if (isAvailable) {
-              return node;
-            }
-            throw new Error(`Monero node ${node} is not available`);
-          }),
-        );
-      } catch {
-        // If no Monero node is available, use null
-        moneroNode = null;
-      }
-    }
-  }
-  // If useMoneroRpcPool is true, moneroNode stays null and the backend will use RPC pool
+  const moneroNodes = store.getState().settings.nodes[network][Blockchain.Monero];
+  
+  // Always pass the first configured monero node URL directly without checking availability
+  // The backend will handle whether to use the pool or the custom node
+  const moneroNode = moneroNodes.length > 0 ? moneroNodes[0] : null;
 
   // Initialize Tauri settings
   const tauriSettings: TauriSettings = {
     electrum_rpc_urls: bitcoinNodes,
     monero_node_url: moneroNode,
     use_tor: useTor,
+    use_monero_rpc_pool: useMoneroRpcPool,
   };
 
   logger.info("Initializing context with settings", tauriSettings);

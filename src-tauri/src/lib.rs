@@ -368,13 +368,10 @@ async fn initialize_context(
         .to_string_result()?;
 
     // Determine which Monero node to use:
-    // - If a specific node URL is provided in settings, use that
-    // - If None, start and use the local RPC pool
-    let monero_node_url = if let Some(provided_url) = settings.monero_node_url.clone() {
-        // User provided a specific node URL
-        Some(provided_url)
-    } else {
-        // No specific node provided, start RPC pool and use it
+    // - If using RPC pool, start and use the local RPC pool
+    // - Otherwise, use the provided node URL directly (even if empty)
+    let monero_node_url = if settings.use_monero_rpc_pool {
+        // Start RPC pool and use it
         let data_dir = data::data_dir_from(None, testnet).to_string_result()?;
         match monero_rpc_pool::start_server_with_random_port(
             monero_rpc_pool::config::Config::new_random_port(
@@ -407,6 +404,9 @@ async fn initialize_context(
                 None
             }
         }
+    } else {
+        // Use the provided node URL directly without checking availability
+        settings.monero_node_url.clone()
     };
 
     // Get app handle and create a Tauri handle
