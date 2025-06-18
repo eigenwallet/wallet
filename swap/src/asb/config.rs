@@ -242,6 +242,12 @@ pub struct Monero {
     pub finality_confirmations: Option<u64>,
     #[serde(with = "crate::monero::network")]
     pub network: monero::Network,
+    #[serde(default = "default_monero_node_pool")]
+    pub monero_node_pool: bool,
+}
+
+fn default_monero_node_pool() -> bool {
+    false
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]

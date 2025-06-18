@@ -20,34 +20,6 @@ enum HandlerError {
     AllRequestsFailed,
 }
 
-async fn get_two_nodes(state: &AppState) -> Result<(String, String), HandlerError> {
-    let node_pool_guard = state.node_pool.read().await;
-
-    // Get first node
-    let node1 = node_pool_guard
-        .get_next_node()
-        .await
-        .map_err(|e| HandlerError::PoolError(e.to_string()))?
-        .ok_or(HandlerError::NoNodes)?;
-
-    // Get second node (different from first)
-    let mut node2 = node_pool_guard
-        .get_next_node()
-        .await
-        .map_err(|e| HandlerError::PoolError(e.to_string()))?
-        .ok_or(HandlerError::NoNodes)?;
-
-    // If we got the same node, try once more for diversity
-    if node2 == node1 {
-        if let Ok(Some(different_node)) = node_pool_guard.get_next_node().await {
-            if different_node != node1 {
-                node2 = different_node;
-            }
-        }
-    }
-
-    Ok((node1, node2))
-}
 
 async fn raw_http_request(
     node_url: &str,
@@ -173,42 +145,53 @@ async fn race_requests(
     headers: &HeaderMap,
     body: Option<&[u8]>,
 ) -> Result<Response, HandlerError> {
-    const MAX_RETRIES: usize = 20;
+    const POOL_SIZE: usize = 20;
     let mut tried_nodes = std::collections::HashSet::new();
-    let mut attempt = 0;
+    let mut pool_index = 0;
 
-    while attempt < MAX_RETRIES {
-        // Get two new nodes that we haven't tried yet
+    // Get the exclusive pool of 20 nodes once at the beginning
+    let available_pool = {
         let node_pool_guard = state.node_pool.read().await;
+        let reliable_nodes = node_pool_guard.get_top_reliable_nodes(POOL_SIZE).await
+            .map_err(|e| HandlerError::PoolError(e.to_string()))?;
+        
+        let pool: Vec<String> = reliable_nodes.into_iter()
+            .map(|node| node.full_url)
+            .collect();
+        
+        debug!("Got exclusive pool of {} nodes for request", pool.len());
+        pool
+    };
 
+    if available_pool.is_empty() {
+        return Err(HandlerError::NoNodes);
+    }
+
+    // Power of Two Choices within the exclusive pool
+    while pool_index < available_pool.len() && tried_nodes.len() < POOL_SIZE {
         let mut node1_option = None;
         let mut node2_option = None;
 
-        // Try to get first node
-        for _ in 0..10 {
-            // Max 10 attempts to find an untried node
-            if let Ok(Some(node)) = node_pool_guard.get_next_node().await {
-                if !tried_nodes.contains(&node) {
-                    node1_option = Some(node);
-                    break;
-                }
+        // Select first untried node from pool
+        for i in pool_index..available_pool.len() {
+            let node = &available_pool[i];
+            if !tried_nodes.contains(node) {
+                node1_option = Some(node.clone());
+                pool_index = i + 1;
+                break;
             }
         }
 
-        // Try to get second node
-        for _ in 0..10 {
-            // Max 10 attempts to find an untried node
-            if let Ok(Some(node)) = node_pool_guard.get_next_node().await {
-                if !tried_nodes.contains(&node) && Some(&node) != node1_option.as_ref() {
-                    node2_option = Some(node);
-                    break;
-                }
+        // Select second untried node from pool (different from first)
+        for i in pool_index..available_pool.len() {
+            let node = &available_pool[i];
+            if !tried_nodes.contains(node) && Some(node) != node1_option.as_ref() {
+                node2_option = Some(node.clone());
+                break;
             }
         }
 
-        drop(node_pool_guard); // Release the lock
-
-        // If we can't get any new nodes, we've exhausted our options
+        // If we can't get any new nodes from the pool, we've exhausted our options
         if node1_option.is_none() && node2_option.is_none() {
             break;
         }
@@ -244,11 +227,11 @@ async fn race_requests(
         }
 
         debug!(
-            "Attempt {}: Racing {} requests to {}: {} nodes",
-            attempt + 1,
+            "Racing {} requests to {}: {} nodes (tried {} so far)",
             method,
             path,
-            requests.len()
+            requests.len(),
+            tried_nodes.len()
         );
 
         // Handle the requests based on how many we have
@@ -274,21 +257,19 @@ async fn race_requests(
         match result {
             Ok((response, winning_node, latency_ms)) => {
                 debug!(
-                    "{} response from {} ({}ms) - SUCCESS on attempt {}!",
+                    "{} response from {} ({}ms) - SUCCESS after trying {} nodes!",
                     method,
                     winning_node,
                     latency_ms,
-                    attempt + 1
+                    tried_nodes.len()
                 );
                 record_success(state, &winning_node, latency_ms).await;
                 return Ok(response);
             }
             Err(_) => {
                 debug!(
-                    "Attempt {} failed, retrying with different nodes...",
-                    attempt + 1
+                    "Request failed, retrying with different nodes from pool..."
                 );
-                attempt += 1;
                 continue;
             }
         }
@@ -299,6 +280,8 @@ async fn race_requests(
         method,
         tried_nodes.len()
     );
+
+    // TODO: Return one of the real errors here that we got from the nodes
     Err(HandlerError::AllRequestsFailed)
 }
 

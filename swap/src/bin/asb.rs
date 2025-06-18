@@ -457,9 +457,49 @@ async fn init_monero_wallet(
 ) -> Result<Arc<monero::Wallets>> {
     tracing::debug!("Initializing Monero wallets");
 
-    let daemon = Daemon {
-        address: config.monero.daemon_url.to_string(),
-        ssl: config.monero.daemon_url.as_str().contains("https"),
+    let daemon = if config.monero.monero_node_pool {
+        // Start the monero-rpc-pool and use it
+        tracing::info!("Starting Monero RPC Pool for ASB");
+        
+        let network_str = match env_config.monero_network {
+            monero::Network::Mainnet => "mainnet".to_string(),
+            monero::Network::Stagenet => "stagenet".to_string(),
+            monero::Network::Testnet => "testnet".to_string(),
+        };
+        
+        match monero_rpc_pool::start_server_with_random_port(
+            monero_rpc_pool::config::Config::default(),
+            network_str,
+        )
+        .await
+        {
+            Ok((server_info, _status_receiver)) => {
+                let pool_url = format!("http://{}:{}", server_info.host, server_info.port);
+                tracing::info!("Monero RPC Pool started for ASB on {}", pool_url);
+                
+                Daemon {
+                    address: pool_url,
+                    ssl: false,
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to start Monero RPC Pool for ASB: {}", e);
+                tracing::info!("Falling back to direct daemon connection");
+                
+                Daemon {
+                    address: config.monero.daemon_url.to_string(),
+                    ssl: config.monero.daemon_url.as_str().contains("https"),
+                }
+            }
+        }
+    } else {
+        // Use the configured daemon URL directly
+        tracing::info!("Using direct Monero daemon connection: {}", config.monero.daemon_url);
+        
+        Daemon {
+            address: config.monero.daemon_url.to_string(),
+            ssl: config.monero.daemon_url.as_str().contains("https"),
+        }
     };
 
     let manager = monero::Wallets::new(

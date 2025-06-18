@@ -149,6 +149,84 @@ impl NodePool {
         })
     }
 
+    /// Get top reliable nodes with fill-up logic to ensure pool size
+    /// First tries to get top nodes based on recent success, then fills up with random nodes
+    pub async fn get_top_reliable_nodes(&self, limit: usize) -> Result<Vec<crate::database::MoneroNode>> {
+        debug!(
+            "Getting top reliable nodes for network {} (target: {})",
+            self.network,
+            limit
+        );
+        
+        // Step 1: Try primary fetch - get top nodes based on recent success (last 200 health checks)
+        let mut top_nodes = match self.db.get_top_nodes_by_recent_success(&self.network, 200, limit as i64).await {
+            Ok(nodes) => nodes,
+            Err(e) => {
+                debug!("Primary fetch failed with error: {}, falling back to identified nodes", e);
+                Vec::new()
+            }
+        };
+        
+        debug!(
+            "Primary fetch returned {} nodes for network {} (target: {})",
+            top_nodes.len(),
+            self.network,
+            limit
+        );
+
+        // Step 2: If primary fetch failed, fall back to any identified nodes with successful health checks
+        if top_nodes.is_empty() {
+            debug!("Primary fetch returned no nodes, falling back to any identified nodes with successful health checks");
+            top_nodes = self.db.get_identified_nodes(&self.network).await?;
+            // Filter to only nodes with at least one successful health check
+            top_nodes.retain(|node| node.success_count > 0);
+            
+            debug!(
+                "Fallback fetch returned {} nodes with successful health checks for network {}",
+                top_nodes.len(),
+                self.network
+            );
+        }
+
+        // Step 3: Check if we need to fill up the pool
+        if top_nodes.len() < limit {
+            let needed = limit - top_nodes.len();
+            debug!(
+                "Pool needs {} more nodes to reach target of {} for network {}",
+                needed,
+                limit,
+                self.network
+            );
+
+            // Step 4: Collect exclusion IDs from nodes already selected
+            let exclude_ids: Vec<i64> = top_nodes
+                .iter()
+                .filter_map(|node| node.id)
+                .collect();
+
+            // Step 5: Secondary fetch - get random nodes to fill up
+            let random_fillers = self.db.get_random_nodes(&self.network, needed as i64, &exclude_ids).await?;
+            
+            debug!(
+                "Secondary fetch returned {} random nodes for network {}",
+                random_fillers.len(),
+                self.network
+            );
+
+            // Step 6: Combine lists
+            top_nodes.extend(random_fillers);
+        }
+
+        debug!(
+            "Final pool size: {} nodes for network {} (target: {})",
+            top_nodes.len(),
+            self.network,
+            limit
+        );
+
+        Ok(top_nodes)
+    }
+
     pub async fn get_pool_stats(&self) -> Result<PoolStats> {
         let (total, reachable, reliable) = self.db.get_node_stats(&self.network).await?;
         let reliable_nodes = self.db.get_reliable_nodes(&self.network).await?;

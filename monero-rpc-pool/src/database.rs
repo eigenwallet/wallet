@@ -486,6 +486,190 @@ impl Database {
 
         Ok((successful, unsuccessful))
     }
+
+    /// Get top nodes by recent success within the last N health checks per node
+    pub async fn get_top_nodes_by_recent_success(
+        &self,
+        network: &str,
+        _recent_checks_limit: i64,
+        limit: i64,
+    ) -> Result<Vec<MoneroNode>> {
+        // Simplified query: get nodes with successful health checks, ordered by success rate
+        let nodes = sqlx::query_as::<_, MoneroNode>(
+            r#"
+            SELECT 
+                n.*,
+                COALESCE(stats.success_count, 0) as success_count,
+                COALESCE(stats.failure_count, 0) as failure_count,
+                stats.last_success,
+                stats.last_failure,
+                stats.last_checked,
+                0 as is_reliable,
+                stats.avg_latency_ms,
+                stats.min_latency_ms,
+                stats.max_latency_ms,
+                stats.last_latency_ms
+            FROM monero_nodes n
+            LEFT JOIN (
+                SELECT 
+                    node_id,
+                    SUM(CASE WHEN was_successful THEN 1 ELSE 0 END) as success_count,
+                    SUM(CASE WHEN NOT was_successful THEN 1 ELSE 0 END) as failure_count,
+                    MAX(CASE WHEN was_successful THEN timestamp END) as last_success,
+                    MAX(CASE WHEN NOT was_successful THEN timestamp END) as last_failure,
+                    MAX(timestamp) as last_checked,
+                    AVG(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as avg_latency_ms,
+                    MIN(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as min_latency_ms,
+                    MAX(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as max_latency_ms,
+                    (SELECT latency_ms FROM health_checks hc2 WHERE hc2.node_id = health_checks.node_id ORDER BY timestamp DESC LIMIT 1) as last_latency_ms
+                FROM health_checks 
+                GROUP BY node_id
+            ) stats ON n.id = stats.node_id
+            WHERE n.network = ? AND stats.success_count > 0
+            ORDER BY 
+                (CAST(stats.success_count AS REAL) / CAST(stats.success_count + stats.failure_count AS REAL)) DESC,
+                stats.avg_latency_ms ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(network)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        debug!(
+            "Retrieved {} top nodes by recent success for network {} (ordered by success rate)",
+            nodes.len(),
+            network
+        );
+        Ok(nodes)
+    }
+
+    /// Get random nodes excluding specific IDs
+    pub async fn get_random_nodes(
+        &self,
+        network: &str,
+        limit: i64,
+        exclude_ids: &[i64],
+    ) -> Result<Vec<MoneroNode>> {
+        if exclude_ids.is_empty() {
+            // Simple case - no exclusions
+            let nodes = sqlx::query_as::<_, MoneroNode>(
+                r#"
+                SELECT 
+                    n.*,
+                    COALESCE(stats.success_count, 0) as success_count,
+                    COALESCE(stats.failure_count, 0) as failure_count,
+                    stats.last_success,
+                    stats.last_failure,
+                    stats.last_checked,
+                    0 as is_reliable,
+                    stats.avg_latency_ms,
+                    stats.min_latency_ms,
+                    stats.max_latency_ms,
+                    stats.last_latency_ms
+                FROM monero_nodes n
+                LEFT JOIN (
+                    SELECT 
+                        node_id,
+                        SUM(CASE WHEN was_successful THEN 1 ELSE 0 END) as success_count,
+                        SUM(CASE WHEN NOT was_successful THEN 1 ELSE 0 END) as failure_count,
+                        MAX(CASE WHEN was_successful THEN timestamp END) as last_success,
+                        MAX(CASE WHEN NOT was_successful THEN timestamp END) as last_failure,
+                        MAX(timestamp) as last_checked,
+                        AVG(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as avg_latency_ms,
+                        MIN(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as min_latency_ms,
+                        MAX(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as max_latency_ms,
+                        (SELECT latency_ms FROM health_checks hc2 WHERE hc2.node_id = health_checks.node_id ORDER BY timestamp DESC LIMIT 1) as last_latency_ms
+                    FROM health_checks 
+                    GROUP BY node_id
+                ) stats ON n.id = stats.node_id
+                WHERE n.network = ?
+                ORDER BY RANDOM()
+                LIMIT ?
+                "#,
+            )
+            .bind(network)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
+
+            debug!(
+                "Retrieved {} random nodes for network {} (no exclusions)",
+                nodes.len(),
+                network
+            );
+            return Ok(nodes);
+        }
+
+        // Complex case - we need to exclude specific IDs
+        // For simplicity, we'll fetch more nodes than needed and filter them in memory
+        // This avoids the dynamic SQL complexity
+        let extra_factor = 3; // Fetch 3x more to account for exclusions
+        let fetch_limit = limit * extra_factor;
+        
+        let all_nodes = sqlx::query_as::<_, MoneroNode>(
+            r#"
+            SELECT 
+                n.*,
+                COALESCE(stats.success_count, 0) as success_count,
+                COALESCE(stats.failure_count, 0) as failure_count,
+                stats.last_success,
+                stats.last_failure,
+                stats.last_checked,
+                0 as is_reliable,
+                stats.avg_latency_ms,
+                stats.min_latency_ms,
+                stats.max_latency_ms,
+                stats.last_latency_ms
+            FROM monero_nodes n
+            LEFT JOIN (
+                SELECT 
+                    node_id,
+                    SUM(CASE WHEN was_successful THEN 1 ELSE 0 END) as success_count,
+                    SUM(CASE WHEN NOT was_successful THEN 1 ELSE 0 END) as failure_count,
+                    MAX(CASE WHEN was_successful THEN timestamp END) as last_success,
+                    MAX(CASE WHEN NOT was_successful THEN timestamp END) as last_failure,
+                    MAX(timestamp) as last_checked,
+                    AVG(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as avg_latency_ms,
+                    MIN(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as min_latency_ms,
+                    MAX(CASE WHEN was_successful AND latency_ms IS NOT NULL THEN latency_ms END) as max_latency_ms,
+                    (SELECT latency_ms FROM health_checks hc2 WHERE hc2.node_id = health_checks.node_id ORDER BY timestamp DESC LIMIT 1) as last_latency_ms
+                FROM health_checks 
+                GROUP BY node_id
+            ) stats ON n.id = stats.node_id
+            WHERE n.network = ?
+            ORDER BY RANDOM()
+            LIMIT ?
+            "#,
+        )
+        .bind(network)
+        .bind(fetch_limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        // Filter out excluded IDs and limit the result
+        let exclude_set: std::collections::HashSet<i64> = exclude_ids.iter().copied().collect();
+        let filtered_nodes: Vec<MoneroNode> = all_nodes
+            .into_iter()
+            .filter(|node| {
+                if let Some(id) = node.id {
+                    !exclude_set.contains(&id)
+                } else {
+                    true // Include nodes without IDs
+                }
+            })
+            .take(limit as usize)
+            .collect();
+
+        debug!(
+            "Retrieved {} random nodes for network {} (excluding {} IDs)",
+            filtered_nodes.len(),
+            network,
+            exclude_ids.len()
+        );
+        Ok(filtered_nodes)
+    }
 }
 
 pub fn get_app_data_dir() -> Result<PathBuf> {
