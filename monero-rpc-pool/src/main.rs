@@ -100,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Insert manual nodes into database with network information
         let db = Database::new().await?;
-        let discovery = NodeDiscovery::new(db.clone());
+        let discovery = NodeDiscovery::new(db.clone())?;
         let mut parsed_nodes = Vec::new();
 
         for node_url in &manual_nodes {
@@ -141,7 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             network_to_string(&args.network)
         );
         let db = Database::new().await?;
-        let discovery = NodeDiscovery::new(db.clone());
+        let discovery = NodeDiscovery::new(db.clone())?;
 
         // Start discovery process
         discovery.discover_nodes_from_sources(args.network).await?;

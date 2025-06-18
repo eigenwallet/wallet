@@ -4,6 +4,7 @@ use axum::{
     http::{HeaderMap, Method, StatusCode},
     response::Response,
 };
+use serde_json::json;
 use std::{error::Error, time::Instant};
 use tracing::{debug, error, info_span, Instrument};
 use uuid::Uuid;
@@ -436,10 +437,59 @@ async fn proxy_request(
 ) -> Response {
     match race_requests(state, path, method, headers, body).await {
         Ok(res) => res,
-        Err(_) => Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(Body::from("All nodes failed"))
-            .unwrap_or_else(|_| Response::new(Body::empty())),
+        Err(handler_error) => {
+            let error_response = match &handler_error {
+                HandlerError::AllRequestsFailed(node_errors) => {
+                    json!({
+                        "error": "All nodes failed",
+                        "details": {
+                            "type": "AllRequestsFailed",
+                            "message": "All proxy requests to available nodes failed",
+                            "node_errors": node_errors.iter().map(|(node, error)| {
+                                json!({
+                                    "node": node,
+                                    "error": error
+                                })
+                            }).collect::<Vec<_>>(),
+                            "total_nodes_tried": node_errors.len()
+                        }
+                    })
+                }
+                HandlerError::NoNodes => {
+                    json!({
+                        "error": "No nodes available",
+                        "details": {
+                            "type": "NoNodes",
+                            "message": "No healthy nodes available in the pool"
+                        }
+                    })
+                }
+                HandlerError::PoolError(msg) => {
+                    json!({
+                        "error": "Pool error",
+                        "details": {
+                            "type": "PoolError",
+                            "message": msg
+                        }
+                    })
+                }
+                HandlerError::RequestError(msg) => {
+                    json!({
+                        "error": "Request error",
+                        "details": {
+                            "type": "RequestError",
+                            "message": msg
+                        }
+                    })
+                }
+            };
+
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("content-type", "application/json")
+                .body(Body::from(error_response.to_string()))
+                .unwrap_or_else(|_| Response::new(Body::empty()))
+        }
     }
 }
 

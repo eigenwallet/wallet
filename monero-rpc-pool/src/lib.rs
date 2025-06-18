@@ -73,7 +73,7 @@ async fn create_app_with_receiver(
     let node_pool = Arc::new(RwLock::new(node_pool));
 
     // Initialize discovery service
-    let discovery = NodeDiscovery::new(db.clone());
+    let discovery = NodeDiscovery::new(db.clone())?;
 
     // Start background tasks
     let node_pool_for_health_check = node_pool.clone();

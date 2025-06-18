@@ -45,14 +45,14 @@ fn network_to_string(network: &Network) -> String {
 }
 
 impl NodeDiscovery {
-    pub fn new(db: Database) -> Self {
+    pub fn new(db: Database) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
             .user_agent("monero-rpc-pool/1.0")
             .build()
-            .unwrap();
+            .map_err(|e| anyhow::anyhow!("Failed to build HTTP client: {}", e))?;
 
-        Self { client, db }
+        Ok(Self { client, db })
     }
 
     /// Fetch nodes from monero.fail API
@@ -331,10 +331,10 @@ impl NodeDiscovery {
             if let Ok(url) = url::Url::parse(node_url) {
                 let scheme = url.scheme();
                 let host = url.host_str().unwrap_or("");
-                let port = url
-                    .port()
-                    .unwrap_or(if scheme == "https" { 18089 } else { 18081 })
-                    as i64;
+                let Some(port) = url.port() else {
+                    continue;
+                };
+                let port = port as i64;
 
                 match self
                     .db

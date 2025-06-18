@@ -487,7 +487,7 @@ async fn init_monero_wallet(
             monero_rpc_pool::start_server_with_random_port(
                 monero_rpc_pool::config::Config::new_random_port(
                     "127.0.0.1".to_string(),
-                    std::env::temp_dir().join("monero-rpc-pool"),
+                    config.data.dir.join("monero-rpc-pool"),
                 ),
                 env_config.monero_network,
             )

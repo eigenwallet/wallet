@@ -91,10 +91,10 @@ export function currencySymbol(currency: FiatCurrency): string | null {
  * @returns Formatted string showing confirmations or "?" if unknown
  */
 export function formatConfirmations(
-  confirmations: number | undefined,
+  confirmations: number | undefined | null,
   maxConfirmations?: number,
 ): string {
-  if (confirmations === undefined) {
+  if (confirmations === undefined || confirmations === null) {
     return maxConfirmations !== undefined ? `?/${maxConfirmations}` : "?";
   }
 
