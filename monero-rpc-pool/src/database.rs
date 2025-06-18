@@ -132,9 +132,7 @@ impl Database {
 
     async fn migrate(&self) -> Result<()> {
         // Run sqlx migrations
-        sqlx::migrate!("./migrations")
-            .run(&self.pool)
-            .await?;
+        sqlx::migrate!("./migrations").run(&self.pool).await?;
 
         info!("Database migration completed");
         Ok(())

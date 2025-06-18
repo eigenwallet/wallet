@@ -141,8 +141,6 @@ impl NodeDiscovery {
         Ok(unique_nodes)
     }
 
-
-
     /// Process node data and insert into database
     async fn process_node_data(&self, nodes_data: &Value, source_network: &str) -> Result<()> {
         let mut success_count = 0;

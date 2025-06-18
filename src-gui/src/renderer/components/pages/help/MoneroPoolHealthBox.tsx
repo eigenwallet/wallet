@@ -50,7 +50,7 @@ export default function MoneroPoolHealthBox() {
         : 0;
 
     return (
-            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
         <Chip
           label={`${poolStatus.total_node_count} Total Known`}
           color="info"

@@ -1,11 +1,12 @@
 use clap::Parser;
-use tracing::{error, info, warn};
-use tracing_subscriber::{self, EnvFilter};
+use tracing::{error, info, warn, Level, Metadata};
+use tracing_subscriber::layer::Context;
+use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::{self, EnvFilter, Layer};
 
 use monero_rpc_pool::database::Database;
 use monero_rpc_pool::discovery::NodeDiscovery;
 use monero_rpc_pool::{config::Config, run_server};
-
 
 use monero::Network;
 
@@ -56,17 +57,60 @@ struct Args {
     verbose: bool,
 }
 
+// Custom layer to override log levels for our crate
+struct LogLevelOverrideLayer;
+
+impl<S> Layer<S> for LogLevelOverrideLayer
+where
+    S: tracing::Subscriber + for<'lookup> LookupSpan<'lookup>,
+{
+    fn enabled(&self, metadata: &Metadata<'_>, _ctx: Context<'_, S>) -> bool {
+        // If it's from our crate, always enable it (we'll handle level override in event method)
+        if metadata.target().starts_with("monero_rpc_pool") {
+            true
+        } else {
+            // For other crates, use default behavior
+            true
+        }
+    }
+
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+        // If the event is from our crate and not already trace level, override it
+        if event.metadata().target().starts_with("monero_rpc_pool") 
+            && *event.metadata().level() != Level::TRACE {
+            
+            // Create a new event with trace level
+            let trace_event = tracing::Event::new_child_of(
+                event.parent(),
+                &Metadata::new(
+                    event.metadata().name(),
+                    event.metadata().target(),
+                    Level::TRACE,
+                    event.metadata().file(),
+                    event.metadata().line(),
+                    event.metadata().module_path(),
+                    event.metadata().fields(),
+                    event.metadata().kind(),
+                )
+            );
+            
+            // Forward the trace-level event
+            trace_event.record_all(event.field_set());
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    // Create a filter that only shows logs from our application
+    // Create a filter that treats all logs from our crate as traces
     let filter = if args.verbose {
-        // In verbose mode, show DEBUG from our crate and WARN from everything else
-        EnvFilter::new("monero_rpc_pool=debug,warn")
+        // In verbose mode, show TRACE from our crate and WARN from everything else
+        EnvFilter::new("monero_rpc_pool=trace,warn")
     } else {
-        // In normal mode, show INFO from our crate and ERROR from everything else
-        EnvFilter::new("monero_rpc_pool=info,error")
+        // In normal mode, treat our crate logs as trace level and ERROR from everything else
+        EnvFilter::new("monero_rpc_pool=trace,error")
     };
 
     tracing_subscriber::fmt()

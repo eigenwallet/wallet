@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -14,7 +14,7 @@ impl Default for Config {
         Self {
             host: "127.0.0.1".to_string(),
             port: 18081,
-            nodes: vec![], // Empty by default - rely on discovery
+            nodes: vec![],  // Empty by default - rely on discovery
             data_dir: None, // Use default data directory
         }
     }

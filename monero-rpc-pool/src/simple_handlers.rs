@@ -468,10 +468,7 @@ pub async fn simple_proxy_handler(
     } else {
         None
     };
-    let jsonrpc_method_for_span = jsonrpc_method
-        .as_deref()
-        .unwrap_or("N/A")
-        .to_string();
+    let jsonrpc_method_for_span = jsonrpc_method.as_deref().unwrap_or("N/A").to_string();
 
     async move {
         match &jsonrpc_method {
