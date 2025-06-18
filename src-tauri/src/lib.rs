@@ -19,7 +19,7 @@ use swap::cli::{
     },
     command::{Bitcoin, Monero},
 };
-use tauri::{async_runtime::RwLock, Emitter, Manager, RunEvent};
+use tauri::{async_runtime::RwLock, Manager, RunEvent};
 use tauri_plugin_dialog::DialogExt;
 use zip::{write::SimpleFileOptions, ZipWriter};
 
@@ -389,10 +389,10 @@ async fn initialize_context(
                 tracing::info!("Monero RPC Pool started on {}", rpc_url);
 
                 // Start listening for pool status updates and forward them to frontend
-                let app_handle_clone = app_handle.clone();
+                let pool_tauri_handle = TauriHandle::new(app_handle.clone());
                 tauri::async_runtime::spawn(async move {
                     while let Ok(status) = status_receiver.recv().await {
-                        let _ = app_handle_clone.emit("pool-status-update", &status);
+                        pool_tauri_handle.emit_pool_status_update(status);
                     }
                 });
 
