@@ -44,15 +44,6 @@ fn network_to_string(network: &Network) -> String {
     }
 }
 
-fn string_to_network(s: &str) -> Option<Network> {
-    match s.to_lowercase().as_str() {
-        "mainnet" => Some(Network::Mainnet),
-        "stagenet" => Some(Network::Stagenet),
-        "testnet" => Some(Network::Testnet),
-        _ => None,
-    }
-}
-
 impl NodeDiscovery {
     pub fn new(db: Database) -> Self {
         let client = Client::builder()
