@@ -518,6 +518,7 @@ mod tests {
                 daemon_url: defaults.monero_daemon_address,
                 finality_confirmations: None,
                 network: monero::Network::Stagenet,
+                monero_node_pool: false,
             },
             tor: Default::default(),
             maker: Maker {
@@ -563,6 +564,7 @@ mod tests {
                 daemon_url: defaults.monero_daemon_address,
                 finality_confirmations: None,
                 network: monero::Network::Mainnet,
+                monero_node_pool: false,
             },
             tor: Default::default(),
             maker: Maker {
@@ -618,6 +620,7 @@ mod tests {
                 daemon_url: defaults.monero_daemon_address,
                 finality_confirmations: None,
                 network: monero::Network::Mainnet,
+                monero_node_pool: false,
             },
             tor: Default::default(),
             maker: Maker {

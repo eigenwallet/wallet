@@ -50,16 +50,16 @@ export default function MoneroPoolHealthBox() {
         : 0;
 
     return (
-      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
         <Chip
-          label={`${poolStatus.healthy_node_count} Healthy`}
-          color={poolStatus.healthy_node_count > 0 ? "success" : "error"}
+          label={`${poolStatus.total_node_count} Total Known`}
+          color="info"
           variant="outlined"
           size="small"
         />
         <Chip
-          label={`${poolStatus.reliable_node_count} Reliable`}
-          color={poolStatus.reliable_node_count > 0 ? "success" : "warning"}
+          label={`${poolStatus.healthy_node_count} Healthy`}
+          color={poolStatus.healthy_node_count > 0 ? "success" : "error"}
           variant="outlined"
           size="small"
         />

@@ -123,61 +123,10 @@ impl Database {
     }
 
     async fn migrate(&self) -> Result<()> {
-        // Create monero_nodes table - stores node identity and current state
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS monero_nodes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                scheme TEXT NOT NULL,
-                host TEXT NOT NULL,
-                port INTEGER NOT NULL,
-                full_url TEXT NOT NULL UNIQUE,
-                network TEXT,  -- NULL if unidentified, mainnet/stagenet/testnet when identified
-                first_seen_at TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Create health_checks table - stores raw event data
-        sqlx::query(
-            r#"
-            CREATE TABLE IF NOT EXISTS health_checks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                node_id INTEGER NOT NULL,
-                timestamp TEXT NOT NULL,
-                was_successful BOOLEAN NOT NULL,
-                latency_ms REAL,
-                FOREIGN KEY (node_id) REFERENCES monero_nodes(id) ON DELETE CASCADE
-            )
-            "#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        // Create indexes for performance
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_nodes_full_url ON monero_nodes(full_url)")
-            .execute(&self.pool)
+        // Run sqlx migrations
+        sqlx::migrate!("./migrations")
+            .run(&self.pool)
             .await?;
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_nodes_network ON monero_nodes(network)")
-            .execute(&self.pool)
-            .await?;
-
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_health_checks_node_id ON health_checks(node_id)",
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_health_checks_timestamp ON health_checks(timestamp)",
-        )
-        .execute(&self.pool)
-        .await?;
 
         info!("Database migration completed");
         Ok(())
@@ -207,7 +156,6 @@ impl Database {
         .await?;
 
         let node_id = result.get::<i64, _>("id");
-        debug!("Upserted node: {} (id: {})", full_url, node_id);
         Ok(node_id)
     }
 

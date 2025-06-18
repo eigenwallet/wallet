@@ -5,7 +5,7 @@ use tracing_subscriber::{self, EnvFilter};
 use monero_rpc_pool::database::Database;
 use monero_rpc_pool::discovery::NodeDiscovery;
 use monero_rpc_pool::{config::Config, run_server};
-use url;
+
 
 use monero::Network;
 

@@ -228,8 +228,12 @@ async fn race_requests(
     body: Option<&[u8]>,
 ) -> Result<Response, HandlerError> {
     // Extract JSON-RPC method for better logging
-    let jsonrpc_method = if path == "/json_rpc" && body.is_some() {
-        extract_jsonrpc_method(body.unwrap())
+    let jsonrpc_method = if path == "/json_rpc" {
+        if let Some(body_data) = body {
+            extract_jsonrpc_method(body_data)
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -264,8 +268,7 @@ async fn race_requests(
         let mut node2_option = None;
 
         // Select first untried node from pool
-        for i in pool_index..available_pool.len() {
-            let node = &available_pool[i];
+        for (i, node) in available_pool.iter().enumerate().skip(pool_index) {
             if !tried_nodes.contains(node) {
                 node1_option = Some(node.clone());
                 pool_index = i + 1;
@@ -274,8 +277,7 @@ async fn race_requests(
         }
 
         // Select second untried node from pool (different from first)
-        for i in pool_index..available_pool.len() {
-            let node = &available_pool[i];
+        for node in available_pool.iter().skip(pool_index) {
             if !tried_nodes.contains(node) && Some(node) != node1_option.as_ref() {
                 node2_option = Some(node.clone());
                 break;
@@ -457,14 +459,17 @@ pub async fn simple_proxy_handler(
 
     // Extract JSON-RPC method for tracing span
     let body_option = (!body.is_empty()).then_some(&body[..]);
-    let jsonrpc_method = if path == "/json_rpc" && body_option.is_some() {
-        extract_jsonrpc_method(&body)
+    let jsonrpc_method = if path == "/json_rpc" {
+        if let Some(body_data) = body_option {
+            extract_jsonrpc_method(body_data)
+        } else {
+            None
+        }
     } else {
         None
     };
     let jsonrpc_method_for_span = jsonrpc_method
-        .as_ref()
-        .map(|s| s.as_str())
+        .as_deref()
         .unwrap_or("N/A")
         .to_string();
 
@@ -498,8 +503,8 @@ pub async fn simple_stats_handler(State(state): State<AppState>) -> Response {
             Ok(status) => {
                 let stats_json = serde_json::json!({
                     "status": "healthy",
+                    "total_node_count": status.total_node_count,
                     "healthy_node_count": status.healthy_node_count,
-                    "reliable_node_count": status.reliable_node_count,
                     "successful_health_checks": status.successful_health_checks,
                     "unsuccessful_health_checks": status.unsuccessful_health_checks,
                     "top_reliable_nodes": status.top_reliable_nodes

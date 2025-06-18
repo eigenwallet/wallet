@@ -4,7 +4,7 @@ use anyhow::Result;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::Value;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use url;
 
 use crate::database::{Database, MoneroNode};
@@ -21,21 +21,7 @@ struct MoneroNodes {
     web_compatible: Vec<String>,
 }
 
-// Hardcoded bootstrap nodes for fallback when monero.fail is unreachable
-const BOOTSTRAP_MAINNET_NODES: &[(&str, u16)] = &[
-    ("node.supportxmr.com", 18081),
-    ("nodes.hashvault.pro", 18081),
-    ("xmr-node.cakewallet.com", 18081),
-    ("node.xmr.to", 18081),
-    ("opennode.xmr-tw.org", 18089),
-];
-
-const BOOTSTRAP_STAGENET_NODES: &[(&str, u16)] = &[
-    ("node2.monerodevs.org", 38089),
-    ("stagenet.xmr-tw.org", 38081),
-    ("node.monerodevs.org", 38089),
-    ("node3.monerodevs.org", 38089),
-];
+// Bootstrap nodes are now pre-seeded via database migrations
 
 #[derive(Debug)]
 pub struct HealthCheckOutcome {
@@ -87,18 +73,17 @@ impl NodeDiscovery {
                 }
                 .await;
 
-                // If API fetch fails, fall back to bootstrap nodes
+                // If API fetch fails, log warning - bootstrap nodes are pre-seeded via migration
                 if let Err(e) = api_result {
                     warn!(
-                        "Failed to fetch from monero.fail API: {}, falling back to bootstrap nodes",
+                        "Failed to fetch from monero.fail API: {}, relying on pre-seeded bootstrap nodes",
                         e
                     );
-                    self.insert_bootstrap_nodes("mainnet").await?;
                 }
             }
             "stagenet" => {
-                info!("Using bootstrap stagenet nodes");
-                self.insert_bootstrap_nodes("stagenet").await?;
+                info!("Using pre-seeded bootstrap stagenet nodes");
+                // Bootstrap nodes are pre-seeded via migration
             }
             "testnet" => {
                 info!("Testnet node discovery not supported, skipping");
@@ -156,47 +141,7 @@ impl NodeDiscovery {
         Ok(unique_nodes)
     }
 
-    /// Insert bootstrap nodes for the specified network
-    async fn insert_bootstrap_nodes(&self, network: &str) -> Result<()> {
-        let bootstrap_nodes = match network {
-            "mainnet" => BOOTSTRAP_MAINNET_NODES,
-            "stagenet" => BOOTSTRAP_STAGENET_NODES,
-            _ => {
-                warn!("No bootstrap nodes available for network: {}", network);
-                return Ok(());
-            }
-        };
 
-        let mut success_count = 0;
-        for &(host, port) in bootstrap_nodes {
-            let scheme = if port == 18089 || port == 38089 || port == 443 {
-                "https"
-            } else {
-                "http"
-            };
-
-            match self.db.upsert_node(scheme, host, port as i64).await {
-                Ok(_) => {
-                    success_count += 1;
-                    // Set the network for bootstrap nodes since we know they're for this network
-                    let full_url = format!("{}://{}:{}", scheme, host, port);
-                    if let Err(e) = self.db.update_node_network(&full_url, network).await {
-                        warn!(
-                            "Failed to set network for bootstrap node {}: {}",
-                            full_url, e
-                        );
-                    }
-                }
-                Err(e) => error!("Failed to insert bootstrap node {}:{}: {}", host, port, e),
-            }
-        }
-
-        info!(
-            "Inserted {} bootstrap nodes for {} network",
-            success_count, network
-        );
-        Ok(())
-    }
 
     /// Process node data and insert into database
     async fn process_node_data(&self, nodes_data: &Value, source_network: &str) -> Result<()> {
@@ -447,12 +392,10 @@ impl NodeDiscovery {
         target_network: &str,
         nodes: Vec<String>,
     ) -> Result<()> {
-        info!("Inserting {} configured nodes", nodes.len());
-
         let mut success_count = 0;
         let mut error_count = 0;
 
-        for (i, node_url) in nodes.iter().enumerate() {
+        for node_url in nodes.iter() {
             if let Ok(url) = url::Url::parse(node_url) {
                 let scheme = url.scheme();
                 let host = url.host_str().unwrap_or("");
@@ -460,15 +403,6 @@ impl NodeDiscovery {
                     .port()
                     .unwrap_or(if scheme == "https" { 18089 } else { 18081 })
                     as i64;
-
-                debug!(
-                    "Inserting configured node {}/{}: {}://{}:{}",
-                    i + 1,
-                    nodes.len(),
-                    scheme,
-                    host,
-                    port
-                );
 
                 match self.db.upsert_node(scheme, host, port).await {
                     Ok(_) => {

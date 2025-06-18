@@ -9,8 +9,8 @@ use crate::database::Database;
 #[derive(Debug, Clone, serde::Serialize)]
 #[typeshare]
 pub struct PoolStatus {
+    pub total_node_count: u32,
     pub healthy_node_count: u32,
-    pub reliable_node_count: u32,
     #[typeshare(serialized_as = "number")]
     pub successful_health_checks: u64,
     #[typeshare(serialized_as = "number")]
@@ -118,7 +118,7 @@ impl NodePool {
     }
 
     pub async fn get_current_status(&self) -> Result<PoolStatus> {
-        let (_total, reachable, reliable) = self.db.get_node_stats(&self.network).await?;
+        let (total, reachable, _reliable) = self.db.get_node_stats(&self.network).await?;
         let reliable_nodes = self.db.get_reliable_nodes(&self.network).await?;
         let (successful_checks, unsuccessful_checks) =
             self.db.get_health_check_stats(&self.network).await?;
@@ -134,8 +134,8 @@ impl NodePool {
             .collect();
 
         Ok(PoolStatus {
+            total_node_count: total as u32,
             healthy_node_count: reachable as u32,
-            reliable_node_count: reliable as u32,
             successful_health_checks: successful_checks,
             unsuccessful_health_checks: unsuccessful_checks,
             top_reliable_nodes,

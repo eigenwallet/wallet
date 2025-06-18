@@ -147,6 +147,7 @@ async fn next_state(
         }
         BobState::SwapSetupCompleted(state2) => {
             // Alice and Bob have exchanged all necessary signatures
+            let xmr_receive_amount = state2.xmr;
 
             // Sign the Bitcoin lock transaction
             let (state3, tx_lock) = state2.lock_btc().await?;
@@ -165,7 +166,7 @@ async fn next_state(
             let request = ApprovalRequestDetails::LockBitcoin(LockBitcoinDetails {
                 btc_lock_amount,
                 btc_network_fee,
-                xmr_receive_amount: state2.xmr,
+                xmr_receive_amount,
                 swap_id,
             });
 

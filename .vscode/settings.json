@@ -74,5 +74,8 @@
         "source_location": "cpp",
         "strstream": "cpp",
         "typeindex": "cpp"
+    },
+    "rust-analyzer.cargo.extraEnv": {
+        "CARGO_TARGET_DIR": "target-check"
     }
 }

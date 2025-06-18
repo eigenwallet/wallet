@@ -5,3 +5,4 @@ target/
 build/
 release-build.sh
 cn_macos
+target-check
