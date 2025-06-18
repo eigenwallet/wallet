@@ -6,11 +6,12 @@ use crate::database::Database;
 
 pub struct SmartNodePool {
     db: Database,
+    network: String,
 }
 
 impl SmartNodePool {
-    pub fn new(db: Database) -> Self {
-        Self { db }
+    pub fn new(db: Database, network: String) -> Self {
+        Self { db, network }
     }
 
     /// Get next node using 70/30 strategy:
@@ -31,10 +32,10 @@ impl SmartNodePool {
     }
 
     async fn get_reliable_node(&self) -> Result<Option<String>> {
-        let reliable_nodes = self.db.get_reliable_nodes().await?;
+        let reliable_nodes = self.db.get_reliable_nodes(&self.network).await?;
 
         if reliable_nodes.is_empty() {
-            debug!("No reliable nodes available, falling back to random selection");
+            debug!("No reliable nodes available for network {}, falling back to random selection", self.network);
             return self.get_exploration_node().await;
         }
 
@@ -52,16 +53,16 @@ impl SmartNodePool {
             .collect();
 
         let selected = Self::weighted_random_selection(&weighted_nodes);
-        debug!("Selected reliable node: {}", selected);
+        debug!("Selected reliable node for network {}: {}", self.network, selected);
         Ok(Some(selected))
     }
 
     async fn get_exploration_node(&self) -> Result<Option<String>> {
         // Get a random node that's not in the reliable pool
-        let random_nodes = self.db.get_random_nodes(10).await?;
+        let random_nodes = self.db.get_random_nodes(10, &self.network).await?;
 
         if random_nodes.is_empty() {
-            warn!("No random nodes available for exploration");
+            warn!("No random nodes available for exploration in network {}", self.network);
             return Ok(None);
         }
 
@@ -69,7 +70,7 @@ impl SmartNodePool {
             let mut rng = thread_rng();
             random_nodes.choose(&mut rng).unwrap()
         };
-        debug!("Selected exploration node: {}", selected_node.full_url);
+        debug!("Selected exploration node for network {}: {}", self.network, selected_node.full_url);
         Ok(Some(selected_node.full_url.clone()))
     }
 
@@ -93,19 +94,19 @@ impl SmartNodePool {
 
     pub async fn record_success(&self, url: &str, latency_ms: f64) -> Result<()> {
         self.db.update_node_success(url, latency_ms).await?;
-        debug!("Recorded success for {}: {}ms", url, latency_ms);
+        tracing::trace!("Recorded success for {} in network {}: {}ms", url, self.network, latency_ms);
         Ok(())
     }
 
     pub async fn record_failure(&self, url: &str) -> Result<()> {
         self.db.update_node_failure(url).await?;
-        debug!("Recorded failure for {}", url);
+        tracing::trace!("Recorded failure for {} in network {}", url, self.network);
         Ok(())
     }
 
     pub async fn get_pool_stats(&self) -> Result<PoolStats> {
-        let (total, reachable, reliable) = self.db.get_node_stats().await?;
-        let reliable_nodes = self.db.get_reliable_nodes().await?;
+        let (total, reachable, reliable) = self.db.get_node_stats(&self.network).await?;
+        let reliable_nodes = self.db.get_reliable_nodes(&self.network).await?;
 
         let avg_reliable_latency = if reliable_nodes.is_empty() {
             None

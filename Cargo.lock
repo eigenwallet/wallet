@@ -5932,6 +5932,7 @@ dependencies = [
  "chrono",
  "clap 4.5.38",
  "dirs 5.0.1",
+ "futures",
  "monero-rpc",
  "rand 0.8.5",
  "regex",
@@ -12140,6 +12141,7 @@ name = "unstoppableswap-gui-rs"
 version = "2.2.0-beta.2"
 dependencies = [
  "anyhow",
+ "monero-rpc-pool",
  "rustls 0.23.27",
  "serde",
  "serde_json",

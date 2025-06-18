@@ -35,95 +35,100 @@ pub struct ServerInfo {
     pub host: String,
 }
 
-pub async fn create_app(_config: Config) -> Result<Router> {
+pub async fn create_app(config: Config, network: String) -> Result<Router> {
     // Initialize database
     let db = Database::new().await?;
 
-    // Initialize smart pool
-    let smart_pool = Arc::new(RwLock::new(SmartNodePool::new(db.clone())));
+    // Initialize smart pool with network
+    let smart_pool = Arc::new(RwLock::new(SmartNodePool::new(db.clone(), network.clone())));
 
     // Initialize discovery service
     let discovery = NodeDiscovery::new(db.clone());
 
-    // Perform initial node discovery
-    info!("Performing initial node discovery...");
-    if let Err(e) = discovery.discover_nodes_from_monero_fail().await {
-        error!("Failed initial node discovery: {}", e);
+    // Insert configured nodes if any
+    if !config.nodes.is_empty() {
+        info!("Inserting {} configured nodes for network: {}...", config.nodes.len(), network);
+        if let Err(e) = discovery.discover_and_insert_nodes(&network, config.nodes.clone()).await {
+            error!("Failed to insert configured nodes for network {}: {}", network, e);
+        }
     }
 
     // Start initial health check in parallel (non-blocking)
     let discovery_health_check = discovery.clone();
+    let network_health_check = network.clone();
     tokio::spawn(async move {
-        info!("Performing initial health check...");
-        if let Err(e) = discovery_health_check.health_check_all_nodes().await {
-            error!("Failed initial health check: {}", e);
+        info!("Performing initial health check for network: {}...", network_health_check);
+        if let Err(e) = discovery_health_check.health_check_all_nodes(&network_health_check).await {
+            error!("Failed initial health check for network {}: {}", network_health_check, e);
         }
     });
 
     // Start periodic discovery task
     let discovery_clone = discovery.clone();
+    let network_clone = network.clone();
     tokio::spawn(async move {
-        if let Err(e) = discovery_clone.periodic_discovery_task().await {
-            error!("Periodic discovery task failed: {}", e);
+        if let Err(e) = discovery_clone.periodic_discovery_task(&network_clone).await {
+            error!("Periodic discovery task failed for network {}: {}", network_clone, e);
         }
     });
 
     let app_state = AppState { smart_pool };
 
+    // Build the app
     let app = Router::new()
         .route("/json_rpc", post(simple_rpc_handler))
         .route("/stats", get(simple_stats_handler))
-        .route("/*endpoint", get(simple_http_handler))
-        .with_state(app_state)
-        .layer(CorsLayer::permissive());
+        .route("/*path", get(simple_http_handler))
+        .route("/*path", post(simple_http_handler))
+        .layer(CorsLayer::permissive())
+        .with_state(app_state);
 
     Ok(app)
 }
 
-pub async fn run_server(config: Config) -> Result<()> {
-    let app = create_app(config.clone()).await?;
+pub async fn run_server(config: Config, network: String) -> Result<()> {
+    let app = create_app(config.clone(), network).await?;
 
     let bind_address = format!("{}:{}", config.host, config.port);
-    info!("Starting Monero RPC Pool server on {}", bind_address);
+    info!("Starting server on {}", bind_address);
 
     let listener = tokio::net::TcpListener::bind(&bind_address).await?;
     info!("Server listening on {}", bind_address);
 
     axum::serve(listener, app).await?;
-
     Ok(())
 }
 
-/// Starts a RPC pool server on a random available port and returns the server info
-/// This is useful for library integration where the caller needs to know the port
-pub async fn start_server_on_random_port(host: Option<String>) -> Result<ServerInfo> {
-    let host = host.unwrap_or_else(|| "127.0.0.1".to_string());
-
-    // Create config with no predefined nodes - let discovery handle it
-    let config = Config {
-        host: host.clone(),
-        port: 0,       // 0 means "choose any available port"
-        nodes: vec![], // Empty - rely on discovery
+/// Start a server with a random port for library usage
+/// Returns the server info with the actual port used
+/// TODO: Network should be part of the config and have a proper type
+pub async fn start_server_with_random_port(config: Config, network: String) -> Result<ServerInfo> {
+    // Clone the host before moving config
+    let host = config.host.clone();
+    
+    // If port is 0, the system will assign a random available port
+    let config_with_random_port = Config {
+        port: 0,
+        ..config
     };
 
-    let app = create_app(config).await?;
+    let app = create_app(config_with_random_port, network).await?;
 
     // Bind to port 0 to get a random available port
-    let bind_address = format!("{}:0", host);
-    let listener = tokio::net::TcpListener::bind(&bind_address).await?;
-    let actual_port = listener.local_addr()?.port();
+    let listener = tokio::net::TcpListener::bind(format!("{}:0", host)).await?;
+    let actual_addr = listener.local_addr()?;
 
     let server_info = ServerInfo {
-        port: actual_port,
+        port: actual_addr.port(),
         host: host.clone(),
     };
 
     info!(
-        "Starting Monero RPC Pool server on {}:{}",
-        host, actual_port
+        "Started server on {}:{} (random port)",
+        server_info.host, server_info.port
     );
 
-    // Start the server in the background
+    // Start the server in a background task
     tokio::spawn(async move {
         if let Err(e) = axum::serve(listener, app).await {
             error!("Server error: {}", e);

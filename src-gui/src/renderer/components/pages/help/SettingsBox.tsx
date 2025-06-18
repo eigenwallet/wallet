@@ -326,7 +326,7 @@ function MoneroRpcPoolSetting() {
           size="small"
         >
           <ToggleButton value="pool">Pool (Recommended)</ToggleButton>
-          <ToggleButton value="custom">Custom</ToggleButton>
+          <ToggleButton value="custom">Manual</ToggleButton>
         </ToggleButtonGroup>
       </TableCell>
     </TableRow>

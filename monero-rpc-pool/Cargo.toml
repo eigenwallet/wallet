@@ -14,6 +14,7 @@ axum = { version = "0.7", features = ["macros"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.0", features = ["derive"] }
 dirs = "5.0"
+futures = "0.3"
 monero-rpc = { path = "../monero-rpc" }
 rand = "0.8"
 regex = "1.0"

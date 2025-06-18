@@ -19,7 +19,6 @@ use swap::cli::{
     },
     command::{Bitcoin, Monero},
 };
-use tauri::Url;
 use tauri::{async_runtime::RwLock, Manager, RunEvent};
 use tauri_plugin_dialog::DialogExt;
 use zip::{write::SimpleFileOptions, ZipWriter};
@@ -376,7 +375,15 @@ async fn initialize_context(
         Some(provided_url)
     } else {
         // No specific node provided, start RPC pool and use it
-        match monero_rpc_pool::start_server_on_random_port(None).await {
+        match monero_rpc_pool::start_server_with_random_port(
+            monero_rpc_pool::config::Config::default(),
+            match testnet {
+                true => "stagenet".to_string(),
+                false => "mainnet".to_string(),
+            },
+        )
+        .await
+        {
             Ok(server_info) => {
                 let rpc_url = format!("http://{}:{}", server_info.host, server_info.port);
                 tracing::info!("Monero RPC Pool started on {}", rpc_url);

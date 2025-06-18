@@ -6,6 +6,7 @@ use regex::Regex;
 use reqwest::Client;
 use serde_json::Value;
 use tracing::{debug, error, info, warn};
+use url;
 
 use crate::database::{Database, MoneroNode};
 
@@ -26,8 +27,9 @@ impl NodeDiscovery {
         Self { client, db }
     }
 
-    pub async fn discover_nodes_from_monero_fail(&self) -> Result<()> {
-        info!("Fetching nodes from monero.fail/haproxy.cfg");
+    // TODO: Replace this with https://monero.fail/nodes.json?chain=monero&network=mainnet
+    pub async fn discover_nodes_from_monero_fail(&self, network: &str) -> Result<()> {
+        info!("Fetching nodes from monero.fail/haproxy.cfg for network: {}", network);
         debug!("HTTP client config: timeout=10s, user_agent=default");
 
         let request = self.client.get("https://monero.fail/haproxy.cfg").build()?;
@@ -66,9 +68,9 @@ impl NodeDiscovery {
             haproxy_config.chars().take(200).collect::<String>()
         );
 
-        let nodes = self.parse_haproxy_config(&haproxy_config)?;
+        let nodes = self.parse_haproxy_config(&haproxy_config, network)?;
 
-        info!("Discovered {} nodes from monero.fail", nodes.len());
+        info!("Discovered {} nodes from monero.fail for network {}", nodes.len(), network);
         debug!(
             "Sample nodes: {:?}",
             nodes.iter().take(3).collect::<Vec<_>>()
@@ -97,15 +99,16 @@ impl NodeDiscovery {
         }
 
         info!(
-            "Node insertion complete: {} successful, {} errors",
-            success_count, error_count
+            "Node insertion complete for network {}: {} successful, {} errors",
+            network, success_count, error_count
         );
 
         Ok(())
     }
 
-    fn parse_haproxy_config(&self, config: &str) -> Result<Vec<MoneroNode>> {
-        debug!("Starting HAProxy config parsing");
+    // TODO: Remove this (replaced with .json api)
+    fn parse_haproxy_config(&self, config: &str, network: &str) -> Result<Vec<MoneroNode>> {
+        debug!("Starting HAProxy config parsing for network: {}", network);
         let mut nodes = Vec::new();
 
         // Regex to match server lines in HAProxy config
@@ -143,9 +146,10 @@ impl NodeDiscovery {
                                 protocol.clone(),
                                 host.clone(),
                                 port,
+                                network.to_string(),
                             );
-                            debug!("Created node: scheme={}, protocol={}, host={}, port={}, full_url={}", 
-                                   scheme, protocol, host, port, node.full_url);
+                            debug!("Created node: scheme={}, protocol={}, host={}, port={}, network={}, full_url={}", 
+                                   scheme, protocol, host, port, network, node.full_url);
                             nodes.push(node);
                         }
                         Err(e) => {
@@ -168,8 +172,9 @@ impl NodeDiscovery {
         }
 
         info!(
-            "Parsed {} nodes from HAProxy config (total lines: {})",
+            "Parsed {} nodes from HAProxy config for network {} (total lines: {})",
             nodes.len(),
+            network,
             lines.len()
         );
         debug!(
@@ -195,6 +200,7 @@ impl NodeDiscovery {
         let elapsed = start_time.elapsed();
         let latency_ms = elapsed.as_millis() as f64;
 
+        // TODO: Unnest this crap here
         match response {
             Ok(resp) => {
                 if resp.status().is_success() {
@@ -220,19 +226,20 @@ impl NodeDiscovery {
                 }
             }
             Err(e) => {
-                debug!("Node {} is unreachable: {}", url, e);
+                tracing::trace!("Node {} is unreachable: {}", url, e);
                 Ok((false, latency_ms))
             }
         }
     }
 
-    pub async fn health_check_all_nodes(&self) -> Result<()> {
-        info!("Starting health check for all nodes");
+    pub async fn health_check_all_nodes(&self, network: &str) -> Result<()> {
+        info!("Starting health check for all nodes in network: {}", network);
 
-        // Get all nodes from database
+        // Get all nodes from database for the specified network
         let all_nodes = sqlx::query_as::<_, MoneroNode>(
-            "SELECT * FROM monero_nodes ORDER BY last_checked ASC NULLS FIRST",
+            "SELECT * FROM monero_nodes WHERE network = ? ORDER BY last_checked ASC NULLS FIRST",
         )
+        .bind(network)
         .fetch_all(&self.db.pool)
         .await?;
 
@@ -251,7 +258,7 @@ impl NodeDiscovery {
                     checked_count += 1;
                 }
                 Err(e) => {
-                    warn!("Failed to check node {}: {}", node.full_url, e);
+                    tracing::trace!("Failed to check node {}: {}", node.full_url, e);
                     self.db.update_node_failure(&node.full_url).await?;
                 }
             }
@@ -261,39 +268,91 @@ impl NodeDiscovery {
         }
 
         info!(
-            "Health check completed: {}/{} nodes are healthy",
-            healthy_count, checked_count
+            "Health check completed for network {}: {}/{} nodes are healthy",
+            network, healthy_count, checked_count
         );
 
         // Update reliable nodes after health check
-        self.db.update_reliable_nodes().await?;
+        self.db.update_reliable_nodes(network).await?;
 
         Ok(())
     }
 
-    pub async fn periodic_discovery_task(&self) -> Result<()> {
+    pub async fn periodic_discovery_task(&self, network: &str) -> Result<()> {
         let mut interval = tokio::time::interval(Duration::from_secs(3600)); // Every hour
 
         loop {
             interval.tick().await;
 
-            info!("Running periodic node discovery");
+            info!("Running periodic node discovery for network: {}", network);
 
             // Discover new nodes
-            if let Err(e) = self.discover_nodes_from_monero_fail().await {
-                error!("Failed to discover nodes from monero.fail: {}", e);
+            if let Err(e) = self.discover_nodes_from_monero_fail(network).await {
+                error!("Failed to discover nodes from monero.fail for network {}: {}", network, e);
             }
 
             // Health check all nodes
-            if let Err(e) = self.health_check_all_nodes().await {
-                error!("Failed to perform health check: {}", e);
+            if let Err(e) = self.health_check_all_nodes(network).await {
+                error!("Failed to perform health check for network {}: {}", network, e);
             }
 
-            let (total, reachable, reliable) = self.db.get_node_stats().await?;
+            let (total, reachable, reliable) = self.db.get_node_stats(network).await?;
             info!(
-                "Node stats: {} total, {} reachable, {} reliable",
-                total, reachable, reliable
+                "Node stats for network {}: {} total, {} reachable, {} reliable",
+                network, total, reachable, reliable
             );
         }
+    }
+
+    pub async fn discover_and_insert_nodes(&self, network: &str, nodes: Vec<String>) -> Result<()> {
+        info!("Inserting {} nodes for network: {}", nodes.len(), network);
+
+        let mut success_count = 0;
+        let mut error_count = 0;
+
+        for (i, node_url) in nodes.iter().enumerate() {
+            // Parse the URL to extract components
+            if let Ok(url) = url::Url::parse(node_url) {
+                let scheme = url.scheme().to_string();
+                let protocol = if scheme == "https" { "ssl" } else { "tcp" };
+                let host = url.host_str().unwrap_or("").to_string();
+                let port = url.port().unwrap_or(if scheme == "https" { 18089 } else { 18081 }) as i64;
+                
+                let node = MoneroNode::new(
+                    scheme,
+                    protocol.to_string(),
+                    host,
+                    port,
+                    network.to_string(),
+                );
+                
+                debug!("Inserting node {}/{}: {:?}", i + 1, nodes.len(), node);
+                match self.db.upsert_node(&node).await {
+                    Ok(_) => {
+                        success_count += 1;
+                        if i < 5 || i % 100 == 0 {
+                            debug!("Successfully inserted node: {}", node.full_url);
+                        }
+                    }
+                    Err(e) => {
+                        error_count += 1;
+                        error!(
+                            "Failed to insert node {} - error: {:?}",
+                            node.full_url, e
+                        );
+                    }
+                }
+            } else {
+                error_count += 1;
+                error!("Failed to parse node URL: {}", node_url);
+            }
+        }
+
+        info!(
+            "Node insertion complete for network {}: {} successful, {} errors",
+            network, success_count, error_count
+        );
+
+        Ok(())
     }
 }

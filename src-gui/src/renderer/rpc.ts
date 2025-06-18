@@ -223,31 +223,37 @@ export async function initializeContext() {
   const bitcoinNodes =
     store.getState().settings.nodes[network][Blockchain.Bitcoin];
 
-  // For Monero nodes, check availability and use the first working one
-  const moneroNodes =
-    store.getState().settings.nodes[network][Blockchain.Monero];
+  // For Monero nodes, check if we should use RPC pool or custom nodes
+  const useMoneroRpcPool = store.getState().settings.useMoneroRpcPool;
   let moneroNode = null;
 
-  if (moneroNodes.length > 0) {
-    try {
-      moneroNode = await Promise.any(
-        moneroNodes.map(async (node) => {
-          const isAvailable = await getNodeStatus(
-            node,
-            Blockchain.Monero,
-            network,
-          );
-          if (isAvailable) {
-            return node;
-          }
-          throw new Error(`Monero node ${node} is not available`);
-        }),
-      );
-    } catch {
-      // If no Monero node is available, use null
-      moneroNode = null;
+  if (!useMoneroRpcPool) {
+    // Using custom nodes - check availability and use the first working one
+    const moneroNodes =
+      store.getState().settings.nodes[network][Blockchain.Monero];
+
+    if (moneroNodes.length > 0) {
+      try {
+        moneroNode = await Promise.any(
+          moneroNodes.map(async (node) => {
+            const isAvailable = await getNodeStatus(
+              node,
+              Blockchain.Monero,
+              network,
+            );
+            if (isAvailable) {
+              return node;
+            }
+            throw new Error(`Monero node ${node} is not available`);
+          }),
+        );
+      } catch {
+        // If no Monero node is available, use null
+        moneroNode = null;
+      }
     }
   }
+  // If useMoneroRpcPool is true, moneroNode stays null and the backend will use RPC pool
 
   // Initialize Tauri settings
   const tauriSettings: TauriSettings = {
@@ -325,13 +331,15 @@ export async function updateAllNodeStatuses() {
   const network = getNetwork();
   const settings = store.getState().settings;
 
-  // Only check Monero nodes, skip Bitcoin nodes since we pass all electrum servers
-  // to the backend without checking them (ElectrumBalancer handles failover)
-  await Promise.all(
-    settings.nodes[network][Blockchain.Monero].map((node) =>
-      updateNodeStatus(node, Blockchain.Monero, network),
-    ),
-  );
+  // Only check Monero nodes if we're using custom nodes (not RPC pool)
+  // Skip Bitcoin nodes since we pass all electrum servers to the backend without checking them (ElectrumBalancer handles failover)
+  if (!settings.useMoneroRpcPool) {
+    await Promise.all(
+      settings.nodes[network][Blockchain.Monero].map((node) =>
+        updateNodeStatus(node, Blockchain.Monero, network),
+      ),
+    );
+  }
 }
 
 export async function getMoneroAddresses(): Promise<GetMoneroAddressesResponse> {

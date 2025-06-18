@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 use tracing::{debug, info};
 
+// TODO: This needs to be split up into multiple tables
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct MoneroNode {
     pub id: Option<i64>,
@@ -14,6 +15,7 @@ pub struct MoneroNode {
     pub host: String,
     pub port: i64,
     pub full_url: String,
+    pub network: String,  // mainnet or stagenet
     pub is_reachable: bool,
     pub success_count: i64,
     pub failure_count: i64,
@@ -28,7 +30,7 @@ pub struct MoneroNode {
 }
 
 impl MoneroNode {
-    pub fn new(scheme: String, protocol: String, host: String, port: i64) -> Self {
+    pub fn new(scheme: String, protocol: String, host: String, port: i64, network: String) -> Self {
         let full_url = format!("{}://{}:{}", scheme, host, port);
         Self {
             id: None,
@@ -37,6 +39,7 @@ impl MoneroNode {
             host,
             port,
             full_url,
+            network,
             is_reachable: false,
             success_count: 0,
             failure_count: 0,
@@ -85,6 +88,7 @@ pub struct Database {
 }
 
 impl Database {
+    // TODO: Make this configurable for when using as a library
     pub async fn new() -> Result<Self> {
         let app_data_dir = get_app_data_dir()?;
         let db_path = app_data_dir.join("nodes.db");
@@ -100,6 +104,7 @@ impl Database {
         Ok(db)
     }
 
+    // TODO: Use sqlx migrations
     async fn migrate(&self) -> Result<()> {
         sqlx::query(
             r#"
@@ -110,6 +115,7 @@ impl Database {
                 host TEXT NOT NULL,
                 port INTEGER NOT NULL,
                 full_url TEXT NOT NULL UNIQUE,
+                network TEXT NOT NULL,
                 is_reachable BOOLEAN NOT NULL DEFAULT 0,
                 success_count INTEGER NOT NULL DEFAULT 0,
                 failure_count INTEGER NOT NULL DEFAULT 0,
@@ -134,8 +140,13 @@ impl Database {
             .execute(&self.pool)
             .await?;
 
-        // Create index on reliability metrics
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_reliability ON monero_nodes(is_reliable, is_reachable, success_count, avg_latency_ms)")
+        // Create index on network for filtering
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_network ON monero_nodes(network)")
+            .execute(&self.pool)
+            .await?;
+
+        // Create index on reliability metrics (include network for better performance)
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_reliability ON monero_nodes(network, is_reliable, is_reachable, success_count, avg_latency_ms)")
             .execute(&self.pool)
             .await?;
 
@@ -149,15 +160,16 @@ impl Database {
         sqlx::query(
             r#"
             INSERT INTO monero_nodes 
-            (scheme, protocol, host, port, full_url, is_reachable, success_count, failure_count, 
+            (scheme, protocol, host, port, full_url, network, is_reachable, success_count, failure_count, 
              last_success, last_failure, last_checked, is_reliable, avg_latency_ms, min_latency_ms, 
              max_latency_ms, last_latency_ms, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(full_url) DO UPDATE SET
                 scheme = excluded.scheme,
                 protocol = excluded.protocol,
                 host = excluded.host,
                 port = excluded.port,
+                network = excluded.network,
                 is_reachable = excluded.is_reachable,
                 success_count = excluded.success_count,
                 failure_count = excluded.failure_count,
@@ -177,6 +189,7 @@ impl Database {
         .bind(&node.host)
         .bind(node.port)
         .bind(&node.full_url)
+        .bind(&node.network)
         .bind(node.is_reachable)
         .bind(node.success_count)
         .bind(node.failure_count)
@@ -254,7 +267,6 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        debug!("Updated success for node {}: latency {}ms", url, latency_ms);
         Ok(())
     }
 
@@ -279,71 +291,75 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        debug!("Updated failure for node: {}", url);
+        tracing::trace!("Updated failure for node: {}", url);
         Ok(())
     }
 
-    pub async fn get_reliable_nodes(&self) -> Result<Vec<MoneroNode>> {
+    pub async fn get_reliable_nodes(&self, network: &str) -> Result<Vec<MoneroNode>> {
         let nodes = sqlx::query_as::<_, MoneroNode>(
             r#"
             SELECT * FROM monero_nodes 
-            WHERE is_reliable = 1 AND is_reachable = 1 
+            WHERE is_reliable = 1 AND is_reachable = 1 AND network = ?
             ORDER BY avg_latency_ms ASC, success_count DESC
             "#,
         )
+        .bind(network)
         .fetch_all(&self.pool)
         .await?;
 
-        debug!("Retrieved {} reliable nodes", nodes.len());
+        debug!("Retrieved {} reliable nodes for network {}", nodes.len(), network);
         Ok(nodes)
     }
 
-    pub async fn get_random_nodes(&self, limit: i64) -> Result<Vec<MoneroNode>> {
+    pub async fn get_random_nodes(&self, limit: i64, network: &str) -> Result<Vec<MoneroNode>> {
         let nodes = sqlx::query_as::<_, MoneroNode>(
             r#"
             SELECT * FROM monero_nodes 
-            WHERE is_reachable = 1 AND is_reliable = 0 
+            WHERE is_reachable = 1 AND is_reliable = 0 AND network = ?
             ORDER BY RANDOM() 
             LIMIT ?
             "#,
         )
+        .bind(network)
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
 
-        debug!("Retrieved {} random nodes", nodes.len());
+        debug!("Retrieved {} random nodes for network {}", nodes.len(), network);
         Ok(nodes)
     }
 
-    pub async fn get_all_reachable_nodes(&self) -> Result<Vec<MoneroNode>> {
+    pub async fn get_all_reachable_nodes(&self, network: &str) -> Result<Vec<MoneroNode>> {
         let nodes = sqlx::query_as::<_, MoneroNode>(
             r#"
             SELECT * FROM monero_nodes 
-            WHERE is_reachable = 1 
+            WHERE is_reachable = 1 AND network = ?
             ORDER BY avg_latency_ms ASC, success_count DESC
             "#,
         )
+        .bind(network)
         .fetch_all(&self.pool)
         .await?;
 
-        debug!("Retrieved {} reachable nodes", nodes.len());
+        debug!("Retrieved {} reachable nodes for network {}", nodes.len(), network);
         Ok(nodes)
     }
 
-    pub async fn update_reliable_nodes(&self) -> Result<()> {
-        // First, mark all nodes as not reliable
-        sqlx::query("UPDATE monero_nodes SET is_reliable = 0")
+    pub async fn update_reliable_nodes(&self, network: &str) -> Result<()> {
+        // First, mark all nodes as not reliable for this network
+        sqlx::query("UPDATE monero_nodes SET is_reliable = 0 WHERE network = ?")
+            .bind(network)
             .execute(&self.pool)
             .await?;
 
-        // Then mark the top 4 nodes with highest reliability scores as reliable
+        // Then mark the top 4 nodes with highest reliability scores as reliable for this network
         sqlx::query(
             r#"
             UPDATE monero_nodes 
             SET is_reliable = 1 
             WHERE id IN (
                 SELECT id FROM monero_nodes 
-                WHERE is_reachable = 1 AND success_count > 0
+                WHERE is_reachable = 1 AND success_count > 0 AND network = ?
                 ORDER BY 
                     (CAST(success_count AS REAL) / CAST(success_count + failure_count AS REAL)) * 
                     (MIN(success_count + failure_count, 100) / 100.0) * 0.8 +
@@ -355,22 +371,24 @@ impl Database {
             )
             "#,
         )
+        .bind(network)
         .execute(&self.pool)
         .await?;
 
-        let reliable_count = sqlx::query("SELECT COUNT(*) FROM monero_nodes WHERE is_reliable = 1")
+        let reliable_count = sqlx::query("SELECT COUNT(*) FROM monero_nodes WHERE is_reliable = 1 AND network = ?")
+            .bind(network)
             .fetch_one(&self.pool)
             .await?
             .get::<i64, _>(0);
 
         info!(
-            "Updated reliable nodes pool: {} nodes marked as reliable",
-            reliable_count
+            "Updated reliable nodes pool for network {}: {} nodes marked as reliable",
+            network, reliable_count
         );
         Ok(())
     }
 
-    pub async fn get_node_stats(&self) -> Result<(i64, i64, i64)> {
+    pub async fn get_node_stats(&self, network: &str) -> Result<(i64, i64, i64)> {
         let row = sqlx::query(
             r#"
             SELECT 
@@ -378,8 +396,10 @@ impl Database {
                 SUM(CASE WHEN is_reachable = 1 THEN 1 ELSE 0 END) as reachable,
                 SUM(CASE WHEN is_reliable = 1 THEN 1 ELSE 0 END) as reliable
             FROM monero_nodes
+            WHERE network = ?
             "#,
         )
+        .bind(network)
         .fetch_one(&self.pool)
         .await?;
 

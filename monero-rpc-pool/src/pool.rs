@@ -87,6 +87,7 @@ impl NodePool {
         }
     }
 
+    // TODO: Use a smarter selection algorithm here
     pub fn get_next_node(&mut self) -> Option<String> {
         if self.node_urls.is_empty() {
             return None;

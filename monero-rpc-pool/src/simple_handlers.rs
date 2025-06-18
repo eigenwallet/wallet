@@ -3,45 +3,21 @@ use axum::{
     extract::Path,
     extract::State,
     http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Json, Response},
+    response::Response,
 };
-use serde_json::Value;
 use std::time::Instant;
-use tokio::select;
 use tracing::{debug, error};
 
 use crate::AppState;
+
+// TODO: Only have a single handler for all requests (no simple_handler vs smart_pool)
 
 #[derive(Debug)]
 enum HandlerError {
     NoNodes,
     PoolError(String),
-    ClientError(String),
     RequestError(String),
-    ParseError(String),
     AllRequestsFailed,
-}
-
-impl HandlerError {
-    fn to_json_response(&self, id: Option<&Value>) -> Value {
-        let (code, message) = match self {
-            HandlerError::NoNodes => (-1, "No available nodes"),
-            HandlerError::PoolError(_) => (-1, "Pool error"),
-            HandlerError::ClientError(_) => (-1, "Client error"),
-            HandlerError::RequestError(_) => (-1, "Request failed"),
-            HandlerError::ParseError(_) => (-1, "Response parse error"),
-            HandlerError::AllRequestsFailed => (-1, "All parallel requests failed"),
-        };
-
-        serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "error": {
-                "code": code,
-                "message": message
-            }
-        })
-    }
 }
 
 async fn get_two_nodes(state: &AppState) -> Result<(String, String), HandlerError> {
@@ -73,84 +49,69 @@ async fn get_two_nodes(state: &AppState) -> Result<(String, String), HandlerErro
     Ok((node1, node2))
 }
 
-fn create_client() -> Result<reqwest::Client, HandlerError> {
-    reqwest::Client::builder()
+async fn raw_http_request(
+    node_url: &str,
+    path: &str,
+    method: &str,
+    headers: &HeaderMap,
+    body: Option<&[u8]>,
+) -> Result<Response, HandlerError> {
+    let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
-        .map_err(|e| HandlerError::ClientError(e.to_string()))
-}
-
-async fn make_request(
-    client: &reqwest::Client,
-    node_url: &str,
-    payload: &Value,
-) -> Result<Response, HandlerError> {
-    let response = client
-        .post(&format!("{}/json_rpc", node_url))
-        .json(payload)
-        .send()
-        .await
         .map_err(|e| HandlerError::RequestError(e.to_string()))?;
 
-    // Convert reqwest::Response to axum::Response
-    let status = response.status();
-    let headers = response.headers().clone();
-    let body = response
-        .bytes()
-        .await
-        .map_err(|e| HandlerError::RequestError(e.to_string()))?;
+    let url = format!("{}{}", node_url, path);
+    
+    let mut request_builder = match method {
+        "POST" => client.post(&url),
+        "GET" => client.get(&url),
+        _ => return Err(HandlerError::RequestError("Unsupported method".to_string())),
+    };
 
-    let mut axum_response = Response::new(Body::from(body));
-    *axum_response.status_mut() =
-        StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    // Forward body if present
+    if let Some(body_bytes) = body {
+        request_builder = request_builder.body(body_bytes.to_vec());
+    }
 
-    // Copy all headers exactly as received
+    // Forward essential headers
     for (name, value) in headers.iter() {
-        if let (Ok(header_name), Ok(header_value)) = (
-            axum::http::HeaderName::try_from(name.as_str()),
-            axum::http::HeaderValue::try_from(value.as_bytes()),
-        ) {
-            axum_response
-                .headers_mut()
-                .insert(header_name, header_value);
+        let header_name = name.as_str();
+        // Forward important headers, skip hop-by-hop headers
+        // TODO: What is this for?
+        if !matches!(header_name.to_lowercase().as_str(), 
+            "host" | "connection" | "transfer-encoding" | "upgrade" | 
+            "proxy-authenticate" | "proxy-authorization" | "te" | "trailers") {
+            if let Ok(header_value) = std::str::from_utf8(value.as_bytes()) {
+                request_builder = request_builder.header(header_name, header_value);
+            }
         }
     }
 
-    Ok(axum_response)
-}
-
-async fn make_http_request(
-    client: &reqwest::Client,
-    node_url: &str,
-    endpoint: &str,
-) -> Result<Response, HandlerError> {
-    let response = client
-        .get(&format!("{}{}", node_url, endpoint))
+    let response = request_builder
         .send()
         .await
         .map_err(|e| HandlerError::RequestError(e.to_string()))?;
 
-    // Convert reqwest::Response to axum::Response
+    // Convert to axum Response preserving everything
     let status = response.status();
-    let headers = response.headers().clone();
-    let body = response
+    let response_headers = response.headers().clone();
+    let body_bytes = response
         .bytes()
         .await
         .map_err(|e| HandlerError::RequestError(e.to_string()))?;
 
-    let mut axum_response = Response::new(Body::from(body));
-    *axum_response.status_mut() =
+    let mut axum_response = Response::new(Body::from(body_bytes));
+    *axum_response.status_mut() = 
         StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
-    // Copy all headers exactly as received
-    for (name, value) in headers.iter() {
+    // Copy response headers exactly
+    for (name, value) in response_headers.iter() {
         if let (Ok(header_name), Ok(header_value)) = (
             axum::http::HeaderName::try_from(name.as_str()),
             axum::http::HeaderValue::try_from(value.as_bytes()),
         ) {
-            axum_response
-                .headers_mut()
-                .insert(header_name, header_value);
+            axum_response.headers_mut().insert(header_name, header_value);
         }
     }
 
@@ -171,15 +132,17 @@ async fn record_failure(state: &AppState, node_url: &str) {
     }
 }
 
-async fn make_single_request(
+async fn single_raw_request(
     state: &AppState,
-    client: &reqwest::Client,
     node_url: String,
-    payload: &Value,
+    path: &str,
+    method: &str,
+    headers: &HeaderMap,
+    body: Option<&[u8]>,
 ) -> Result<(Response, String, f64), HandlerError> {
     let start_time = Instant::now();
 
-    match make_request(client, &node_url, payload).await {
+    match raw_http_request(&node_url, path, method, headers, body).await {
         Ok(response) => {
             let elapsed = start_time.elapsed();
             let latency_ms = elapsed.as_millis() as f64;
@@ -192,206 +155,127 @@ async fn make_single_request(
     }
 }
 
-async fn make_single_http_request(
+async fn race_requests(
     state: &AppState,
-    client: &reqwest::Client,
-    node_url: String,
-    endpoint: &str,
-) -> Result<(Response, String, f64), HandlerError> {
-    let start_time = Instant::now();
+    path: &str,
+    method: &str,
+    headers: &HeaderMap,
+    body: Option<&[u8]>,
+) -> Result<Response, HandlerError> {
+    const MAX_RETRIES: usize = 20;
+    let mut tried_nodes = std::collections::HashSet::new();
+    let mut attempt = 0;
 
-    match make_http_request(client, &node_url, endpoint).await {
-        Ok(response) => {
-            let elapsed = start_time.elapsed();
-            let latency_ms = elapsed.as_millis() as f64;
-            Ok((response, node_url, latency_ms))
-        }
-        Err(e) => {
-            record_failure(state, &node_url).await;
-            Err(e)
-        }
-    }
-}
-
-async fn handle_rpc_request(state: &AppState, payload: &Value) -> Result<Response, HandlerError> {
-    let (node1, node2) = get_two_nodes(state).await?;
-    let client = create_client()?;
-
-    debug!("Racing JSON-RPC requests to nodes: {} and {}", node1, node2);
-
-    // Race two parallel requests - clone the nodes so we don't move them
-    let request1 = make_single_request(state, &client, node1.clone(), payload);
-    let request2 = make_single_request(state, &client, node2.clone(), payload);
-
-    select! {
-        result1 = request1 => {
-            match result1 {
-                Ok((response, winning_node, latency_ms)) => {
-                    debug!(
-                        "JSON-RPC response from {} ({}ms) - WINNER! Racing against {}",
-                        winning_node, latency_ms, node2
-                    );
-                    record_success(state, &winning_node, latency_ms).await;
-                    Ok(response)
-                }
-                Err(_) => {
-                    // First request failed, try the second one
-                    debug!("First JSON-RPC request to {} failed, trying second request to {}", node1, node2);
-                    let fallback_result = make_single_request(state, &client, node2.clone(), payload).await;
-                    match fallback_result {
-                        Ok((response, winning_node, latency_ms)) => {
-                            debug!(
-                                "JSON-RPC response from {} ({}ms) - fallback success after {} failed",
-                                winning_node, latency_ms, node1
-                            );
-                            record_success(state, &winning_node, latency_ms).await;
-                            Ok(response)
-                        }
-                        Err(_) => {
-                            error!("Both parallel JSON-RPC requests failed: {} and {}", node1, node2);
-                            Err(HandlerError::AllRequestsFailed)
-                        }
-                    }
+    while attempt < MAX_RETRIES {
+        // Get two new nodes that we haven't tried yet
+        let smart_pool_guard = state.smart_pool.read().await;
+        
+        let mut node1_option = None;
+        let mut node2_option = None;
+        
+        // Try to get first node
+        for _ in 0..10 { // Max 10 attempts to find an untried node
+            if let Ok(Some(node)) = smart_pool_guard.get_next_node().await {
+                if !tried_nodes.contains(&node) {
+                    node1_option = Some(node);
+                    break;
                 }
             }
         }
-        result2 = request2 => {
-            match result2 {
-                Ok((response, winning_node, latency_ms)) => {
-                    debug!(
-                        "JSON-RPC response from {} ({}ms) - WINNER! Racing against {}",
-                        winning_node, latency_ms, node1
-                    );
-                    record_success(state, &winning_node, latency_ms).await;
-                    Ok(response)
-                }
-                Err(_) => {
-                    // Second request failed, try the first one
-                    debug!("Second JSON-RPC request to {} failed, trying first request to {}", node2, node1);
-                    let fallback_result = make_single_request(state, &client, node1.clone(), payload).await;
-                    match fallback_result {
-                        Ok((response, winning_node, latency_ms)) => {
-                            debug!(
-                                "JSON-RPC response from {} ({}ms) - fallback success after {} failed",
-                                winning_node, latency_ms, node2
-                            );
-                            record_success(state, &winning_node, latency_ms).await;
-                            Ok(response)
-                        }
-                        Err(_) => {
-                            error!("Both parallel JSON-RPC requests failed: {} and {}", node1, node2);
-                            Err(HandlerError::AllRequestsFailed)
-                        }
-                    }
+        
+        // Try to get second node
+        for _ in 0..10 { // Max 10 attempts to find an untried node
+            if let Ok(Some(node)) = smart_pool_guard.get_next_node().await {
+                if !tried_nodes.contains(&node) && Some(&node) != node1_option.as_ref() {
+                    node2_option = Some(node);
+                    break;
                 }
             }
         }
-    }
-}
+        
+        drop(smart_pool_guard); // Release the lock
 
-async fn handle_http_request(state: &AppState, endpoint: &str) -> Result<Response, HandlerError> {
-    let (node1, node2) = get_two_nodes(state).await?;
-    let client = create_client()?;
+        // If we can't get any new nodes, we've exhausted our options
+        if node1_option.is_none() && node2_option.is_none() {
+            break;
+        }
 
-    debug!(
-        "Racing HTTP requests to {}: {} and {}",
-        endpoint, node1, node2
-    );
+        let mut requests = Vec::new();
+        
+        if let Some(node1) = node1_option {
+            tried_nodes.insert(node1.clone());
+            requests.push(single_raw_request(state, node1.clone(), path, method, headers, body));
+        }
+        
+        if let Some(node2) = node2_option {
+            tried_nodes.insert(node2.clone());
+            requests.push(single_raw_request(state, node2.clone(), path, method, headers, body));
+        }
 
-    // Race two parallel requests - clone the nodes so we don't move them
-    let request1 = make_single_http_request(state, &client, node1.clone(), endpoint);
-    let request2 = make_single_http_request(state, &client, node2.clone(), endpoint);
+        if requests.is_empty() {
+            break;
+        }
 
-    select! {
-        result1 = request1 => {
-            match result1 {
-                Ok((response, winning_node, latency_ms)) => {
-                    debug!(
-                        "HTTP response from {} ({}ms) for {} - WINNER! Racing against {}",
-                        winning_node, latency_ms, endpoint, node2
-                    );
-                    record_success(state, &winning_node, latency_ms).await;
-                    Ok(response)
-                }
-                Err(_) => {
-                    // First request failed, try the second one
-                    debug!("First HTTP request to {} failed, trying second request to {}", node1, node2);
-                    let fallback_result = make_single_http_request(state, &client, node2.clone(), endpoint).await;
-                    match fallback_result {
-                        Ok((response, winning_node, latency_ms)) => {
-                            debug!(
-                                "HTTP response from {} ({}ms) for {} - fallback success after {} failed",
-                                winning_node, latency_ms, endpoint, node1
-                            );
-                            record_success(state, &winning_node, latency_ms).await;
-                            Ok(response)
-                        }
-                        Err(_) => {
-                            error!("Both parallel HTTP requests failed for {}: {} and {}", endpoint, node1, node2);
-                            Err(HandlerError::AllRequestsFailed)
-                        }
-                    }
+        debug!("Attempt {}: Racing {} requests to {}: {} nodes", 
+               attempt + 1, method, path, requests.len());
+
+        // Handle the requests based on how many we have
+        let result = match requests.len() {
+            1 => {
+                // Only one request
+                requests.into_iter().next().unwrap().await
+            }
+            2 => {
+                // Two requests - race them
+                let mut iter = requests.into_iter();
+                let req1 = iter.next().unwrap();
+                let req2 = iter.next().unwrap();
+                
+                tokio::select! {
+                    result1 = req1 => result1,
+                    result2 = req2 => result2,
                 }
             }
-        }
-        result2 = request2 => {
-            match result2 {
-                Ok((response, winning_node, latency_ms)) => {
-                    debug!(
-                        "HTTP response from {} ({}ms) for {} - WINNER! Racing against {}",
-                        winning_node, latency_ms, endpoint, node1
-                    );
-                    record_success(state, &winning_node, latency_ms).await;
-                    Ok(response)
-                }
-                Err(_) => {
-                    // Second request failed, try the first one
-                    debug!("Second HTTP request to {} failed, trying first request to {}", node2, node1);
-                    let fallback_result = make_single_http_request(state, &client, node1.clone(), endpoint).await;
-                    match fallback_result {
-                        Ok((response, winning_node, latency_ms)) => {
-                            debug!(
-                                "HTTP response from {} ({}ms) for {} - fallback success after {} failed",
-                                winning_node, latency_ms, endpoint, node2
-                            );
-                            record_success(state, &winning_node, latency_ms).await;
-                            Ok(response)
-                        }
-                        Err(_) => {
-                            error!("Both parallel HTTP requests failed for {}: {} and {}", endpoint, node1, node2);
-                            Err(HandlerError::AllRequestsFailed)
-                        }
-                    }
-                }
+            _ => unreachable!("We only add 1 or 2 requests"),
+        };
+        
+        match result {
+            Ok((response, winning_node, latency_ms)) => {
+                debug!("{} response from {} ({}ms) - SUCCESS on attempt {}!", 
+                       method, winning_node, latency_ms, attempt + 1);
+                record_success(state, &winning_node, latency_ms).await;
+                return Ok(response);
+            }
+            Err(_) => {
+                debug!("Attempt {} failed, retrying with different nodes...", attempt + 1);
+                attempt += 1;
+                continue;
             }
         }
     }
+
+    error!("All {} requests failed after trying {} nodes", method, tried_nodes.len());
+    Err(HandlerError::AllRequestsFailed)
 }
 
 #[axum::debug_handler]
 pub async fn simple_rpc_handler(
     State(state): State<AppState>,
-    Json(payload): Json<Value>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
 ) -> Response {
-    // Add detailed logging of incoming requests
-    debug!(
-        "Received JSON-RPC request: {}",
-        serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "Invalid JSON".to_string())
-    );
+    debug!("Raw RPC request: {} bytes", body.len());
 
-    match handle_rpc_request(&state, &payload).await {
-        Ok(response) => {
-            debug!("Sending JSON-RPC response");
-            response
-        }
-        Err(error) => {
-            let error_response = error.to_json_response(payload.get("id"));
-            debug!(
-                "Sending JSON-RPC error response: {}",
-                serde_json::to_string_pretty(&error_response)
-                    .unwrap_or_else(|_| "Invalid JSON".to_string())
-            );
-            Json(error_response).into_response()
+    // TODO: Some requests (e.g publish transactions) should be sent to multiple nodes (e.g at least 5 successful or 20 retries)
+    match race_requests(&state, "/json_rpc", "POST", &headers, Some(&body)).await {
+        Ok(response) => response,
+        Err(_) => {
+            let error_body = br#"{"jsonrpc":"2.0","error":{"code":-1,"message":"All nodes failed"},"id":null}"#;
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("content-type", "application/json")
+                .body(Body::from(&error_body[..]))
+                .unwrap_or_else(|_| Response::new(Body::empty()))
         }
     }
 }
@@ -399,46 +283,50 @@ pub async fn simple_rpc_handler(
 #[axum::debug_handler]
 pub async fn simple_http_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Path(endpoint): Path<String>,
-) -> Result<Response, StatusCode> {
-    debug!("Received HTTP request for endpoint: /{}", endpoint);
+) -> Response {
+    debug!("Raw HTTP request: /{}", endpoint);
 
-    match handle_http_request(&state, &format!("/{}", endpoint)).await {
-        Ok(response) => {
-            debug!("Sending HTTP response");
-            Ok(response)
-        }
-        Err(error) => {
-            let error_response = error.to_json_response(None);
-            debug!(
-                "Sending HTTP error response: {}",
-                serde_json::to_string_pretty(&error_response)
-                    .unwrap_or_else(|_| "Invalid JSON".to_string())
-            );
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+    match race_requests(&state, &format!("/{}", endpoint), "GET", &headers, None).await {
+        Ok(response) => response,
+        Err(_) => {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from("All nodes failed"))
+                .unwrap_or_else(|_| Response::new(Body::empty()))
         }
     }
 }
 
 #[axum::debug_handler]
-pub async fn simple_stats_handler(State(state): State<AppState>) -> Json<Value> {
+pub async fn simple_stats_handler(State(state): State<AppState>) -> Response {
     let smart_pool_guard = state.smart_pool.read().await;
 
     match smart_pool_guard.get_pool_stats().await {
-        Ok(stats) => Json(serde_json::json!({
-            "status": "healthy",
-            "total_nodes": stats.total_nodes,
-            "reachable_nodes": stats.reachable_nodes,
-            "reliable_nodes": stats.reliable_nodes,
-            "health_percentage": stats.health_percentage(),
-            "avg_reliable_latency_ms": stats.avg_reliable_latency_ms
-        })),
+        Ok(stats) => {
+            let stats_json = format!(
+                r#"{{"status":"healthy","total_nodes":{},"reachable_nodes":{},"reliable_nodes":{},"health_percentage":{:.2},"avg_reliable_latency_ms":{:.2}}}"#,
+                stats.total_nodes,
+                stats.reachable_nodes,
+                stats.reliable_nodes,
+                stats.health_percentage(),
+                stats.avg_reliable_latency_ms.unwrap_or(0.0)
+            );
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("content-type", "application/json")
+                .body(Body::from(stats_json))
+                .unwrap_or_else(|_| Response::new(Body::empty()))
+        }
         Err(e) => {
             error!("Failed to get pool stats: {}", e);
-            Json(serde_json::json!({
-                "status": "error",
-                "message": "Failed to get pool stats"
-            }))
+            let error_json = r#"{"status":"error","message":"Failed to get pool stats"}"#;
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header("content-type", "application/json")
+                .body(Body::from(error_json))
+                .unwrap_or_else(|_| Response::new(Body::empty()))
         }
     }
 }

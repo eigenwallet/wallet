@@ -4,3 +4,4 @@ target/
 .DS_Store
 build/
 release-build.sh
+cn_macos

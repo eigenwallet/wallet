@@ -67,7 +67,14 @@ pub fn init(
         "libp2p_dcutr",
         "monero_cpp",
     ];
-    let OUR_CRATES: Vec<&str> = vec!["swap", "asb", "monero_sys", "unstoppableswap-gui-rs"];
+    let OUR_CRATES: Vec<&str> = vec![
+        "swap",
+        "asb",
+        "monero_sys",
+        "unstoppableswap-gui-rs",
+        "monero-rpc-pool",
+        "monero_rpc_pool",
+    ];
 
     // General log file for non-verbose logs
     let file_appender: RollingFileAppender = tracing_appender::rolling::never(&dir, "swap-all.log");
