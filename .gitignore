@@ -3,3 +3,4 @@ target/
 .claude/settings.local.json
 .DS_Store
 build/
+release-build.sh
