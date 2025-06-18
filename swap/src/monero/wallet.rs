@@ -216,22 +216,6 @@ impl Wallets {
                 .context("Failed to get blockchain height")?,
         })
     }
-
-    /// Switch the Monero daemon for all wallets at runtime.
-    /// This uses the FFI bindings to change the daemon address without requiring a restart.
-    pub async fn switch_daemon(&self, new_daemon: Daemon) -> Result<()> {
-        let daemon_address = new_daemon.address.clone();
-        tracing::info!("Switching Monero daemon to: {}", daemon_address);
-
-        // Update the daemon address for the main wallet using FFI bindings
-        self.main_wallet
-            .call(move |wallet| wallet.set_daemon_address(&new_daemon.address))
-            .await
-            .context("Failed to update daemon address for main wallet")?;
-
-        tracing::info!("Successfully switched Monero daemon to: {}", daemon_address);
-        Ok(())
-    }
 }
 
 impl TransferRequest {
