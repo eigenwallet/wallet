@@ -9,6 +9,15 @@ use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
+use monero::Network;
+
+fn network_to_string(network: &Network) -> String {
+    match network {
+        Network::Mainnet => "mainnet".to_string(),
+        Network::Stagenet => "stagenet".to_string(),
+        Network::Testnet => "testnet".to_string(),
+    }
+}
 
 pub mod config;
 pub mod database;
@@ -47,10 +56,9 @@ pub struct ServerInfo {
     pub host: String,
 }
 
-// TODO: Network should be part of the config and use the same type we use in swap (from monero-rs)
 async fn create_app_with_receiver(
     config: Config,
-    network: String,
+    network: Network,
 ) -> Result<(
     Router,
     tokio::sync::broadcast::Receiver<PoolStatus>,
@@ -64,29 +72,12 @@ async fn create_app_with_receiver(
     };
 
     // Initialize node pool with network
-    let (node_pool, status_receiver) = NodePool::new(db.clone(), network.clone());
+    let network_str = network_to_string(&network);
+    let (node_pool, status_receiver) = NodePool::new(db.clone(), network_str.clone());
     let node_pool = Arc::new(RwLock::new(node_pool));
 
     // Initialize discovery service
     let discovery = NodeDiscovery::new(db.clone());
-
-    // Insert configured nodes if any
-    if !config.nodes.is_empty() {
-        info!(
-            "Inserting {} configured nodes for network: {}...",
-            config.nodes.len(),
-            network
-        );
-        if let Err(e) = discovery
-            .discover_and_insert_nodes(&network, config.nodes.clone())
-            .await
-        {
-            error!(
-                "Failed to insert configured nodes for network {}: {}",
-                network, e
-            );
-        }
-    }
 
     // Start background tasks
     let node_pool_for_health_check = node_pool.clone();
@@ -104,15 +95,15 @@ async fn create_app_with_receiver(
 
     // Start periodic discovery task
     let discovery_clone = discovery.clone();
-    let network_clone = network.clone();
+    let network_clone = network;
     let discovery_handle = tokio::spawn(async move {
         if let Err(e) = discovery_clone
-            .periodic_discovery_task(&network_clone)
+            .periodic_discovery_task(network_clone)
             .await
         {
             error!(
                 "Periodic discovery task failed for network {}: {}",
-                network_clone, e
+                network_to_string(&network_clone), e
             );
         }
     });
@@ -134,7 +125,7 @@ async fn create_app_with_receiver(
     Ok((app, status_receiver, task_manager))
 }
 
-pub async fn create_app(config: Config, network: String) -> Result<Router> {
+pub async fn create_app(config: Config, network: Network) -> Result<Router> {
     let (app, _, _task_manager) = create_app_with_receiver(config, network).await?;
     // Note: task_manager is dropped here, so tasks will be aborted when this function returns
     // This is intentional for the simple create_app use case
@@ -144,7 +135,7 @@ pub async fn create_app(config: Config, network: String) -> Result<Router> {
 /// Create an app with a custom data directory for the database
 pub async fn create_app_with_data_dir(
     config: Config,
-    network: String,
+    network: Network,
     data_dir: std::path::PathBuf,
 ) -> Result<Router> {
     let config_with_data_dir = Config {
@@ -154,7 +145,7 @@ pub async fn create_app_with_data_dir(
     create_app(config_with_data_dir, network).await
 }
 
-pub async fn run_server(config: Config, network: String) -> Result<()> {
+pub async fn run_server(config: Config, network: Network) -> Result<()> {
     let app = create_app(config.clone(), network).await?;
 
     let bind_address = format!("{}:{}", config.host, config.port);
@@ -170,7 +161,7 @@ pub async fn run_server(config: Config, network: String) -> Result<()> {
 /// Run a server with a custom data directory
 pub async fn run_server_with_data_dir(
     config: Config,
-    network: String,
+    network: Network,
     data_dir: std::path::PathBuf,
 ) -> Result<()> {
     let config_with_data_dir = Config {
@@ -182,10 +173,9 @@ pub async fn run_server_with_data_dir(
 
 /// Start a server with a random port for library usage
 /// Returns the server info with the actual port used, a receiver for pool status updates, and task manager
-/// TODO: Network should be part of the config and have a proper type
 pub async fn start_server_with_random_port(
     config: Config,
-    network: String,
+    network: Network,
 ) -> Result<(
     ServerInfo,
     tokio::sync::broadcast::Receiver<PoolStatus>,
@@ -228,7 +218,7 @@ pub async fn start_server_with_random_port(
 /// Returns the server info with the actual port used, a receiver for pool status updates, and task manager
 pub async fn start_server_with_random_port_and_data_dir(
     config: Config,
-    network: String,
+    network: Network,
     data_dir: std::path::PathBuf,
 ) -> Result<(
     ServerInfo,

@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT \n                id as \"id!: i64\",\n                scheme,\n                host,\n                port,\n                full_url,\n                network,\n                first_seen_at\n            FROM monero_nodes \n            ORDER BY id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "scheme",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "host",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "port",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "full_url",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "network",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "first_seen_at",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "1766f6ee1f0d61c8eaadfc7e208181b24c04cc911407fb64e04a1e74e304c3dc"
+}

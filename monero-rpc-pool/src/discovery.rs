@@ -6,8 +6,10 @@ use serde::Deserialize;
 use serde_json::Value;
 use tracing::{error, info, warn};
 use url;
+use rand::seq::SliceRandom;
+use monero::Network;
 
-use crate::database::{Database, MoneroNode};
+use crate::database::Database;
 
 #[derive(Debug, Deserialize)]
 struct MoneroFailResponse {
@@ -21,19 +23,34 @@ struct MoneroNodes {
     web_compatible: Vec<String>,
 }
 
-// Bootstrap nodes are now pre-seeded via database migrations
-
 #[derive(Debug)]
 pub struct HealthCheckOutcome {
     pub was_successful: bool,
     pub latency: Duration,
-    pub discovered_network: Option<String>,
+    pub discovered_network: Option<Network>,
 }
 
 #[derive(Clone)]
 pub struct NodeDiscovery {
     client: Client,
     db: Database,
+}
+
+fn network_to_string(network: &Network) -> String {
+    match network {
+        Network::Mainnet => "mainnet".to_string(),
+        Network::Stagenet => "stagenet".to_string(),
+        Network::Testnet => "testnet".to_string(),
+    }
+}
+
+fn string_to_network(s: &str) -> Option<Network> {
+    match s.to_lowercase().as_str() {
+        "mainnet" => Some(Network::Mainnet),
+        "stagenet" => Some(Network::Stagenet),
+        "testnet" => Some(Network::Testnet),
+        _ => None,
+    }
 }
 
 impl NodeDiscovery {
@@ -47,66 +64,13 @@ impl NodeDiscovery {
         Self { client, db }
     }
 
-    /// Centralized node fetching from various sources
-    pub async fn discover_nodes_from_sources(&self, network: &str) -> Result<()> {
-        match network {
-            "mainnet" => {
-                info!("Fetching nodes from monero.fail API for mainnet");
-
-                // Try to fetch from monero.fail first
-                let api_result = async {
-                    let response = self
-                        .client
-                        .get("https://monero.fail/nodes.json?chain=monero&network=mainnet")
-                        .send()
-                        .await?;
-
-                    if !response.status().is_success() {
-                        return Err(anyhow::anyhow!(
-                            "Failed to fetch nodes: HTTP {}",
-                            response.status()
-                        ));
-                    }
-
-                    let nodes_data: Value = response.json().await?;
-                    self.process_node_data(&nodes_data, "mainnet").await
-                }
-                .await;
-
-                // If API fetch fails, log warning - bootstrap nodes are pre-seeded via migration
-                if let Err(e) = api_result {
-                    warn!(
-                        "Failed to fetch from monero.fail API: {}, relying on pre-seeded bootstrap nodes",
-                        e
-                    );
-                }
-            }
-            "stagenet" => {
-                info!("Using pre-seeded bootstrap stagenet nodes");
-                // Bootstrap nodes are pre-seeded via migration
-            }
-            "testnet" => {
-                info!("Testnet node discovery not supported, skipping");
-            }
-            _ => {
-                warn!("Unknown network '{}', skipping discovery", network);
-            }
-        }
-        Ok(())
-    }
-
     /// Fetch nodes from monero.fail API
-    pub async fn fetch_nodes_from_network(&self, network: &str) -> Result<Vec<String>> {
-        let url = format!(
-            "https://monero.fail/nodes.json?chain=monero&network={}",
-            network
-        );
-
-        info!("Fetching nodes from: {}", url);
+    pub async fn fetch_mainnet_nodes_from_api(&self) -> Result<Vec<String>> {
+        let url = "https://monero.fail/nodes.json?chain=monero";
 
         let response = self
             .client
-            .get(&url)
+            .get(url)
             .timeout(Duration::from_secs(30))
             .send()
             .await?;
@@ -117,60 +81,45 @@ impl NodeDiscovery {
 
         let monero_fail_response: MoneroFailResponse = response.json().await?;
 
-        // Combine clear and web_compatible nodes, preferring web_compatible (HTTPS) when available
+        // Combine clear and web_compatible nodes
         let mut nodes = monero_fail_response.monero.web_compatible;
         nodes.extend(monero_fail_response.monero.clear);
 
-        // Remove duplicates while preserving order (web_compatible first)
+        // Remove duplicates
         let mut unique_nodes = Vec::new();
         for node in nodes {
             if !unique_nodes.contains(&node) {
                 unique_nodes.push(node);
             }
         }
-
-        if unique_nodes.is_empty() {
-            return Err(anyhow::anyhow!("No nodes found in response"));
-        }
-
+        
+        // Shuffle nodes in random order
+        let mut rng = rand::thread_rng();
+        unique_nodes.shuffle(&mut rng);
+        
         info!(
-            "Fetched {} nodes for {} network",
-            unique_nodes.len(),
-            network
+            "Fetched {} mainnet nodes from monero.fail API",
+            unique_nodes.len()
         );
         Ok(unique_nodes)
     }
 
-    /// Process node data and insert into database
-    async fn process_node_data(&self, nodes_data: &Value, source_network: &str) -> Result<()> {
-        let mut success_count = 0;
 
-        if let Some(nodes_array) = nodes_data.as_array() {
-            for node_value in nodes_array {
-                if let Some(node_obj) = node_value.as_object() {
-                    if let (Some(host), Some(port)) = (
-                        node_obj.get("host").and_then(|v| v.as_str()),
-                        node_obj.get("port").and_then(|v| v.as_u64()),
-                    ) {
-                        let scheme = if port == 18089 || port == 443 {
-                            "https"
-                        } else {
-                            "http"
-                        };
 
-                        match self.db.upsert_node(scheme, host, port as i64).await {
-                            Ok(_) => success_count += 1,
-                            Err(e) => error!("Failed to insert node {}:{}: {}", host, port, e),
-                        }
-                    }
+    /// Fetch nodes from monero.fail API and discover from other sources
+    pub async fn discover_nodes_from_sources(&self, target_network: Network) -> Result<()> {
+        // Only fetch from external sources for mainnet to avoid polluting test networks
+        if target_network == Network::Mainnet {
+            match self.fetch_mainnet_nodes_from_api().await {
+                Ok(nodes) => {
+                    self.discover_and_insert_nodes(target_network, nodes).await?;
+                }
+                Err(e) => {
+                    warn!("Failed to fetch nodes from monero.fail API: {}", e);
                 }
             }
         }
-
-        info!(
-            "Discovered and inserted {} nodes from {} source",
-            success_count, source_network
-        );
+        
         Ok(())
     }
 
@@ -234,13 +183,13 @@ impl NodeDiscovery {
     }
 
     /// Extract network type from get_info response
-    fn extract_network_from_info(&self, info_result: &Value) -> Option<String> {
+    fn extract_network_from_info(&self, info_result: &Value) -> Option<Network> {
         // Check nettype field (0 = mainnet, 1 = testnet, 2 = stagenet)
         if let Some(nettype) = info_result.get("nettype").and_then(|v| v.as_u64()) {
             return match nettype {
-                0 => Some("mainnet".to_string()),
-                1 => Some("testnet".to_string()),
-                2 => Some("stagenet".to_string()),
+                0 => Some(Network::Mainnet),
+                1 => Some(Network::Testnet),
+                2 => Some(Network::Stagenet),
                 _ => None,
             };
         }
@@ -248,9 +197,9 @@ impl NodeDiscovery {
         // Fallback: check if testnet or stagenet is mentioned in fields
         if let Some(testnet) = info_result.get("testnet").and_then(|v| v.as_bool()) {
             return if testnet {
-                Some("testnet".to_string())
+                Some(Network::Testnet)
             } else {
-                Some("mainnet".to_string())
+                Some(Network::Mainnet)
             };
         }
 
@@ -259,15 +208,26 @@ impl NodeDiscovery {
     }
 
     /// Updated health check workflow with identification and validation logic
-    pub async fn health_check_all_nodes(&self, target_network: &str) -> Result<()> {
+    pub async fn health_check_all_nodes(&self, target_network: Network) -> Result<()> {
         info!(
             "Starting health check for all nodes targeting network: {}",
-            target_network
+            network_to_string(&target_network)
         );
 
-        // Get all nodes from database (both identified and unidentified)
-        let all_nodes = sqlx::query_as::<_, MoneroNode>(
-            "SELECT *, 0 as success_count, 0 as failure_count, NULL as last_success, NULL as last_failure, NULL as last_checked, 0 as is_reliable, NULL as avg_latency_ms, NULL as min_latency_ms, NULL as max_latency_ms, NULL as last_latency_ms FROM monero_nodes ORDER BY id",
+        // Get all nodes from database with proper field mapping
+        let all_nodes = sqlx::query!(
+            r#"
+            SELECT 
+                id as "id!: i64",
+                scheme,
+                host,
+                port,
+                full_url,
+                network,
+                first_seen_at
+            FROM monero_nodes 
+            ORDER BY id
+            "#
         )
         .fetch_all(&self.db.pool)
         .await?;
@@ -298,27 +258,28 @@ impl NodeDiscovery {
 
                         // Handle network identification and validation
                         if let Some(discovered_network) = outcome.discovered_network {
+                            let discovered_network_str = network_to_string(&discovered_network);
                             match &node.network {
                                 None => {
                                     // Node is unidentified - identify it
                                     info!(
                                         "Identifying node {} as network: {}",
-                                        node.full_url, discovered_network
+                                        node.full_url, discovered_network_str
                                     );
                                     self.db
-                                        .update_node_network(&node.full_url, &discovered_network)
+                                        .update_node_network(&node.full_url, &discovered_network_str)
                                         .await?;
                                     identified_count += 1;
                                 }
                                 Some(stored_network) => {
                                     // Node is already identified - validate it
-                                    if stored_network != &discovered_network {
+                                    if stored_network != &discovered_network_str {
                                         warn!("Network mismatch detected for node {}: stored={}, discovered={}. Correcting...", 
-                                              node.full_url, stored_network, discovered_network);
+                                              node.full_url, stored_network, discovered_network_str);
                                         self.db
                                             .update_node_network(
                                                 &node.full_url,
-                                                &discovered_network,
+                                                &discovered_network_str,
                                             )
                                             .await?;
                                         corrected_count += 1;
@@ -349,7 +310,7 @@ impl NodeDiscovery {
     }
 
     /// Periodic discovery task with improved error handling
-    pub async fn periodic_discovery_task(&self, target_network: &str) -> Result<()> {
+    pub async fn periodic_discovery_task(&self, target_network: Network) -> Result<()> {
         let mut interval = tokio::time::interval(Duration::from_secs(3600)); // Every hour
 
         loop {
@@ -357,7 +318,7 @@ impl NodeDiscovery {
 
             info!(
                 "Running periodic node discovery for network: {}",
-                target_network
+                network_to_string(&target_network)
             );
 
             // Discover new nodes from sources
@@ -371,12 +332,13 @@ impl NodeDiscovery {
             }
 
             // Log stats for all networks
-            for network in &["mainnet", "stagenet", "testnet"] {
-                if let Ok((total, reachable, reliable)) = self.db.get_node_stats(network).await {
+            for network in &[Network::Mainnet, Network::Stagenet, Network::Testnet] {
+                let network_str = network_to_string(network);
+                if let Ok((total, reachable, reliable)) = self.db.get_node_stats(&network_str).await {
                     if total > 0 {
                         info!(
                             "Node stats for {}: {} total, {} reachable, {} reliable",
-                            network, total, reachable, reliable
+                            network_str, total, reachable, reliable
                         );
                     }
                 }
@@ -387,11 +349,12 @@ impl NodeDiscovery {
     /// Insert configured nodes for a specific network
     pub async fn discover_and_insert_nodes(
         &self,
-        target_network: &str,
+        target_network: Network,
         nodes: Vec<String>,
     ) -> Result<()> {
         let mut success_count = 0;
         let mut error_count = 0;
+        let target_network_str = network_to_string(&target_network);
 
         for node_url in nodes.iter() {
             if let Ok(url) = url::Url::parse(node_url) {
@@ -409,7 +372,7 @@ impl NodeDiscovery {
                         // For configured nodes, we can immediately set the target network
                         // This is safe because these are explicitly configured by the user
                         let full_url = format!("{}://{}:{}", scheme, host, port);
-                        if let Err(e) = self.db.update_node_network(&full_url, target_network).await
+                        if let Err(e) = self.db.update_node_network(&full_url, &target_network_str).await
                         {
                             warn!(
                                 "Failed to set network for configured node {}: {}",

@@ -22,6 +22,7 @@ use swap::cli::{
 use tauri::{async_runtime::RwLock, Manager, RunEvent};
 use tauri_plugin_dialog::DialogExt;
 use zip::{write::SimpleFileOptions, ZipWriter};
+use monero;
 
 /// Trait to convert Result<T, E> to Result<T, String>
 /// Tauri commands require the error type to be a string
@@ -378,8 +379,8 @@ async fn initialize_context(
         match monero_rpc_pool::start_server_with_random_port(
             monero_rpc_pool::config::Config::default(),
             match testnet {
-                true => "stagenet".to_string(),
-                false => "mainnet".to_string(),
+                true => monero::Network::Stagenet,
+                false => monero::Network::Mainnet,
             },
         )
         .await

@@ -1,8 +1,6 @@
 use clap::Parser;
-use tracing::{error, info, warn, Level, Metadata};
-use tracing_subscriber::layer::Context;
-use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::{self, EnvFilter, Layer};
+use tracing::{info, warn};
+use tracing_subscriber::{self, EnvFilter};
 
 use monero_rpc_pool::database::Database;
 use monero_rpc_pool::discovery::NodeDiscovery;
@@ -57,47 +55,15 @@ struct Args {
     verbose: bool,
 }
 
-// Custom layer to override log levels for our crate
-struct LogLevelOverrideLayer;
-
-impl<S> Layer<S> for LogLevelOverrideLayer
-where
-    S: tracing::Subscriber + for<'lookup> LookupSpan<'lookup>,
-{
-    fn enabled(&self, metadata: &Metadata<'_>, _ctx: Context<'_, S>) -> bool {
-        // If it's from our crate, always enable it (we'll handle level override in event method)
-        if metadata.target().starts_with("monero_rpc_pool") {
-            true
-        } else {
-            // For other crates, use default behavior
-            true
-        }
-    }
-
-    fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
-        // If the event is from our crate and not already trace level, override it
-        if event.metadata().target().starts_with("monero_rpc_pool") 
-            && *event.metadata().level() != Level::TRACE {
-            
-            // Create a new event with trace level
-            let trace_event = tracing::Event::new_child_of(
-                event.parent(),
-                &Metadata::new(
-                    event.metadata().name(),
-                    event.metadata().target(),
-                    Level::TRACE,
-                    event.metadata().file(),
-                    event.metadata().line(),
-                    event.metadata().module_path(),
-                    event.metadata().fields(),
-                    event.metadata().kind(),
-                )
-            );
-            
-            // Forward the trace-level event
-            trace_event.record_all(event.field_set());
-        }
-    }
+// Custom filter function that overrides log levels for our crate
+fn create_level_override_filter(base_filter: &str) -> EnvFilter {
+    // Parse the base filter and modify it to treat all monero_rpc_pool logs as trace
+    let mut filter = EnvFilter::new(base_filter);
+    
+    // Add a directive that treats all levels from our crate as trace
+    filter = filter.add_directive("monero_rpc_pool=trace".parse().unwrap());
+    
+    filter
 }
 
 #[tokio::main]
@@ -105,13 +71,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     // Create a filter that treats all logs from our crate as traces
-    let filter = if args.verbose {
-        // In verbose mode, show TRACE from our crate and WARN from everything else
-        EnvFilter::new("monero_rpc_pool=trace,warn")
+    let base_filter = if args.verbose {
+        // In verbose mode, show logs from other crates at WARN level
+        "warn"
     } else {
-        // In normal mode, treat our crate logs as trace level and ERROR from everything else
-        EnvFilter::new("monero_rpc_pool=trace,error")
+        // In normal mode, show logs from other crates at ERROR level
+        "error"
     };
+
+    let filter = create_level_override_filter(base_filter);
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -120,8 +88,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_line_number(true)
         .init();
 
-    // Determine nodes to use
-    let nodes = if let Some(manual_nodes) = args.nodes {
+    // Store node count for later logging before potentially moving args.nodes
+    let manual_node_count = args.nodes.as_ref().map(|nodes| nodes.len());
+    
+    // Determine nodes to use and set up discovery
+    let _nodes = if let Some(manual_nodes) = args.nodes {
         info!(
             "Using manually specified nodes for network: {}",
             network_to_string(&args.network)
@@ -129,6 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Insert manual nodes into database with network information
         let db = Database::new().await?;
+        let discovery = NodeDiscovery::new(db.clone());
         let mut parsed_nodes = Vec::new();
 
         for node_url in &manual_nodes {
@@ -155,78 +127,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
+        // Use manual nodes for discovery
+        discovery.discover_and_insert_nodes(args.network, manual_nodes).await?;
         parsed_nodes
     } else {
         info!(
-            "Fetching nodes for {} network",
+            "Setting up automatic node discovery for {} network",
             network_to_string(&args.network)
         );
         let db = Database::new().await?;
         let discovery = NodeDiscovery::new(db.clone());
-
-        match discovery
-            .fetch_nodes_from_network(&network_to_string(&args.network))
-            .await
-        {
-            Ok(fetched_nodes) => {
-                info!("Successfully fetched {} nodes", fetched_nodes.len());
-
-                let mut inserted_nodes = Vec::new();
-
-                for node_url in &fetched_nodes {
-                    // Parse the URL to extract components
-                    if let Ok(url) = url::Url::parse(node_url) {
-                        let scheme = url.scheme().to_string();
-                        let _protocol = if scheme == "https" { "ssl" } else { "tcp" };
-                        let host = url.host_str().unwrap_or("").to_string();
-                        let port =
-                            url.port()
-                                .unwrap_or(if scheme == "https" { 18089 } else { 18081 })
-                                as i64;
-
-                        let full_url = format!("{}://{}:{}", scheme, host, port);
-
-                        // Insert into database
-                        if let Err(e) = db.upsert_node(&scheme, &host, port).await {
-                            warn!("Failed to insert fetched node {}: {}", node_url, e);
-                        } else {
-                            inserted_nodes.push(full_url);
-                        }
-                    } else {
-                        warn!("Failed to parse fetched node URL: {}", node_url);
-                    }
-                }
-
-                inserted_nodes
-            }
-            Err(e) => {
-                error!("Failed to fetch nodes from monero.fail: {}", e);
-                warn!("Falling back to empty node list - discovery may be required");
-                vec![]
-            }
-        }
+        
+        // Start discovery process
+        discovery.discover_nodes_from_sources(args.network).await?;
+        Vec::new() // Return empty vec for consistency
     };
 
-    let config = Config::from_args(Some(args.host), Some(args.port), Some(nodes));
+    let config = Config::from_args(Some(args.host), Some(args.port));
 
-    let node_list = if args.verbose && !config.nodes.is_empty() {
-        let nodes_formatted: Vec<String> = config
-            .nodes
-            .iter()
-            .enumerate()
-            .map(|(i, node)| format!("    {}: {}", i + 1, node))
-            .collect();
-        format!("\n{}", nodes_formatted.join("\n"))
+    let node_count_msg = if args.verbose {
+        match manual_node_count {
+            Some(count) => format!("{} manual nodes configured", count),
+            None => "using automatic discovery".to_string(),
+        }
     } else {
-        String::new()
+        "configured".to_string()
     };
 
     info!(
-        "Starting Monero RPC Pool\nConfiguration:\n  Host: {}\n  Port: {}\n  Network: {}\n  Nodes: {} configured{}",
-        config.host, config.port, network_to_string(&args.network), config.nodes.len(), node_list
+        "Starting Monero RPC Pool\nConfiguration:\n  Host: {}\n  Port: {}\n  Network: {}\n  Nodes: {}",
+        config.host, config.port, network_to_string(&args.network), node_count_msg
     );
 
-    if let Err(e) = run_server(config, network_to_string(&args.network)).await {
+    if let Err(e) = run_server(config, args.network).await {
         eprintln!("Server error: {}", e);
         std::process::exit(1);
     }
