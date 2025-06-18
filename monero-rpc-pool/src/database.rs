@@ -109,8 +109,16 @@ pub struct Database {
 impl Database {
     pub async fn new() -> Result<Self> {
         let app_data_dir = get_app_data_dir()?;
-        let db_path = app_data_dir.join("nodes.db");
+        Self::new_with_data_dir(app_data_dir).await
+    }
 
+    pub async fn new_with_data_dir(data_dir: PathBuf) -> Result<Self> {
+        if !data_dir.exists() {
+            std::fs::create_dir_all(&data_dir)?;
+            info!("Created application data directory: {}", data_dir.display());
+        }
+
+        let db_path = data_dir.join("nodes.db");
         info!("Using database at: {}", db_path.display());
 
         let database_url = format!("sqlite:{}?mode=rwc", db_path.display());

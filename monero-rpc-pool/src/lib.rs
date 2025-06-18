@@ -57,7 +57,11 @@ async fn create_app_with_receiver(
     TaskManager,
 )> {
     // Initialize database
-    let db = Database::new().await?;
+    let db = if let Some(data_dir) = config.data_dir.clone() {
+        Database::new_with_data_dir(data_dir).await?
+    } else {
+        Database::new().await?
+    };
 
     // Initialize node pool with network
     let (node_pool, status_receiver) = NodePool::new(db.clone(), network.clone());
@@ -137,6 +141,19 @@ pub async fn create_app(config: Config, network: String) -> Result<Router> {
     Ok(app)
 }
 
+/// Create an app with a custom data directory for the database
+pub async fn create_app_with_data_dir(
+    config: Config,
+    network: String,
+    data_dir: std::path::PathBuf,
+) -> Result<Router> {
+    let config_with_data_dir = Config {
+        data_dir: Some(data_dir),
+        ..config
+    };
+    create_app(config_with_data_dir, network).await
+}
+
 pub async fn run_server(config: Config, network: String) -> Result<()> {
     let app = create_app(config.clone(), network).await?;
 
@@ -148,6 +165,19 @@ pub async fn run_server(config: Config, network: String) -> Result<()> {
 
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+/// Run a server with a custom data directory
+pub async fn run_server_with_data_dir(
+    config: Config,
+    network: String,
+    data_dir: std::path::PathBuf,
+) -> Result<()> {
+    let config_with_data_dir = Config {
+        data_dir: Some(data_dir),
+        ..config
+    };
+    run_server(config_with_data_dir, network).await
 }
 
 /// Start a server with a random port for library usage
@@ -192,4 +222,22 @@ pub async fn start_server_with_random_port(
     });
 
     Ok((server_info, status_receiver, task_manager))
+}
+
+/// Start a server with a random port and custom data directory for library usage
+/// Returns the server info with the actual port used, a receiver for pool status updates, and task manager
+pub async fn start_server_with_random_port_and_data_dir(
+    config: Config,
+    network: String,
+    data_dir: std::path::PathBuf,
+) -> Result<(
+    ServerInfo,
+    tokio::sync::broadcast::Receiver<PoolStatus>,
+    TaskManager,
+)> {
+    let config_with_data_dir = Config {
+        data_dir: Some(data_dir),
+        ..config
+    };
+    start_server_with_random_port(config_with_data_dir, network).await
 }
