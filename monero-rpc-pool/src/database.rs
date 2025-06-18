@@ -13,8 +13,8 @@ pub struct MoneroNode {
     pub host: String,
     pub port: i64,
     pub full_url: String,
-    pub network: Option<String>, // mainnet, stagenet, or NULL if unidentified
-    pub first_seen_at: String,   // ISO 8601 timestamp when first discovered
+    pub network: String, // mainnet, stagenet, or testnet - always known at insertion time
+    pub first_seen_at: String, // ISO 8601 timestamp when first discovered
     // Computed fields from health_checks (not stored in monero_nodes table)
     #[sqlx(default)]
     pub success_count: i64,
@@ -48,7 +48,7 @@ pub struct HealthCheck {
 }
 
 impl MoneroNode {
-    pub fn new(scheme: String, host: String, port: i64) -> Self {
+    pub fn new(scheme: String, host: String, port: i64, network: String) -> Self {
         let full_url = format!("{}://{}:{}", scheme, host, port);
         let now = chrono::Utc::now().to_rfc3339();
         Self {
@@ -57,7 +57,7 @@ impl MoneroNode {
             host,
             port,
             full_url,
-            network: None, // Unidentified initially
+            network,
             first_seen_at: now,
             // These are computed from health_checks
             success_count: 0,
@@ -139,15 +139,22 @@ impl Database {
     }
 
     /// Insert a node if it doesn't exist, return the node_id
-    pub async fn upsert_node(&self, scheme: &str, host: &str, port: i64) -> Result<i64> {
+    pub async fn upsert_node(
+        &self,
+        scheme: &str,
+        host: &str,
+        port: i64,
+        network: &str,
+    ) -> Result<i64> {
         let full_url = format!("{}://{}:{}", scheme, host, port);
         let now = chrono::Utc::now().to_rfc3339();
 
         let result = sqlx::query!(
             r#"
-            INSERT INTO monero_nodes (scheme, host, port, full_url, first_seen_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO monero_nodes (scheme, host, port, full_url, network, first_seen_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(full_url) DO UPDATE SET
+                network = excluded.network,
                 updated_at = excluded.updated_at
             RETURNING id
             "#,
@@ -155,6 +162,7 @@ impl Database {
             host,
             port,
             full_url,
+            network,
             now,
             now
         )
@@ -200,12 +208,9 @@ impl Database {
         let now = chrono::Utc::now().to_rfc3339();
 
         // First get the node_id
-        let node_row = sqlx::query!(
-            "SELECT id FROM monero_nodes WHERE full_url = ?",
-            url
-        )
-        .fetch_optional(&self.pool)
-        .await?;
+        let node_row = sqlx::query!("SELECT id FROM monero_nodes WHERE full_url = ?", url)
+            .fetch_optional(&self.pool)
+            .await?;
 
         let node_id = match node_row {
             Some(row) => row.id,
@@ -306,25 +311,28 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        let nodes: Vec<MoneroNode> = rows.into_iter().map(|row| MoneroNode {
-            id: Some(row.id),
-            scheme: row.scheme,
-            host: row.host,
-            port: row.port,
-            full_url: row.full_url,
-            network: row.network,
-            first_seen_at: row.first_seen_at,
-            success_count: row.success_count,
-            failure_count: row.failure_count,
-            last_success: row.last_success,
-            last_failure: row.last_failure,
-            last_checked: row.last_checked,
-            is_reliable: row.is_reliable != 0,
-            avg_latency_ms: row.avg_latency_ms,
-            min_latency_ms: row.min_latency_ms,
-            max_latency_ms: row.max_latency_ms,
-            last_latency_ms: row.last_latency_ms,
-        }).collect();
+        let nodes: Vec<MoneroNode> = rows
+            .into_iter()
+            .map(|row| MoneroNode {
+                id: Some(row.id),
+                scheme: row.scheme,
+                host: row.host,
+                port: row.port,
+                full_url: row.full_url,
+                network: row.network,
+                first_seen_at: row.first_seen_at,
+                success_count: row.success_count,
+                failure_count: row.failure_count,
+                last_success: row.last_success,
+                last_failure: row.last_failure,
+                last_checked: row.last_checked,
+                is_reliable: row.is_reliable != 0,
+                avg_latency_ms: row.avg_latency_ms,
+                min_latency_ms: row.min_latency_ms,
+                max_latency_ms: row.max_latency_ms,
+                last_latency_ms: row.last_latency_ms,
+            })
+            .collect();
 
         debug!(
             "Retrieved {} identified nodes for network {}",
@@ -387,25 +395,28 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        let nodes = rows.into_iter().map(|row| MoneroNode {
-            id: Some(row.id),
-            scheme: row.scheme,
-            host: row.host,
-            port: row.port,
-            full_url: row.full_url,
-            network: row.network,
-            first_seen_at: row.first_seen_at,
-            success_count: row.success_count,
-            failure_count: row.failure_count,
-            last_success: row.last_success,
-            last_failure: row.last_failure,
-            last_checked: row.last_checked,
-            is_reliable: true,
-            avg_latency_ms: row.avg_latency_ms,
-            min_latency_ms: row.min_latency_ms,
-            max_latency_ms: row.max_latency_ms,
-            last_latency_ms: row.last_latency_ms,
-        }).collect();
+        let nodes = rows
+            .into_iter()
+            .map(|row| MoneroNode {
+                id: Some(row.id),
+                scheme: row.scheme,
+                host: row.host,
+                port: row.port,
+                full_url: row.full_url,
+                network: row.network,
+                first_seen_at: row.first_seen_at,
+                success_count: row.success_count,
+                failure_count: row.failure_count,
+                last_success: row.last_success,
+                last_failure: row.last_failure,
+                last_checked: row.last_checked,
+                is_reliable: true,
+                avg_latency_ms: row.avg_latency_ms,
+                min_latency_ms: row.min_latency_ms,
+                max_latency_ms: row.max_latency_ms,
+                last_latency_ms: row.last_latency_ms,
+            })
+            .collect();
 
         Ok(nodes)
     }
@@ -569,25 +580,28 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        let nodes = rows.into_iter().map(|row| MoneroNode {
-            id: Some(row.id),
-            scheme: row.scheme,
-            host: row.host,
-            port: row.port,
-            full_url: row.full_url,
-            network: row.network,
-            first_seen_at: row.first_seen_at,
-            success_count: row.success_count,
-            failure_count: row.failure_count,
-            last_success: row.last_success,
-            last_failure: row.last_failure,
-            last_checked: row.last_checked,
-            is_reliable: row.is_reliable != 0,
-            avg_latency_ms: row.avg_latency_ms,
-            min_latency_ms: row.min_latency_ms,
-            max_latency_ms: row.max_latency_ms,
-            last_latency_ms: row.last_latency_ms,
-        }).collect();
+        let nodes = rows
+            .into_iter()
+            .map(|row| MoneroNode {
+                id: Some(row.id),
+                scheme: row.scheme,
+                host: row.host,
+                port: row.port,
+                full_url: row.full_url,
+                network: row.network,
+                first_seen_at: row.first_seen_at,
+                success_count: row.success_count,
+                failure_count: row.failure_count,
+                last_success: row.last_success,
+                last_failure: row.last_failure,
+                last_checked: row.last_checked,
+                is_reliable: row.is_reliable != 0,
+                avg_latency_ms: row.avg_latency_ms,
+                min_latency_ms: row.min_latency_ms,
+                max_latency_ms: row.max_latency_ms,
+                last_latency_ms: row.last_latency_ms,
+            })
+            .collect();
 
         Ok(nodes)
     }
@@ -670,25 +684,28 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        let nodes: Vec<MoneroNode> = rows.into_iter().map(|row| MoneroNode {
-            id: Some(row.id),
-            scheme: row.scheme,
-            host: row.host,
-            port: row.port,
-            full_url: row.full_url,
-            network: row.network,
-            first_seen_at: row.first_seen_at,
-            success_count: row.success_count,
-            failure_count: row.failure_count,
-            last_success: row.last_success,
-            last_failure: row.last_failure,
-            last_checked: row.last_checked,
-            is_reliable: row.is_reliable != 0,
-            avg_latency_ms: row.avg_latency_ms,
-            min_latency_ms: row.min_latency_ms,
-            max_latency_ms: row.max_latency_ms,
-            last_latency_ms: row.last_latency_ms,
-        }).collect();
+        let nodes: Vec<MoneroNode> = rows
+            .into_iter()
+            .map(|row| MoneroNode {
+                id: Some(row.id),
+                scheme: row.scheme,
+                host: row.host,
+                port: row.port,
+                full_url: row.full_url,
+                network: row.network,
+                first_seen_at: row.first_seen_at,
+                success_count: row.success_count,
+                failure_count: row.failure_count,
+                last_success: row.last_success,
+                last_failure: row.last_failure,
+                last_checked: row.last_checked,
+                is_reliable: row.is_reliable != 0,
+                avg_latency_ms: row.avg_latency_ms,
+                min_latency_ms: row.min_latency_ms,
+                max_latency_ms: row.max_latency_ms,
+                last_latency_ms: row.last_latency_ms,
+            })
+            .collect();
 
         debug!(
             "Retrieved {} identified nodes with success for network {}",
@@ -781,25 +798,28 @@ impl Database {
             .fetch_all(&self.pool)
             .await?;
 
-            return Ok(rows.into_iter().map(|row| MoneroNode {
-                id: Some(row.id),
-                scheme: row.scheme,
-                host: row.host,
-                port: row.port,
-                full_url: row.full_url,
-                network: row.network,
-                first_seen_at: row.first_seen_at,
-                success_count: row.success_count,
-                failure_count: row.failure_count,
-                last_success: row.last_success,
-                last_failure: row.last_failure,
-                last_checked: row.last_checked,
-                is_reliable: row.is_reliable != 0,
-                avg_latency_ms: row.avg_latency_ms,
-                min_latency_ms: row.min_latency_ms,
-                max_latency_ms: row.max_latency_ms,
-                last_latency_ms: row.last_latency_ms,
-            }).collect());
+            return Ok(rows
+                .into_iter()
+                .map(|row| MoneroNode {
+                    id: Some(row.id),
+                    scheme: row.scheme,
+                    host: row.host,
+                    port: row.port,
+                    full_url: row.full_url,
+                    network: row.network,
+                    first_seen_at: row.first_seen_at,
+                    success_count: row.success_count,
+                    failure_count: row.failure_count,
+                    last_success: row.last_success,
+                    last_failure: row.last_failure,
+                    last_checked: row.last_checked,
+                    is_reliable: row.is_reliable != 0,
+                    avg_latency_ms: row.avg_latency_ms,
+                    min_latency_ms: row.min_latency_ms,
+                    max_latency_ms: row.max_latency_ms,
+                    last_latency_ms: row.last_latency_ms,
+                })
+                .collect());
         }
 
         // If exclude_ids is not empty, we need to handle it differently

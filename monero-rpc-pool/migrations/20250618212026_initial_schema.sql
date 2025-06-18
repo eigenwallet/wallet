@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS monero_nodes (
     host TEXT NOT NULL,
     port INTEGER NOT NULL,
     full_url TEXT NOT NULL UNIQUE,
-    network TEXT,  -- NULL if unidentified, mainnet/stagenet/testnet when identified
+    network TEXT NOT NULL,  -- mainnet/stagenet/testnet - always known at insertion time
     first_seen_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))

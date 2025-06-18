@@ -5,11 +5,11 @@ use axum::{
     routing::{any, get},
     Router,
 };
+use monero::Network;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
-use monero::Network;
 
 fn network_to_string(network: &Network) -> String {
     match network {
@@ -65,11 +65,7 @@ async fn create_app_with_receiver(
     TaskManager,
 )> {
     // Initialize database
-    let db = if let Some(data_dir) = config.data_dir.clone() {
-        Database::new_with_data_dir(data_dir).await?
-    } else {
-        Database::new().await?
-    };
+    let db = Database::new_with_data_dir(config.data_dir.clone()).await?;
 
     // Initialize node pool with network
     let network_str = network_to_string(&network);
@@ -97,13 +93,11 @@ async fn create_app_with_receiver(
     let discovery_clone = discovery.clone();
     let network_clone = network;
     let discovery_handle = tokio::spawn(async move {
-        if let Err(e) = discovery_clone
-            .periodic_discovery_task(network_clone)
-            .await
-        {
+        if let Err(e) = discovery_clone.periodic_discovery_task(network_clone).await {
             error!(
                 "Periodic discovery task failed for network {}: {}",
-                network_to_string(&network_clone), e
+                network_to_string(&network_clone),
+                e
             );
         }
     });
@@ -138,10 +132,7 @@ pub async fn create_app_with_data_dir(
     network: Network,
     data_dir: std::path::PathBuf,
 ) -> Result<Router> {
-    let config_with_data_dir = Config {
-        data_dir: Some(data_dir),
-        ..config
-    };
+    let config_with_data_dir = Config::new_with_port(config.host, config.port, data_dir);
     create_app(config_with_data_dir, network).await
 }
 
@@ -164,10 +155,7 @@ pub async fn run_server_with_data_dir(
     network: Network,
     data_dir: std::path::PathBuf,
 ) -> Result<()> {
-    let config_with_data_dir = Config {
-        data_dir: Some(data_dir),
-        ..config
-    };
+    let config_with_data_dir = Config::new_with_port(config.host, config.port, data_dir);
     run_server(config_with_data_dir, network).await
 }
 
@@ -185,7 +173,7 @@ pub async fn start_server_with_random_port(
     let host = config.host.clone();
 
     // If port is 0, the system will assign a random available port
-    let config_with_random_port = Config { port: 0, ..config };
+    let config_with_random_port = Config::new_random_port(config.host, config.data_dir);
 
     let (app, status_receiver, task_manager) =
         create_app_with_receiver(config_with_random_port, network).await?;
@@ -225,9 +213,6 @@ pub async fn start_server_with_random_port_and_data_dir(
     tokio::sync::broadcast::Receiver<PoolStatus>,
     TaskManager,
 )> {
-    let config_with_data_dir = Config {
-        data_dir: Some(data_dir),
-        ..config
-    };
+    let config_with_data_dir = Config::new_random_port(config.host, data_dir);
     start_server_with_random_port(config_with_data_dir, network).await
 }

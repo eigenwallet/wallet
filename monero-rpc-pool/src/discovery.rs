@@ -1,13 +1,13 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use monero::Network;
+use rand::seq::SliceRandom;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::Value;
 use tracing::{error, info, warn};
 use url;
-use rand::seq::SliceRandom;
-use monero::Network;
 
 use crate::database::Database;
 
@@ -83,11 +83,11 @@ impl NodeDiscovery {
                 unique_nodes.push(node);
             }
         }
-        
+
         // Shuffle nodes in random order
         let mut rng = rand::thread_rng();
         unique_nodes.shuffle(&mut rng);
-        
+
         info!(
             "Fetched {} mainnet nodes from monero.fail API",
             unique_nodes.len()
@@ -95,22 +95,21 @@ impl NodeDiscovery {
         Ok(unique_nodes)
     }
 
-
-
     /// Fetch nodes from monero.fail API and discover from other sources
     pub async fn discover_nodes_from_sources(&self, target_network: Network) -> Result<()> {
         // Only fetch from external sources for mainnet to avoid polluting test networks
         if target_network == Network::Mainnet {
             match self.fetch_mainnet_nodes_from_api().await {
                 Ok(nodes) => {
-                    self.discover_and_insert_nodes(target_network, nodes).await?;
+                    self.discover_and_insert_nodes(target_network, nodes)
+                        .await?;
                 }
                 Err(e) => {
                     warn!("Failed to fetch nodes from monero.fail API: {}", e);
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -214,7 +213,7 @@ impl NodeDiscovery {
                 host,
                 port,
                 full_url,
-                network,
+                network as "network!: String",
                 first_seen_at
             FROM monero_nodes 
             ORDER BY id
@@ -225,7 +224,6 @@ impl NodeDiscovery {
 
         let mut checked_count = 0;
         let mut healthy_count = 0;
-        let mut identified_count = 0;
         let mut corrected_count = 0;
 
         for node in all_nodes {
@@ -247,35 +245,16 @@ impl NodeDiscovery {
                     if outcome.was_successful {
                         healthy_count += 1;
 
-                        // Handle network identification and validation
+                        // Validate network consistency
                         if let Some(discovered_network) = outcome.discovered_network {
                             let discovered_network_str = network_to_string(&discovered_network);
-                            match &node.network {
-                                None => {
-                                    // Node is unidentified - identify it
-                                    info!(
-                                        "Identifying node {} as network: {}",
-                                        node.full_url, discovered_network_str
-                                    );
-                                    self.db
-                                        .update_node_network(&node.full_url, &discovered_network_str)
-                                        .await?;
-                                    identified_count += 1;
-                                }
-                                Some(stored_network) => {
-                                    // Node is already identified - validate it
-                                    if stored_network != &discovered_network_str {
-                                        warn!("Network mismatch detected for node {}: stored={}, discovered={}. Correcting...", 
-                                              node.full_url, stored_network, discovered_network_str);
-                                        self.db
-                                            .update_node_network(
-                                                &node.full_url,
-                                                &discovered_network_str,
-                                            )
-                                            .await?;
-                                        corrected_count += 1;
-                                    }
-                                }
+                            if node.network != discovered_network_str {
+                                warn!("Network mismatch detected for node {}: stored={}, discovered={}. Correcting...", 
+                                      node.full_url, node.network, discovered_network_str);
+                                self.db
+                                    .update_node_network(&node.full_url, &discovered_network_str)
+                                    .await?;
+                                corrected_count += 1;
                             }
                         }
                     }
@@ -293,8 +272,8 @@ impl NodeDiscovery {
         }
 
         info!(
-            "Health check completed: {}/{} nodes healthy, {} newly identified, {} corrected",
-            healthy_count, checked_count, identified_count, corrected_count
+            "Health check completed: {}/{} nodes healthy, {} corrected",
+            healthy_count, checked_count, corrected_count
         );
 
         Ok(())
@@ -325,7 +304,8 @@ impl NodeDiscovery {
             // Log stats for all networks
             for network in &[Network::Mainnet, Network::Stagenet, Network::Testnet] {
                 let network_str = network_to_string(network);
-                if let Ok((total, reachable, reliable)) = self.db.get_node_stats(&network_str).await {
+                if let Ok((total, reachable, reliable)) = self.db.get_node_stats(&network_str).await
+                {
                     if total > 0 {
                         info!(
                             "Node stats for {}: {} total, {} reachable, {} reliable",
@@ -356,20 +336,13 @@ impl NodeDiscovery {
                     .unwrap_or(if scheme == "https" { 18089 } else { 18081 })
                     as i64;
 
-                match self.db.upsert_node(scheme, host, port).await {
+                match self
+                    .db
+                    .upsert_node(scheme, host, port, &target_network_str)
+                    .await
+                {
                     Ok(_) => {
                         success_count += 1;
-
-                        // For configured nodes, we can immediately set the target network
-                        // This is safe because these are explicitly configured by the user
-                        let full_url = format!("{}://{}:{}", scheme, host, port);
-                        if let Err(e) = self.db.update_node_network(&full_url, &target_network_str).await
-                        {
-                            warn!(
-                                "Failed to set network for configured node {}: {}",
-                                full_url, e
-                            );
-                        }
                     }
                     Err(e) => {
                         error_count += 1;

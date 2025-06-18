@@ -376,7 +376,10 @@ async fn initialize_context(
     } else {
         // No specific node provided, start RPC pool and use it
         match monero_rpc_pool::start_server_with_random_port(
-            monero_rpc_pool::config::Config::default(),
+            monero_rpc_pool::config::Config::new_random_port(
+                "127.0.0.1".to_string(),
+                std::env::temp_dir().join("monero-rpc-pool"),
+            ),
             match testnet {
                 true => swap::monero::Network::Stagenet,
                 false => swap::monero::Network::Mainnet,

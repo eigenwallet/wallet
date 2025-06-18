@@ -59,10 +59,10 @@ struct Args {
 fn create_level_override_filter(base_filter: &str) -> EnvFilter {
     // Parse the base filter and modify it to treat all monero_rpc_pool logs as trace
     let mut filter = EnvFilter::new(base_filter);
-    
+
     // Add a directive that treats all levels from our crate as trace
     filter = filter.add_directive("monero_rpc_pool=trace".parse().unwrap());
-    
+
     filter
 }
 
@@ -90,7 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Store node count for later logging before potentially moving args.nodes
     let manual_node_count = args.nodes.as_ref().map(|nodes| nodes.len());
-    
+
     // Determine nodes to use and set up discovery
     let _nodes = if let Some(manual_nodes) = args.nodes {
         info!(
@@ -117,7 +117,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let full_url = format!("{}://{}:{}", scheme, host, port);
 
                 // Insert into database
-                if let Err(e) = db.upsert_node(&scheme, &host, port).await {
+                if let Err(e) = db
+                    .upsert_node(&scheme, &host, port, &network_to_string(&args.network))
+                    .await
+                {
                     warn!("Failed to insert manual node {}: {}", node_url, e);
                 } else {
                     parsed_nodes.push(full_url);
@@ -128,7 +131,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Use manual nodes for discovery
-        discovery.discover_and_insert_nodes(args.network, manual_nodes).await?;
+        discovery
+            .discover_and_insert_nodes(args.network, manual_nodes)
+            .await?;
         parsed_nodes
     } else {
         info!(
@@ -137,13 +142,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         let db = Database::new().await?;
         let discovery = NodeDiscovery::new(db.clone());
-        
+
         // Start discovery process
         discovery.discover_nodes_from_sources(args.network).await?;
         Vec::new() // Return empty vec for consistency
     };
 
-    let config = Config::from_args(Some(args.host), Some(args.port));
+    let config = Config::new_with_port(
+        args.host,
+        args.port,
+        std::env::temp_dir().join("monero-rpc-pool"),
+    );
 
     let node_count_msg = if args.verbose {
         match manual_node_count {
