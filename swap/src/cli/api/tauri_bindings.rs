@@ -3,7 +3,7 @@ use crate::bitcoin;
 use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
 use anyhow::{anyhow, Context, Result};
 use bitcoin::Txid;
-use monero_rpc_pool::pool::{PoolStatus};
+use monero_rpc_pool::pool::PoolStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;

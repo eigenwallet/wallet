@@ -1,10 +1,10 @@
 use clap::Parser;
 use serde::Deserialize;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 use tracing_subscriber::{self, EnvFilter};
 
-use monero_rpc_pool::{config::Config, run_server};
 use monero_rpc_pool::database::Database;
+use monero_rpc_pool::{config::Config, run_server};
 use url;
 
 // TODO: use the type from monero-rs here
@@ -62,31 +62,33 @@ struct Args {
 }
 
 // TODO: This needs to be moved into the discovery module
-async fn fetch_nodes_from_network(network: &Network) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+async fn fetch_nodes_from_network(
+    network: &Network,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let url = format!(
         "https://monero.fail/nodes.json?chain=monero&network={}",
         network
     );
-    
+
     info!("Fetching nodes from: {}", url);
-    
+
     let client = reqwest::Client::new();
     let response = client
         .get(&url)
         .timeout(std::time::Duration::from_secs(30))
         .send()
         .await?;
-    
+
     if !response.status().is_success() {
         return Err(format!("HTTP error: {}", response.status()).into());
     }
-    
+
     let monero_fail_response: MoneroFailResponse = response.json().await?;
-    
+
     // Combine clear and web_compatible nodes, preferring web_compatible (HTTPS) when available
     let mut nodes = monero_fail_response.monero.web_compatible;
     nodes.extend(monero_fail_response.monero.clear);
-    
+
     // Remove duplicates while preserving order (web_compatible first)
     let mut unique_nodes = Vec::new();
     for node in nodes {
@@ -94,12 +96,16 @@ async fn fetch_nodes_from_network(network: &Network) -> Result<Vec<String>, Box<
             unique_nodes.push(node);
         }
     }
-    
+
     if unique_nodes.is_empty() {
         return Err("No nodes found in response".into());
     }
-    
-    info!("Fetched {} nodes for {} network", unique_nodes.len(), network);
+
+    info!(
+        "Fetched {} nodes for {} network",
+        unique_nodes.len(),
+        network
+    );
     Ok(unique_nodes)
 }
 
@@ -125,22 +131,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Determine nodes to use
     let nodes = if let Some(manual_nodes) = args.nodes {
-        info!("Using manually specified nodes for network: {}", args.network);
-        
+        info!(
+            "Using manually specified nodes for network: {}",
+            args.network
+        );
+
         // Insert manual nodes into database with network information
         let db = Database::new().await?;
         let mut parsed_nodes = Vec::new();
-        
+
         for node_url in &manual_nodes {
             // Parse the URL to extract components
             if let Ok(url) = url::Url::parse(node_url) {
                 let scheme = url.scheme().to_string();
                 let _protocol = if scheme == "https" { "ssl" } else { "tcp" };
                 let host = url.host_str().unwrap_or("").to_string();
-                let port = url.port().unwrap_or(if scheme == "https" { 443 } else { 80 }) as i64;
-                
+                let port = url
+                    .port()
+                    .unwrap_or(if scheme == "https" { 443 } else { 80 })
+                    as i64;
+
                 let full_url = format!("{}://{}:{}", scheme, host, port);
-                
+
                 // Insert into database
                 if let Err(e) = db.upsert_node(&scheme, &host, port).await {
                     warn!("Failed to insert manual node {}: {}", node_url, e);
@@ -151,28 +163,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 warn!("Failed to parse manual node URL: {}", node_url);
             }
         }
-        
+
         parsed_nodes
     } else {
         info!("Fetching nodes for {} network", args.network);
         match fetch_nodes_from_network(&args.network).await {
             Ok(fetched_nodes) => {
                 info!("Successfully fetched {} nodes", fetched_nodes.len());
-                
+
                 // Insert fetched nodes into database
                 let db = Database::new().await?;
                 let mut inserted_nodes = Vec::new();
-                
+
                 for node_url in &fetched_nodes {
                     // Parse the URL to extract components
                     if let Ok(url) = url::Url::parse(node_url) {
                         let scheme = url.scheme().to_string();
                         let _protocol = if scheme == "https" { "ssl" } else { "tcp" };
                         let host = url.host_str().unwrap_or("").to_string();
-                        let port = url.port().unwrap_or(if scheme == "https" { 18089 } else { 18081 }) as i64;
-                        
+                        let port =
+                            url.port()
+                                .unwrap_or(if scheme == "https" { 18089 } else { 18081 })
+                                as i64;
+
                         let full_url = format!("{}://{}:{}", scheme, host, port);
-                        
+
                         // Insert into database
                         if let Err(e) = db.upsert_node(&scheme, &host, port).await {
                             warn!("Failed to insert fetched node {}: {}", node_url, e);
@@ -183,7 +198,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         warn!("Failed to parse fetched node URL: {}", node_url);
                     }
                 }
-                
+
                 inserted_nodes
             }
             Err(e) => {
@@ -196,7 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::from_args(Some(args.host), Some(args.port), Some(nodes));
 
-    // TODO: Put this into a single log message 
+    // TODO: Put this into a single log message
     info!("Starting Monero RPC Pool");
     info!("Configuration:");
     info!("  Host: {}", config.host);

@@ -62,7 +62,7 @@ async fn raw_http_request(
         .map_err(|e| HandlerError::RequestError(e.to_string()))?;
 
     let url = format!("{}{}", node_url, path);
-    
+
     // Do not differentiate between POST and GET here, allow all methods
     let mut request_builder = match method {
         "POST" => client.post(&url),
@@ -80,9 +80,17 @@ async fn raw_http_request(
         let header_name = name.as_str();
         // Forward important headers, skip hop-by-hop headers
         // TODO: What is this for?
-        if !matches!(header_name.to_lowercase().as_str(), 
-            "host" | "connection" | "transfer-encoding" | "upgrade" | 
-            "proxy-authenticate" | "proxy-authorization" | "te" | "trailers") {
+        if !matches!(
+            header_name.to_lowercase().as_str(),
+            "host"
+                | "connection"
+                | "transfer-encoding"
+                | "upgrade"
+                | "proxy-authenticate"
+                | "proxy-authorization"
+                | "te"
+                | "trailers"
+        ) {
             if let Ok(header_value) = std::str::from_utf8(value.as_bytes()) {
                 request_builder = request_builder.header(header_name, header_value);
             }
@@ -103,7 +111,7 @@ async fn raw_http_request(
         .map_err(|e| HandlerError::RequestError(e.to_string()))?;
 
     let mut axum_response = Response::new(Body::from(body_bytes));
-    *axum_response.status_mut() = 
+    *axum_response.status_mut() =
         StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
     // Copy response headers exactly
@@ -112,7 +120,9 @@ async fn raw_http_request(
             axum::http::HeaderName::try_from(name.as_str()),
             axum::http::HeaderValue::try_from(value.as_bytes()),
         ) {
-            axum_response.headers_mut().insert(header_name, header_value);
+            axum_response
+                .headers_mut()
+                .insert(header_name, header_value);
         }
     }
 
@@ -170,12 +180,13 @@ async fn race_requests(
     while attempt < MAX_RETRIES {
         // Get two new nodes that we haven't tried yet
         let node_pool_guard = state.node_pool.read().await;
-        
+
         let mut node1_option = None;
         let mut node2_option = None;
-        
+
         // Try to get first node
-        for _ in 0..10 { // Max 10 attempts to find an untried node
+        for _ in 0..10 {
+            // Max 10 attempts to find an untried node
             if let Ok(Some(node)) = node_pool_guard.get_next_node().await {
                 if !tried_nodes.contains(&node) {
                     node1_option = Some(node);
@@ -183,9 +194,10 @@ async fn race_requests(
                 }
             }
         }
-        
+
         // Try to get second node
-        for _ in 0..10 { // Max 10 attempts to find an untried node
+        for _ in 0..10 {
+            // Max 10 attempts to find an untried node
             if let Ok(Some(node)) = node_pool_guard.get_next_node().await {
                 if !tried_nodes.contains(&node) && Some(&node) != node1_option.as_ref() {
                     node2_option = Some(node);
@@ -193,7 +205,7 @@ async fn race_requests(
                 }
             }
         }
-        
+
         drop(node_pool_guard); // Release the lock
 
         // If we can't get any new nodes, we've exhausted our options
@@ -202,23 +214,42 @@ async fn race_requests(
         }
 
         let mut requests = Vec::new();
-        
+
         if let Some(node1) = node1_option {
             tried_nodes.insert(node1.clone());
-            requests.push(single_raw_request(state, node1.clone(), path, method, headers, body));
+            requests.push(single_raw_request(
+                state,
+                node1.clone(),
+                path,
+                method,
+                headers,
+                body,
+            ));
         }
-        
+
         if let Some(node2) = node2_option {
             tried_nodes.insert(node2.clone());
-            requests.push(single_raw_request(state, node2.clone(), path, method, headers, body));
+            requests.push(single_raw_request(
+                state,
+                node2.clone(),
+                path,
+                method,
+                headers,
+                body,
+            ));
         }
 
         if requests.is_empty() {
             break;
         }
 
-        debug!("Attempt {}: Racing {} requests to {}: {} nodes", 
-               attempt + 1, method, path, requests.len());
+        debug!(
+            "Attempt {}: Racing {} requests to {}: {} nodes",
+            attempt + 1,
+            method,
+            path,
+            requests.len()
+        );
 
         // Handle the requests based on how many we have
         let result = match requests.len() {
@@ -231,7 +262,7 @@ async fn race_requests(
                 let mut iter = requests.into_iter();
                 let req1 = iter.next().unwrap();
                 let req2 = iter.next().unwrap();
-                
+
                 tokio::select! {
                     result1 = req1 => result1,
                     result2 = req2 => result2,
@@ -239,23 +270,35 @@ async fn race_requests(
             }
             _ => unreachable!("We only add 1 or 2 requests"),
         };
-        
+
         match result {
             Ok((response, winning_node, latency_ms)) => {
-                debug!("{} response from {} ({}ms) - SUCCESS on attempt {}!", 
-                       method, winning_node, latency_ms, attempt + 1);
+                debug!(
+                    "{} response from {} ({}ms) - SUCCESS on attempt {}!",
+                    method,
+                    winning_node,
+                    latency_ms,
+                    attempt + 1
+                );
                 record_success(state, &winning_node, latency_ms).await;
                 return Ok(response);
             }
             Err(_) => {
-                debug!("Attempt {} failed, retrying with different nodes...", attempt + 1);
+                debug!(
+                    "Attempt {} failed, retrying with different nodes...",
+                    attempt + 1
+                );
                 attempt += 1;
                 continue;
             }
         }
     }
 
-    error!("All {} requests failed after trying {} nodes", method, tried_nodes.len());
+    error!(
+        "All {} requests failed after trying {} nodes",
+        method,
+        tried_nodes.len()
+    );
     Err(HandlerError::AllRequestsFailed)
 }
 
@@ -298,12 +341,10 @@ pub async fn simple_http_handler(
 
         match race_requests(&state, &format!("/{}", endpoint), "GET", &headers, None).await {
             Ok(response) => response,
-            Err(_) => {
-                Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Body::from("All nodes failed"))
-                    .unwrap_or_else(|_| Response::new(Body::empty()))
-            }
+            Err(_) => Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from("All nodes failed"))
+                .unwrap_or_else(|_| Response::new(Body::empty())),
         }
     }
     .instrument(info_span!("http_request", endpoint = %endpoint_clone))
@@ -325,7 +366,7 @@ pub async fn simple_stats_handler(State(state): State<AppState>) -> Response {
                     "unsuccessful_health_checks": status.unsuccessful_health_checks,
                     "top_reliable_nodes": status.top_reliable_nodes
                 });
-                
+
                 Response::builder()
                     .status(StatusCode::OK)
                     .header("content-type", "application/json")

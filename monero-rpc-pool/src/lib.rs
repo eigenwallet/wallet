@@ -35,7 +35,10 @@ pub struct ServerInfo {
 }
 
 // TODO: Network should be part of the config and use the same type we use in swap (from monero-rs)
-async fn create_app_with_receiver(config: Config, network: String) -> Result<(Router, tokio::sync::broadcast::Receiver<PoolStatus>)> {
+async fn create_app_with_receiver(
+    config: Config,
+    network: String,
+) -> Result<(Router, tokio::sync::broadcast::Receiver<PoolStatus>)> {
     // Initialize database
     let db = Database::new().await?;
 
@@ -48,9 +51,19 @@ async fn create_app_with_receiver(config: Config, network: String) -> Result<(Ro
 
     // Insert configured nodes if any
     if !config.nodes.is_empty() {
-        info!("Inserting {} configured nodes for network: {}...", config.nodes.len(), network);
-        if let Err(e) = discovery.discover_and_insert_nodes(&network, config.nodes.clone()).await {
-            error!("Failed to insert configured nodes for network {}: {}", network, e);
+        info!(
+            "Inserting {} configured nodes for network: {}...",
+            config.nodes.len(),
+            network
+        );
+        if let Err(e) = discovery
+            .discover_and_insert_nodes(&network, config.nodes.clone())
+            .await
+        {
+            error!(
+                "Failed to insert configured nodes for network {}: {}",
+                network, e
+            );
         }
     }
 
@@ -58,13 +71,22 @@ async fn create_app_with_receiver(config: Config, network: String) -> Result<(Ro
     let discovery_health_check = discovery.clone();
     let network_health_check = network.clone();
     let node_pool_for_health_check = node_pool.clone();
-    
+
     // TODO: Store the handles in a struct and drop them when the app is dropped
     tokio::spawn(async move {
-        info!("Performing initial health check for network: {}...", network_health_check);
-        if let Err(e) = discovery_health_check.health_check_all_nodes(&network_health_check).await {
-            error!("Failed initial health check for network {}: {}", network_health_check, e);
-        }        
+        info!(
+            "Performing initial health check for network: {}...",
+            network_health_check
+        );
+        if let Err(e) = discovery_health_check
+            .health_check_all_nodes(&network_health_check)
+            .await
+        {
+            error!(
+                "Failed initial health check for network {}: {}",
+                network_health_check, e
+            );
+        }
     });
 
     // Periodically send status updates (ever 10s)
@@ -80,14 +102,19 @@ async fn create_app_with_receiver(config: Config, network: String) -> Result<(Ro
         }
     });
 
-
     // Start periodic discovery task
     let discovery_clone = discovery.clone();
     let network_clone = network.clone();
     let _node_pool_for_periodic = node_pool.clone();
     tokio::spawn(async move {
-        if let Err(e) = discovery_clone.periodic_discovery_task(&network_clone).await {
-            error!("Periodic discovery task failed for network {}: {}", network_clone, e);
+        if let Err(e) = discovery_clone
+            .periodic_discovery_task(&network_clone)
+            .await
+        {
+            error!(
+                "Periodic discovery task failed for network {}: {}",
+                network_clone, e
+            );
         }
     });
 
@@ -127,15 +154,15 @@ pub async fn run_server(config: Config, network: String) -> Result<()> {
 /// Start a server with a random port for library usage
 /// Returns the server info with the actual port used and a receiver for pool status updates
 /// TODO: Network should be part of the config and have a proper type
-pub async fn start_server_with_random_port(config: Config, network: String) -> Result<(ServerInfo, tokio::sync::broadcast::Receiver<PoolStatus>)> {
+pub async fn start_server_with_random_port(
+    config: Config,
+    network: String,
+) -> Result<(ServerInfo, tokio::sync::broadcast::Receiver<PoolStatus>)> {
     // Clone the host before moving config
     let host = config.host.clone();
-    
+
     // If port is 0, the system will assign a random available port
-    let config_with_random_port = Config {
-        port: 0,
-        ..config
-    };
+    let config_with_random_port = Config { port: 0, ..config };
 
     let (app, status_receiver) = create_app_with_receiver(config_with_random_port, network).await?;
 

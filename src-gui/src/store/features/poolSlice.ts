@@ -26,9 +26,6 @@ export const poolSlice = createSlice({
   },
 });
 
-export const {
-  poolStatusReceived,
-  poolStatusReset,
-} = poolSlice.actions;
+export const { poolStatusReceived, poolStatusReset } = poolSlice.actions;
 
-export default poolSlice.reducer; 
+export default poolSlice.reducer;

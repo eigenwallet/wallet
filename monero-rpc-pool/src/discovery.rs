@@ -35,15 +35,19 @@ impl NodeDiscovery {
     /// Centralized node fetching from various sources
     pub async fn discover_nodes_from_sources(&self) -> Result<()> {
         info!("Fetching nodes from monero.fail API");
-        
+
         // Use the JSON API instead of parsing HAProxy config
-        let response = self.client
+        let response = self
+            .client
             .get("https://monero.fail/nodes.json?chain=monero&network=mainnet")
             .send()
             .await?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Failed to fetch nodes: HTTP {}", response.status()));
+            return Err(anyhow::anyhow!(
+                "Failed to fetch nodes: HTTP {}",
+                response.status()
+            ));
         }
 
         let nodes_data: Value = response.json().await?;
@@ -54,10 +58,10 @@ impl NodeDiscovery {
                 if let Some(node_obj) = node_value.as_object() {
                     if let (Some(host), Some(port)) = (
                         node_obj.get("host").and_then(|v| v.as_str()),
-                        node_obj.get("port").and_then(|v| v.as_u64())
+                        node_obj.get("port").and_then(|v| v.as_u64()),
                     ) {
                         let scheme = if port == 18089 { "https" } else { "http" };
-                        
+
                         match self.db.upsert_node(scheme, host, port as i64).await {
                             Ok(_) => success_count += 1,
                             Err(e) => error!("Failed to insert node {}:{}: {}", host, port, e),
@@ -67,7 +71,10 @@ impl NodeDiscovery {
             }
         }
 
-        info!("Discovered and inserted {} nodes from monero.fail", success_count);
+        info!(
+            "Discovered and inserted {} nodes from monero.fail",
+            success_count
+        );
         Ok(())
     }
 
@@ -94,10 +101,14 @@ impl NodeDiscovery {
                             if let Some(result) = json.get("result") {
                                 // Extract network information from get_info response
                                 let discovered_network = self.extract_network_from_info(result);
-                                
-                                debug!("Node {} is healthy ({}ms), network: {:?}", 
-                                       url, latency.as_millis(), discovered_network);
-                                
+
+                                debug!(
+                                    "Node {} is healthy ({}ms), network: {:?}",
+                                    url,
+                                    latency.as_millis(),
+                                    discovered_network
+                                );
+
                                 Ok(HealthCheckOutcome {
                                     was_successful: true,
                                     latency,
@@ -168,7 +179,10 @@ impl NodeDiscovery {
 
     /// Updated health check workflow with identification and validation logic
     pub async fn health_check_all_nodes(&self, target_network: &str) -> Result<()> {
-        info!("Starting health check for all nodes targeting network: {}", target_network);
+        info!(
+            "Starting health check for all nodes targeting network: {}",
+            target_network
+        );
 
         // Get all nodes from database (both identified and unidentified)
         let all_nodes = sqlx::query_as::<_, MoneroNode>(
@@ -186,15 +200,17 @@ impl NodeDiscovery {
             match self.check_node_health(&node.full_url).await {
                 Ok(outcome) => {
                     // Always record the health check
-                    self.db.record_health_check(
-                        &node.full_url, 
-                        outcome.was_successful, 
-                        if outcome.was_successful {
-                            Some(outcome.latency.as_millis() as f64)
-                        } else {
-                            None
-                        }
-                    ).await?;
+                    self.db
+                        .record_health_check(
+                            &node.full_url,
+                            outcome.was_successful,
+                            if outcome.was_successful {
+                                Some(outcome.latency.as_millis() as f64)
+                            } else {
+                                None
+                            },
+                        )
+                        .await?;
 
                     if outcome.was_successful {
                         healthy_count += 1;
@@ -204,8 +220,13 @@ impl NodeDiscovery {
                             match &node.network {
                                 None => {
                                     // Node is unidentified - identify it
-                                    info!("Identifying node {} as network: {}", node.full_url, discovered_network);
-                                    self.db.update_node_network(&node.full_url, &discovered_network).await?;
+                                    info!(
+                                        "Identifying node {} as network: {}",
+                                        node.full_url, discovered_network
+                                    );
+                                    self.db
+                                        .update_node_network(&node.full_url, &discovered_network)
+                                        .await?;
                                     identified_count += 1;
                                 }
                                 Some(stored_network) => {
@@ -213,7 +234,12 @@ impl NodeDiscovery {
                                     if stored_network != &discovered_network {
                                         warn!("Network mismatch detected for node {}: stored={}, discovered={}. Correcting...", 
                                               node.full_url, stored_network, discovered_network);
-                                        self.db.update_node_network(&node.full_url, &discovered_network).await?;
+                                        self.db
+                                            .update_node_network(
+                                                &node.full_url,
+                                                &discovered_network,
+                                            )
+                                            .await?;
                                         corrected_count += 1;
                                     }
                                 }
@@ -224,7 +250,9 @@ impl NodeDiscovery {
                 }
                 Err(e) => {
                     tracing::trace!("Failed to check node {}: {}", node.full_url, e);
-                    self.db.record_health_check(&node.full_url, false, None).await?;
+                    self.db
+                        .record_health_check(&node.full_url, false, None)
+                        .await?;
                 }
             }
 
@@ -264,8 +292,10 @@ impl NodeDiscovery {
             for network in &["mainnet", "stagenet", "testnet"] {
                 if let Ok((total, reachable, reliable)) = self.db.get_node_stats(network).await {
                     if total > 0 {
-                        info!("Node stats for {}: {} total, {} reachable, {} reliable", 
-                              network, total, reachable, reliable);
+                        info!(
+                            "Node stats for {}: {} total, {} reachable, {} reliable",
+                            network, total, reachable, reliable
+                        );
                     }
                 }
             }
@@ -273,7 +303,11 @@ impl NodeDiscovery {
     }
 
     /// Insert configured nodes for a specific network
-    pub async fn discover_and_insert_nodes(&self, target_network: &str, nodes: Vec<String>) -> Result<()> {
+    pub async fn discover_and_insert_nodes(
+        &self,
+        target_network: &str,
+        nodes: Vec<String>,
+    ) -> Result<()> {
         info!("Inserting {} configured nodes", nodes.len());
 
         let mut success_count = 0;
@@ -283,25 +317,41 @@ impl NodeDiscovery {
             if let Ok(url) = url::Url::parse(node_url) {
                 let scheme = url.scheme();
                 let host = url.host_str().unwrap_or("");
-                let port = url.port().unwrap_or(if scheme == "https" { 18089 } else { 18081 }) as i64;
-                
-                debug!("Inserting configured node {}/{}: {}://{}:{}", 
-                       i + 1, nodes.len(), scheme, host, port);
-                
+                let port = url
+                    .port()
+                    .unwrap_or(if scheme == "https" { 18089 } else { 18081 })
+                    as i64;
+
+                debug!(
+                    "Inserting configured node {}/{}: {}://{}:{}",
+                    i + 1,
+                    nodes.len(),
+                    scheme,
+                    host,
+                    port
+                );
+
                 match self.db.upsert_node(scheme, host, port).await {
                     Ok(_) => {
                         success_count += 1;
-                        
+
                         // For configured nodes, we can immediately set the target network
                         // This is safe because these are explicitly configured by the user
                         let full_url = format!("{}://{}:{}", scheme, host, port);
-                        if let Err(e) = self.db.update_node_network(&full_url, target_network).await {
-                            warn!("Failed to set network for configured node {}: {}", full_url, e);
+                        if let Err(e) = self.db.update_node_network(&full_url, target_network).await
+                        {
+                            warn!(
+                                "Failed to set network for configured node {}: {}",
+                                full_url, e
+                            );
                         }
                     }
                     Err(e) => {
                         error_count += 1;
-                        error!("Failed to insert configured node {}://{}:{}: {}", scheme, host, port, e);
+                        error!(
+                            "Failed to insert configured node {}://{}:{}: {}",
+                            scheme, host, port, e
+                        );
                     }
                 }
             } else {
@@ -310,7 +360,10 @@ impl NodeDiscovery {
             }
         }
 
-        info!("Configured node insertion complete: {} successful, {} errors", success_count, error_count);
+        info!(
+            "Configured node insertion complete: {} successful, {} errors",
+            success_count, error_count
+        );
         Ok(())
     }
 }

@@ -9,11 +9,11 @@ use tracing::{debug, info, warn};
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct MoneroNode {
     pub id: Option<i64>,
-    pub scheme: String,   // http or https
+    pub scheme: String, // http or https
     pub host: String,
     pub port: i64,
     pub full_url: String,
-    pub network: Option<String>,  // mainnet, stagenet, or NULL if unidentified
+    pub network: Option<String>, // mainnet, stagenet, or NULL if unidentified
     pub first_seen_at: String,   // ISO 8601 timestamp when first discovered
     // Computed fields from health_checks (not stored in monero_nodes table)
     #[sqlx(default)]
@@ -23,7 +23,7 @@ pub struct MoneroNode {
     #[sqlx(default)]
     pub last_success: Option<String>,
     #[sqlx(default)]
-    pub last_failure: Option<String>, 
+    pub last_failure: Option<String>,
     #[sqlx(default)]
     pub last_checked: Option<String>,
     #[sqlx(default)]
@@ -42,7 +42,7 @@ pub struct MoneroNode {
 pub struct HealthCheck {
     pub id: Option<i64>,
     pub node_id: i64,
-    pub timestamp: String,     // ISO 8601 timestamp
+    pub timestamp: String, // ISO 8601 timestamp
     pub was_successful: bool,
     pub latency_ms: Option<f64>,
 }
@@ -167,13 +167,17 @@ impl Database {
             .execute(&self.pool)
             .await?;
 
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_health_checks_node_id ON health_checks(node_id)")
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_health_checks_node_id ON health_checks(node_id)",
+        )
+        .execute(&self.pool)
+        .await?;
 
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_health_checks_timestamp ON health_checks(timestamp)")
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_health_checks_timestamp ON health_checks(timestamp)",
+        )
+        .execute(&self.pool)
+        .await?;
 
         info!("Database migration completed");
         Ok(())
@@ -210,7 +214,7 @@ impl Database {
     /// Update a node's network after it has been identified
     pub async fn update_node_network(&self, url: &str, network: &str) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
-        
+
         let rows_affected = sqlx::query(
             r#"
             UPDATE monero_nodes 
@@ -230,12 +234,17 @@ impl Database {
         } else {
             warn!("Failed to update network for node {}: not found", url);
         }
-        
+
         Ok(())
     }
 
     /// Record a health check event
-    pub async fn record_health_check(&self, url: &str, was_successful: bool, latency_ms: Option<f64>) -> Result<()> {
+    pub async fn record_health_check(
+        &self,
+        url: &str,
+        was_successful: bool,
+        latency_ms: Option<f64>,
+    ) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
 
         // First get the node_id
@@ -265,8 +274,10 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        debug!("Recorded health check for node {} (id: {}): success={}, latency={:?}ms", 
-               url, node_id, was_successful, latency_ms);
+        debug!(
+            "Recorded health check for node {} (id: {}): success={}, latency={:?}ms",
+            url, node_id, was_successful, latency_ms
+        );
         Ok(())
     }
 
@@ -339,7 +350,11 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        debug!("Retrieved {} identified nodes for network {}", nodes.len(), network);
+        debug!(
+            "Retrieved {} identified nodes for network {}",
+            nodes.len(),
+            network
+        );
         Ok(nodes)
     }
 
@@ -390,7 +405,11 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        debug!("Retrieved {} reliable nodes for network {}", nodes.len(), network);
+        debug!(
+            "Retrieved {} reliable nodes for network {}",
+            nodes.len(),
+            network
+        );
         Ok(nodes)
     }
 

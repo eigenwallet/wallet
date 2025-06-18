@@ -108,7 +108,6 @@ impl State {
         self.context = context.into();
     }
 
-
     /// Attempts to retrieve the context
     /// Returns an error if the context is not available
     fn try_get_context(&self) -> Result<Arc<Context>, String> {
@@ -388,7 +387,7 @@ async fn initialize_context(
             Ok((server_info, mut status_receiver)) => {
                 let rpc_url = format!("http://{}:{}", server_info.host, server_info.port);
                 tracing::info!("Monero RPC Pool started on {}", rpc_url);
-                
+
                 // Start listening for pool status updates and forward them to frontend
                 let app_handle_clone = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
@@ -396,7 +395,7 @@ async fn initialize_context(
                         let _ = app_handle_clone.emit("pool-status-update", &status);
                     }
                 });
-                
+
                 rpc_url.parse().ok()
             }
             Err(e) => {
@@ -446,4 +445,3 @@ async fn initialize_context(
         }
     }
 }
-

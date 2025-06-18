@@ -41,10 +41,13 @@ export default function MoneroPoolHealthBox() {
   const renderHealthSummary = () => {
     if (!poolStatus) return null;
 
-    const totalChecks = poolStatus.successful_health_checks + poolStatus.unsuccessful_health_checks;
-    const overallSuccessRate = totalChecks > 0 
-      ? (poolStatus.successful_health_checks / totalChecks) * 100 
-      : 0;
+    const totalChecks =
+      poolStatus.successful_health_checks +
+      poolStatus.unsuccessful_health_checks;
+    const overallSuccessRate =
+      totalChecks > 0
+        ? (poolStatus.successful_health_checks / totalChecks) * 100
+        : 0;
 
     return (
       <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
@@ -62,7 +65,13 @@ export default function MoneroPoolHealthBox() {
         />
         <Chip
           label={`${overallSuccessRate.toFixed(1)}% Success Rate`}
-          color={overallSuccessRate > 80 ? "success" : overallSuccessRate > 60 ? "warning" : "error"}
+          color={
+            overallSuccessRate > 80
+              ? "success"
+              : overallSuccessRate > 60
+                ? "warning"
+                : "error"
+          }
           variant="outlined"
           size="small"
         />
@@ -90,25 +99,30 @@ export default function MoneroPoolHealthBox() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {poolStatus.top_reliable_nodes.map((node: ReliableNodeInfo, index: number) => (
-              <TableRow key={index}>
-                <TableCell>
-                  <Typography variant="caption" sx={{ wordBreak: "break-all" }}>
-                    {node.url}
-                  </Typography>
-                </TableCell>
-                <TableCell align="right">
-                  <Typography variant="caption">
-                    {formatSuccessRate(node.success_rate)}
-                  </Typography>
-                </TableCell>
-                <TableCell align="right">
-                  <Typography variant="caption">
-                    {formatLatency(node.avg_latency_ms)}
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            ))}
+            {poolStatus.top_reliable_nodes.map(
+              (node: ReliableNodeInfo, index: number) => (
+                <TableRow key={index}>
+                  <TableCell>
+                    <Typography
+                      variant="caption"
+                      sx={{ wordBreak: "break-all" }}
+                    >
+                      {node.url}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="caption">
+                      {formatSuccessRate(node.success_rate)}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="caption">
+                      {formatLatency(node.avg_latency_ms)}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ),
+            )}
           </TableBody>
         </Table>
       </TableContainer>
@@ -125,14 +139,14 @@ export default function MoneroPoolHealthBox() {
       }
       mainContent={
         <Typography variant="subtitle2">
-          Real-time health monitoring of the Monero node pool. Shows node availability, 
-          success rates, and performance metrics.
+          Real-time health monitoring of the Monero node pool. Shows node
+          availability, success rates, and performance metrics.
         </Typography>
       }
       additionalContent={
         <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {poolStatus && renderHealthSummary()}
-          
+
           {poolStatus && (
             <Box>
               <Typography variant="body2" sx={{ mb: 1, fontWeight: "medium" }}>
@@ -140,10 +154,12 @@ export default function MoneroPoolHealthBox() {
               </Typography>
               <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                 <Typography variant="caption" color="text.secondary">
-                  Successful: {poolStatus.successful_health_checks.toLocaleString()}
+                  Successful:{" "}
+                  {poolStatus.successful_health_checks.toLocaleString()}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Failed: {poolStatus.unsuccessful_health_checks.toLocaleString()}
+                  Failed:{" "}
+                  {poolStatus.unsuccessful_health_checks.toLocaleString()}
                 </Typography>
               </Box>
             </Box>

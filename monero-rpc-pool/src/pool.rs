@@ -35,8 +35,8 @@ pub struct NodePool {
 impl NodePool {
     pub fn new(db: Database, network: String) -> (Self, broadcast::Receiver<PoolStatus>) {
         let (status_sender, status_receiver) = broadcast::channel(100);
-        let pool = Self { 
-            db, 
+        let pool = Self {
+            db,
             network,
             status_sender,
         };
@@ -47,28 +47,32 @@ impl NodePool {
     /// Only considers identified nodes (nodes with network set)
     pub async fn get_next_node(&self) -> Result<Option<String>> {
         let candidate_nodes = self.db.get_identified_nodes(&self.network).await?;
-        
+
         if candidate_nodes.is_empty() {
             debug!("No identified nodes available for network {}", self.network);
             return Ok(None);
         }
-        
+
         if candidate_nodes.len() == 1 {
             return Ok(Some(candidate_nodes[0].full_url.clone()));
         }
-        
+
         // Power of Two Choices: pick 2 random nodes, select the better one
         let mut rng = thread_rng();
         let node1 = candidate_nodes.choose(&mut rng).unwrap();
         let node2 = candidate_nodes.choose(&mut rng).unwrap();
-        
-        let selected = if self.calculate_goodness_score(node1) >= self.calculate_goodness_score(node2) {
-            node1
-        } else {
-            node2
-        };
-        
-        debug!("Selected node using P2C for network {}: {}", self.network, selected.full_url);
+
+        let selected =
+            if self.calculate_goodness_score(node1) >= self.calculate_goodness_score(node2) {
+                node1
+            } else {
+                node2
+            };
+
+        debug!(
+            "Selected node using P2C for network {}: {}",
+            self.network, selected.full_url
+        );
         Ok(Some(selected.full_url.clone()))
     }
 
@@ -79,25 +83,32 @@ impl NodePool {
         if total_checks == 0 {
             return 0.0;
         }
-        
+
         let success_rate = node.success_count as f64 / total_checks as f64;
-        
+
         // Weight by recency (more recent interactions = higher weight)
         let recency_weight = (total_checks as f64).min(200.0) / 200.0;
         let mut score = success_rate * recency_weight;
-        
+
         // Factor in latency - lower latency = higher score
         if let Some(avg_latency) = node.avg_latency_ms {
             let latency_factor = 1.0 - (avg_latency.min(2000.0) / 2000.0);
             score = score * 0.8 + latency_factor * 0.2; // 80% success rate, 20% latency
         }
-        
+
         score
     }
 
     pub async fn record_success(&self, url: &str, latency_ms: f64) -> Result<()> {
-        self.db.record_health_check(url, true, Some(latency_ms)).await?;
-        tracing::trace!("Recorded success for {} in network {}: {}ms", url, self.network, latency_ms);
+        self.db
+            .record_health_check(url, true, Some(latency_ms))
+            .await?;
+        tracing::trace!(
+            "Recorded success for {} in network {}: {}ms",
+            url,
+            self.network,
+            latency_ms
+        );
         Ok(())
     }
 
@@ -106,18 +117,19 @@ impl NodePool {
         tracing::trace!("Recorded failure for {} in network {}", url, self.network);
         Ok(())
     }
-    
+
     pub async fn publish_status_update(&self) -> Result<()> {
         let status = self.get_current_status().await?;
         let _ = self.status_sender.send(status); // Ignore if no receivers
         Ok(())
     }
-    
+
     pub async fn get_current_status(&self) -> Result<PoolStatus> {
         let (_total, reachable, reliable) = self.db.get_node_stats(&self.network).await?;
         let reliable_nodes = self.db.get_reliable_nodes(&self.network).await?;
-        let (successful_checks, unsuccessful_checks) = self.db.get_health_check_stats(&self.network).await?;
-        
+        let (successful_checks, unsuccessful_checks) =
+            self.db.get_health_check_stats(&self.network).await?;
+
         let top_reliable_nodes = reliable_nodes
             .into_iter()
             .take(5)
@@ -127,7 +139,7 @@ impl NodePool {
                 avg_latency_ms: node.avg_latency_ms,
             })
             .collect();
-        
+
         Ok(PoolStatus {
             healthy_node_count: reachable as u32,
             reliable_node_count: reliable as u32,
