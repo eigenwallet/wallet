@@ -6,6 +6,9 @@ use serde_json::Value;
 use tracing::{debug, error, info, warn};
 use url;
 
+// TODO: Have a set of hardcoded nodes for bootstrapping
+// and if we cant reach monero.fail
+
 use crate::database::{Database, MoneroNode};
 
 #[derive(Debug)]
@@ -33,24 +36,59 @@ impl NodeDiscovery {
     }
 
     /// Centralized node fetching from various sources
-    pub async fn discover_nodes_from_sources(&self) -> Result<()> {
-        info!("Fetching nodes from monero.fail API");
+    pub async fn discover_nodes_from_sources(&self, network: &str) -> Result<()> {
+        match network {
+            "mainnet" => {
+                info!("Fetching nodes from monero.fail API for mainnet");
+                
+                // Use the JSON API for mainnet
+                let response = self
+                    .client
+                    .get("https://monero.fail/nodes.json?chain=monero&network=mainnet")
+                    .send()
+                    .await?;
 
-        // Use the JSON API instead of parsing HAProxy config
-        let response = self
-            .client
-            .get("https://monero.fail/nodes.json?chain=monero&network=mainnet")
-            .send()
-            .await?;
+                if !response.status().is_success() {
+                    return Err(anyhow::anyhow!(
+                        "Failed to fetch nodes: HTTP {}",
+                        response.status()
+                    ));
+                }
 
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Failed to fetch nodes: HTTP {}",
-                response.status()
-            ));
+                let nodes_data: Value = response.json().await?;
+                self.process_node_data(&nodes_data, "mainnet").await?;
+            }
+            "stagenet" => {
+                info!("Using hardcoded stagenet nodes (monero.fail doesn't support stagenet)");
+                
+                // Create a JSON structure matching monero.fail format for stagenet nodes
+                let stagenet_nodes_json = serde_json::json!([
+                    {"host": "node2.monerodevs.org", "port": 38089},
+                    {"host": "stagenet.xmr-tw.org", "port": 38081},
+                    {"host": "stagenet.xmr.ditatompel.com", "port": 443},
+                    {"host": "3.10.182.182", "port": 38081},
+                    {"host": "xmr-lux.boldsuck.org", "port": 38081},
+                    {"host": "ykqlrp7lumcik3ubzz3nfsahkbplfgqshavmgbxb4fauexqzat6idjad.onion", "port": 38081},
+                    {"host": "node.monerodevs.org", "port": 38089},
+                    {"host": "ct36dsbe3oubpbebpxmiqz4uqk6zb6nhmkhoekileo4fts23rvuse2qd.onion", "port": 38081},
+                    {"host": "125.229.105.12", "port": 38081},
+                    {"host": "node3.monerodevs.org", "port": 38089}
+                ]);
+                
+                self.process_node_data(&stagenet_nodes_json, "stagenet").await?;
+            }
+            "testnet" => {
+                info!("Testnet node discovery not supported, skipping");
+            }
+            _ => {
+                warn!("Unknown network '{}', skipping discovery", network);
+            }
         }
+        Ok(())
+    }
 
-        let nodes_data: Value = response.json().await?;
+    /// Process node data and insert into database
+    async fn process_node_data(&self, nodes_data: &Value, source_network: &str) -> Result<()> {
         let mut success_count = 0;
 
         if let Some(nodes_array) = nodes_data.as_array() {
@@ -60,7 +98,7 @@ impl NodeDiscovery {
                         node_obj.get("host").and_then(|v| v.as_str()),
                         node_obj.get("port").and_then(|v| v.as_u64()),
                     ) {
-                        let scheme = if port == 18089 { "https" } else { "http" };
+                        let scheme = if port == 18089 || port == 443 { "https" } else { "http" };
 
                         match self.db.upsert_node(scheme, host, port as i64).await {
                             Ok(_) => success_count += 1,
@@ -72,8 +110,8 @@ impl NodeDiscovery {
         }
 
         info!(
-            "Discovered and inserted {} nodes from monero.fail",
-            success_count
+            "Discovered and inserted {} nodes from {} source",
+            success_count, source_network
         );
         Ok(())
     }
@@ -102,12 +140,6 @@ impl NodeDiscovery {
                                 // Extract network information from get_info response
                                 let discovered_network = self.extract_network_from_info(result);
 
-                                debug!(
-                                    "Node {} is healthy ({}ms), network: {:?}",
-                                    url,
-                                    latency.as_millis(),
-                                    discovered_network
-                                );
 
                                 Ok(HealthCheckOutcome {
                                     was_successful: true,
@@ -115,7 +147,6 @@ impl NodeDiscovery {
                                     discovered_network,
                                 })
                             } else {
-                                debug!("Node {} returned invalid response structure", url);
                                 Ok(HealthCheckOutcome {
                                     was_successful: false,
                                     latency,
@@ -124,7 +155,6 @@ impl NodeDiscovery {
                             }
                         }
                         Err(e) => {
-                            debug!("Node {} returned invalid JSON: {}", url, e);
                             Ok(HealthCheckOutcome {
                                 was_successful: false,
                                 latency,
@@ -133,7 +163,6 @@ impl NodeDiscovery {
                         }
                     }
                 } else {
-                    debug!("Node {} returned HTTP {}", url, resp.status());
                     Ok(HealthCheckOutcome {
                         was_successful: false,
                         latency,
@@ -142,7 +171,6 @@ impl NodeDiscovery {
                 }
             }
             Err(e) => {
-                tracing::trace!("Node {} is unreachable: {}", url, e);
                 Ok(HealthCheckOutcome {
                     was_successful: false,
                     latency,
@@ -249,7 +277,6 @@ impl NodeDiscovery {
                     checked_count += 1;
                 }
                 Err(e) => {
-                    tracing::trace!("Failed to check node {}: {}", node.full_url, e);
                     self.db
                         .record_health_check(&node.full_url, false, None)
                         .await?;
@@ -257,7 +284,7 @@ impl NodeDiscovery {
             }
 
             // Small delay to avoid hammering nodes
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
 
         info!(
@@ -269,22 +296,21 @@ impl NodeDiscovery {
     }
 
     /// Periodic discovery task with improved error handling
-    /// Note: This now discovers all networks automatically, ignoring the target_network parameter
-    pub async fn periodic_discovery_task(&self, _target_network: &str) -> Result<()> {
+    pub async fn periodic_discovery_task(&self, target_network: &str) -> Result<()> {
         let mut interval = tokio::time::interval(Duration::from_secs(3600)); // Every hour
 
         loop {
             interval.tick().await;
 
-            info!("Running periodic node discovery");
+            info!("Running periodic node discovery for network: {}", target_network);
 
-            // Discover new nodes from all sources
-            if let Err(e) = self.discover_nodes_from_sources().await {
+            // Discover new nodes from sources
+            if let Err(e) = self.discover_nodes_from_sources(target_network).await {
                 error!("Failed to discover nodes: {}", e);
             }
 
             // Health check all nodes (will identify networks automatically)
-            if let Err(e) = self.health_check_all_nodes("mainnet").await {
+            if let Err(e) = self.health_check_all_nodes(target_network).await {
                 error!("Failed to perform health check: {}", e);
             }
 

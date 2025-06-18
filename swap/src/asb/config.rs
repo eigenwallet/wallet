@@ -467,6 +467,7 @@ pub fn query_user_for_initial_config(testnet: bool) -> Result<Config> {
             daemon_url: monero_daemon_url,
             finality_confirmations: None,
             network: monero_network,
+            monero_node_pool: false,
         },
         tor: TorConf {
             register_hidden_service,

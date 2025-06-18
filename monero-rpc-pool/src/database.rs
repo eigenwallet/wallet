@@ -274,10 +274,6 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        debug!(
-            "Recorded health check for node {} (id: {}): success={}, latency={:?}ms",
-            url, node_id, was_successful, latency_ms
-        );
         Ok(())
     }
 
@@ -405,11 +401,6 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        debug!(
-            "Retrieved {} reliable nodes for network {}",
-            nodes.len(),
-            network
-        );
         Ok(nodes)
     }
 

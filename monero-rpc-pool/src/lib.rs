@@ -73,21 +73,21 @@ async fn create_app_with_receiver(
     let node_pool_for_health_check = node_pool.clone();
 
     // TODO: Store the handles in a struct and drop them when the app is dropped
-    tokio::spawn(async move {
-        info!(
-            "Performing initial health check for network: {}...",
-            network_health_check
-        );
-        if let Err(e) = discovery_health_check
-            .health_check_all_nodes(&network_health_check)
-            .await
-        {
-            error!(
-                "Failed initial health check for network {}: {}",
-                network_health_check, e
-            );
-        }
-    });
+    // tokio::spawn(async move {
+    //     info!(
+    //         "Performing initial health check for network: {}...",
+    //         network_health_check
+    //     );
+    //     if let Err(e) = discovery_health_check
+    //         .health_check_all_nodes(&network_health_check)
+    //         .await
+    //     {
+    //         error!(
+    //             "Failed initial health check for network {}: {}",
+    //             network_health_check, e
+    //         );
+    //     }
+    // });
 
     // Periodically send status updates (ever 10s)
     tokio::spawn(async move {

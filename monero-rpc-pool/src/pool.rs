@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rand::prelude::*;
 use tokio::sync::broadcast;
 use tracing::debug;
@@ -103,18 +103,11 @@ impl NodePool {
         self.db
             .record_health_check(url, true, Some(latency_ms))
             .await?;
-        tracing::trace!(
-            "Recorded success for {} in network {}: {}ms",
-            url,
-            self.network,
-            latency_ms
-        );
         Ok(())
     }
 
     pub async fn record_failure(&self, url: &str) -> Result<()> {
         self.db.record_health_check(url, false, None).await?;
-        tracing::trace!("Recorded failure for {} in network {}", url, self.network);
         Ok(())
     }
 
@@ -159,14 +152,8 @@ impl NodePool {
         );
         
         // Step 1: Try primary fetch - get top nodes based on recent success (last 200 health checks)
-        let mut top_nodes = match self.db.get_top_nodes_by_recent_success(&self.network, 200, limit as i64).await {
-            Ok(nodes) => nodes,
-            Err(e) => {
-                debug!("Primary fetch failed with error: {}, falling back to identified nodes", e);
-                Vec::new()
-            }
-        };
-        
+        let mut top_nodes = self.db.get_top_nodes_by_recent_success(&self.network, 200, limit as i64).await.context("Failed to get top nodes by recent success")?;
+
         debug!(
             "Primary fetch returned {} nodes for network {} (target: {})",
             top_nodes.len(),
@@ -175,10 +162,12 @@ impl NodePool {
         );
 
         // Step 2: If primary fetch failed, fall back to any identified nodes with successful health checks
+        // TODO: Instead of is_empty, use top_nodes.len() < limit
         if top_nodes.is_empty() {
             debug!("Primary fetch returned no nodes, falling back to any identified nodes with successful health checks");
             top_nodes = self.db.get_identified_nodes(&self.network).await?;
             // Filter to only nodes with at least one successful health check
+            // TODO: This should be done in the database query! Too slow!
             top_nodes.retain(|node| node.success_count > 0);
             
             debug!(
@@ -188,7 +177,7 @@ impl NodePool {
             );
         }
 
-        // Step 3: Check if we need to fill up the pool
+        // Step 3: Check if we still don't have enough nodes
         if top_nodes.len() < limit {
             let needed = limit - top_nodes.len();
             debug!(
@@ -264,7 +253,7 @@ pub struct PoolStats {
     pub total_nodes: i64,
     pub reachable_nodes: i64,
     pub reliable_nodes: i64,
-    pub avg_reliable_latency_ms: Option<f64>,
+    pub avg_reliable_latency_ms: Option<f64>, // TOOD: Why is this an Option, we hate Options
 }
 
 impl PoolStats {
