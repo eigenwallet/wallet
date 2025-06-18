@@ -4,7 +4,7 @@ use tracing::{info, warn, error};
 use tracing_subscriber::{self, EnvFilter};
 
 use monero_rpc_pool::{config::Config, run_server};
-use monero_rpc_pool::database::{Database, MoneroNode};
+use monero_rpc_pool::database::Database;
 use url;
 
 // TODO: use the type from monero-rs here
@@ -135,23 +135,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Parse the URL to extract components
             if let Ok(url) = url::Url::parse(node_url) {
                 let scheme = url.scheme().to_string();
-                let protocol = if scheme == "https" { "ssl" } else { "tcp" };
+                let _protocol = if scheme == "https" { "ssl" } else { "tcp" };
                 let host = url.host_str().unwrap_or("").to_string();
                 let port = url.port().unwrap_or(if scheme == "https" { 443 } else { 80 }) as i64;
                 
-                let node = MoneroNode::new(
-                    scheme,
-                    protocol.to_string(),
-                    host,
-                    port,
-                    args.network.to_string(),
-                );
+                let full_url = format!("{}://{}:{}", scheme, host, port);
                 
                 // Insert into database
-                if let Err(e) = db.upsert_node(&node).await {
+                if let Err(e) = db.upsert_node(&scheme, &host, port).await {
                     warn!("Failed to insert manual node {}: {}", node_url, e);
                 } else {
-                    parsed_nodes.push(node.full_url);
+                    parsed_nodes.push(full_url);
                 }
             } else {
                 warn!("Failed to parse manual node URL: {}", node_url);
@@ -173,23 +167,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Parse the URL to extract components
                     if let Ok(url) = url::Url::parse(node_url) {
                         let scheme = url.scheme().to_string();
-                        let protocol = if scheme == "https" { "ssl" } else { "tcp" };
+                        let _protocol = if scheme == "https" { "ssl" } else { "tcp" };
                         let host = url.host_str().unwrap_or("").to_string();
                         let port = url.port().unwrap_or(if scheme == "https" { 18089 } else { 18081 }) as i64;
                         
-                        let node = MoneroNode::new(
-                            scheme,
-                            protocol.to_string(),
-                            host,
-                            port,
-                            args.network.to_string(),
-                        );
+                        let full_url = format!("{}://{}:{}", scheme, host, port);
                         
                         // Insert into database
-                        if let Err(e) = db.upsert_node(&node).await {
+                        if let Err(e) = db.upsert_node(&scheme, &host, port).await {
                             warn!("Failed to insert fetched node {}: {}", node_url, e);
                         } else {
-                            inserted_nodes.push(node.full_url);
+                            inserted_nodes.push(full_url);
                         }
                     } else {
                         warn!("Failed to parse fetched node URL: {}", node_url);
@@ -208,6 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::from_args(Some(args.host), Some(args.port), Some(nodes));
 
+    // TODO: Put this into a single log message 
     info!("Starting Monero RPC Pool");
     info!("Configuration:");
     info!("  Host: {}", config.host);

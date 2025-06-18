@@ -72,7 +72,6 @@ pub fn init(
         "asb",
         "monero_sys",
         "unstoppableswap-gui-rs",
-        "monero-rpc-pool",
         "monero_rpc_pool",
     ];
 

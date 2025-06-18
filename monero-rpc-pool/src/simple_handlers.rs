@@ -6,7 +6,7 @@ use axum::{
     response::Response,
 };
 use std::time::Instant;
-use tracing::{debug, error};
+use tracing::{debug, error, info_span, Instrument};
 
 use crate::AppState;
 
@@ -21,17 +21,17 @@ enum HandlerError {
 }
 
 async fn get_two_nodes(state: &AppState) -> Result<(String, String), HandlerError> {
-    let smart_pool_guard = state.smart_pool.read().await;
+    let node_pool_guard = state.node_pool.read().await;
 
     // Get first node
-    let node1 = smart_pool_guard
+    let node1 = node_pool_guard
         .get_next_node()
         .await
         .map_err(|e| HandlerError::PoolError(e.to_string()))?
         .ok_or(HandlerError::NoNodes)?;
 
     // Get second node (different from first)
-    let mut node2 = smart_pool_guard
+    let mut node2 = node_pool_guard
         .get_next_node()
         .await
         .map_err(|e| HandlerError::PoolError(e.to_string()))?
@@ -39,7 +39,7 @@ async fn get_two_nodes(state: &AppState) -> Result<(String, String), HandlerErro
 
     // If we got the same node, try once more for diversity
     if node2 == node1 {
-        if let Ok(Some(different_node)) = smart_pool_guard.get_next_node().await {
+        if let Ok(Some(different_node)) = node_pool_guard.get_next_node().await {
             if different_node != node1 {
                 node2 = different_node;
             }
@@ -63,6 +63,7 @@ async fn raw_http_request(
 
     let url = format!("{}{}", node_url, path);
     
+    // Do not differentiate between POST and GET here, allow all methods
     let mut request_builder = match method {
         "POST" => client.post(&url),
         "GET" => client.get(&url),
@@ -119,15 +120,15 @@ async fn raw_http_request(
 }
 
 async fn record_success(state: &AppState, node_url: &str, latency_ms: f64) {
-    let smart_pool_guard = state.smart_pool.read().await;
-    if let Err(e) = smart_pool_guard.record_success(node_url, latency_ms).await {
+    let node_pool_guard = state.node_pool.read().await;
+    if let Err(e) = node_pool_guard.record_success(node_url, latency_ms).await {
         error!("Failed to record success for {}: {}", node_url, e);
     }
 }
 
 async fn record_failure(state: &AppState, node_url: &str) {
-    let smart_pool_guard = state.smart_pool.read().await;
-    if let Err(e) = smart_pool_guard.record_failure(node_url).await {
+    let node_pool_guard = state.node_pool.read().await;
+    if let Err(e) = node_pool_guard.record_failure(node_url).await {
         error!("Failed to record failure for {}: {}", node_url, e);
     }
 }
@@ -168,14 +169,14 @@ async fn race_requests(
 
     while attempt < MAX_RETRIES {
         // Get two new nodes that we haven't tried yet
-        let smart_pool_guard = state.smart_pool.read().await;
+        let node_pool_guard = state.node_pool.read().await;
         
         let mut node1_option = None;
         let mut node2_option = None;
         
         // Try to get first node
         for _ in 0..10 { // Max 10 attempts to find an untried node
-            if let Ok(Some(node)) = smart_pool_guard.get_next_node().await {
+            if let Ok(Some(node)) = node_pool_guard.get_next_node().await {
                 if !tried_nodes.contains(&node) {
                     node1_option = Some(node);
                     break;
@@ -185,7 +186,7 @@ async fn race_requests(
         
         // Try to get second node
         for _ in 0..10 { // Max 10 attempts to find an untried node
-            if let Ok(Some(node)) = smart_pool_guard.get_next_node().await {
+            if let Ok(Some(node)) = node_pool_guard.get_next_node().await {
                 if !tried_nodes.contains(&node) && Some(&node) != node1_option.as_ref() {
                     node2_option = Some(node);
                     break;
@@ -193,7 +194,7 @@ async fn race_requests(
             }
         }
         
-        drop(smart_pool_guard); // Release the lock
+        drop(node_pool_guard); // Release the lock
 
         // If we can't get any new nodes, we've exhausted our options
         if node1_option.is_none() && node2_option.is_none() {
@@ -264,20 +265,25 @@ pub async fn simple_rpc_handler(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    debug!("Raw RPC request: {} bytes", body.len());
+    let body_size = body.len();
+    async move {
+        debug!("Raw RPC request: {} bytes", body_size);
 
-    // TODO: Some requests (e.g publish transactions) should be sent to multiple nodes (e.g at least 5 successful or 20 retries)
-    match race_requests(&state, "/json_rpc", "POST", &headers, Some(&body)).await {
-        Ok(response) => response,
-        Err(_) => {
-            let error_body = br#"{"jsonrpc":"2.0","error":{"code":-1,"message":"All nodes failed"},"id":null}"#;
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .header("content-type", "application/json")
-                .body(Body::from(&error_body[..]))
-                .unwrap_or_else(|_| Response::new(Body::empty()))
+        // TODO: Some requests (e.g publish transactions) should be sent to multiple nodes (e.g at least 5 successful or 20 retries)
+        match race_requests(&state, "/json_rpc", "POST", &headers, Some(&body)).await {
+            Ok(response) => response,
+            Err(_) => {
+                let error_body = br#"{"jsonrpc":"2.0","error":{"code":-1,"message":"All nodes failed"},"id":null}"#;
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("content-type", "application/json")
+                    .body(Body::from(&error_body[..]))
+                    .unwrap_or_else(|_| Response::new(Body::empty()))
+            }
         }
     }
+    .instrument(info_span!("rpc_request", body_size = body_size))
+    .await
 }
 
 #[axum::debug_handler]
@@ -286,47 +292,57 @@ pub async fn simple_http_handler(
     headers: HeaderMap,
     Path(endpoint): Path<String>,
 ) -> Response {
-    debug!("Raw HTTP request: /{}", endpoint);
+    let endpoint_clone = endpoint.clone();
+    async move {
+        debug!("Raw HTTP request: /{}", endpoint);
 
-    match race_requests(&state, &format!("/{}", endpoint), "GET", &headers, None).await {
-        Ok(response) => response,
-        Err(_) => {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(Body::from("All nodes failed"))
-                .unwrap_or_else(|_| Response::new(Body::empty()))
+        match race_requests(&state, &format!("/{}", endpoint), "GET", &headers, None).await {
+            Ok(response) => response,
+            Err(_) => {
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::from("All nodes failed"))
+                    .unwrap_or_else(|_| Response::new(Body::empty()))
+            }
         }
     }
+    .instrument(info_span!("http_request", endpoint = %endpoint_clone))
+    .await
 }
 
 #[axum::debug_handler]
 pub async fn simple_stats_handler(State(state): State<AppState>) -> Response {
-    let smart_pool_guard = state.smart_pool.read().await;
+    async move {
+        let node_pool_guard = state.node_pool.read().await;
 
-    match smart_pool_guard.get_pool_stats().await {
-        Ok(stats) => {
-            let stats_json = format!(
-                r#"{{"status":"healthy","total_nodes":{},"reachable_nodes":{},"reliable_nodes":{},"health_percentage":{:.2},"avg_reliable_latency_ms":{:.2}}}"#,
-                stats.total_nodes,
-                stats.reachable_nodes,
-                stats.reliable_nodes,
-                stats.health_percentage(),
-                stats.avg_reliable_latency_ms.unwrap_or(0.0)
-            );
-            Response::builder()
-                .status(StatusCode::OK)
-                .header("content-type", "application/json")
-                .body(Body::from(stats_json))
-                .unwrap_or_else(|_| Response::new(Body::empty()))
-        }
-        Err(e) => {
-            error!("Failed to get pool stats: {}", e);
-            let error_json = r#"{"status":"error","message":"Failed to get pool stats"}"#;
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .header("content-type", "application/json")
-                .body(Body::from(error_json))
-                .unwrap_or_else(|_| Response::new(Body::empty()))
+        match node_pool_guard.get_current_status().await {
+            Ok(status) => {
+                let stats_json = serde_json::json!({
+                    "status": "healthy",
+                    "healthy_node_count": status.healthy_node_count,
+                    "reliable_node_count": status.reliable_node_count,
+                    "successful_health_checks": status.successful_health_checks,
+                    "unsuccessful_health_checks": status.unsuccessful_health_checks,
+                    "top_reliable_nodes": status.top_reliable_nodes
+                });
+                
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "application/json")
+                    .body(Body::from(stats_json.to_string()))
+                    .unwrap_or_else(|_| Response::new(Body::empty()))
+            }
+            Err(e) => {
+                error!("Failed to get pool status: {}", e);
+                let error_json = r#"{"status":"error","message":"Failed to get pool status"}"#;
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("content-type", "application/json")
+                    .body(Body::from(error_json))
+                    .unwrap_or_else(|_| Response::new(Body::empty()))
+            }
         }
     }
+    .instrument(info_span!("stats_request"))
+    .await
 }

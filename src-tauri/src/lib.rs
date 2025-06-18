@@ -19,7 +19,7 @@ use swap::cli::{
     },
     command::{Bitcoin, Monero},
 };
-use tauri::{async_runtime::RwLock, Manager, RunEvent};
+use tauri::{async_runtime::RwLock, Emitter, Manager, RunEvent};
 use tauri_plugin_dialog::DialogExt;
 use zip::{write::SimpleFileOptions, ZipWriter};
 
@@ -108,6 +108,7 @@ impl State {
         self.context = context.into();
     }
 
+
     /// Attempts to retrieve the context
     /// Returns an error if the context is not available
     fn try_get_context(&self) -> Result<Arc<Context>, String> {
@@ -193,7 +194,7 @@ pub fn run() {
             get_data_dir,
             resolve_approval_request,
             redact,
-            save_txt_files
+            save_txt_files,
         ])
         .setup(setup)
         .build(tauri::generate_context!())
@@ -384,9 +385,18 @@ async fn initialize_context(
         )
         .await
         {
-            Ok(server_info) => {
+            Ok((server_info, mut status_receiver)) => {
                 let rpc_url = format!("http://{}:{}", server_info.host, server_info.port);
                 tracing::info!("Monero RPC Pool started on {}", rpc_url);
+                
+                // Start listening for pool status updates and forward them to frontend
+                let app_handle_clone = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    while let Ok(status) = status_receiver.recv().await {
+                        let _ = app_handle_clone.emit("pool-status-update", &status);
+                    }
+                });
+                
                 rpc_url.parse().ok()
             }
             Err(e) => {
@@ -436,3 +446,4 @@ async fn initialize_context(
         }
     }
 }
+

@@ -3,6 +3,7 @@ use crate::bitcoin;
 use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
 use anyhow::{anyhow, Context, Result};
 use bitcoin::Txid;
+use monero_rpc_pool::pool::{PoolStatus};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
@@ -27,6 +28,7 @@ pub enum TauriEvent {
     TimelockChange(TauriTimelockChangeEvent),
     Approval(ApprovalRequest),
     BackgroundProgress(TauriBackgroundProgressWrapper),
+    PoolStatusUpdate(PoolStatus),
 }
 
 const TAURI_UNIFIED_EVENT_NAME: &str = "tauri-unified-event";
@@ -295,6 +297,10 @@ pub trait TauriEmitter {
         self.emit_unified_event(TauriEvent::BackgroundProgress(
             TauriBackgroundProgressWrapper { id, event },
         ));
+    }
+
+    fn emit_pool_status_update(&self, status: PoolStatus) {
+        self.emit_unified_event(TauriEvent::PoolStatusUpdate(status));
     }
 
     /// Create a new background progress handle for tracking a specific type of progress

@@ -1,144 +1,188 @@
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use anyhow::Result;
+use rand::prelude::*;
+use tokio::sync::broadcast;
+use tracing::debug;
+use typeshare::typeshare;
 
-use tracing::{debug, info, warn};
+use crate::database::Database;
 
-#[derive(Debug, Clone)]
-pub struct NodeInfo {
-    pub url: String,
-    pub is_healthy: bool,
-    pub last_failure: Option<Instant>,
-    pub consecutive_failures: u32,
-    pub request_count: u64,
+#[derive(Debug, Clone, serde::Serialize)]
+#[typeshare]
+pub struct PoolStatus {
+    pub healthy_node_count: u32,
+    pub reliable_node_count: u32,
+    #[typeshare(serialized_as = "number")]
+    pub successful_health_checks: u64,
+    #[typeshare(serialized_as = "number")]
+    pub unsuccessful_health_checks: u64,
+    pub top_reliable_nodes: Vec<ReliableNodeInfo>,
 }
 
-impl NodeInfo {
-    pub fn new(url: String) -> Self {
-        Self {
-            url,
-            is_healthy: true,
-            last_failure: None,
-            consecutive_failures: 0,
-            request_count: 0,
-        }
-    }
-
-    pub fn mark_failure(&mut self) {
-        self.consecutive_failures += 1;
-        self.last_failure = Some(Instant::now());
-
-        if self.consecutive_failures >= 3 {
-            self.is_healthy = false;
-            warn!(
-                "Node {} marked as unhealthy after {} consecutive failures",
-                self.url, self.consecutive_failures
-            );
-        }
-    }
-
-    pub fn mark_success(&mut self) {
-        if !self.is_healthy && self.consecutive_failures > 0 {
-            info!("Node {} recovered and marked as healthy", self.url);
-        }
-        self.consecutive_failures = 0;
-        self.is_healthy = true;
-        self.last_failure = None;
-        self.request_count += 1;
-    }
-
-    pub fn should_retry(&self) -> bool {
-        if self.is_healthy {
-            return true;
-        }
-
-        if let Some(last_failure) = self.last_failure {
-            let backoff_duration =
-                Duration::from_secs(60 * (2_u64.pow(self.consecutive_failures.min(5))));
-            return last_failure.elapsed() > backoff_duration;
-        }
-
-        true
-    }
+#[derive(Debug, Clone, serde::Serialize)]
+#[typeshare]
+pub struct ReliableNodeInfo {
+    pub url: String,
+    pub success_rate: f64,
+    pub avg_latency_ms: Option<f64>,
 }
 
 pub struct NodePool {
-    nodes: HashMap<String, NodeInfo>,
-    current_index: usize,
-    node_urls: Vec<String>,
+    db: Database,
+    network: String,
+    status_sender: broadcast::Sender<PoolStatus>,
 }
 
 impl NodePool {
-    pub fn new(node_urls: Vec<String>) -> Self {
-        let mut nodes = HashMap::new();
-
-        for url in &node_urls {
-            nodes.insert(url.clone(), NodeInfo::new(url.clone()));
-        }
-
-        info!("Initialized node pool with {} nodes", node_urls.len());
-        for url in &node_urls {
-            debug!("  - {}", url);
-        }
-
-        Self {
-            nodes,
-            current_index: 0,
-            node_urls,
-        }
+    pub fn new(db: Database, network: String) -> (Self, broadcast::Receiver<PoolStatus>) {
+        let (status_sender, status_receiver) = broadcast::channel(100);
+        let pool = Self { 
+            db, 
+            network,
+            status_sender,
+        };
+        (pool, status_receiver)
     }
 
-    // TODO: Use a smarter selection algorithm here
-    pub fn get_next_node(&mut self) -> Option<String> {
-        if self.node_urls.is_empty() {
-            return None;
+    /// Get next node using Power of Two Choices algorithm
+    /// Only considers identified nodes (nodes with network set)
+    pub async fn get_next_node(&self) -> Result<Option<String>> {
+        let candidate_nodes = self.db.get_identified_nodes(&self.network).await?;
+        
+        if candidate_nodes.is_empty() {
+            debug!("No identified nodes available for network {}", self.network);
+            return Ok(None);
         }
+        
+        if candidate_nodes.len() == 1 {
+            return Ok(Some(candidate_nodes[0].full_url.clone()));
+        }
+        
+        // Power of Two Choices: pick 2 random nodes, select the better one
+        let mut rng = thread_rng();
+        let node1 = candidate_nodes.choose(&mut rng).unwrap();
+        let node2 = candidate_nodes.choose(&mut rng).unwrap();
+        
+        let selected = if self.calculate_goodness_score(node1) >= self.calculate_goodness_score(node2) {
+            node1
+        } else {
+            node2
+        };
+        
+        debug!("Selected node using P2C for network {}: {}", self.network, selected.full_url);
+        Ok(Some(selected.full_url.clone()))
+    }
 
-        let total_nodes = self.node_urls.len();
-        let mut attempts = 0;
+    /// Calculate goodness score based on usage-based recency
+    /// Score is a function of success rate and latency from last N health checks
+    fn calculate_goodness_score(&self, node: &crate::database::MoneroNode) -> f64 {
+        let total_checks = node.success_count + node.failure_count;
+        if total_checks == 0 {
+            return 0.0;
+        }
+        
+        let success_rate = node.success_count as f64 / total_checks as f64;
+        
+        // Weight by recency (more recent interactions = higher weight)
+        let recency_weight = (total_checks as f64).min(200.0) / 200.0;
+        let mut score = success_rate * recency_weight;
+        
+        // Factor in latency - lower latency = higher score
+        if let Some(avg_latency) = node.avg_latency_ms {
+            let latency_factor = 1.0 - (avg_latency.min(2000.0) / 2000.0);
+            score = score * 0.8 + latency_factor * 0.2; // 80% success rate, 20% latency
+        }
+        
+        score
+    }
 
-        while attempts < total_nodes {
-            let url = &self.node_urls[self.current_index];
-            self.current_index = (self.current_index + 1) % total_nodes;
+    pub async fn record_success(&self, url: &str, latency_ms: f64) -> Result<()> {
+        self.db.record_health_check(url, true, Some(latency_ms)).await?;
+        tracing::trace!("Recorded success for {} in network {}: {}ms", url, self.network, latency_ms);
+        Ok(())
+    }
 
-            if let Some(node_info) = self.nodes.get(url) {
-                if node_info.is_healthy || node_info.should_retry() {
-                    debug!("Selected node: {}", url);
-                    return Some(url.clone());
-                }
+    pub async fn record_failure(&self, url: &str) -> Result<()> {
+        self.db.record_health_check(url, false, None).await?;
+        tracing::trace!("Recorded failure for {} in network {}", url, self.network);
+        Ok(())
+    }
+    
+    pub async fn publish_status_update(&self) -> Result<()> {
+        let status = self.get_current_status().await?;
+        let _ = self.status_sender.send(status); // Ignore if no receivers
+        Ok(())
+    }
+    
+    pub async fn get_current_status(&self) -> Result<PoolStatus> {
+        let (_total, reachable, reliable) = self.db.get_node_stats(&self.network).await?;
+        let reliable_nodes = self.db.get_reliable_nodes(&self.network).await?;
+        let (successful_checks, unsuccessful_checks) = self.db.get_health_check_stats(&self.network).await?;
+        
+        let top_reliable_nodes = reliable_nodes
+            .into_iter()
+            .take(5)
+            .map(|node| ReliableNodeInfo {
+                url: node.full_url.clone(),
+                success_rate: node.success_rate(),
+                avg_latency_ms: node.avg_latency_ms,
+            })
+            .collect();
+        
+        Ok(PoolStatus {
+            healthy_node_count: reachable as u32,
+            reliable_node_count: reliable as u32,
+            successful_health_checks: successful_checks,
+            unsuccessful_health_checks: unsuccessful_checks,
+            top_reliable_nodes,
+        })
+    }
+
+    pub async fn get_pool_stats(&self) -> Result<PoolStats> {
+        let (total, reachable, reliable) = self.db.get_node_stats(&self.network).await?;
+        let reliable_nodes = self.db.get_reliable_nodes(&self.network).await?;
+
+        let avg_reliable_latency = if reliable_nodes.is_empty() {
+            None
+        } else {
+            let total_latency: f64 = reliable_nodes
+                .iter()
+                .filter_map(|node| node.avg_latency_ms)
+                .sum();
+            let count = reliable_nodes
+                .iter()
+                .filter(|node| node.avg_latency_ms.is_some())
+                .count();
+
+            if count > 0 {
+                Some(total_latency / count as f64)
+            } else {
+                None
             }
+        };
 
-            attempts += 1;
+        Ok(PoolStats {
+            total_nodes: total,
+            reachable_nodes: reachable,
+            reliable_nodes: reliable,
+            avg_reliable_latency_ms: avg_reliable_latency,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct PoolStats {
+    pub total_nodes: i64,
+    pub reachable_nodes: i64,
+    pub reliable_nodes: i64,
+    pub avg_reliable_latency_ms: Option<f64>,
+}
+
+impl PoolStats {
+    pub fn health_percentage(&self) -> f64 {
+        if self.total_nodes == 0 {
+            0.0
+        } else {
+            (self.reachable_nodes as f64 / self.total_nodes as f64) * 100.0
         }
-
-        warn!("No healthy nodes available, using first node as fallback");
-        self.node_urls.first().cloned()
-    }
-
-    pub fn mark_node_failed(&mut self, url: &str) {
-        if let Some(node_info) = self.nodes.get_mut(url) {
-            node_info.mark_failure();
-            debug!(
-                "Marked node {} as failed (consecutive failures: {})",
-                url, node_info.consecutive_failures
-            );
-        }
-    }
-
-    pub fn mark_node_success(&mut self, url: &str) {
-        if let Some(node_info) = self.nodes.get_mut(url) {
-            node_info.mark_success();
-            debug!(
-                "Marked node {} as successful (total requests: {})",
-                url, node_info.request_count
-            );
-        }
-    }
-
-    pub fn get_node_stats(&self) -> Vec<(&String, &NodeInfo)> {
-        self.nodes.iter().collect()
-    }
-
-    pub fn get_healthy_node_count(&self) -> usize {
-        self.nodes.values().filter(|node| node.is_healthy).count()
     }
 }
