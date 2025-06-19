@@ -75,17 +75,27 @@ async fn create_app_with_receiver(
     // Initialize discovery service
     let discovery = NodeDiscovery::new(db.clone())?;
 
+    // Publish initial status immediately to ensure first event is sent
+    {
+        let pool_guard = node_pool.read().await;
+        if let Err(e) = pool_guard.publish_status_update().await {
+            error!("Failed to publish initial status update: {}", e);
+        }
+    }
+
     // Start background tasks
     let node_pool_for_health_check = node_pool.clone();
     let status_update_handle = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
+
         loop {
-            // Publish status update after health check
+            interval.tick().await;
+
+            // Publish status update
             let pool_guard = node_pool_for_health_check.read().await;
             if let Err(e) = pool_guard.publish_status_update().await {
-                error!("Failed to publish status update after health check: {}", e);
+                error!("Failed to publish status update: {}", e);
             }
-
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         }
     });
 

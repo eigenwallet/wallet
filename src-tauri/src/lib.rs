@@ -370,7 +370,7 @@ async fn initialize_context(
     // Determine which Monero node to use:
     // - If using RPC pool, start and use the local RPC pool
     // - Otherwise, use the provided node URL directly (even if empty)
-    let monero_node_url = if settings.use_monero_rpc_pool {
+    let (monero_node_url, monero_rpc_pool_handle) = if settings.use_monero_rpc_pool {
         // Start RPC pool and use it
         let data_dir = data::data_dir_from(None, testnet).to_string_result()?;
         match monero_rpc_pool::start_server_with_random_port(
@@ -385,7 +385,7 @@ async fn initialize_context(
         )
         .await
         {
-            Ok((server_info, mut status_receiver, _task_manager)) => {
+            Ok((server_info, mut status_receiver, task_manager)) => {
                 let rpc_url = format!("http://{}:{}", server_info.host, server_info.port);
                 tracing::info!("Monero RPC Pool started on {}", rpc_url);
 
@@ -397,16 +397,16 @@ async fn initialize_context(
                     }
                 });
 
-                rpc_url.parse().ok()
+                (rpc_url.parse().ok(), Some(Arc::new(task_manager)))
             }
             Err(e) => {
                 tracing::error!("Failed to start Monero RPC Pool: {}", e);
-                None
+                (None, None)
             }
         }
     } else {
         // Use the provided node URL directly without checking availability
-        settings.monero_node_url.clone()
+        (settings.monero_node_url.clone(), None)
     };
 
     // Get app handle and create a Tauri handle
@@ -427,6 +427,7 @@ async fn initialize_context(
         .with_debug(true)
         .with_tor(settings.use_tor)
         .with_tauri(tauri_handle.clone())
+        .with_monero_rpc_pool_handle(monero_rpc_pool_handle)
         .build()
         .await;
 

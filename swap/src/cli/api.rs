@@ -188,6 +188,7 @@ pub struct Context {
     bitcoin_wallet: Option<Arc<bitcoin::Wallet>>,
     monero_manager: Option<Arc<monero::Wallets>>,
     tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
+    monero_rpc_pool_handle: Option<Arc<monero_rpc_pool::TaskManager>>,
 }
 
 /// A conveniant builder struct for [`Context`].
@@ -201,6 +202,7 @@ pub struct ContextBuilder {
     json: bool,
     tor: bool,
     tauri_handle: Option<TauriHandle>,
+    monero_rpc_pool_handle: Option<Arc<monero_rpc_pool::TaskManager>>,
 }
 
 impl ContextBuilder {
@@ -224,6 +226,7 @@ impl ContextBuilder {
             json: false,
             tor: false,
             tauri_handle: None,
+            monero_rpc_pool_handle: None,
         }
     }
 
@@ -273,6 +276,15 @@ impl ContextBuilder {
     /// Whether to initialize a Tor client (default false)
     pub fn with_tor(mut self, tor: bool) -> Self {
         self.tor = tor;
+        self
+    }
+
+    /// Set the Monero RPC pool handle to keep the pool running
+    pub fn with_monero_rpc_pool_handle(
+        mut self,
+        handle: impl Into<Option<Arc<monero_rpc_pool::TaskManager>>>,
+    ) -> Self {
+        self.monero_rpc_pool_handle = handle.into();
         self
     }
 
@@ -443,6 +455,7 @@ impl ContextBuilder {
             tasks,
             tauri_handle: self.tauri_handle,
             tor_client: tor,
+            monero_rpc_pool_handle: self.monero_rpc_pool_handle,
         };
 
         Ok(context)
@@ -476,6 +489,7 @@ impl Context {
             tasks: PendingTaskList::default().into(),
             tauri_handle: None,
             tor_client: None,
+            monero_rpc_pool_handle: None,
         }
     }
 
