@@ -232,14 +232,15 @@ export async function initializeContext() {
   // Check the state of the Monero node
   const isMoneroNodeOnline = await getMoneroNodeStatus(moneroNodeUrl, network);
 
-  const moneroNodeConfig = (useMoneroRpcPool || moneroNodeUrl == null || !isMoneroNodeOnline)
-    ? { type: "Pool" as const }
-    : {
-        type: "SingleNode" as const,
-        content: {
-          url: moneroNodeUrl,
-        },
-      };
+  const moneroNodeConfig =
+    useMoneroRpcPool || moneroNodeUrl == null || !isMoneroNodeOnline
+      ? { type: "Pool" as const }
+      : {
+          type: "SingleNode" as const,
+          content: {
+            url: moneroNodeUrl,
+          },
+        };
 
   // Initialize Tauri settings
   const tauriSettings: TauriSettings = {

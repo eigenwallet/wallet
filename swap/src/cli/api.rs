@@ -21,8 +21,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Once};
 use tauri_bindings::{
-    TauriBackgroundProgress, TauriContextStatusEvent,
-    TauriEmitter, TauriHandle, MoneroNodeConfig,
+    MoneroNodeConfig, TauriBackgroundProgress, TauriContextStatusEvent, TauriEmitter, TauriHandle,
 };
 use tokio::sync::{broadcast, broadcast::Sender, Mutex as TokioMutex, RwLock};
 use tokio::task::JoinHandle;
@@ -393,7 +392,8 @@ impl ContextBuilder {
                             .await
                             {
                                 Ok((server_info, mut status_receiver, pool_handle)) => {
-                                    let rpc_url = format!("http://{}:{}", server_info.host, server_info.port);
+                                    let rpc_url =
+                                        format!("http://{}:{}", server_info.host, server_info.port);
                                     tracing::info!("Monero RPC Pool started on {}", rpc_url);
 
                                     // Start listening for pool status updates and forward them to frontend
