@@ -225,15 +225,19 @@ export async function initializeContext() {
 
   // For Monero nodes, determine whether to use pool or custom node
   const useMoneroRpcPool = store.getState().settings.useMoneroRpcPool;
-  const moneroNodes =
-    store.getState().settings.nodes[network][Blockchain.Monero];
 
-  const moneroNodeConfig = useMoneroRpcPool
+  const moneroNodeUrl =
+    store.getState().settings.nodes[network][Blockchain.Monero][0] ?? null;
+
+  // Check the state of the Monero node
+  const isMoneroNodeOnline = await getMoneroNodeStatus(moneroNodeUrl, network);
+
+  const moneroNodeConfig = (useMoneroRpcPool || moneroNodeUrl == null || !isMoneroNodeOnline)
     ? { type: "Pool" as const }
     : {
         type: "SingleNode" as const,
         content: {
-          url: moneroNodes.length > 0 ? moneroNodes[0] : null,
+          url: moneroNodeUrl,
         },
       };
 
