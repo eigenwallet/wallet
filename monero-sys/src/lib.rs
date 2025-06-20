@@ -20,6 +20,7 @@ use std::{
 use anyhow::{anyhow, bail, Context, Result};
 use backoff::{future::retry_notify, retry_notify as blocking_retry_notify};
 use cxx::{let_cxx_string, CxxString, CxxVector, UniquePtr};
+use monero::Amount;
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     oneshot,
@@ -431,7 +432,7 @@ impl WalletHandle {
             bail!("Number of addresses and ratios must match")
         }
 
-        const TOLERANCE: f64 = 1e-12;
+        const TOLERANCE: f64 = 1e-6;
         if (ratios.iter().sum::<f64>() - 1.0).abs() > TOLERANCE {
             bail!("Ratios must sum to 1.0")
         }
@@ -1505,6 +1506,19 @@ impl FfiWallet {
         addresses: &[monero::Address],
         ratios: &[f64],
     ) -> anyhow::Result<Vec<TxReceipt>> {
+        if addresses.len() == 0 {
+            bail!("No addresses to sweep to");
+        }
+
+        if addresses.len() != ratios.len() {
+            bail!("Number of addresses and ratios must match");
+        }
+
+        let estimated_fee = ffi::estimateTransactionFee(&self.inner, addresses.len() as u64)
+            .context(
+            "Failed to estimate transaction fee for multi-sweep: Ffi call failed with exception",
+        )?;
+
         tracing::info!(
             "Sweeping funds to {} addresses, refreshing wallet first",
             addresses.len()
@@ -1579,6 +1593,55 @@ impl FfiWallet {
         }
 
         Ok(receipts)
+    }
+
+    /// Distribute the funds in the wallet to a set of addresses with a set of ratios,
+    /// such that the complete balance is spent (takes fee into account).
+    fn distribute(
+        balance: monero::Amount,
+        fee: monero::Amount,
+        ratios: &[f64],
+    ) -> Result<Vec<monero::Amount>> {
+        if ratios.is_empty() {
+            bail!("No ratios to distribute to");
+        }
+
+        // Check if balance is sufficient to cover the fee
+        if balance < fee {
+            bail!("Fee higher than balance");
+        }
+
+        // Calculate the distributable amount after deducting the fee
+        let distributable = balance - fee;
+
+        // Handle the case where distributable amount is zero
+        if distributable.as_pico() == 0 {
+            bail!("Zero balance after deducting fee");
+        }
+
+        // Check if the distributable amount is enough to cover at least one piconero per output
+        if distributable.as_pico() < ratios.len() as u64 {
+            bail!("More outputs than piconeros after deducting fee");
+        }
+
+        let mut amounts = Vec::new();
+        let mut total = Amount::ZERO;
+
+        // Distribute amounts according to ratios, except for the last one
+        for &ratio in &ratios[..ratios.len() - 1] {
+            let amount_pico = ((distributable.as_pico() as f64) * ratio).floor() as u64;
+            let amount = Amount::from_pico(amount_pico);
+            amounts.push(amount);
+            total += amount;
+        }
+
+        // Give the remainder to the last recipient to ensure exact distribution
+        let remainder = distributable
+            .checked_sub(total)
+            .context("Underflow when calculating rest (unexpected)")?;
+        amounts.push(remainder);
+
+        Ok(amounts)
     }
 
     /// Dispose (deallocate) a pending transaction object.
@@ -1815,4 +1878,166 @@ fn backoff(
         .with_max_elapsed_time(Some(max_elapsed_time))
         .with_max_interval(max_interval)
         .build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use quickcheck::TestResult;
+    use quickcheck_macros::quickcheck;
+
+    #[quickcheck]
+    fn prop_distribute_sum_equals_balance_minus_fee(
+        balance_pico: u64,
+        fee_pico: u64,
+        ratios: Vec<f64>,
+    ) -> TestResult {
+        // Filter out invalid inputs
+        if ratios.is_empty() || fee_pico > balance_pico {
+            return TestResult::discard();
+        }
+
+        // Ensure ratios are valid (non-negative and sum to approximately 1.0)
+        if ratios.iter().any(|&r| r < 0.0 || r > 1.0) {
+            return TestResult::discard();
+        }
+
+        let ratio_sum: f64 = ratios.iter().sum();
+        if (ratio_sum - 1.0).abs() > 1e-6 {
+            return TestResult::discard();
+        }
+
+        let balance = monero::Amount::from_pico(balance_pico);
+        let fee = monero::Amount::from_pico(fee_pico);
+
+        let amounts = FfiWallet::distribute(balance, fee, &ratios);
+
+        // Property: sum of distributed amounts should equal balance - fee
+        let total_distributed: u64 = amounts.unwrap().iter().map(|a| a.as_pico()).sum();
+        let expected = balance.as_pico() - fee.as_pico();
+
+        TestResult::from_bool(total_distributed == expected)
+    }
+
+    #[quickcheck]
+    fn prop_distribute_count_matches_ratios(
+        balance_pico: u64,
+        fee_pico: u64,
+        ratios: Vec<f64>,
+    ) -> TestResult {
+        if ratios.is_empty() || fee_pico > balance_pico {
+            return TestResult::discard();
+        }
+
+        if ratios.iter().any(|&r| r < 0.0 || r > 1.0) {
+            return TestResult::discard();
+        }
+
+        let ratio_sum: f64 = ratios.iter().sum();
+        if (ratio_sum - 1.0).abs() > 1e-6 {
+            return TestResult::discard();
+        }
+
+        let balance = monero::Amount::from_pico(balance_pico);
+        let fee = monero::Amount::from_pico(fee_pico);
+
+        let amounts = FfiWallet::distribute(balance, fee, &ratios).unwrap();
+
+        // Property: number of amounts should equal number of ratios
+        TestResult::from_bool(amounts.len() == ratios.len())
+    }
+
+    #[quickcheck]
+    fn prop_distribute_respects_ratios(
+        balance_pico: u64,
+        fee_pico: u64,
+        ratios: Vec<f64>,
+    ) -> TestResult {
+        if ratios.len() < 2 || fee_pico > balance_pico {
+            return TestResult::discard();
+        }
+
+        if ratios.iter().any(|&r| r < 0.0 || r > 1.0) {
+            return TestResult::discard();
+        }
+
+        let ratio_sum: f64 = ratios.iter().sum();
+        if (ratio_sum - 1.0).abs() > 1e-6 {
+            return TestResult::discard();
+        }
+
+        let balance = monero::Amount::from_pico(balance_pico);
+        let fee = monero::Amount::from_pico(fee_pico);
+        let distributable = balance.as_pico() - fee.as_pico();
+
+        if distributable == 0 {
+            return TestResult::discard();
+        }
+
+        let amounts = FfiWallet::distribute(balance, fee, &ratios).unwrap();
+
+        // Property: ratios should be approximately respected (except for rounding)
+        // We check all but the last amount since the last one gets the remainder
+        let mut ratios_respected = true;
+        for i in 0..ratios.len() - 1 {
+            let expected_amount = ((distributable as f64) * ratios[i]).round() as u64;
+            if amounts[i].as_pico() != expected_amount {
+                ratios_respected = false;
+                break;
+            }
+        }
+
+        TestResult::from_bool(ratios_respected)
+    }
+
+    #[test]
+    fn test_distribute_empty_ratios() {
+        let balance = monero::Amount::from_pico(1000);
+        let fee = monero::Amount::from_pico(100);
+        let ratios: Vec<f64> = vec![];
+
+        let amounts = FfiWallet::distribute(balance, fee, &ratios);
+        assert!(amounts.is_err());
+    }
+
+    #[test]
+    fn test_distribute_insufficient_balance() {
+        let balance = monero::Amount::from_pico(100);
+        let fee = monero::Amount::from_pico(200);
+        let ratios = vec![0.5, 0.5];
+
+        let amounts = FfiWallet::distribute(balance, fee, &ratios);
+        assert!(amounts.is_err());
+    }
+
+    #[test]
+    fn test_distribute_zero_distributable() {
+        let balance = monero::Amount::from_pico(100);
+        let fee = monero::Amount::from_pico(100);
+        let ratios = vec![0.3, 0.3, 0.4];
+
+        let amounts = FfiWallet::distribute(balance, fee, &ratios);
+        assert!(amounts.is_err());
+    }
+
+    #[test]
+    fn test_distribute_simple_case() {
+        let balance = monero::Amount::from_pico(1100);
+        let fee = monero::Amount::from_pico(100);
+        let ratios = vec![0.5, 0.3, 0.2];
+
+        let amounts = FfiWallet::distribute(balance, fee, &ratios).unwrap();
+
+        assert_eq!(amounts.len(), 3);
+
+        // Total should equal distributable amount (1000)
+        let total: u64 = amounts.iter().map(|a| a.as_pico()).sum();
+        assert_eq!(total, 1000);
+
+        // First two amounts should respect ratios exactly
+        assert_eq!(amounts[0].as_pico(), 500); // 50% of 1000
+        assert_eq!(amounts[1].as_pico(), 300); // 30% of 1000
+                                               // Last amount gets remainder: 1000 - 500 - 300 = 200
+        assert_eq!(amounts[2].as_pico(), 200);
+    }
 }

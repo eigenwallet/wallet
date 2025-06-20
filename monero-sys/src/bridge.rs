@@ -219,6 +219,9 @@ pub mod ffi {
         /// Scan for a specified list of transactions.
         fn scanTransaction(wallet: Pin<&mut Wallet>, tx_id: &CxxString) -> Result<bool>;
 
+        /// Estimate the fee (in piconero) at default priority for a transaction.
+        fn estimateTransactionFee(wallet: &Wallet, num_outputs: u64) -> Result<u64>;
+
         /// Create a new transaction.
         fn createTransaction(
             wallet: Pin<&mut Wallet>,
