@@ -18,8 +18,7 @@ use std::{
 };
 
 use anyhow::{anyhow, bail, Context, Result};
-use backoff::{future, retry_notify};
-use cxx::let_cxx_string;
+use backoff::{future::retry_notify, retry_notify as blocking_retry_notify};
 use cxx::{let_cxx_string, CxxString, CxxVector, UniquePtr};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
@@ -112,6 +111,7 @@ pub struct TxStatus {
 pub struct TxReceipt {
     pub txid: String,
     pub tx_key: String,
+    /// The blockchain height at the time of publication.
     pub height: u64,
 }
 
@@ -380,7 +380,7 @@ impl WalletHandle {
     ) -> anyhow::Result<TxReceipt> {
         let address = *address;
 
-        future::retry_notify(backoff(None, None), || async {
+        retry_notify(backoff(None, None), || async {
             self.call(move |wallet| wallet.transfer(&address, amount))
                 .await
                 .map_err(backoff::Error::transient)
@@ -392,10 +392,10 @@ impl WalletHandle {
     }
 
     /// Sweep all funds to an address.
-    pub async fn sweep(&self, address: &monero::Address) -> anyhow::Result<Vec<String>> {
+    pub async fn sweep(&self, address: &monero::Address) -> anyhow::Result<Vec<TxReceipt>> {
         let address = *address;
 
-        future::retry_notify(backoff(None, None), || async {
+        retry_notify(backoff(None, None), || async {
             self.call(move |wallet| wallet.sweep(&address))
                 .await
                 .map_err(backoff::Error::transient)
@@ -421,7 +421,21 @@ impl WalletHandle {
         &self,
         addresses: &[monero::Address],
         ratios: &[f64],
-    ) -> anyhow::Result<Vec<String>> {
+    ) -> anyhow::Result<Vec<TxReceipt>> {
+        // Some sanity checks -- they also exist on the c++ side, but have way worse error messages
+        if addresses.is_empty() {
+            bail!("Need at least one address to sweep to")
+        }
+
+        if ratios.len() != addresses.len() {
+            bail!("Number of addresses and ratios must match")
+        }
+
+        const TOLERANCE: f64 = 1e-12;
+        if (ratios.iter().sum::<f64>() - 1.0).abs() > TOLERANCE {
+            bail!("Ratios must sum to 1.0")
+        }
+
         let addresses = addresses.to_vec();
         let ratios = ratios.to_vec();
         self.call(move |wallet| wallet.sweep_multi(&addresses, &ratios))
@@ -1012,7 +1026,7 @@ impl FfiWallet {
 
         tracing::debug!(address=%wallet.main_address(), "Initializing wallet");
 
-        retry_notify(
+        blocking_retry_notify(
             backoff(None, None),
             || {
                 wallet
@@ -1431,7 +1445,7 @@ impl FfiWallet {
 
     /// Sweep all funds from the wallet to a specified address.
     /// Returns a list of transaction ids of the created transactions.
-    fn sweep(&mut self, address: &monero::Address) -> anyhow::Result<Vec<String>> {
+    fn sweep(&mut self, address: &monero::Address) -> anyhow::Result<Vec<TxReceipt>> {
         tracing::info!("Sweeping funds to {}, refreshing wallet first", address);
 
         self.refresh_blocking()?;
@@ -1460,7 +1474,29 @@ impl FfiWallet {
         // Dispose of the transaction to avoid leaking memory.
         self.dispose_transaction(pending_tx);
 
-        result.map(|_| txids)
+        // Check for errors only after cleaning up the memory.
+        result.context("Failed to publish transaction")?;
+
+        // Get the receipts for the transactions.
+        let mut receipts = Vec::new();
+
+        for txid in txids {
+            let_cxx_string!(txid_cxx = &txid);
+
+            let tx_key = ffi::walletGetTxKey(&self.inner, &txid_cxx)
+                .context("Failed to get tx key from wallet: FFI call failed with exception")?
+                .to_string();
+
+            let height = self.blockchain_height();
+
+            receipts.push(TxReceipt {
+                txid: txid.clone(),
+                tx_key,
+                height,
+            });
+        }
+
+        Ok(receipts)
     }
 
     /// Sweep all funds to a set of addresses with a set of ratios.
@@ -1468,15 +1504,12 @@ impl FfiWallet {
         &mut self,
         addresses: &[monero::Address],
         ratios: &[f64],
-    ) -> anyhow::Result<Vec<String>> {
+    ) -> anyhow::Result<Vec<TxReceipt>> {
         tracing::info!(
             "Sweeping funds to {} addresses, refreshing wallet first",
             addresses.len()
         );
 
-        self.refresh_blocking()?;
-
-        // ensure wallet is synced and funds unlocked
         self.refresh_blocking()?;
 
         // Build a C++ vector of destination addresses
@@ -1493,15 +1526,24 @@ impl FfiWallet {
         }
 
         // Create the multi-sweep pending transaction
-        let mut pending_tx = PendingTransaction(ffi::createMultiSweepTransaction(
+        let raw_tx = ffi::createMultiSweepTransaction(
             self.inner.pinned(),
             cxx_addrs.as_ref().unwrap(),
             cxx_ratios.as_ref().unwrap(),
-        ));
+        );
+
+        if raw_tx.is_null() {
+            self.check_error()
+                .context("Failed to create multi-sweep transaction")?;
+            anyhow::bail!("Failed to create multi-sweep transaction");
+        }
+
+        let mut pending_tx = PendingTransaction(raw_tx);
 
         // Get the txids from the pending transaction before we publish,
         // otherwise it might be null.
         let txids: Vec<String> = ffi::pendingTransactionTxIds(&pending_tx)
+            .context("Failed to get txids of pending transaction: FFI call failed with exception")?
             .into_iter()
             .map(|s| s.to_string())
             .collect();
@@ -1514,7 +1556,29 @@ impl FfiWallet {
         // Dispose of the transaction to avoid leaking memory.
         self.dispose_transaction(pending_tx);
 
-        result.map(|_| txids)
+        // Check for errors only after cleaning up the memory.
+        result.context("Failed to publish transaction")?;
+
+        // Get the receipts for the transactions.
+        let mut receipts = Vec::new();
+
+        for txid in txids {
+            let_cxx_string!(txid_cxx = &txid);
+
+            let tx_key = ffi::walletGetTxKey(&self.inner, &txid_cxx)
+                .context("Failed to get tx key from wallet: FFI call failed with exception")?
+                .to_string();
+
+            let height = self.blockchain_height();
+
+            receipts.push(TxReceipt {
+                txid: txid.clone(),
+                tx_key,
+                height,
+            });
+        }
+
+        Ok(receipts)
     }
 
     /// Dispose (deallocate) a pending transaction object.

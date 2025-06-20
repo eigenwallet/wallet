@@ -491,6 +491,26 @@ impl MoneroWallet {
             .context("Failed to perform transfer")
     }
 
+    pub async fn sweep(&self, address: &Address) -> Result<TxReceipt> {
+        self.wallet
+            .sweep(address)
+            .await
+            .context("Failed to perform sweep")?
+            .into_iter()
+            .next()
+            .context("No transaction receipts returned from sweep")
+    }
+
+    pub async fn sweep_multi(&self, addresses: &[Address], ratios: &[f64]) -> Result<TxReceipt> {
+        self.wallet
+            .sweep_multi(addresses, ratios)
+            .await
+            .context("Failed to perform sweep")?
+            .into_iter()
+            .next()
+            .context("No transaction receipts returned from sweep")
+    }
+
     pub async fn blockchain_height(&self) -> Result<u64> {
         self.wallet.blockchain_height().await
     }

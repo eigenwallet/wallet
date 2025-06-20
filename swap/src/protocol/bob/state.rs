@@ -752,7 +752,7 @@ impl State5 {
             .await
             .context("Failed to redeem Monero")?
             .into_iter()
-            .map(TxHash)
+            .map(|tx_receipt| TxHash(tx_receipt.txid))
             .collect();
 
         tracing::info!(%swap_id, txids=?tx_hashes, "Monero sweep completed");

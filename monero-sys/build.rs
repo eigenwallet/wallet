@@ -37,6 +37,7 @@ fn main() {
         .define("GTEST_HAS_ABSL", "OFF")
         // Use lightweight crypto library
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
+        .build_arg("-Wno-dev") // Disable warnings we can't fix anyway
         .build_arg(match is_github_actions {
             true => "-j1",
             false => "-j",
