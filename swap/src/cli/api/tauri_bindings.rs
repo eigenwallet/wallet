@@ -1,10 +1,9 @@
 use super::request::BalanceResponse;
 use crate::bitcoin;
-use crate::cli::api::request::MakerOffer;
+use crate::cli::list_sellers::QuoteWithAddress;
 use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
 use anyhow::{anyhow, Context, Result};
 use bitcoin::Txid;
-use libp2p::{Multiaddr, PeerId};
 use monero_rpc_pool::pool::PoolStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -57,7 +56,7 @@ pub struct SelectMakerDetails {
     #[typeshare(serialized_as = "number")]
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
     pub btc_amount_to_swap: bitcoin::Amount,
-    pub viable_makers: Vec<MakerOffer>,
+    pub maker: QuoteWithAddress,
 }
 
 #[typeshare]
@@ -610,14 +609,7 @@ pub enum TauriSwapProgressEvent {
         max_giveable: bitcoin::Amount,
         #[typeshare(serialized_as = "number")]
         #[serde(with = "::bitcoin::amount::serde::as_sat")]
-        min_deposit_until_swap_will_start: bitcoin::Amount,
-        #[typeshare(serialized_as = "number")]
-        #[serde(with = "::bitcoin::amount::serde::as_sat")]
-        max_deposit_until_maximum_amount_is_reached: bitcoin::Amount,
-        #[typeshare(serialized_as = "number")]
-        #[serde(with = "::bitcoin::amount::serde::as_sat")]
         min_bitcoin_lock_tx_fee: bitcoin::Amount,
-        quote: BidQuote,
     },
     SwapSetupInflight {
         #[typeshare(serialized_as = "number")]
