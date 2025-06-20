@@ -9,10 +9,11 @@ use swap::cli::{
         request::{
             BalanceArgs, BuyXmrArgs, CancelAndRefundArgs, CheckElectrumNodeArgs,
             CheckElectrumNodeResponse, CheckMoneroNodeArgs, CheckMoneroNodeResponse,
-            ExportBitcoinWalletArgs, GetDataDirArgs, GetHistoryArgs, GetLogsArgs,
+            ExportBitcoinWalletArgs, ExportSeedArgs, GetDataDirArgs, GetHistoryArgs, GetLogsArgs,
             GetMoneroAddressesArgs, GetSwapInfoArgs, GetSwapInfosAllArgs, ListSellersArgs,
             MoneroRecoveryArgs, RedactArgs, ResolveApprovalArgs, ResumeSwapArgs,
             SuspendCurrentSwapArgs, WithdrawBtcArgs,
+            ImportSeedArgs, CheckSeedExistsArgs,
         },
         tauri_bindings::{TauriContextStatusEvent, TauriEmitter, TauriHandle, TauriSettings},
         Context, ContextBuilder,
@@ -22,6 +23,7 @@ use swap::cli::{
 use tauri::{async_runtime::RwLock, Manager, RunEvent};
 use tauri_plugin_dialog::DialogExt;
 use zip::{write::SimpleFileOptions, ZipWriter};
+use uuid;
 
 /// Trait to convert Result<T, E> to Result<T, String>
 /// Tauri commands require the error type to be a string
@@ -194,6 +196,10 @@ pub fn run() {
             resolve_approval_request,
             redact,
             save_txt_files,
+            export_seed,
+            import_seed,
+            check_seed_exists,
+            respond_seed_initialization,
         ])
         .setup(setup)
         .build(tauri::generate_context!())
@@ -244,6 +250,9 @@ tauri_command!(get_swap_info, GetSwapInfoArgs);
 tauri_command!(get_swap_infos_all, GetSwapInfosAllArgs, no_args);
 tauri_command!(get_history, GetHistoryArgs, no_args);
 tauri_command!(get_monero_addresses, GetMoneroAddressesArgs, no_args);
+tauri_command!(export_seed, ExportSeedArgs, no_args);
+tauri_command!(import_seed, ImportSeedArgs);
+tauri_command!(check_seed_exists, CheckSeedExistsArgs, no_args);
 
 /// Here we define Tauri commands whose implementation is not delegated to the Request trait
 #[tauri::command]
@@ -448,4 +457,52 @@ async fn initialize_context(
             Err(e.to_string())
         }
     }
+}
+
+#[tauri::command]
+async fn respond_seed_initialization(
+    #[allow(non_snake_case)]
+    requestId: String,
+    choice: serde_json::Value,
+    state: tauri::State<'_, RwLock<State>>,
+) -> Result<(), String> {
+    use swap::cli::api::tauri_bindings::SeedInitializationChoice;
+    
+    let request_uuid = uuid::Uuid::parse_str(&requestId)
+        .map_err(|e| format!("Invalid request ID: {}", e))?;
+
+    // Parse the choice from the frontend
+    let seed_choice = if choice == "random" {
+        SeedInitializationChoice::Random
+    } else if let Ok(obj) = serde_json::from_value::<serde_json::Map<String, serde_json::Value>>(choice) {
+        if obj.get("type") == Some(&serde_json::Value::String("recover".to_string())) {
+            if let Some(mnemonic) = obj.get("mnemonic").and_then(|v| v.as_str()) {
+                SeedInitializationChoice::RecoverPolyseed {
+                    mnemonic: mnemonic.to_string(),
+                }
+            } else {
+                return Err("Missing mnemonic for recover choice".to_string());
+            }
+        } else {
+            return Err("Invalid choice type".to_string());
+        }
+    } else {
+        return Err("Invalid choice format".to_string());
+    };
+
+    // Get the context and resolve the seed initialization
+    let state_guard = state.read().await;
+    if let Some(ref context) = state_guard.context {
+        if let Some(tauri_handle) = context.tauri_handle() {
+            tauri_handle.resolve_seed_initialization(request_uuid, seed_choice).await
+                .map_err(|e| format!("Failed to resolve seed initialization: {}", e))?;
+        } else {
+            return Err("No Tauri handle available".to_string());
+        }
+    } else {
+        return Err("Context not available".to_string());
+    }
+
+    tracing::info!("Successfully resolved seed initialization request: {}", requestId);
+    Ok(())
 }

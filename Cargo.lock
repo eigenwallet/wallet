@@ -1083,7 +1083,7 @@ dependencies = [
 [[package]]
 name = "bitcoin-harness"
 version = "0.3.0"
-source = "git+https://github.com/UnstoppableSwap/bitcoin-harness-rs?branch=master#7a110c9f5e586a33cafe0015b9df0d94f2af9ddc"
+source = "git+https://github.com/UnstoppableSwap/bitcoin-harness-rs#7a110c9f5e586a33cafe0015b9df0d94f2af9ddc"
 dependencies = [
  "base64 0.12.3",
  "bitcoin 0.32.6",
@@ -2130,6 +2130,8 @@ dependencies = [
  "curve25519-dalek-derive",
  "digest 0.10.7",
  "fiat-crypto",
+ "group",
+ "rand_core 0.6.4",
  "rustc_version",
  "subtle",
  "zeroize",
@@ -2217,6 +2219,22 @@ dependencies = [
  "quote",
  "rustversion",
  "syn 2.0.101",
+]
+
+[[package]]
+name = "dalek-ff-group"
+version = "0.4.1"
+source = "git+https://github.com/serai-dex/serai#dc1b8dfccd68b7c2eb4359a1e37b55ce5e4453b5"
+dependencies = [
+ "crypto-bigint",
+ "curve25519-dalek 4.1.3",
+ "digest 0.10.7",
+ "ff",
+ "group",
+ "rand_core 0.6.4",
+ "rustversion",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -2347,7 +2365,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d162beedaa69905488a8da94f5ac3edb4dd4788b732fadb7bd120b2625c1976"
 dependencies = [
  "data-encoding",
- "syn 2.0.101",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -3123,6 +3141,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
+ "bitvec",
  "rand_core 0.6.4",
  "subtle",
 ]
@@ -5896,6 +5915,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "monero-generators"
+version = "0.4.0"
+source = "git+https://github.com/serai-dex/serai#dc1b8dfccd68b7c2eb4359a1e37b55ce5e4453b5"
+dependencies = [
+ "curve25519-dalek 4.1.3",
+ "dalek-ff-group",
+ "group",
+ "monero-io",
+ "sha3",
+ "std-shims",
+ "subtle",
+]
+
+[[package]]
 name = "monero-harness"
 version = "0.1.0"
 dependencies = [
@@ -5910,6 +5943,28 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "monero-io"
+version = "0.1.0"
+source = "git+https://github.com/serai-dex/serai#dc1b8dfccd68b7c2eb4359a1e37b55ce5e4453b5"
+dependencies = [
+ "curve25519-dalek 4.1.3",
+ "std-shims",
+]
+
+[[package]]
+name = "monero-primitives"
+version = "0.1.0"
+source = "git+https://github.com/serai-dex/serai#dc1b8dfccd68b7c2eb4359a1e37b55ce5e4453b5"
+dependencies = [
+ "curve25519-dalek 4.1.3",
+ "monero-generators",
+ "monero-io",
+ "sha3",
+ "std-shims",
+ "zeroize",
 ]
 
 [[package]]
@@ -5959,6 +6014,19 @@ dependencies = [
  "typeshare",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "monero-seed"
+version = "0.1.0"
+dependencies = [
+ "curve25519-dalek 4.1.3",
+ "hex",
+ "monero-primitives",
+ "rand_core 0.6.4",
+ "std-shims",
+ "thiserror 1.0.69",
+ "zeroize",
 ]
 
 [[package]]
@@ -6896,6 +6964,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "password-hash"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "346f04948ba92c43e8469c1ee6736c7563d71012b17d40745260fe106aac2166"
+dependencies = [
+ "base64ct",
+ "rand_core 0.6.4",
+ "subtle",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6915,6 +6994,8 @@ checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
 dependencies = [
  "digest 0.10.7",
  "hmac",
+ "password-hash",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -7251,6 +7332,20 @@ dependencies = [
  "cpufeatures",
  "opaque-debug",
  "universal-hash",
+]
+
+[[package]]
+name = "polyseed"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "pbkdf2",
+ "rand_core 0.6.4",
+ "sha3",
+ "std-shims",
+ "subtle",
+ "thiserror 1.0.69",
+ "zeroize",
 ]
 
 [[package]]
@@ -9480,6 +9575,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "std-shims"
+version = "0.1.1"
+source = "git+https://github.com/serai-dex/serai#dc1b8dfccd68b7c2eb4359a1e37b55ce5e4453b5"
+dependencies = [
+ "hashbrown 0.14.5",
+ "spin 0.9.8",
+]
+
+[[package]]
 name = "string_cache"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9657,6 +9761,7 @@ dependencies = [
  "monero-sys",
  "once_cell",
  "pem",
+ "polyseed",
  "proptest",
  "qrcode",
  "rand 0.8.5",
@@ -9699,6 +9804,7 @@ dependencies = [
  "uuid",
  "vergen",
  "void",
+ "zeroize",
  "zip 0.5.13",
 ]
 

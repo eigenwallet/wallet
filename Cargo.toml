@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["monero-rpc", "monero-rpc-pool", "monero-sys", "src-tauri", "swap"]
+members = ["monero-rpc", "monero-rpc-pool", "monero-sys", "polyseed", "src-tauri", "swap", "seed"]
+
+[workspace.lints]
+rust.unused_crate_dependencies = "warn"
 
 [profile.release]
 opt-level = 0

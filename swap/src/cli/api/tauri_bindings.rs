@@ -26,7 +26,7 @@ pub enum TauriEvent {
     BalanceChange(BalanceResponse),
     SwapDatabaseStateUpdate(TauriDatabaseStateEvent),
     TimelockChange(TauriTimelockChangeEvent),
-    Approval(ApprovalRequest),
+    Approval(ApprovalRequest<bool>),
     BackgroundProgress(TauriBackgroundProgressWrapper),
     PoolStatusUpdate(PoolStatus),
 }
@@ -51,16 +51,27 @@ pub struct LockBitcoinDetails {
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "content")]
+pub enum SeedInitializationChoice {
+    Random,
+    RecoverPolyseed { mnemonic: String },
+}
+
+#[typeshare]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "content")]
 pub enum ApprovalRequestDetails {
     /// Request approval before locking Bitcoin.
     /// Contains specific details for review.
     LockBitcoin(LockBitcoinDetails),
+    /// Request seed initialization choice at startup.
+    /// User can choose to create a random seed or recover from polyseed.
+    SeedInitialization,
 }
 
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "state", content = "content")]
-pub enum ApprovalRequest {
+pub enum ApprovalRequest<T = bool> {
     Pending {
         request_id: String,
         #[typeshare(serialized_as = "number")]
@@ -70,6 +81,7 @@ pub enum ApprovalRequest {
     Resolved {
         request_id: String,
         details: ApprovalRequestDetails,
+        response: T,
     },
     Rejected {
         request_id: String,
@@ -77,8 +89,8 @@ pub enum ApprovalRequest {
     },
 }
 
-struct PendingApproval {
-    responder: Option<oneshot::Sender<bool>>,
+struct PendingApproval<T = bool> {
+    responder: Option<oneshot::Sender<T>>,
     details: ApprovalRequestDetails,
     #[allow(dead_code)]
     expiration_ts: u64,
@@ -95,7 +107,8 @@ pub struct TorBootstrapStatus {
 #[cfg(feature = "tauri")]
 struct TauriHandleInner {
     app_handle: tauri::AppHandle,
-    pending_approvals: TokioMutex<HashMap<Uuid, PendingApproval>>,
+    pending_approvals: TokioMutex<HashMap<Uuid, PendingApproval<bool>>>,
+    pending_seed_init: TokioMutex<HashMap<Uuid, oneshot::Sender<SeedInitializationChoice>>>,
 }
 
 #[derive(Clone)]
@@ -115,6 +128,7 @@ impl TauriHandle {
             Arc::new(TauriHandleInner {
                 app_handle: tauri_handle,
                 pending_approvals: TokioMutex::new(HashMap::new()),
+                pending_seed_init: TokioMutex::new(HashMap::new()),
             }),
         )
     }
@@ -131,7 +145,7 @@ impl TauriHandle {
     }
 
     /// Helper to emit a approval event via the unified event name
-    fn emit_approval(&self, event: ApprovalRequest) {
+    fn emit_approval(&self, event: ApprovalRequest<bool>) {
         self.emit_unified_event(TauriEvent::Approval(event))
     }
 
@@ -200,6 +214,7 @@ impl TauriHandle {
                     ApprovalRequest::Resolved {
                         request_id: request_id.to_string(),
                         details: pending.details,
+                        response: accepted,
                     }
                 } else {
                     ApprovalRequest::Rejected {
@@ -213,6 +228,46 @@ impl TauriHandle {
             }
 
             Ok(accepted)
+        }
+    }
+
+    pub async fn request_seed_initialization(&self, timeout_secs: u64) -> Result<SeedInitializationChoice> {
+        #[cfg(not(feature = "tauri"))]
+        {
+            return Ok(SeedInitializationChoice::Random);
+        }
+
+        #[cfg(feature = "tauri")]
+        {
+            let request_id = Uuid::new_v4();
+            
+            // Create a oneshot channel for the response
+            let (responder, receiver) = oneshot::channel::<SeedInitializationChoice>();
+            let timeout_duration = Duration::from_secs(timeout_secs);
+
+            // Store the responder so the Tauri command can access it
+            {
+                let mut pending_map = self.0.pending_seed_init.lock().await;
+                pending_map.insert(request_id, responder);
+            }
+
+            // Emit the seed initialization request event to the frontend
+            self.emit_tauri_event("seed-initialization-request", request_id)?;
+
+            // Wait for response with timeout
+            let choice = tokio::select! {
+                res = receiver => res.map_err(|_| anyhow!("Seed initialization responder dropped"))?,
+                _ = tokio::time::sleep(timeout_duration) => {
+                    tracing::debug!(%request_id, "Seed initialization request timed out, defaulting to Random");
+                    // Clean up the responder on timeout
+                    let mut pending_map = self.0.pending_seed_init.lock().await;
+                    pending_map.remove(&request_id);
+                    SeedInitializationChoice::Random
+                },
+            };
+
+            tracing::debug!(%request_id, choice=?choice, "Resolved seed initialization request");
+            Ok(choice)
         }
     }
 
@@ -237,6 +292,26 @@ impl TauriHandle {
                 Ok(())
             } else {
                 Err(anyhow!("Approval not found or already handled"))
+            }
+        }
+    }
+
+    pub async fn resolve_seed_initialization(&self, request_id: Uuid, choice: SeedInitializationChoice) -> Result<()> {
+        #[cfg(not(feature = "tauri"))]
+        {
+            return Err(anyhow!(
+                "Cannot resolve seed initialization: Tauri feature not enabled."
+            ));
+        }
+
+        #[cfg(feature = "tauri")]
+        {
+            let mut pending_map = self.0.pending_seed_init.lock().await;
+            if let Some(responder) = pending_map.remove(&request_id) {
+                let _ = responder.send(choice);
+                Ok(())
+            } else {
+                Err(anyhow!("Seed initialization request not found or already handled"))
             }
         }
     }

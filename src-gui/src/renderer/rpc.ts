@@ -353,3 +353,40 @@ export async function saveFilesInDialog(files: Record<string, string>) {
     files,
   });
 }
+
+export async function exportSeed(): Promise<{
+  polyseed_mnemonic?: string;
+  polyseed_warning?: string;
+  polyseed_available: boolean;
+  note: string;
+}> {
+  return await invokeNoArgs("export_seed");
+}
+
+export async function importSeed(
+  mnemonic: string
+): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  return await invoke("import_seed", {
+    mnemonic: mnemonic,
+  });
+}
+
+export async function checkSeedExists(): Promise<{
+  exists: boolean;
+  path: string;
+}> {
+  return await invokeNoArgs("check_seed_exists");
+}
+
+export async function respondToSeedInitialization(
+  requestId: string,
+  choice: "random" | { type: "recover"; mnemonic: string }
+): Promise<void> {
+  await invokeUnsafe("respond_seed_initialization", {
+    requestId: requestId,
+    choice: choice,
+  });
+}

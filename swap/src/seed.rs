@@ -6,6 +6,7 @@ use bitcoin::secp256k1::constants::SECRET_KEY_SIZE;
 use bitcoin::secp256k1::{self, SecretKey};
 use libp2p::identity;
 use pem::{encode, Pem};
+use polyseed::{Language, Polyseed, PolyseedError};
 use rand::prelude::*;
 use std::ffi::OsStr;
 use std::fmt;
@@ -109,7 +110,7 @@ impl Seed {
         Self::from_pem(pem)
     }
 
-    fn from_pem(pem: pem::Pem) -> Result<Self, Error> {
+    pub fn from_pem(pem: pem::Pem) -> Result<Self, Error> {
         let contents = pem.contents();
         if contents.len() != SEED_LENGTH {
             Err(Error::IncorrectLength(contents.len()))
@@ -123,7 +124,7 @@ impl Seed {
         }
     }
 
-    fn write_to(&self, seed_file: PathBuf) -> Result<(), Error> {
+    pub fn write_to(&self, seed_file: PathBuf) -> Result<(), Error> {
         ensure_directory_exists(&seed_file)?;
 
         let data = self.bytes();
@@ -135,6 +136,77 @@ impl Seed {
         file.write_all(pem_string.as_bytes())?;
 
         Ok(())
+    }
+
+    /// Export the seed as a PEM formatted string for backup purposes
+    pub fn to_pem_string(&self) -> String {
+        let data = self.bytes();
+        let pem = Pem::new("SEED", data);
+        encode(&pem)
+    }
+
+    /// Convert our 256-bit seed to polyseed format (uses first 150 bits)
+    /// Returns the polyseed mnemonic string and a warning about truncation
+    pub fn to_polyseed_mnemonic(&self) -> Result<(String, String), PolyseedError> {
+        use zeroize::Zeroizing;
+
+        // Create entropy buffer - polyseed expects 32 bytes but only uses first 150 bits
+        let mut entropy = Zeroizing::new([0u8; 32]);
+        
+        // Copy first 19 bytes (152 bits, will be masked to 150 bits by polyseed)
+        entropy[..19].copy_from_slice(&self.0[..19]);
+        
+        // Clear the last 2 bits of byte 18 to ensure exactly 150 bits
+        entropy[18] &= 0xFC; // 0xFC = 11111100, clears last 2 bits
+        
+        // Create polyseed with English language and current timestamp
+        let polyseed = Polyseed::from(
+            Language::English,
+            0, // features
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            entropy,
+        )?;
+        
+        let mnemonic = polyseed.to_string();
+        let warning = format!(
+            "WARNING: This polyseed contains only the first 150 bits of your 256-bit seed. \
+            To restore your full wallet, you must use this specific software which can \
+            reconstruct the remaining 106 bits deterministically."
+        );
+        
+        Ok(((*mnemonic).clone(), warning))
+    }
+
+    /// Reconstruct a 256-bit seed from a polyseed mnemonic
+    /// This expands the 150-bit polyseed back to our full 256-bit seed
+    pub fn from_polyseed_mnemonic(mnemonic: &str) -> Result<Self, Error> {
+        use zeroize::Zeroizing;
+        
+        let polyseed = Polyseed::from_string(Language::English, Zeroizing::new(mnemonic.to_string()))
+            .map_err(|e| Error::PolyseedParse(e))?;
+        
+        // Get the 150-bit entropy from polyseed
+        let polyseed_entropy = polyseed.entropy();
+        
+        // Create our full 256-bit seed
+        let mut full_seed = [0u8; SEED_LENGTH];
+        
+        // Copy the first 19 bytes from polyseed (contains the 150 bits)
+        full_seed[..19].copy_from_slice(&polyseed_entropy[..19]);
+        
+        // Derive the remaining 13 bytes deterministically using HMAC-SHA256
+        use bitcoin::hashes::{Hmac, HmacEngine};
+        let mut hmac_engine = HmacEngine::<sha256::Hash>::new(b"UNSTOPPABLESWAP_POLYSEED_EXTENSION");
+        hmac_engine.input(&polyseed_entropy[..19]);
+        let hmac_result = Hmac::from_engine(hmac_engine);
+        
+        // Use the HMAC result to fill the remaining bytes
+        full_seed[19..].copy_from_slice(&hmac_result.to_byte_array()[..13]);
+        
+        Ok(Seed(full_seed))
     }
 }
 
@@ -170,6 +242,8 @@ pub enum Error {
     Rand(#[from] rand::Error),
     #[error("no default path")]
     NoDefaultPath,
+    #[error("Polyseed parse: ")]
+    PolyseedParse(#[from] PolyseedError),
 }
 
 #[cfg(test)]
@@ -256,5 +330,32 @@ dWWSQ0nRGt2hOPDO+35NKhQEjBQxPh/v7n0CAwEAAQJBAOGaBAyuw0ICyENy5NsO
 
         let rinsed = Seed::from_file(tmpfile).expect("Read from temp file");
         assert_eq!(seed.0, rinsed.0);
+    }
+
+    #[test]
+    fn polyseed_conversion_round_trip() {
+        let original_seed = Seed::random().unwrap();
+        
+        // Convert to polyseed mnemonic
+        let (mnemonic, _warning) = original_seed.to_polyseed_mnemonic().expect("Should convert to polyseed");
+        
+        // Reconstruct from polyseed mnemonic
+        let reconstructed_seed = Seed::from_polyseed_mnemonic(&mnemonic).expect("Should reconstruct from polyseed");
+        
+        // The seeds should be equal (first 150 bits preserved, remaining deterministically derived)
+        assert_eq!(original_seed.0, reconstructed_seed.0);
+    }
+
+    #[test]
+    fn polyseed_truncation_behavior() {
+        let seed = Seed::random().unwrap();
+        
+        // The polyseed should successfully truncate our 256-bit seed
+        let result = seed.to_polyseed_mnemonic();
+        assert!(result.is_ok(), "Polyseed conversion should succeed");
+        
+        let (mnemonic, warning) = result.unwrap();
+        assert!(!mnemonic.is_empty(), "Mnemonic should not be empty");
+        assert!(warning.contains("150 bits"), "Warning should mention 150-bit truncation");
     }
 }

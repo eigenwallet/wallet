@@ -15,11 +15,13 @@ import GlobalSnackbarProvider from "./snackbar/GlobalSnackbarProvider";
 import UpdaterDialog from "./modal/updater/UpdaterDialog";
 import { useSettings } from "store/hooks";
 import { Theme as ThemeEnum, themes } from "./theme";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { setupBackgroundTasks } from "renderer/background";
 import "@fontsource/roboto";
 import FeedbackPage from "./pages/feedback/FeedbackPage";
 import IntroductionModal from "./modal/introduction/IntroductionModal";
+import SeedInitializationModal from "./modal/SeedInitializationModal";
+import { listen } from "@tauri-apps/api/event";
 
 declare module "@mui/material/styles" {
   interface Theme {
@@ -31,21 +33,50 @@ declare module "@mui/material/styles" {
 }
 
 export default function App() {
+  const [seedInitRequest, setSeedInitRequest] = useState<{
+    requestId: string;
+    open: boolean;
+  } | null>(null);
+  
   useEffect(() => {
     setupBackgroundTasks();
+    
+    // Listen for seed initialization requests
+    const unlistenPromise = listen("seed-initialization-request", (event) => {
+      const requestId = event.payload as string;
+      setSeedInitRequest({ requestId, open: true });
+    });
+
+    return () => {
+      unlistenPromise.then(fn => fn());
+    };
   }, []);
 
   const theme = useSettings((s) => s.theme);
+  const userHasSeenIntroduction = useSettings((s) => s.userHasSeenIntroduction);
   const currentTheme = themes[theme] || themes[ThemeEnum.Dark];
 
   console.log("Current theme:", { theme, currentTheme });
+
+  const handleSeedInitResponse = () => {
+    setSeedInitRequest(null);
+  };
+
+  const showIntroduction = !userHasSeenIntroduction && !seedInitRequest?.open;
 
   return (
     <StyledEngineProvider injectFirst>
       <ThemeProvider theme={currentTheme}>
         <CssBaseline />
         <GlobalSnackbarProvider>
-          <IntroductionModal />
+          {seedInitRequest?.open && (
+            <SeedInitializationModal
+              open={seedInitRequest.open}
+              requestId={seedInitRequest.requestId}
+              onResponse={handleSeedInitResponse}
+            />
+          )}
+          {showIntroduction && <IntroductionModal />}
           <Router>
             <Navigation />
             <InnerContent />

@@ -17,7 +17,6 @@ use ::bitcoin::Txid;
 use ::monero::Network;
 use anyhow::{bail, Context as AnyContext, Result};
 use libp2p::core::Multiaddr;
-use libp2p::PeerId;
 use once_cell::sync::Lazy;
 use qrcode::render::unicode;
 use qrcode::QrCode;
@@ -293,10 +292,10 @@ impl Request for GetHistoryArgs {
 
 // Additional structs
 #[typeshare]
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Debug, PartialEq, Eq)]
 pub struct AliceAddress {
     #[typeshare(serialized_as = "string")]
-    pub peer_id: PeerId,
+    pub peer_id: String,
     pub addresses: Vec<String>,
 }
 
@@ -453,6 +452,76 @@ impl Request for GetMoneroAddressesArgs {
     }
 }
 
+#[typeshare]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ExportSeedArgs;
+
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ExportSeedResponse {
+    pub polyseed_mnemonic: Option<String>,
+    pub polyseed_warning: Option<String>,
+    pub polyseed_available: bool,
+    pub note: String,
+}
+
+#[typeshare]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ImportSeedArgs {
+    pub mnemonic: String,
+}
+
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ImportSeedResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[typeshare]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CheckSeedExistsArgs;
+
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CheckSeedExistsResponse {
+    pub exists: bool,
+    pub path: String,
+}
+
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PolyseedInfo {
+    pub available: bool,
+    pub warning: String,
+    pub truncated_bytes: Vec<u8>,
+    pub note: String,
+}
+
+impl Request for ExportSeedArgs {
+    type Response = ExportSeedResponse;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        export_seed(ctx).await
+    }
+}
+
+impl Request for ImportSeedArgs {
+    type Response = ImportSeedResponse;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        import_seed(self, ctx).await
+    }
+}
+
+impl Request for CheckSeedExistsArgs {
+    type Response = CheckSeedExistsResponse;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        check_seed_exists(ctx).await
+    }
+}
+
 #[tracing::instrument(fields(method = "suspend_current_swap"), skip(context))]
 pub async fn suspend_current_swap(context: Arc<Context>) -> Result<SuspendCurrentSwapResponse> {
     let swap_id = context.swap_lock.get_current_swap_id().await;
@@ -562,7 +631,7 @@ pub async fn get_swap_info(
     Ok(GetSwapInfoResponse {
         swap_id: args.swap_id,
         seller: AliceAddress {
-            peer_id,
+            peer_id: peer_id.to_string(),
             addresses: addresses.iter().map(|a| a.to_string()).collect(),
         },
         completed: is_completed,
@@ -1197,6 +1266,85 @@ pub async fn get_current_swap(context: Arc<Context>) -> Result<serde_json::Value
     Ok(json!({
         "swap_id": context.swap_lock.get_current_swap_id().await,
     }))
+}
+
+pub async fn export_seed(context: Arc<Context>) -> Result<ExportSeedResponse> {
+    use crate::seed::Seed;
+
+    let data_dir = &crate::cli::api::data::data_dir_from(None, context.config.env_config.bitcoin_network != bitcoin::Network::Bitcoin)?;
+    let seed = Seed::from_file_or_generate(data_dir.as_path())
+        .context("Failed to read seed")?;
+    
+    let (polyseed_mnemonic, polyseed_warning, polyseed_available) = match seed.to_polyseed_mnemonic() {
+        Ok((mnemonic, warning)) => (Some(mnemonic), Some(warning), true),
+        Err(_) => (None, None, false),
+    };
+
+    let note = "Your seed is the master key to your wallet. Keep it safe and never share it with anyone. Only polyseed format is available for export.".to_string();
+
+    Ok(ExportSeedResponse {
+        polyseed_mnemonic,
+        polyseed_warning,
+        polyseed_available,
+        note,
+    })
+}
+
+#[tracing::instrument(fields(method = "import_seed"), skip(context))]
+pub async fn import_seed(args: ImportSeedArgs, context: Arc<Context>) -> Result<ImportSeedResponse> {
+    use crate::seed::Seed;
+
+    let data_dir = &crate::cli::api::data::data_dir_from(None, context.config.env_config.bitcoin_network != bitcoin::Network::Bitcoin)?;
+    let seed_file_path = data_dir.join("seed.pem");
+
+    // Check if a seed already exists
+    if seed_file_path.exists() {
+        return Ok(ImportSeedResponse {
+            success: false,
+            message: "A seed file already exists. Please backup and remove the existing seed file before importing a new one.".to_string(),
+        });
+    }
+
+    // Parse polyseed mnemonic
+    let seed_result = Seed::from_polyseed_mnemonic(&args.mnemonic)
+        .map_err(|e| anyhow::anyhow!("Invalid polyseed mnemonic: {}", e));
+
+    match seed_result {
+        Ok(seed) => {
+            // Ensure the data directory exists
+            if let Some(parent) = seed_file_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .context("Failed to create data directory")?;
+            }
+
+            // Write the seed to file
+            match seed.write_to(seed_file_path) {
+                Ok(()) => Ok(ImportSeedResponse {
+                    success: true,
+                    message: "Seed successfully imported and saved.".to_string(),
+                }),
+                Err(e) => Ok(ImportSeedResponse {
+                    success: false,
+                    message: format!("Failed to save seed: {}", e),
+                }),
+            }
+        },
+        Err(e) => Ok(ImportSeedResponse {
+            success: false,
+            message: format!("Failed to import seed: {}", e),
+        }),
+    }
+}
+
+#[tracing::instrument(fields(method = "check_seed_exists"), skip(context))]
+pub async fn check_seed_exists(context: Arc<Context>) -> Result<CheckSeedExistsResponse> {
+    let data_dir = &crate::cli::api::data::data_dir_from(None, context.config.env_config.bitcoin_network != bitcoin::Network::Bitcoin)?;
+    let seed_file_path = data_dir.join("seed.pem");
+    
+    Ok(CheckSeedExistsResponse {
+        exists: seed_file_path.exists(),
+        path: seed_file_path.to_string_lossy().to_string(),
+    })
 }
 
 pub async fn resolve_approval_request(

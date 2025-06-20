@@ -281,8 +281,37 @@ impl ContextBuilder {
         // These are needed for everything else, and are blocking calls
         let data_dir = &data::data_dir_from(self.data, self.is_testnet)?;
         let env_config = env_config_from(self.is_testnet);
-        let seed = &Seed::from_file_or_generate(data_dir.as_path())
-            .context("Failed to read seed in file")?;
+        
+        // Check if seed already exists
+        let seed_file_path = data_dir.join("seed.pem");
+        let seed = if seed_file_path.exists() {
+            // Load existing seed
+            Seed::from_file_or_generate(data_dir.as_path())
+                .context("Failed to read existing seed file")?
+        } else {
+            // Request seed initialization choice from user
+            if let Some(ref tauri_handle) = self.tauri_handle {
+                let choice = tauri_handle.request_seed_initialization(300).await?; // 5 minutes timeout
+                
+                match choice {
+                    crate::cli::api::tauri_bindings::SeedInitializationChoice::Random => {
+                        let new_seed = Seed::random()?;
+                        new_seed.write_to(seed_file_path)?;
+                        new_seed
+                    },
+                    crate::cli::api::tauri_bindings::SeedInitializationChoice::RecoverPolyseed { mnemonic } => {
+                        let recovered_seed = Seed::from_polyseed_mnemonic(&mnemonic)
+                            .context("Failed to recover seed from polyseed mnemonic")?;
+                        recovered_seed.write_to(seed_file_path)?;
+                        recovered_seed
+                    },
+                }
+            } else {
+                // Fallback to random seed generation if no Tauri handle
+                Seed::from_file_or_generate(data_dir.as_path())
+                    .context("Failed to generate random seed")?
+            }
+        };
 
         // Initialize logging
         let format = if self.json { Format::Json } else { Format::Raw };
@@ -335,7 +364,14 @@ impl ContextBuilder {
         let initialize_bitcoin_wallet = async {
             match self.bitcoin {
                 Some(bitcoin) => {
-                    let (urls, target_block) = bitcoin.apply_defaults(self.is_testnet)?;
+                    let (urls, target_block) = match bitcoin.apply_defaults(self.is_testnet) {
+                        Ok(result) => result,
+                        Err(e) => {
+                            tracing::warn!("Failed to apply Bitcoin defaults: {}", e);
+                            tracing::warn!("Context will be available with limited Bitcoin functionality");
+                            return Ok::<std::option::Option<Arc<bitcoin::wallet::Wallet>>, Error>(None);
+                        }
+                    };
 
                     let bitcoin_progress_handle = tauri_handle
                         .new_background_process_with_initial_progress(
@@ -343,21 +379,29 @@ impl ContextBuilder {
                             (),
                         );
 
-                    let wallet = init_bitcoin_wallet(
+                    match init_bitcoin_wallet(
                         urls,
-                        seed,
+                        &seed,
                         data_dir,
                         env_config,
                         target_block,
                         self.tauri_handle.clone(),
                     )
-                    .await?;
-
-                    bitcoin_progress_handle.finish();
-
-                    Ok::<std::option::Option<Arc<bitcoin::wallet::Wallet>>, Error>(Some(Arc::new(
-                        wallet,
-                    )))
+                    .await
+                    {
+                        Ok(wallet) => {
+                            bitcoin_progress_handle.finish();
+                            Ok::<std::option::Option<Arc<bitcoin::wallet::Wallet>>, Error>(Some(Arc::new(
+                                wallet,
+                            )))
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to initialize Bitcoin wallet: {}", e);
+                            tracing::warn!("Context will be available with limited Bitcoin functionality");
+                            bitcoin_progress_handle.finish();
+                            Ok::<std::option::Option<Arc<bitcoin::wallet::Wallet>>, Error>(None)
+                        }
+                    }
                 }
                 None => Ok(None),
             }
@@ -372,17 +416,82 @@ impl ContextBuilder {
                             (),
                         );
 
+<<<<<<< Updated upstream
                     let wallets = init_monero_wallet(
+=======
+                    // Handle the different monero configurations
+                    let (monero_node_address, rpc_pool_handle) = match monero_config {
+                        MoneroNodeConfig::Pool => {
+                            // Start RPC pool and use it
+                            match monero_rpc_pool::start_server_with_random_port(
+                                monero_rpc_pool::config::Config::new_random_port(
+                                    "127.0.0.1".to_string(),
+                                    data_dir.join("monero-rpc-pool"),
+                                ),
+                                match self.is_testnet {
+                                    true => monero_rpc_pool::Network::Stagenet,
+                                    false => monero_rpc_pool::Network::Mainnet,
+                                },
+                            )
+                            .await
+                            {
+                                Ok((server_info, mut status_receiver, pool_handle)) => {
+                                    let rpc_url =
+                                        format!("http://{}:{}", server_info.host, server_info.port);
+                                    tracing::info!("Monero RPC Pool started on {}", rpc_url);
+
+                                    // Start listening for pool status updates and forward them to frontend
+                                    if let Some(ref handle) = self.tauri_handle {
+                                        let pool_tauri_handle = handle.clone();
+                                        tokio::spawn(async move {
+                                            while let Ok(status) = status_receiver.recv().await {
+                                                pool_tauri_handle.emit_pool_status_update(status);
+                                            }
+                                        });
+                                    }
+
+                                    (Some(rpc_url), Some(Arc::new(pool_handle)))
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to start Monero RPC Pool: {}", e);
+                                    tracing::warn!("Context will be available with limited Monero functionality");
+                                    (None, None)
+                                }
+                            }
+                        }
+                        MoneroNodeConfig::SingleNode { url } => {
+                            (if url.is_empty() { None } else { Some(url) }, None)
+                        }
+                    };
+
+                    match init_monero_wallet(
+>>>>>>> Stashed changes
                         data_dir.as_path(),
                         monero.monero_node_address.map(|url| url.to_string()),
                         env_config,
                         tauri_handle.clone(),
                     )
+<<<<<<< Updated upstream
                     .await?;
 
                     monero_progress_handle.finish();
 
                     Ok(Some(wallets))
+=======
+                    .await
+                    {
+                        Ok(wallets) => {
+                            monero_progress_handle.finish();
+                            Ok((Some(wallets), rpc_pool_handle))
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to initialize Monero wallet: {}", e);
+                            tracing::warn!("Context will be available with limited Monero functionality");
+                            monero_progress_handle.finish();
+                            Ok((None, rpc_pool_handle))
+                        }
+                    }
+>>>>>>> Stashed changes
                 }
                 None => Ok(None),
             }

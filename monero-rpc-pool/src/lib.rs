@@ -5,7 +5,9 @@ use axum::{
     routing::{any, get},
     Router,
 };
-use monero::Network;
+// Re-export Network for external usage
+pub use monero::Network;
+
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
