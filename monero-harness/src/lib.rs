@@ -280,6 +280,15 @@ impl<'c> Monero {
         Ok(())
     }
 
+    pub async fn generate_block(&self) -> Result<()> {
+        let miner_wallet = self.wallet("miner")?;
+        let miner_address = miner_wallet.address().await?.to_string();
+        self.monerod()
+            .generate_blocks(1, miner_address.clone())
+            .await?;
+        Ok(())
+    }
+
     /// Funds a specific wallet address with XMR
     ///
     /// This function is useful when you want to fund an address that isn't managed by
@@ -484,6 +493,11 @@ impl MoneroWallet {
     }
 
     pub async fn transfer(&self, address: &Address, amount_pico: u64) -> Result<TxReceipt> {
+        tracing::info!(
+            "`{}` transferring {}",
+            self.name,
+            Amount::from_pico(amount_pico),
+        );
         let amount = Amount::from_pico(amount_pico);
         self.wallet
             .transfer(address, amount)
@@ -492,6 +506,8 @@ impl MoneroWallet {
     }
 
     pub async fn sweep(&self, address: &Address) -> Result<TxReceipt> {
+        tracing::info!("`{}` sweeping", self.name);
+
         self.wallet
             .sweep(address)
             .await
@@ -502,6 +518,8 @@ impl MoneroWallet {
     }
 
     pub async fn sweep_multi(&self, addresses: &[Address], ratios: &[f64]) -> Result<TxReceipt> {
+        tracing::info!("`{}` sweeping multi ({:?})", self.name, ratios);
+
         self.wallet
             .sweep_multi(addresses, ratios)
             .await
