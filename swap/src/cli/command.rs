@@ -89,7 +89,7 @@ where
             );
 
             BuyXmrArgs {
-                seller,
+                potential_sellers: vec![seller],
                 bitcoin_change_address,
                 monero_receive_address,
             }

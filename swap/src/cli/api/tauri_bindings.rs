@@ -1,8 +1,10 @@
 use super::request::BalanceResponse;
 use crate::bitcoin;
+use crate::cli::api::request::MakerOffer;
 use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
 use anyhow::{anyhow, Context, Result};
 use bitcoin::Txid;
+use libp2p::{Multiaddr, PeerId};
 use monero_rpc_pool::pool::PoolStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -49,11 +51,25 @@ pub struct LockBitcoinDetails {
 
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SelectMakerDetails {
+    #[typeshare(serialized_as = "string")]
+    pub swap_id: Uuid,
+    #[typeshare(serialized_as = "number")]
+    #[serde(with = "::bitcoin::amount::serde::as_sat")]
+    pub btc_amount_to_swap: bitcoin::Amount,
+    pub viable_makers: Vec<MakerOffer>,
+}
+
+#[typeshare]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "content")]
 pub enum ApprovalRequestDetails {
     /// Request approval before locking Bitcoin.
     /// Contains specific details for review.
     LockBitcoin(LockBitcoinDetails),
+    /// Request approval for maker selection.
+    /// Contains available makers and swap details.
+    SelectMaker(SelectMakerDetails),
 }
 
 #[typeshare]
