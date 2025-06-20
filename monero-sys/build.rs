@@ -1,6 +1,6 @@
 use cmake::Config;
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 /// Represents a patch to be applied to the Monero codebase
 struct EmbeddedPatch {
@@ -21,13 +21,11 @@ macro_rules! embedded_patch {
 }
 
 /// Embedded patches applied at compile time
-const EMBEDDED_PATCHES: &[EmbeddedPatch] = &[
-    embedded_patch!(
-        "wallet2_api_allow_subtract_from_fee",
-        "Increases network timeouts from 15 seconds to 3 minutes for remote RPC connections",
-        "patches/wallet2_api_allow_subtract_from_fee.patch"
-    ),
-];
+const EMBEDDED_PATCHES: &[EmbeddedPatch] = &[embedded_patch!(
+    "wallet2_api_allow_subtract_from_fee",
+    "Adds subtract_fee_from_outputs parameter to wallet2_api transaction creation methods",
+    "patches/wallet2_api_allow_subtract_from_fee.patch"
+)];
 
 fn apply_embedded_patches() -> Result<(), Box<dyn std::error::Error>> {
     let monero_dir = Path::new("monero");
@@ -37,6 +35,11 @@ fn apply_embedded_patches() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     for embedded in EMBEDDED_PATCHES {
+        println!(
+            "cargo:warning=Applying embedded patch: {} ({}) with content: {}",
+            embedded.name, embedded.description, embedded.patch_unified
+        );
+
         // Try parsing the entire patch first
         let patch = diffy::Patch::from_str(embedded.patch_unified)
             .map_err(|e| format!("Failed to parse patch {}: {}", embedded.name, e))?;
@@ -66,7 +69,10 @@ fn apply_embedded_patches() -> Result<(), Box<dyn std::error::Error>> {
             Err(_) => {
                 // Try reversing the patch – if that succeeds the file already contains the changes
                 if let Ok(_) = diffy::apply(&current, &patch.reverse()) {
-                    println!("cargo:warning=Patch {} already applied to {} – skipping", embedded.name, clean_path);
+                    println!(
+                        "cargo:warning=Patch {} already applied to {} – skipping",
+                        embedded.name, clean_path
+                    );
                     continue;
                 } else {
                     return Err(format!(
@@ -111,7 +117,7 @@ fn main() {
 
     // Build with the monero library all dependencies required
     let mut config = Config::new("monero");
-    
+
     let output_directory = config
         .build_target("wallet_api")
         // Builds currently fail in Release mode

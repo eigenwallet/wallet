@@ -18,7 +18,7 @@ use std::time::Duration;
 use tokio::select;
 use uuid::Uuid;
 
-const PRE_BTC_LOCK_APPROVAL_TIMEOUT_SECS: u64 = 120;
+const PRE_BTC_LOCK_APPROVAL_TIMEOUT_SECS: u64 = 120 * 10;
 
 pub fn is_complete(state: &BobState) -> bool {
     matches!(

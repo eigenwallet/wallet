@@ -152,7 +152,7 @@ impl WalletHandle {
             .spawn(move || {
                 // Set the dispatcher for this thread
                 let _guard = tracing::dispatcher::set_default(&current_dispatcher);
-                
+
                 let mut manager = WalletManager::new(daemon.clone(), &wallet_name)
                     .expect("wallet manager to be created");
                 let wallet = manager
@@ -206,7 +206,7 @@ impl WalletHandle {
             .spawn(move || {
                 // Set the dispatcher for this thread
                 let _guard = tracing::dispatcher::set_default(&current_dispatcher);
-                
+
                 // Create the wallet manager in this thread first.
                 let mut manager = WalletManager::new(daemon.clone(), &wallet_name)
                     .expect("wallet manager to be created");
@@ -288,7 +288,7 @@ impl WalletHandle {
             .spawn(move || {
                 // Set the dispatcher for this thread
                 let _guard = tracing::dispatcher::set_default(&current_dispatcher);
-                
+
                 let wallet_name = path
                     .split('/')
                     .last()
@@ -1507,112 +1507,109 @@ impl FfiWallet {
         Ok(receipts)
     }
 
-/// Sweep all funds to a set of addresses with a set of ratios.
-fn sweep_multi(
-    &mut self,
-    addresses: &[monero::Address],
-    ratios: &[f64],
-) -> anyhow::Result<Vec<TxReceipt>> {
-    tracing::warn!("STARTED MULTI SWEEP");
+    /// Sweep all funds to a set of addresses with a set of ratios.
+    fn sweep_multi(
+        &mut self,
+        addresses: &[monero::Address],
+        ratios: &[f64],
+    ) -> anyhow::Result<Vec<TxReceipt>> {
+        tracing::warn!("STARTED MULTI SWEEP");
 
-    if addresses.len() == 0 {
-        bail!("No addresses to sweep to");
+        if addresses.len() == 0 {
+            bail!("No addresses to sweep to");
+        }
+
+        if addresses.len() != ratios.len() {
+            bail!("Number of addresses and ratios must match");
+        }
+
+        tracing::info!(
+            "Sweeping funds to {} addresses, refreshing wallet first",
+            addresses.len()
+        );
+
+        self.refresh_blocking()?;
+
+        let balance = self.unlocked_balance();
+
+        // Since we're using "subtract fee from outputs", we distribute the full balance
+        // The underlying transaction creation will subtract the fee proportionally from each output
+        let amounts = FfiWallet::distribute(balance, ratios)?;
+
+        tracing::debug!(%balance, num_outputs = addresses.len(), outputs=?amounts, "Distributing funds to outputs");
+
+        // Build a C++ vector of destination addresses
+        let mut cxx_addrs: UniquePtr<CxxVector<CxxString>> = CxxVector::<CxxString>::new();
+        for addr in addresses {
+            let_cxx_string!(s = addr.to_string());
+            ffi::vector_string_push_back(cxx_addrs.pin_mut(), &s);
+        }
+
+        // Build a C++ vector of amounts
+        let mut cxx_amounts: UniquePtr<CxxVector<u64>> = CxxVector::<u64>::new();
+        for &amount in &amounts {
+            cxx_amounts.pin_mut().push(amount.as_pico());
+        }
+
+        // Create the multi-sweep pending transaction
+        let raw_tx = ffi::createTransactionMultiDest(
+            self.inner.pinned(),
+            cxx_addrs.as_ref().unwrap(),
+            cxx_amounts.as_ref().unwrap(),
+        );
+
+        if raw_tx.is_null() {
+            self.check_error()
+                .context("Failed to create multi-sweep transaction")?;
+            anyhow::bail!("Failed to create multi-sweep transaction");
+        }
+
+        let mut pending_tx = PendingTransaction(raw_tx);
+
+        // Get the txids from the pending transaction before we publish,
+        // otherwise it might be null.
+        let txids: Vec<String> = ffi::pendingTransactionTxIds(&pending_tx)
+            .context("Failed to get txids of pending transaction: FFI call failed with exception")?
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        // Publish the transaction
+        let result = pending_tx
+            .publish()
+            .context("Failed to publish transaction");
+
+        // Dispose of the transaction to avoid leaking memory.
+        self.dispose_transaction(pending_tx);
+
+        // Check for errors only after cleaning up the memory.
+        result.context("Failed to publish transaction")?;
+
+        // Get the receipts for the transactions.
+        let mut receipts = Vec::new();
+
+        for txid in txids {
+            let_cxx_string!(txid_cxx = &txid);
+
+            let tx_key = ffi::walletGetTxKey(&self.inner, &txid_cxx)
+                .context("Failed to get tx key from wallet: FFI call failed with exception")?
+                .to_string();
+
+            let height = self.blockchain_height();
+
+            receipts.push(TxReceipt {
+                txid: txid.clone(),
+                tx_key,
+                height,
+            });
+        }
+
+        Ok(receipts)
     }
-
-    if addresses.len() != ratios.len() {
-        bail!("Number of addresses and ratios must match");
-    }
-
-    tracing::info!(
-        "Sweeping funds to {} addresses, refreshing wallet first",
-        addresses.len()
-    );
-
-    self.refresh_blocking()?;
-
-    let balance = self.unlocked_balance();
-
-    // Since we're using "subtract fee from outputs", we distribute the full balance
-    // The underlying transaction creation will subtract the fee proportionally from each output
-    let amounts = FfiWallet::distribute(balance, ratios)?;
-
-    tracing::debug!(%balance, num_outputs = addresses.len(), outputs=?amounts, "Distributing funds to outputs");
-
-    // Build a C++ vector of destination addresses
-    let mut cxx_addrs: UniquePtr<CxxVector<CxxString>> = CxxVector::<CxxString>::new();
-    for addr in addresses {
-        let_cxx_string!(s = addr.to_string());
-        ffi::vector_string_push_back(cxx_addrs.pin_mut(), &s);
-    }
-
-    // Build a C++ vector of amounts
-    let mut cxx_amounts: UniquePtr<CxxVector<u64>> = CxxVector::<u64>::new();
-    for &amount in &amounts {
-        cxx_amounts.pin_mut().push(amount.as_pico());
-    }
-
-    // Create the multi-sweep pending transaction
-    let raw_tx = ffi::createTransactionMultiDest(
-        self.inner.pinned(),
-        cxx_addrs.as_ref().unwrap(),
-        cxx_amounts.as_ref().unwrap(),
-    );
-
-    if raw_tx.is_null() {
-        self.check_error()
-            .context("Failed to create multi-sweep transaction")?;
-        anyhow::bail!("Failed to create multi-sweep transaction");
-    }
-
-    let mut pending_tx = PendingTransaction(raw_tx);
-
-    // Get the txids from the pending transaction before we publish,
-    // otherwise it might be null.
-    let txids: Vec<String> = ffi::pendingTransactionTxIds(&pending_tx)
-        .context("Failed to get txids of pending transaction: FFI call failed with exception")?
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
-
-    // Publish the transaction
-    let result = pending_tx
-        .publish()
-        .context("Failed to publish transaction");
-
-    // Dispose of the transaction to avoid leaking memory.
-    self.dispose_transaction(pending_tx);
-
-    // Check for errors only after cleaning up the memory.
-    result.context("Failed to publish transaction")?;
-
-    // Get the receipts for the transactions.
-    let mut receipts = Vec::new();
-
-    for txid in txids {
-        let_cxx_string!(txid_cxx = &txid);
-
-        let tx_key = ffi::walletGetTxKey(&self.inner, &txid_cxx)
-            .context("Failed to get tx key from wallet: FFI call failed with exception")?
-            .to_string();
-
-        let height = self.blockchain_height();
-
-        receipts.push(TxReceipt {
-            txid: txid.clone(),
-            tx_key,
-            height,
-        });
-    }
-
-    Ok(receipts)
-}
 
     /// Distribute the funds in the wallet to a set of addresses with a set of percentages,
     /// such that the complete balance is spent (takes fee into account).
-    fn distribute(
-        balance: monero::Amount,
-        percentages: &[f64],
-    ) -> Result<Vec<monero::Amount>> {
+    fn distribute(balance: monero::Amount, percentages: &[f64]) -> Result<Vec<monero::Amount>> {
         if percentages.is_empty() {
             bail!("No ratios to distribute to");
         }
@@ -1638,8 +1635,7 @@ fn sweep_multi(
 
         // Distribute amounts according to ratios, except for the last one
         for &percentage in &percentages[..percentages.len() - 1] {
-            let amount_pico =
-                ((balance.as_pico() as f64) * percentage / 100.0).floor() as u64;
+            let amount_pico = ((balance.as_pico() as f64) * percentage / 100.0).floor() as u64;
             let amount = Amount::from_pico(amount_pico);
             amounts.push(amount);
             total += amount;

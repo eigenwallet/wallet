@@ -15,6 +15,7 @@ import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
 import CircularProgressWithSubtitle from "../../CircularProgressWithSubtitle";
 import CheckIcon from "@mui/icons-material/Check";
+import ArrowRightAltIcon from "@mui/icons-material/ArrowRightAlt";
 import TruncatedText from "renderer/components/other/TruncatedText";
 
 /// A hook that returns the LockBitcoin confirmation request for the active swap
@@ -69,7 +70,7 @@ export default function SwapSetupInflightPage({
 
   return (
     <InfoBox
-      title="Confirm details"
+      title={null}
       icon={<></>}
       loading={false}
       mainContent={
@@ -107,14 +108,13 @@ export default function SwapSetupInflightPage({
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    padding: 2.5,
-                    border: 2,
+                    padding: 1.5,
+                    border: 1,
+                    gap: "0.5rem 1rem",
                     borderColor: "warning.main",
-                    borderRadius: 2,
+                    borderRadius: 1,
                     backgroundColor: (theme) =>
-                      theme.palette.warning.light + "15",
-                    gap: "1rem",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                      theme.palette.warning.light + "10",
                     background: (theme) =>
                       `linear-gradient(135deg, ${theme.palette.warning.light}20, ${theme.palette.warning.light}05)`,
                   }}
@@ -176,29 +176,27 @@ export default function SwapSetupInflightPage({
                 justifyContent: "center",
               }}
             >
-              <Typography
-                variant="h2"
+              <ArrowRightAltIcon
                 sx={{
+                  fontSize: "3rem",
                   color: (theme) => theme.palette.primary.main,
-                  animation: "pulse 2s infinite",
-                  "@keyframes pulse": {
+                  animation: "slideArrow 2s infinite",
+                  "@keyframes slideArrow": {
                     "0%": {
-                      opacity: 0.8,
-                      transform: "scale(1)",
+                      opacity: 0.6,
+                      transform: "translateX(-8px)",
                     },
                     "50%": {
                       opacity: 1,
-                      transform: "scale(1.1)",
+                      transform: "translateX(8px)",
                     },
                     "100%": {
-                      opacity: 0.8,
-                      transform: "scale(1)",
+                      opacity: 0.6,
+                      transform: "translateX(-8px)",
                     },
                   },
                 }}
-              >
-                →
-              </Typography>
+              />
             </Box>
 
             {/* Output Section */}
@@ -366,10 +364,287 @@ export default function SwapSetupInflightPage({
             requiresContext
             endIcon={<CheckIcon />}
           >
-            {`Confirm & lock BTC (${timeLeft}s)`}
+            {`Confirm (${timeLeft}s)`}
           </PromiseInvokeButton>
         </Box>
       }
     />
   );
 }
+
+/**
+ * Pure presentational components -------------------------------------------------
+ * They live in the same file to avoid additional imports yet keep
+ * JSX for the main page tidy. All styling values are kept identical
+ * to their previous inline counterparts so that the visual appearance
+ * stays exactly the same while making the code easier to reason about.
+ */
+
+interface BitcoinSendSectionProps {
+  btc_lock_amount: number;
+  btc_network_fee: number;
+}
+
+const BitcoinSendSection = ({
+  btc_lock_amount,
+  btc_network_fee,
+}: BitcoinSendSectionProps) => (
+  <Box
+    sx={{
+      display: "flex",
+      flexDirection: "column",
+      gap: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+  >
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 1,
+      }}
+    >
+      {/* Main send summary */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: 1.5,
+          border: 1,
+          gap: "0.5rem 1rem",
+          borderColor: "warning.main",
+          borderRadius: 1,
+          backgroundColor: (theme) => theme.palette.warning.light + "10",
+          background: (theme) =>
+            `linear-gradient(135deg, ${theme.palette.warning.light}20, ${theme.palette.warning.light}05)`,
+        }}
+      >
+        <Typography
+          variant="h6"
+          sx={(theme) => ({
+            color: theme.palette.text.primary,
+            fontWeight: 700,
+            letterSpacing: 0.5,
+          })}
+        >
+          You send
+        </Typography>
+        <Typography
+          variant="h5"
+          sx={(theme) => ({
+            fontWeight: "bold",
+            color: theme.palette.warning.dark,
+            textShadow: "0 1px 2px rgba(0,0,0,0.1)",
+          })}
+        >
+          <SatsAmount amount={btc_lock_amount} />
+        </Typography>
+      </Box>
+
+      {/* Network fee */}
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: 1.5,
+          borderLeft: 3,
+          borderColor: "warning.light",
+          marginLeft: 2,
+          backgroundColor: (theme) => theme.palette.action.hover,
+          borderRadius: "0 8px 8px 0",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={(theme) => ({ color: theme.palette.text.secondary })}
+        >
+          Network fees
+        </Typography>
+        <Typography variant="caption">
+          <SatsAmount amount={btc_network_fee} />
+        </Typography>
+      </Box>
+    </Box>
+  </Box>
+);
+
+interface PoolBreakdownProps {
+  monero_receive_pool: Array<{
+    address: string;
+    label: string;
+    percentage: number;
+  }>;
+  xmr_receive_amount: number;
+}
+
+const PoolBreakdown = ({
+  monero_receive_pool,
+  xmr_receive_amount,
+}: PoolBreakdownProps) => (
+  <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+    {monero_receive_pool.map((pool) => (
+      <Box
+        key={pool.address}
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: 1.5,
+          border: 1,
+          borderColor: "success.main",
+          borderRadius: 1,
+          backgroundColor: (theme) => theme.palette.success.light + "10",
+        }}
+      >
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
+          <Typography
+            variant="body2"
+            sx={(theme) => ({
+              color: theme.palette.text.primary,
+              fontSize: "0.875rem",
+              fontWeight: 600,
+            })}
+          >
+            {pool.label === "user address" ? "Your Wallet" : pool.label}
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{
+              fontFamily: "monospace",
+              fontSize: "0.75rem",
+              color: (theme) => theme.palette.text.secondary,
+            }}
+          >
+            <TruncatedText truncateMiddle limit={20}>
+              {pool.address}
+            </TruncatedText>
+          </Typography>
+        </Box>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 0.5,
+          }}
+        >
+          <Typography
+            variant="body2"
+            sx={(theme) => ({
+              fontWeight: "bold",
+              color: theme.palette.success.main,
+              fontSize: "0.875rem",
+            })}
+          >
+            <PiconeroAmount
+              amount={(pool.percentage * Number(xmr_receive_amount)) / 100}
+            />
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={(theme) => ({ color: theme.palette.text.secondary })}
+          >
+            {pool.percentage}%
+          </Typography>
+        </Box>
+      </Box>
+    ))}
+  </Box>
+);
+
+interface MoneroReceiveSectionProps {
+  monero_receive_pool: PoolBreakdownProps["monero_receive_pool"];
+  xmr_receive_amount: number;
+}
+
+const MoneroReceiveSection = ({
+  monero_receive_pool,
+  xmr_receive_amount,
+}: MoneroReceiveSectionProps) => (
+  <Box
+    sx={{
+      display: "flex",
+      flexDirection: "column",
+      gap: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+  >
+    {monero_receive_pool.length === 1 ? (
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: 2.5,
+          border: 2,
+          borderColor: "success.main",
+          borderRadius: 2,
+          backgroundColor: (theme) => theme.palette.success.light + "15",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+          background: (theme) =>
+            `linear-gradient(135deg, ${theme.palette.success.light}20, ${theme.palette.success.light}05)`,
+        }}
+      >
+        <Typography
+          variant="h6"
+          sx={(theme) => ({
+            color: theme.palette.text.primary,
+            fontWeight: 700,
+            letterSpacing: 0.5,
+          })}
+        >
+          You receive
+        </Typography>
+        <Typography
+          variant="h5"
+          sx={(theme) => ({
+            fontWeight: "bold",
+            color: theme.palette.success.dark,
+            textShadow: "0 1px 2px rgba(0,0,0,0.1)",
+          })}
+        >
+          <PiconeroAmount amount={xmr_receive_amount} />
+        </Typography>
+      </Box>
+    ) : (
+      <PoolBreakdown
+        monero_receive_pool={monero_receive_pool}
+        xmr_receive_amount={xmr_receive_amount}
+      />
+    )}
+  </Box>
+);
+
+// Arrow animation styling extracted for reuse
+const arrowSx = {
+  fontSize: "3rem",
+  color: (theme: any) => theme.palette.primary.main,
+  animation: "slideArrow 2s infinite",
+  "@keyframes slideArrow": {
+    "0%": {
+      opacity: 0.6,
+      transform: "translateX(-8px)",
+    },
+    "50%": {
+      opacity: 1,
+      transform: "translateX(8px)",
+    },
+    "100%": {
+      opacity: 0.6,
+      transform: "translateX(-8px)",
+    },
+  },
+} as const;
+
+const AnimatedArrow = () => (
+  <Box
+    sx={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+  >
+    <ArrowRightAltIcon sx={arrowSx} />
+  </Box>
+);
