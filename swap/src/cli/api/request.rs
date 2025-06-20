@@ -723,6 +723,7 @@ pub async fn buy_xmr(
                                 maker: quote_with_address,
                             }
                         );
+
                         handle.request_approval(details, 300).await
                     } else {
                         Ok(true) // Auto-approve if no Tauri handle
@@ -1291,7 +1292,8 @@ pub async fn fetch_quotes_task(
         loop {
             let sellers = fetch_fn().await;
             let _ = tx.send(sellers);
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+            tokio::time::sleep(std::time::Duration::from_secs(15)).await;
         }
     });
 
@@ -1388,14 +1390,6 @@ where
         // Get the latest quotes, balance and max_giveable
         let quotes = quotes_rx.borrow().clone();
         let (balance, max_giveable) = *balance_rx.borrow();
-
-        tracing::info!(
-            swap_id = ?swap_id,
-            balance = ?balance,
-            max_giveable = ?max_giveable,
-            quotes = ?quotes,
-            "Determining BTC to swap"
-        );
 
         // Emit a Tauri event
         event_emitter.emit_swap_progress_event(
