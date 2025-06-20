@@ -1,14 +1,197 @@
 use cmake::Config;
+use std::path::Path;
+use std::fs;
+use std::process::Command;
+
+/// Represents a patch to be applied to the Monero codebase
+struct EmbeddedPatch {
+    name: &'static str,
+    description: &'static str,
+    patch_unified: &'static str,
+}
+
+/// Macro to create embedded patches with compile-time file inclusion
+macro_rules! embedded_patch {
+    ($name:literal, $description:literal, $patch_file:literal) => {
+        EmbeddedPatch {
+            name: $name,
+            description: $description,
+            patch_unified: include_str!($patch_file),
+        }
+    };
+}
+
+/// Embedded patches applied at compile time
+const EMBEDDED_PATCHES: &[EmbeddedPatch] = &[
+    embedded_patch!(
+        "wallet2_3min_remote_rpc_node_timeout",
+        "Increases network timeouts from 15 seconds to 3 minutes for remote RPC connections",
+        "patches/wallet2_3min_remote_rpc_node_timeout.patch"
+    ),
+];
+
+fn apply_embedded_patches() -> Result<(), Box<dyn std::error::Error>> {
+    let monero_dir = Path::new("monero");
+
+    if !monero_dir.exists() {
+        return Err("Monero directory not found. Please ensure the monero submodule is initialized and present.".into());
+    }
+
+    for embedded in EMBEDDED_PATCHES {
+        // Try parsing the entire patch first
+        let patch = diffy::Patch::from_str(embedded.patch_unified)
+            .map_err(|e| format!("Failed to parse patch {}: {}", embedded.name, e))?;
+
+        // Get the file path from patch headers
+        let raw_path = patch
+            .modified()
+            .or_else(|| patch.original())
+            .ok_or_else(|| format!("Patch {} does not specify a file", embedded.name))?;
+
+        let clean_path = raw_path
+            .strip_prefix("a/")
+            .or_else(|| raw_path.strip_prefix("b/"))
+            .expect("Failed to strip prefix from Monero patch");
+
+        let target_path = monero_dir.join(clean_path);
+
+        if !target_path.exists() {
+            return Err(format!("Target file {} not found!", clean_path).into());
+        }
+
+        let current = fs::read_to_string(&target_path)
+            .map_err(|e| format!("Failed to read {}: {}", clean_path, e))?;
+
+        let patched = match diffy::apply(&current, &patch) {
+            Ok(p) => p,
+            Err(_) => {
+                // Try reversing the patch – if that succeeds the file already contains the changes
+                if let Ok(_) = diffy::apply(&current, &patch.reverse()) {
+                    println!("cargo:warning=Patch {} already applied to {} – skipping", embedded.name, clean_path);
+                    continue;
+                } else {
+                    return Err(format!(
+                        "Failed to apply patch {} to {}: hunk mismatch (not already applied)",
+                        embedded.name, clean_path
+                    )
+                    .into());
+                }
+            }
+        };
+
+        fs::write(&target_path, patched)
+            .map_err(|e| format!("Failed to write {}: {}", clean_path, e))?;
+
+        println!(
+            "cargo:warning=Successfully applied embedded patch: {} ({}).",
+            embedded.name, embedded.description
+        );
+    }
+
+    Ok(())
+}
+
+fn build_openssl_for_ios() -> Result<String, Box<dyn std::error::Error>> {
+    let out_dir = std::env::var("OUT_DIR")?;
+    let openssl_dir = Path::new(&out_dir).join("openssl");
+    
+    // Check if already built
+    if openssl_dir.join("lib").join("libssl.a").exists() {
+        println!("cargo:warning=OpenSSL for iOS already built, skipping");
+        return Ok(openssl_dir.to_string_lossy().to_string());
+    }
+    
+    // Clone OpenSSL if not present
+    if !openssl_dir.exists() {
+        println!("cargo:warning=Cloning OpenSSL for iOS build");
+        let output = Command::new("git")
+            .args(&["clone", "--depth", "1", "--branch", "OpenSSL_1_1_1w", 
+                   "https://github.com/openssl/openssl.git"])
+            .arg(&openssl_dir)
+            .output()?;
+        
+        if !output.status.success() {
+            return Err(format!("Failed to clone OpenSSL: {}", 
+                             String::from_utf8_lossy(&output.stderr)).into());
+        }
+    }
+    
+    // Build OpenSSL for iOS
+    println!("cargo:warning=Building OpenSSL for iOS (this may take a while)");
+    let output = Command::new("./Configure")
+        .current_dir(&openssl_dir)
+        .args(&[
+            "ios64-cross",
+            "--prefix=/tmp", // We don't actually install, just build
+            "no-shared",
+            "no-dso",
+            "no-hw",
+            "no-engine",
+        ])
+        .env("CC", "clang")
+        .env("CROSS_TOP", "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer")
+        .env("CROSS_SDK", "iPhoneOS18.1.sdk")
+        .output()?;
+    
+    if !output.status.success() {
+        return Err(format!("Failed to configure OpenSSL: {}", 
+                         String::from_utf8_lossy(&output.stderr)).into());
+    }
+    
+    let output = Command::new("make")
+        .current_dir(&openssl_dir)
+        .args(&["-j", "4"])
+        .output()?;
+    
+    if !output.status.success() {
+        return Err(format!("Failed to build OpenSSL: {}", 
+                         String::from_utf8_lossy(&output.stderr)).into());
+    }
+    
+    Ok(openssl_dir.to_string_lossy().to_string())
+}
 
 fn main() {
     let is_github_actions: bool = std::env::var("GITHUB_ACTIONS").is_ok();
+    let target = std::env::var("TARGET").unwrap();
+    let is_ios = target.contains("apple-ios");
 
-    // Only rerun this when the bridge.rs or static_bridge.h file changes.
+    // Eerun this when the bridge.rs or static_bridge.h file changes.
     println!("cargo:rerun-if-changed=src/bridge.rs");
     println!("cargo:rerun-if-changed=src/bridge.h");
 
+    // Rerun if this build script changes (since it contains embedded patches)
+    println!("cargo:rerun-if-changed=build.rs");
+
+    // Rerun if the patches directory or any patch files change
+    println!("cargo:rerun-if-changed=patches");
+
+    // Apply embedded patches before building
+    if let Err(e) = apply_embedded_patches() {
+        panic!("Failed to apply embedded patches: {}", e);
+    }
+
     // Build with the monero library all dependencies required
     let mut config = Config::new("monero");
+    
+    // iOS specific configuration
+    if is_ios {
+        config.define("IOS", "ON");
+        config.define("CMAKE_TOOLCHAIN_FILE", "CMakeLists_IOS.txt");
+        config.define("IOS_PLATFORM", "OS");
+        config.define("BUILD_ARM64", "true");
+        config.define("ARCH", "arm64");
+        
+        // Help CMake find OpenSSL for iOS
+        // We need to build or provide OpenSSL for iOS
+        let ios_sdk_path = "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.1.sdk";
+        config.define("CMAKE_FIND_ROOT_PATH_MODE_LIBRARY", "BOTH");
+        config.define("CMAKE_FIND_ROOT_PATH_MODE_INCLUDE", "BOTH");
+        
+        // Disable unbound for iOS as it's not available
+        config.define("CMAKE_DISABLE_FIND_PACKAGE_Unbound", "ON");
+    }
+    
     let output_directory = config
         .build_target("wallet_api")
         // Builds currently fail in Release mode
@@ -213,11 +396,13 @@ fn main() {
     println!("cargo:rustc-link-lib=static=ssl"); // This is OpenSSL (libsll)
     println!("cargo:rustc-link-lib=static=crypto"); // This is OpenSSLs crypto library (libcrypto)
 
-    // Link unbound statically
-    println!("cargo:rustc-link-lib=static=unbound");
-    println!("cargo:rustc-link-lib=static=expat"); // Expat is required by unbound
-    println!("cargo:rustc-link-lib=static=nghttp2");
-    println!("cargo:rustc-link-lib=static=event");
+    // Link unbound statically (skip for iOS)
+    if !is_ios {
+        println!("cargo:rustc-link-lib=static=unbound");
+        println!("cargo:rustc-link-lib=static=expat"); // Expat is required by unbound
+        println!("cargo:rustc-link-lib=static=nghttp2");
+        println!("cargo:rustc-link-lib=static=event");
+    }
 
     // Link protobuf statically
     println!("cargo:rustc-link-lib=static=protobuf");
