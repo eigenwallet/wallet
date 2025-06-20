@@ -16,7 +16,7 @@ use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use libp2p::{identity, ping, rendezvous, Multiaddr, PeerId, Swarm};
 use semver::Version;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -49,34 +49,68 @@ pub async fn list_sellers_init(
     db: Option<Arc<dyn Database + Send + Sync>>,
     tauri_handle: Option<TauriHandle>,
 ) -> Result<
-    impl Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<SellerStatus>> + Send>>,
+    impl Fn() -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Vec<SellerStatus>> + Send + 'static>,
+        > + Send
+        + Sync
+        + 'static,
 > {
-    let behaviour = Behaviour {
-        rendezvous: rendezvous::client::Behaviour::new(identity.clone()),
-        quote: quote::cli(),
-        ping: ping::Behaviour::new(ping::Config::new().with_timeout(Duration::from_secs(60))),
-        identify: identify::Behaviour::new(build_identify_config(identity.clone())),
-    };
-    let swarm = swarm::cli(identity, maybe_tor_client, behaviour).await?;
-
-    // If a database is passed in: Fetch all peer addresses from the database and fetch quotes from them
-    let external_dial_queue = match db {
-        Some(db) => {
-            let peers = db.get_all_peer_addresses().await?;
-            VecDeque::from(peers)
-        }
-        None => VecDeque::new(),
-    };
+    // Capture variables needed to build an EventLoop on each invocation
+    let rendezvous_points_clone = rendezvous_points.clone();
+    let namespace_clone = namespace;
+    let maybe_tor_client_clone = maybe_tor_client.clone();
+    let identity_clone = identity.clone();
+    let db_clone = db.clone();
+    let tauri_handle_clone = tauri_handle.clone();
 
     Ok(move || {
-        let event_loop = EventLoop::new(
-            swarm,
-            rendezvous_points.clone(),
-            namespace,
-            external_dial_queue.clone(),
-            tauri_handle.clone(),
-        );
-        Box::pin(async move { event_loop.run().await })
+        // Clone captured values inside the closure to avoid moving them and thus implement `Fn`
+        let rendezvous_points = rendezvous_points_clone.clone();
+        let namespace = namespace_clone;
+        let maybe_tor_client = maybe_tor_client_clone.clone();
+        let identity = identity_clone.clone();
+        let db = db_clone.clone();
+        let tauri_handle = tauri_handle_clone.clone();
+
+        Box::pin(async move {
+            // Build a fresh swarm and event loop for every call so the closure can be invoked multiple times.
+            let behaviour = Behaviour {
+                rendezvous: rendezvous::client::Behaviour::new(identity.clone()),
+                quote: quote::cli(),
+                ping: ping::Behaviour::new(
+                    ping::Config::new().with_timeout(Duration::from_secs(60)),
+                ),
+                identify: identify::Behaviour::new(build_identify_config(identity.clone())),
+            };
+
+            // TODO: Dont use unwrap
+            let swarm = swarm::cli(identity, maybe_tor_client, behaviour)
+                .await
+                .unwrap();
+
+            // Prepare initial dial queue with cached peer addresses, if any
+            let external_dial_queue = match db {
+                Some(db) => {
+                    // TODO: Dont use unwrap
+                    let peers = db.get_all_peer_addresses().await.unwrap();
+                    VecDeque::from(peers)
+                }
+                None => VecDeque::new(),
+            };
+
+            let event_loop = EventLoop::new(
+                swarm,
+                rendezvous_points,
+                namespace,
+                external_dial_queue,
+                tauri_handle,
+            );
+
+            event_loop.run().await
+        })
+            as std::pin::Pin<
+                Box<dyn std::future::Future<Output = Vec<SellerStatus>> + Send + 'static>,
+            >
     })
 }
 
@@ -111,7 +145,7 @@ pub async fn list_sellers(
 
 #[serde_as]
 #[typeshare]
-#[derive(Debug, Serialize, PartialEq, Eq, Hash, Clone, Ord, PartialOrd)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Ord, PartialOrd)]
 pub struct QuoteWithAddress {
     /// The multiaddr of the seller (at which we were able to connect to and get the quote from)
     #[serde_as(as = "DisplayFromStr")]

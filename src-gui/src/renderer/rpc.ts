@@ -150,7 +150,7 @@ export async function buyXmr(
   ];
 
   // Convert all makers to multiaddr format
-  const potential_sellers = allMakers.map((maker) =>
+  const sellers = allMakers.map((maker) =>
     providerToConcatenatedMultiAddr(maker),
   );
 
@@ -158,11 +158,13 @@ export async function buyXmr(
     "buy_xmr",
     bitcoin_change_address == null
       ? {
-          potential_sellers,
+          rendezvous_points: PRESET_RENDEZVOUS_POINTS,
+          sellers,
           monero_receive_address,
         }
       : {
-          potential_sellers,
+          rendezvous_points: PRESET_RENDEZVOUS_POINTS,
+          sellers,
           monero_receive_address,
           bitcoin_change_address,
         },
