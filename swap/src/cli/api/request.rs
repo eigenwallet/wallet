@@ -8,16 +8,18 @@ use crate::common::{get_logs, redact};
 use crate::libp2p_ext::MultiAddrExt;
 use crate::monero::wallet_rpc::MoneroDaemon;
 use crate::network::quote::{BidQuote, ZeroQuoteReceived};
+use crate::network::rendezvous::XmrBtcNamespace;
 use crate::network::swarm;
 use crate::protocol::bob::{BobState, Swap};
-use crate::protocol::{bob, State};
+use crate::protocol::{bob, Database, State};
 use crate::{bitcoin, cli, monero};
 use ::bitcoin::address::NetworkUnchecked;
 use ::bitcoin::Txid;
 use ::monero::Network;
 use anyhow::{bail, Context as AnyContext, Result};
+use arti_client::TorClient;
 use libp2p::core::Multiaddr;
-use libp2p::PeerId;
+use libp2p::{identity, PeerId};
 use once_cell::sync::Lazy;
 use qrcode::render::unicode;
 use qrcode::QrCode;
@@ -30,6 +32,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
+use tor_rtcompat::tokio::TokioRustlsRuntime;
 use tracing::debug_span;
 use tracing::Instrument;
 use tracing::Span;
@@ -55,8 +58,8 @@ fn get_swap_tracing_span(swap_id: Uuid) -> Span {
 #[typeshare]
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BuyXmrArgs {
-    #[typeshare(serialized_as = "string")]
-    pub seller: Multiaddr,
+    #[typeshare(serialized_as = "Vec<string>")]
+    pub potential_sellers: Vec<Multiaddr>,
     #[typeshare(serialized_as = "Option<string>")]
     pub bitcoin_change_address: Option<bitcoin::Address<NetworkUnchecked>>,
     #[typeshare(serialized_as = "string")]
@@ -588,7 +591,7 @@ pub async fn buy_xmr(
     context: Arc<Context>,
 ) -> Result<BuyXmrResponse, anyhow::Error> {
     let BuyXmrArgs {
-        seller,
+        potential_sellers,
         bitcoin_change_address,
         monero_receive_address,
     } = buy_xmr;
@@ -739,7 +742,14 @@ pub async fn buy_xmr(
 
                 let determine_amount = determine_btc_to_swap(
                     context.config.json,
-                    bid_quote,
+                    || fetch_quotes_task(
+                        rendezvous_points,
+                        namespace,
+                        tor_client,
+                        identity,
+                        db,
+                        tauri_handle,
+                    ),
                     bitcoin_wallet.new_address(),
                     || bitcoin_wallet.balance(),
                     max_givable,
@@ -1226,16 +1236,87 @@ fn qr_code(value: &impl ToString) -> Result<String> {
     Ok(qr_code)
 }
 
+pub async fn fetch_quotes_task(
+    rendezvous_points: Vec<Multiaddr>,
+    namespace: XmrBtcNamespace,
+    sellers: Vec<Multiaddr>,
+    identity: identity::Keypair,
+    db: Option<Arc<dyn Database + Send + Sync>>,
+    tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
+    tauri_handle: Option<TauriHandle>,
+) -> Result<(
+    tokio::task::JoinHandle<()>,
+    ::tokio::sync::watch::Receiver<Vec<SellerStatus>>,
+)> {
+    let (tx, rx) = ::tokio::sync::watch::channel(Vec::new());
+
+    let rendezvous_nodes: Vec<_> = rendezvous_points
+        .iter()
+        .filter_map(|addr| addr.split_peer_id())
+        .collect();
+
+    let fetch_fn = crate::cli::list_sellers::list_sellers_init(
+        rendezvous_nodes,
+        namespace,
+        tor_client,
+        identity,
+        db,
+        tauri_handle,
+    )
+    .await?;
+
+    let handle = tokio::task::spawn(async move {
+        loop {
+            let sellers = fetch_fn().await;
+            let _ = tx.send(sellers);
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    });
+
+    Ok((handle, rx))
+}
+
+pub async fn refresh_wallet_task<FMG, TMG, FB, TB>(
+    max_giveable_fn: FMG,
+    balance_fn: FB,
+) -> Result<(
+    tokio::task::JoinHandle<()>,
+    ::tokio::sync::watch::Receiver<(bitcoin::Amount, bitcoin::Amount)>,
+)>
+where
+    TMG: Future<Output = Result<(bitcoin::Amount, bitcoin::Amount)>>,
+    FMG: Fn() -> TMG,
+    TB: Future<Output = Result<bitcoin::Amount>>,
+    FB: Fn() -> TB,
+{
+    let (tx, rx) = ::tokio::sync::watch::channel((bitcoin::Amount::ZERO, bitcoin::Amount::ZERO));
+
+    let handle = tokio::task::spawn(async move {
+        loop {
+            if let (Ok(balance), Ok((max_giveable, _fee))) = (balance_fn().await, max_giveable_fn().await) {
+                let _ = tx.send((balance, max_giveable));
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    });
+    
+    Ok((handle, rx))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn determine_btc_to_swap<FB, TB, FMG, TMG, FS, TS>(
     json: bool,
-    bid_quote: BidQuote,
+    quote_fetch_tasks: impl Fn() -> Result<(
+        tokio::task::JoinHandle<()>,
+        tokio::sync::mpsc::Receiver<Vec<SellerStatus>>,
+    )>,
     get_new_address: impl Future<Output = Result<bitcoin::Address>>,
     balance: FB,
     max_giveable_fn: FMG,
     sync: FS,
     event_emitter: Option<TauriHandle>,
     swap_id: Option<Uuid>,
+    request_approval: impl Fn(QuoteWithAddress) -> Box<dyn Future<Output = Result<bool>> + Send>,
 ) -> Result<(bitcoin::Amount, bitcoin::Amount)>
 where
     TB: Future<Output = Result<bitcoin::Amount>>,
@@ -1245,104 +1326,58 @@ where
     TS: Future<Output = Result<()>>,
     FS: Fn() -> TS,
 {
-    if bid_quote.max_quantity == bitcoin::Amount::ZERO {
-        bail!(ZeroQuoteReceived)
-    }
+    // Start background tasks with watch channels
+    let (quote_fetch_handle, mut quotes_rx): (_, ::tokio::sync::watch::Receiver<Vec<SellerStatus>>) = quote_fetch_tasks()?;
+    let (wallet_refresh_handle, mut balance_rx): (_, ::tokio::sync::watch::Receiver<(bitcoin::Amount, bitcoin::Amount)>) = refresh_wallet_task(
+        max_giveable_fn,
+        balance,
+    ).await?;
 
-    tracing::info!(
-        price = %bid_quote.price,
-        minimum_amount = %bid_quote.min_quantity,
-        maximum_amount = %bid_quote.max_quantity,
-        "Received quote",
-    );
-
-    sync().await.context("Failed to sync of Bitcoin wallet")?;
-    let (mut max_giveable, mut spending_fee) = max_giveable_fn().await?;
-
-    if max_giveable == bitcoin::Amount::ZERO || max_giveable < bid_quote.min_quantity {
-        let deposit_address = get_new_address.await?;
-        let minimum_amount = bid_quote.min_quantity;
-        let maximum_amount = bid_quote.max_quantity;
-
-        // To avoid any issus, we clip maximum_amount to never go above the
-        // total maximim Bitcoin supply
-        let maximum_amount = maximum_amount.min(bitcoin::Amount::MAX_MONEY);
-
-        if !json {
-            eprintln!("{}", qr_code(&deposit_address)?);
+    loop {
+        // Wait for any change in either quotes or balance
+        tokio::select! {
+            _ = quotes_rx.changed() => {},
+            _ = balance_rx.changed() => {},
         }
+        
+        // Get the latest quotes, balance and max_giveable
+        let quotes = quotes_rx.borrow().clone();
+        let (balance, max_giveable) = *balance_rx.borrow();
 
-        loop {
-            let min_outstanding = bid_quote.min_quantity - max_giveable;
-            let min_bitcoin_lock_tx_fee = spending_fee;
-            let min_deposit_until_swap_will_start = min_outstanding + min_bitcoin_lock_tx_fee;
-            let max_deposit_until_maximum_amount_is_reached = maximum_amount
-                .checked_sub(max_giveable)
-                .context("Overflow when subtracting max_giveable from maximum_amount")?
-                .checked_add(min_bitcoin_lock_tx_fee)
-                .context(format!("Overflow when adding min_bitcoin_lock_tx_fee ({min_bitcoin_lock_tx_fee}) to max_giveable ({max_giveable}) with maximum_amount ({maximum_amount})"))?;
-
-            tracing::info!(
-                "Deposit at least {} to cover the min quantity with fee!",
-                min_deposit_until_swap_will_start
-            );
-            tracing::info!(
-                %deposit_address,
-                %min_deposit_until_swap_will_start,
-                %max_deposit_until_maximum_amount_is_reached,
-                %max_giveable,
-                %minimum_amount,
-                %maximum_amount,
-                %min_bitcoin_lock_tx_fee,
-                price = %bid_quote.price,
-                "Waiting for Bitcoin deposit",
-            );
-
-            if let Some(swap_id) = swap_id {
-                event_emitter.emit_swap_progress_event(
-                    swap_id,
-                    TauriSwapProgressEvent::WaitingForBtcDeposit {
-                        deposit_address: deposit_address.clone(),
-                        max_giveable,
-                        min_deposit_until_swap_will_start,
-                        max_deposit_until_maximum_amount_is_reached,
-                        min_bitcoin_lock_tx_fee,
-                        quote: bid_quote,
-                    },
-                );
-            }
-
-            (max_giveable, spending_fee) = loop {
-                sync()
-                    .await
-                    .context("Failed to sync Bitcoin wallet while waiting for deposit")?;
-                let (new_max_givable, new_fee) = max_giveable_fn().await?;
-
-                if new_max_givable > max_giveable {
-                    break (new_max_givable, new_fee);
+        // Iterate through quotes and find ones that match the balance and max_giveable
+        let matching_quotes = quotes.iter().filter_map(|quote| {
+            match quote {
+                SellerStatus::Online(quote_with_address) => {
+                    if quote_with_address.quote.min_quantity <= max_giveable {
+                        Some(quote_with_address)
+                    } else {
+                        None
+                    }
                 }
-
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            };
-
-            let new_balance = balance().await?;
-            tracing::info!(%new_balance, %max_giveable, "Received Bitcoin");
-
-            if max_giveable < bid_quote.min_quantity {
-                tracing::info!("Deposited amount is not enough to cover `min_quantity` when accounting for network fees");
-                continue;
+                SellerStatus::Unreachable(_) => None,
             }
+        }).collect::<Vec<_>>();
 
-            break;
-        }
-    };
+        // Now request approval for each of the matching quotes
+        // Do this in parallel
+        let approval_requests = matching_quotes.iter().map(|quote| {
+            request_approval((*quote).clone())
+        }).collect::<Vec<_>>();
 
-    let balance = balance().await?;
-    let fees = balance - max_giveable;
-    let max_accepted = bid_quote.max_quantity;
-    let btc_swap_amount = min(max_giveable, max_accepted);
+        // Wait for any of the approval requests to complete
+        let approval_result = tokio::select! {
+            result = approval_requests.into_iter().next() => result,
+        };
 
-    Ok((btc_swap_amount, fees))
+
+        // TODO: Handle the combined state with latest values
+        // This is where you'd process quotes + balance together
+        
+        // For now, return placeholder values - implement actual logic here
+        quote_fetch_handle.abort();
+        wallet_refresh_handle.abort();
+        return Ok((balance, bitcoin::Amount::ZERO)); // (amount, fee)
+    }
 }
 
 #[typeshare]

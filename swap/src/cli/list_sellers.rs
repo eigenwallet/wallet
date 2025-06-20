@@ -32,7 +32,7 @@ fn build_identify_config(identity: identity::Keypair) -> identify::Config {
     identify::Config::new(protocol_version, identity.public()).with_agent_version(agent_version)
 }
 
-/// Returns sorted list of sellers, with [Online](Status::Online) listed first.
+/// Returns a function that when called will return sorted list of sellers, with [Online](Status::Online) listed first.
 ///
 /// First uses the rendezvous node to discover peers in the given namespace,
 /// then fetches a quote from each peer that was discovered. If fetching a quote
@@ -41,14 +41,16 @@ fn build_identify_config(identity: identity::Keypair) -> identify::Config {
 ///
 /// If a database is provided, it will be used to get the list of peers that
 /// have already been discovered previously and attempt to fetch a quote from them.
-pub async fn list_sellers(
+pub async fn list_sellers_init(
     rendezvous_points: Vec<(PeerId, Multiaddr)>,
     namespace: XmrBtcNamespace,
     maybe_tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
     identity: identity::Keypair,
     db: Option<Arc<dyn Database + Send + Sync>>,
     tauri_handle: Option<TauriHandle>,
-) -> Result<Vec<SellerStatus>> {
+) -> Result<
+    impl Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<SellerStatus>> + Send>>,
+> {
     let behaviour = Behaviour {
         rendezvous: rendezvous::client::Behaviour::new(identity.clone()),
         quote: quote::cli(),
@@ -66,16 +68,45 @@ pub async fn list_sellers(
         None => VecDeque::new(),
     };
 
-    let event_loop = EventLoop::new(
-        swarm,
+    Ok(move || {
+        let event_loop = EventLoop::new(
+            swarm,
+            rendezvous_points.clone(),
+            namespace,
+            external_dial_queue.clone(),
+            tauri_handle.clone(),
+        );
+        Box::pin(async move { event_loop.run().await })
+    })
+}
+
+/// Returns sorted list of sellers, with [Online](Status::Online) listed first.
+///
+/// First uses the rendezvous node to discover peers in the given namespace,
+/// then fetches a quote from each peer that was discovered. If fetching a quote
+/// from a discovered peer fails the seller's status will be
+/// [Unreachable](Status::Unreachable).
+///
+/// If a database is provided, it will be used to get the list of peers that
+/// have already been discovered previously and attempt to fetch a quote from them.
+pub async fn list_sellers(
+    rendezvous_points: Vec<(PeerId, Multiaddr)>,
+    namespace: XmrBtcNamespace,
+    maybe_tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
+    identity: identity::Keypair,
+    db: Option<Arc<dyn Database + Send + Sync>>,
+    tauri_handle: Option<TauriHandle>,
+) -> Result<Vec<SellerStatus>> {
+    let fetch_fn = list_sellers_init(
         rendezvous_points,
         namespace,
-        external_dial_queue,
+        maybe_tor_client,
+        identity,
+        db,
         tauri_handle,
-    );
-    let sellers = event_loop.run().await;
-
-    Ok(sellers)
+    )
+    .await?;
+    Ok(fetch_fn().await)
 }
 
 #[serde_as]
