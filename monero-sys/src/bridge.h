@@ -147,10 +147,10 @@ namespace Monero
      * Creates a transaction that spends the unlocked balance to multiple destinations with given ratios.
      * Ratiosn must sum to 1.
      */
-    inline PendingTransaction *createMultiSweepTransaction(
+    inline PendingTransaction *createTransactionMultiDest(
         Wallet &wallet,
         const std::vector<std::string> &dest_addresses,
-        const std::vector<double> &sweep_ratios) // Sweep ratios must sum to 1
+        const std::vector<uint64_t> &amounts)
     {
         size_t n = dest_addresses.size();
 
@@ -162,75 +162,9 @@ namespace Monero
         }
 
         // Check if the number of destinations and sweep ratios match
-        if (sweep_ratios.size() != n)
+        if (amounts.size() != n)
         {
             // wallet.setStatusError("Number of destinations and sweep ratios must match");
-            return nullptr;
-        }
-
-        // Check if the sweep ratios sum to 1
-        double sum_ratios = 0.0;
-        for (const auto &ratio : sweep_ratios)
-        {
-            sum_ratios += ratio;
-        }
-
-        const double epsilon = 1e-6;
-        if (std::abs(sum_ratios - 1.0) > epsilon)
-        {
-            // wallet.setStatusError("Sweep ratios must sum to 1.0");
-            return nullptr;
-        }
-
-        // To estimate the correct fee we build a transation that spends 1 piconero
-        // to (N-1) destinations and 1 change output (which is created by the wallet by default)
-
-        // Build temporary destination list for fee estimation
-        // Skip the last destination because for the fee estimation the
-        // change output will serve as the last destination
-        std::vector<std::pair<std::string, uint64_t>> fee_dests;
-        fee_dests.reserve(n - 1);
-        for (size_t i = 0; i < n - 1; ++i)
-            fee_dests.emplace_back(dest_addresses[i], 1);
-
-        // Estimate fee assuming N-1 outputs + 1 change
-        uint64_t fee = wallet.estimateTransactionFee(fee_dests, PendingTransaction::Priority_Default);
-
-        uint64_t balance = wallet.unlockedBalance();
-        uint64_t sweepable_balance = balance - fee;
-
-        // Now split that sweepable balance into N parts based on the sweep ratios
-        std::vector<uint64_t> amounts(n);
-
-        // First N-1 outputs are split based on the sweep ratios
-        uint64_t sum = 0;
-        for (size_t i = 0; i < n - 1; ++i)
-        {
-            uint64_t amount = static_cast<uint64_t>(std::floor(sweepable_balance * sweep_ratios[i]));
-
-            // If the amount is 0, throw an error
-            if (amount == 0)
-            {
-                // wallet.setStatusError("One of destination addresses would receive 0 piconero");
-                return nullptr;
-            }
-
-            amounts[i] = amount;
-            sum += amount;
-        }
-
-        // Last output is the remaining balance
-        // This accounts for small rounding errors
-        // which cannot be avoided when using floating point arithmetic
-        amounts[n - 1] = sweepable_balance - sum;
-
-        // Assert that the sum of the amounts is equal to the sweepable balance
-        sum = 0;
-        for (size_t i = 0; i < n; ++i)
-            sum += amounts[i];
-        if (sum != sweepable_balance)
-        {
-            // wallet.setStatusError("Failed to split balance into parts");
             return nullptr;
         }
 

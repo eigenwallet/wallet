@@ -1514,17 +1514,23 @@ impl FfiWallet {
             bail!("Number of addresses and ratios must match");
         }
 
-        let estimated_fee = ffi::estimateTransactionFee(&self.inner, addresses.len() as u64)
-            .context(
-            "Failed to estimate transaction fee for multi-sweep: Ffi call failed with exception",
-        )?;
-
         tracing::info!(
             "Sweeping funds to {} addresses, refreshing wallet first",
             addresses.len()
         );
 
         self.refresh_blocking()?;
+
+        let balance = self.unlocked_balance();
+
+        let estimated_fee = Amount::from_pico(ffi::estimateTransactionFee(&self.inner, addresses.len() as u64)
+            .context(
+            "Failed to estimate transaction fee for multi-sweep: Ffi call failed with exception",
+        )?);
+
+        tracing::debug!(%balance, %estimated_fee, num_outputs = addresses.len(), "Calculating multi-sweep distribution");
+
+        let amounts = FfiWallet::distribute(balance, estimated_fee, ratios)?;
 
         // Build a C++ vector of destination addresses
         let mut cxx_addrs: UniquePtr<CxxVector<CxxString>> = CxxVector::<CxxString>::new();
@@ -1533,17 +1539,17 @@ impl FfiWallet {
             ffi::vector_string_push_back(cxx_addrs.pin_mut(), &s);
         }
 
-        // Build a C++ vector of ratios
-        let mut cxx_ratios: UniquePtr<CxxVector<f64>> = CxxVector::<f64>::new();
-        for &r in ratios {
-            cxx_ratios.pin_mut().push(r);
+        // Build a C++ vector of amounts
+        let mut cxx_amounts: UniquePtr<CxxVector<u64>> = CxxVector::<u64>::new();
+        for &amount in &amounts {
+            cxx_amounts.pin_mut().push(amount.as_pico());
         }
 
         // Create the multi-sweep pending transaction
-        let raw_tx = ffi::createMultiSweepTransaction(
+        let raw_tx = ffi::createTransactionMultiDest(
             self.inner.pinned(),
             cxx_addrs.as_ref().unwrap(),
-            cxx_ratios.as_ref().unwrap(),
+            cxx_amounts.as_ref().unwrap(),
         );
 
         if raw_tx.is_null() {

@@ -236,10 +236,10 @@ pub mod ffi {
         ) -> Result<*mut PendingTransaction>;
 
         /// Create a multi-sweep transaction.
-        fn createMultiSweepTransaction(
+        fn createTransactionMultiDest(
             wallet: Pin<&mut Wallet>,
             dest_addresses: &CxxVector<CxxString>,
-            sweep_ratios: &CxxVector<f64>,
+            amounts: &CxxVector<u64>,
         ) -> *mut PendingTransaction;
 
         fn vector_string_push_back(v: Pin<&mut CxxVector<CxxString>>, s: &CxxString);

@@ -284,7 +284,7 @@ impl<'c> Monero {
         let miner_wallet = self.wallet("miner")?;
         let miner_address = miner_wallet.address().await?.to_string();
         self.monerod()
-            .generate_blocks(1, miner_address.clone())
+            .generate_blocks(10, miner_address.clone())
             .await?;
         Ok(())
     }
@@ -519,6 +519,7 @@ impl MoneroWallet {
 
     pub async fn sweep_multi(&self, addresses: &[Address], ratios: &[f64]) -> Result<TxReceipt> {
         tracing::info!("`{}` sweeping multi ({:?})", self.name, ratios);
+        self.balance().await?;
 
         self.wallet
             .sweep_multi(addresses, ratios)
