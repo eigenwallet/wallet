@@ -143,7 +143,6 @@ export default function WaitingForBtcDepositPage({
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      <MakerDiscoveryStatus />
       <Box sx={{ display: "flex", flexDirection: "rows", gap: 1 }}>
         <DepositAddressInfoBox
           title="Bitcoin Deposit Address"
@@ -168,6 +167,7 @@ export default function WaitingForBtcDepositPage({
       </Box>
 
       {/* Offers Section */}
+      <MakerDiscoveryStatus />
       <Box>
         {pendingSelectMakerApprovals.length > 0 && (
           <>
@@ -244,10 +244,6 @@ export default function WaitingForBtcDepositPage({
                         Accept
                       </PromiseInvokeButton>
                     </Box>
-
-                    {index < pendingSelectMakerApprovals.length - 1 && (
-                      <Divider sx={{ my: 1 }} />
-                    )}
                   </Box>
                 );
               })}
