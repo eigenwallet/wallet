@@ -13,6 +13,8 @@ import DebugPage from "./pages/DebugPage";
 import SwapStatePage from "./pages/SwapStatePage";
 import SwapDialogTitle from "./SwapDialogTitle";
 import SwapStateStepper from "./SwapStateStepper";
+import { haveFundsBeenLocked } from "models/tauriModelExt";
+import { suspendCurrentSwap } from "renderer/rpc";
 
 export default function SwapDialog({
   open,
@@ -29,11 +31,13 @@ export default function SwapDialog({
   const dispatch = useAppDispatch();
 
   function onCancel() {
-    if (isSwapRunning) {
+    if (isSwapRunning && haveFundsBeenLocked(swap.state.curr)) {
       setOpenSuspendAlert(true);
     } else {
-      onClose();
-      dispatch(swapReset());
+      suspendCurrentSwap().then(() => {
+        onClose();
+        dispatch(swapReset());
+      });
     }
   }
 

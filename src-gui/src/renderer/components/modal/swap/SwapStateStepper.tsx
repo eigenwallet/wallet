@@ -56,6 +56,7 @@ function getActiveStep(state: SwapState | null): PathStep | null {
     case "RequestingQuote":
     case "ReceivedQuote":
     case "WaitingForBtcDeposit":
+      return null; // No funds have been locked yet
     case "SwapSetupInflight":
       return [PathType.HAPPY_PATH, 0, isReleased];
 

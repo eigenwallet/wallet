@@ -310,3 +310,28 @@ export function isPendingSelectMakerApprovalEvent(
   // Check if the request is a SelectMaker request
   return event.content.details.type === "SelectMaker";
 }
+
+/**
+ * Checks if any funds have been locked yet based on the swap progress event
+ * Returns true for events where funds have been locked
+ * @param event The TauriSwapProgressEvent to check
+ * @returns True if funds have been locked, false otherwise
+ */
+export function haveFundsBeenLocked(
+  event: TauriSwapProgressEvent | null,
+): boolean {
+  if (event === null) {
+    return false;
+  }
+
+  switch (event.type) {
+    case "RequestingQuote":
+    case "Resuming":
+    case "ReceivedQuote":
+    case "WaitingForBtcDeposit":
+    case "SwapSetupInflight":
+      return false;
+  }
+
+  return true;
+}
