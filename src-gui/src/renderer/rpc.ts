@@ -27,6 +27,7 @@ import {
   ResolveApprovalResponse,
   RedactArgs,
   RedactResponse,
+  GetCurrentSwapResponse,
 } from "models/tauriModel";
 import { rpcSetBalance, rpcSetSwapInfo } from "store/features/rpcSlice";
 import { store } from "./store/storeRenderer";
@@ -179,6 +180,10 @@ export async function resumeSwap(swapId: string) {
 
 export async function suspendCurrentSwap() {
   await invokeNoArgs<SuspendCurrentSwapResponse>("suspend_current_swap");
+}
+
+export async function getCurrentSwapId() {
+  return await invokeNoArgs<GetCurrentSwapResponse>("get_current_swap_id");
 }
 
 export async function getMoneroRecoveryKeys(

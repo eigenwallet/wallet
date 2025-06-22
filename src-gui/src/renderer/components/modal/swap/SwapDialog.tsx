@@ -14,7 +14,7 @@ import SwapStatePage from "./pages/SwapStatePage";
 import SwapDialogTitle from "./SwapDialogTitle";
 import SwapStateStepper from "./SwapStateStepper";
 import { haveFundsBeenLocked } from "models/tauriModelExt";
-import { suspendCurrentSwap } from "renderer/rpc";
+import { getCurrentSwapId, suspendCurrentSwap } from "renderer/rpc";
 
 export default function SwapDialog({
   open,
@@ -31,13 +31,18 @@ export default function SwapDialog({
   const dispatch = useAppDispatch();
 
   function onCancel() {
-    if (isSwapRunning && haveFundsBeenLocked(swap.state.curr)) {
-      setOpenSuspendAlert(true);
+    if (isSwapRunning) {
+      if (haveFundsBeenLocked(swap.state.curr)) {
+        setOpenSuspendAlert(true);
+      } else {
+        suspendCurrentSwap().then(() => {
+          onClose();
+          dispatch(swapReset());
+        });
+      }
     } else {
-      suspendCurrentSwap().then(() => {
-        onClose();
-        dispatch(swapReset());
-      });
+      onClose();
+      dispatch(swapReset());
     }
   }
 

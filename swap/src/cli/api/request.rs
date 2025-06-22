@@ -323,10 +323,19 @@ impl Request for SuspendCurrentSwapArgs {
     }
 }
 
+#[typeshare]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GetCurrentSwapArgs;
 
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetCurrentSwapResponse {
+    #[typeshare(serialized_as = "Option<string>")]
+    pub swap_id: Option<Uuid>,
+}
+
 impl Request for GetCurrentSwapArgs {
-    type Response = serde_json::Value;
+    type Response = GetCurrentSwapResponse;
 
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
         get_current_swap(ctx).await
@@ -1236,10 +1245,9 @@ pub async fn monero_recovery(
 }
 
 #[tracing::instrument(fields(method = "get_current_swap"), skip(context))]
-pub async fn get_current_swap(context: Arc<Context>) -> Result<serde_json::Value> {
-    Ok(json!({
-        "swap_id": context.swap_lock.get_current_swap_id().await,
-    }))
+pub async fn get_current_swap(context: Arc<Context>) -> Result<GetCurrentSwapResponse> {
+    let swap_id = context.swap_lock.get_current_swap_id().await;
+    Ok(GetCurrentSwapResponse { swap_id })
 }
 
 pub async fn resolve_approval_request(
