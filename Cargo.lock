@@ -2912,6 +2912,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "electrum-pool"
+version = "0.1.0"
+dependencies = [
+ "backoff",
+ "bdk_electrum",
+ "bitcoin 0.32.6",
+ "futures",
+ "once_cell",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "elliptic-curve"
 version = "0.13.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9653,6 +9667,7 @@ dependencies = [
  "directories-next",
  "ecdsa_fun",
  "ed25519-dalek 1.0.1",
+ "electrum-pool",
  "futures",
  "get-port",
  "hex",
