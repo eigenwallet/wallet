@@ -2912,6 +2912,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "electrum-pool"
+version = "0.1.0"
+dependencies = [
+ "backoff",
+ "bdk_electrum",
+ "bitcoin 0.32.6",
+ "futures",
+ "once_cell",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "elliptic-curve"
 version = "0.13.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5973,13 +5987,11 @@ dependencies = [
  "cxx-build",
  "futures",
  "monero",
- "serde",
  "tempfile",
  "testcontainers",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "typeshare",
  "uuid",
 ]
 
@@ -7478,6 +7490,15 @@ dependencies = [
  "libc",
  "paste",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
+dependencies = [
+ "image",
 ]
 
 [[package]]
@@ -9655,6 +9676,7 @@ dependencies = [
  "directories-next",
  "ecdsa_fun",
  "ed25519-dalek 1.0.1",
+ "electrum-pool",
  "futures",
  "get-port",
  "hex",
@@ -9670,6 +9692,7 @@ dependencies = [
  "once_cell",
  "pem",
  "proptest",
+ "qrcode",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "regex",
