@@ -71,11 +71,11 @@ function InnerContent() {
       }}
     >
       <Routes>
-        {/* <Route path="/swap" element={<SwapPage />} />
+        <Route path="/swap" element={<SwapPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/wallet" element={<WalletPage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/feedback" element={<FeedbackPage />} /> */}
+        <Route path="/feedback" element={<FeedbackPage />} />
         <Route path="/" element={<Dashboard />} />
       </Routes>
     </Box>

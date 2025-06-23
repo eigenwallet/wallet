@@ -1,4 +1,4 @@
-import { Box, Typography } from "@mui/material";
+import { Box, Button, Typography } from "@mui/material";
 import Avatar from "boring-avatars";
 import { AccessTimeOutlined as ClockIcon } from "@mui/icons-material";
 import { MonetizationOnOutlined as MoneyIcon } from "@mui/icons-material";
@@ -16,63 +16,80 @@ export default function MakerOfferItem() {
         borderColor: "divider",
         borderRadius: 2,
         padding: 2,
+        width: "100%",
+        justifyContent: "space-between",
+        alignItems: "center",
       }}
     >
-      <Avatar
-        size={40}
-        name="Maria Mitchell"
-        variant="marble"
-        colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
-      />
       <Box
         sx={{
           display: "flex",
-          flexDirection: "column",
-          gap: 1,
+          flexDirection: "row",
+          gap: 2,
         }}
       >
-        <Typography variant="h4">Maria Mitchell</Typography>
-        <Typography variant="body1">fjklsdfjlfdk</Typography>
+        <Avatar
+          size={40}
+          name="Maria Mitchell"
+          variant="marble"
+          colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
+        />
         <Box
           sx={{
             display: "flex",
-            flexDirection: "row",
+            flexDirection: "column",
             gap: 1,
           }}
         >
-          <IconChip icon={<ClockIcon />} color="primary.main">
-            active for{" "}
-            <Typography
-              sx={{
-                fontWeight: 800,
-                fontSize: 12,
-              }}
-            >
-              10 minutes
-            </Typography>
-          </IconChip>
-          <IconChip icon={<MoneyIcon />} color="primary.main">
-            <Typography
-              sx={{
-                fontWeight: 800,
-                fontSize: 12,
-              }}
-            >
-              0.12 %
-            </Typography>{" "}
-            fee
-          </IconChip>
-          <IconChip icon={<BitcoinIcon />} color="primary.main">
-            <Typography
-              sx={{
-                fontWeight: 800,
-                fontSize: 12,
-              }}
-            >
-              0.00003 – 0.00500
-            </Typography>
-          </IconChip>
+          <Typography variant="h4">Maria Mitchell</Typography>
+          <Typography variant="body1">fjklsdfjlfdk</Typography>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "row",
+              gap: 1,
+            }}
+          >
+            <IconChip icon={<ClockIcon />} color="primary.main">
+              active for{" "}
+              <Typography
+                sx={{
+                  fontWeight: 800,
+                  fontSize: 12,
+                }}
+              >
+                10 minutes
+              </Typography>
+            </IconChip>
+            <IconChip icon={<MoneyIcon />} color="primary.main">
+              <Typography
+                sx={{
+                  fontWeight: 800,
+                  fontSize: 12,
+                }}
+              >
+                0.12 %
+              </Typography>{" "}
+              fee
+            </IconChip>
+            <IconChip icon={<BitcoinIcon />} color="primary.main">
+              <Typography
+                sx={{
+                  fontWeight: 800,
+                  fontSize: 12,
+                }}
+              >
+                0.00003 – 0.00500
+              </Typography>
+            </IconChip>
+          </Box>
         </Box>
+      </Box>
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <Typography variant="body1">0.00003 XMR</Typography>
+        <Button variant="contained" color="primary">
+          Choose
+        </Button>
       </Box>
     </Box>
   );

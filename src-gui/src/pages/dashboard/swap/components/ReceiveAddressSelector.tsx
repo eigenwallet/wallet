@@ -9,7 +9,9 @@ import { setRedeemAddress } from "store/features/startSwapSlice";
 export default function ReceiveAddressSelector() {
   const [addresses, setAddresses] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const redeemAddress = useAppSelector((state) => state.startSwap.redeemAddress);
+  const redeemAddress = useAppSelector(
+    (state) => state.startSwap.redeemAddress,
+  );
   const dispatch = useAppDispatch();
 
   useEffect(() => {
@@ -21,7 +23,7 @@ export default function ReceiveAddressSelector() {
         setError(null);
       }
     }
-  }, [redeemAddress])
+  }, [redeemAddress]);
 
   useEffect(() => {
     const fetchAddresses = async () => {
@@ -42,7 +44,6 @@ export default function ReceiveAddressSelector() {
         marginTop: 1,
       }}
     >
-      <Typography variant="body1">Receive Address</Typography>
       <Autocomplete
         sx={{
           flexGrow: 1,
@@ -53,7 +54,13 @@ export default function ReceiveAddressSelector() {
         onChange={(_, value) => dispatch(setRedeemAddress(value))}
         onInputChange={(_, value) => dispatch(setRedeemAddress(value))}
         renderInput={(params) => (
-          <TextField {...params} label="Receive Address" fullWidth error={!!error} helperText={error} />
+          <TextField
+            {...params}
+            label="Receive Address"
+            fullWidth
+            error={!!error}
+            helperText={error}
+          />
         )}
       />
     </Box>

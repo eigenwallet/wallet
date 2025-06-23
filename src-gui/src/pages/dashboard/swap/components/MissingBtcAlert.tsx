@@ -4,7 +4,7 @@ import { setStep, StartSwapStep } from "store/features/startSwapSlice";
 
 export default function MissingBtcAlert() {
   const btcAmount = useAppSelector((state) => state.startSwap.btcAmount);
-  const step = useAppSelector((state) => state.startSwap.step)
+  const step = useAppSelector((state) => state.startSwap.step);
   const btcBalance = useAppSelector((state) => state.rpc.state.balance);
   const dispatch = useAppDispatch();
   if (btcAmount <= btcBalance) {
@@ -12,16 +12,25 @@ export default function MissingBtcAlert() {
   }
 
   return (
-    <Alert severity="info" variant="outlined"
-    action={step != StartSwapStep.DepositBitcoin &&
-        <Button color="inherit" size="small" onClick={() => {
-            dispatch(setStep(StartSwapStep.DepositBitcoin));
-        }}>
+    <Alert
+      severity="info"
+      variant="outlined"
+      action={
+        step != StartSwapStep.WalletAndMakers && (
+          <Button
+            color="inherit"
+            size="small"
+            onClick={() => {
+              dispatch(setStep(StartSwapStep.WalletAndMakers));
+            }}
+          >
             Get Bitcoin
-        </Button>
-    }
+          </Button>
+        )
+      }
     >
-      Your Wallet has {btcBalance} BTC. You need an additional {btcAmount - btcBalance} BTC to swap your desired XMR amount.
+      Your Wallet has {btcBalance} BTC. You need an additional{" "}
+      {btcAmount - btcBalance} BTC to swap your desired XMR amount.
     </Alert>
   );
 }

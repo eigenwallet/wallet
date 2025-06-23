@@ -1,11 +1,8 @@
-import { Box, Button } from "@mui/material";
+import { Box } from "@mui/material";
 import ApiAlertsBox from "renderer/components/pages/swap/ApiAlertsBox";
-import { useState } from "react";
-import SwapDialog from "./swap/SwapDialog";
+import SwapWidget from "./swap/SwapWidget";
 
 export default function Dashboard() {
-  const [showDialog, setShowDialog] = useState(false);
-
   return (
     <Box
       sx={{
@@ -18,8 +15,7 @@ export default function Dashboard() {
       }}
     >
       <ApiAlertsBox />
-      <Button onClick={() => setShowDialog(true)}>Swap</Button>
-      <SwapDialog open={showDialog} onClose={() => setShowDialog(false)} />
+      <SwapWidget />
     </Box>
   );
 }

@@ -4,38 +4,39 @@ import { Typography } from "@mui/material";
 import { useAppSelector } from "store/hooks";
 
 export enum Currency {
-    BTC = "BTC",
-    XMR = "XMR"
+  BTC = "BTC",
+  XMR = "XMR",
 }
 
 interface FiatPriceLabelProps {
-    amount: number;
-    originalCurrency: Currency;
-    gridColumn: string;
-    gridRow: string;
-  }
-  
-export default function FiatPriceLabel({ amount, originalCurrency, gridColumn, gridRow }: FiatPriceLabelProps) {
-    const btcPrice = useAppSelector((state) => state.rates.btcPrice);
-    const xmrPrice = useAppSelector((state) => state.rates.xmrPrice);
-    const fiatCurrency = useSettings((s) => s.fiatCurrency);
-    const fetchFiatPrices = useSettings((s) => s.fetchFiatPrices);
+  amount: number;
+  originalCurrency: Currency;
+}
 
-    if (!(fetchFiatPrices && fiatCurrency)) return null;
+export default function FiatPriceLabel({
+  amount,
+  originalCurrency,
+}: FiatPriceLabelProps) {
+  const btcPrice = useAppSelector((state) => state.rates.btcPrice);
+  const xmrPrice = useAppSelector((state) => state.rates.xmrPrice);
+  const fiatCurrency = useSettings((s) => s.fiatCurrency);
+  const fetchFiatPrices = useSettings((s) => s.fetchFiatPrices);
 
-    const fiatSymbol = currencySymbol(fiatCurrency) || "";
-    const fiatRate = originalCurrency === Currency.BTC ? btcPrice : xmrPrice;
-    const fiatAmount = Number((amount * fiatRate).toFixed(2));
-  
-    return (
-      <Typography
-        variant="caption"
-        sx={{
-          gridColumn,
-          gridRow,
-        }}
-      >
-        ({fiatAmount.toFixed(2)} {fiatSymbol})
-      </Typography>
-    );
-  }
+  if (!(fetchFiatPrices && fiatCurrency)) return null;
+
+  const fiatSymbol = currencySymbol(fiatCurrency) || "";
+  const fiatRate = originalCurrency === Currency.BTC ? btcPrice : xmrPrice;
+  const fiatAmount = Number((amount * fiatRate).toFixed(2));
+
+  return (
+    <Typography
+      variant="caption"
+      sx={{
+        display: "inline-block",
+        marginLeft: 0.5,
+      }}
+    >
+      ({fiatAmount.toFixed(2)} {fiatSymbol})
+    </Typography>
+  );
+}
