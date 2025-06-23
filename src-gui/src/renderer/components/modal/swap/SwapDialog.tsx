@@ -1,4 +1,10 @@
-import { Button, Dialog, DialogActions, DialogContent } from "@mui/material";
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+} from "@mui/material";
 import { useState } from "react";
 import { swapReset } from "store/features/swapSlice";
 import { useAppDispatch, useAppSelector, useIsSwapRunning } from "store/hooks";
@@ -7,6 +13,8 @@ import DebugPage from "./pages/DebugPage";
 import SwapStatePage from "./pages/SwapStatePage";
 import SwapDialogTitle from "./SwapDialogTitle";
 import SwapStateStepper from "./SwapStateStepper";
+import { haveFundsBeenLocked } from "models/tauriModelExt";
+import { getCurrentSwapId, suspendCurrentSwap } from "renderer/rpc";
 
 export default function SwapDialog({
   open,
@@ -24,7 +32,14 @@ export default function SwapDialog({
 
   function onCancel() {
     if (isSwapRunning) {
-      setOpenSuspendAlert(true);
+      if (haveFundsBeenLocked(swap.state.curr)) {
+        setOpenSuspendAlert(true);
+      } else {
+        suspendCurrentSwap().then(() => {
+          onClose();
+          dispatch(swapReset());
+        });
+      }
     } else {
       onClose();
       dispatch(swapReset());
@@ -49,15 +64,25 @@ export default function SwapDialog({
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
+          flex: 1,
+          gap: "1rem",
         }}
       >
         {debug ? (
           <DebugPage />
         ) : (
-          <>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              justifyContent: "space-between",
+              flex: 1,
+            }}
+          >
             <SwapStatePage state={swap.state} />
             <SwapStateStepper state={swap.state} />
-          </>
+          </Box>
         )}
       </DialogContent>
 

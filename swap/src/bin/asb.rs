@@ -15,6 +15,7 @@
 use anyhow::{bail, Context, Result};
 use comfy_table::Table;
 use libp2p::Swarm;
+use monero_sys::Daemon;
 use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::Decimal;
 use std::convert::TryInto;
@@ -42,6 +43,28 @@ use tracing_subscriber::filter::LevelFilter;
 use uuid::Uuid;
 
 const DEFAULT_WALLET_NAME: &str = "asb-wallet";
+
+trait IntoDaemon {
+    fn into_daemon(self) -> Result<Daemon>;
+}
+
+impl IntoDaemon for url::Url {
+    fn into_daemon(self) -> Result<Daemon> {
+        let address = self.to_string();
+        let ssl = self.scheme() == "https";
+
+        Ok(Daemon { address, ssl })
+    }
+}
+
+impl IntoDaemon for monero_rpc_pool::ServerInfo {
+    fn into_daemon(self) -> Result<Daemon> {
+        let address = format!("http://{}:{}", self.host, self.port);
+        let ssl = false; // Pool server always uses HTTP locally
+
+        Ok(Daemon { address, ssl })
+    }
+}
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
@@ -134,12 +157,16 @@ pub async fn main() -> Result<()> {
 
             // Initialize Monero wallet
             let monero_wallet = init_monero_wallet(&config, env_config).await?;
-            let monero_address = monero_wallet.lock().await.get_main_address();
+            let monero_address = monero_wallet.main_wallet().await.main_address().await;
             tracing::info!(%monero_address, "Monero wallet address");
 
             // Check Monero balance
-            let monero = monero_wallet.lock().await.get_balance().await?;
-            match (monero.balance, monero.unlocked_balance) {
+            let wallet = monero_wallet.main_wallet().await;
+
+            let total = wallet.total_balance().await.as_pico();
+            let unlocked = wallet.unlocked_balance().await.as_pico();
+
+            match (total, unlocked) {
                 (0, _) => {
                     tracing::warn!(
                         %monero_address,
@@ -219,7 +246,7 @@ pub async fn main() -> Result<()> {
                 swarm,
                 env_config,
                 Arc::new(bitcoin_wallet),
-                Arc::new(monero_wallet),
+                monero_wallet.clone(),
                 db,
                 kraken_rate.clone(),
                 config.maker.min_buy_btc,
@@ -332,7 +359,7 @@ pub async fn main() -> Result<()> {
         }
         Command::Balance => {
             let monero_wallet = init_monero_wallet(&config, env_config).await?;
-            let monero_balance = monero_wallet.lock().await.get_balance().await?;
+            let monero_balance = monero_wallet.main_wallet().await.total_balance().await;
             tracing::info!(%monero_balance);
 
             let bitcoin_wallet = init_bitcoin_wallet(&config, &seed, env_config).await?;
@@ -355,13 +382,7 @@ pub async fn main() -> Result<()> {
             let bitcoin_wallet = init_bitcoin_wallet(&config, &seed, env_config).await?;
             let monero_wallet = init_monero_wallet(&config, env_config).await?;
 
-            refund(
-                swap_id,
-                Arc::new(bitcoin_wallet),
-                Arc::new(monero_wallet),
-                db,
-            )
-            .await?;
+            refund(swap_id, Arc::new(bitcoin_wallet), monero_wallet.clone(), db).await?;
 
             tracing::info!("Monero successfully refunded");
         }
@@ -404,6 +425,16 @@ pub async fn main() -> Result<()> {
             let wallet_export = bitcoin_wallet.wallet_export("asb").await?;
             println!("{}", wallet_export)
         }
+        Command::ExportMoneroWallet => {
+            let monero_wallet = init_monero_wallet(&config, env_config).await?;
+            let main_wallet = monero_wallet.main_wallet().await;
+
+            let seed = main_wallet.seed().await;
+            let creation_height = main_wallet.creation_height().await;
+
+            println!("Seed          : {seed}");
+            println!("Restore height: {creation_height}");
+        }
     }
 
     Ok(())
@@ -418,7 +449,14 @@ async fn init_bitcoin_wallet(
     let wallet = bitcoin::wallet::WalletBuilder::default()
         .seed(seed.clone())
         .network(env_config.bitcoin_network)
-        .electrum_rpc_url(config.bitcoin.electrum_rpc_url.as_str().to_string())
+        .electrum_rpc_urls(
+            config
+                .bitcoin
+                .electrum_rpc_urls
+                .iter()
+                .map(|url| url.as_str().to_string())
+                .collect::<Vec<String>>(),
+        )
         .persister(bitcoin::wallet::PersisterConfig::SqliteFile {
             data_dir: config.data.dir.clone(),
         })
@@ -438,16 +476,56 @@ async fn init_bitcoin_wallet(
 async fn init_monero_wallet(
     config: &Config,
     env_config: swap::env::Config,
-) -> Result<tokio::sync::Mutex<monero::Wallet>> {
-    tracing::debug!("Opening Monero wallet");
-    let wallet = monero::Wallet::open_or_create(
-        config.monero.wallet_rpc_url.clone(),
-        DEFAULT_WALLET_NAME.to_string(),
-        env_config,
-    )
-    .await?;
+) -> Result<Arc<monero::Wallets>> {
+    tracing::debug!("Initializing Monero wallets");
 
-    Ok(tokio::sync::Mutex::new(wallet))
+    let daemon = if config.monero.monero_node_pool {
+        // Start the monero-rpc-pool and use it
+        tracing::info!("Starting Monero RPC Pool for ASB");
+
+        let (server_info, _status_receiver, _pool_handle) =
+            monero_rpc_pool::start_server_with_random_port(
+                monero_rpc_pool::config::Config::new_random_port(
+                    "127.0.0.1".to_string(),
+                    config.data.dir.join("monero-rpc-pool"),
+                ),
+                env_config.monero_network,
+            )
+            .await
+            .context("Failed to start Monero RPC Pool for ASB")?;
+
+        let pool_url = format!("http://{}:{}", server_info.host, server_info.port);
+        tracing::info!("Monero RPC Pool started for ASB on {}", pool_url);
+
+        server_info
+            .into_daemon()
+            .context("Failed to convert ServerInfo to Daemon")?
+    } else {
+        tracing::info!(
+            "Using direct Monero daemon connection: {}",
+            config.monero.daemon_url
+        );
+
+        config
+            .monero
+            .daemon_url
+            .clone()
+            .into_daemon()
+            .context("Failed to convert daemon URL to Daemon")?
+    };
+
+    let manager = monero::Wallets::new(
+        config.data.dir.join("monero/wallets"),
+        DEFAULT_WALLET_NAME.to_string(),
+        daemon,
+        env_config.monero_network,
+        false,
+        None,
+    )
+    .await
+    .context("Failed to initialize Monero wallets")?;
+
+    Ok(Arc::new(manager))
 }
 
 /// This struct is used to extract swap details from the database and print them in a table format

@@ -27,6 +27,7 @@ import {
   ResolveApprovalResponse,
   RedactArgs,
   RedactResponse,
+  GetCurrentSwapResponse,
 } from "models/tauriModel";
 import { rpcSetBalance, rpcSetSwapInfo } from "store/features/rpcSlice";
 import { store } from "./store/storeRenderer";
@@ -43,13 +44,13 @@ import { CliLog } from "models/cliModel";
 import { logsToRawString, parseLogsFromString } from "utils/parseUtils";
 
 export const PRESET_RENDEZVOUS_POINTS = [
-  "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
+  "/dnsaddr/xxmr.cheap/p2p/12D3KooWMk3QyPS8D1d1vpHZoY7y2MnXdPE5yV6iyPvyuj4zcdxT",
 ];
 
 export async function fetchSellersAtPresetRendezvousPoints() {
   await Promise.all(
     PRESET_RENDEZVOUS_POINTS.map(async (rendezvousPoint) => {
-      const response = await listSellersAtRendezvousPoint(rendezvousPoint);
+      const response = await listSellersAtRendezvousPoint([rendezvousPoint]);
       store.dispatch(discoveredMakersByRendezvous(response.sellers));
 
       logger.info(
@@ -139,19 +140,32 @@ export async function withdrawBtc(address: string): Promise<string> {
 }
 
 export async function buyXmr(
-  seller: Maker,
   bitcoin_change_address: string | null,
   monero_receive_address: string,
 ) {
+  // Get all available makers from the Redux store
+  const state = store.getState();
+  const allMakers = [
+    ...(state.makers.registry.makers || []),
+    ...state.makers.rendezvous.makers,
+  ];
+
+  // Convert all makers to multiaddr format
+  const sellers = allMakers.map((maker) =>
+    providerToConcatenatedMultiAddr(maker),
+  );
+
   await invoke<BuyXmrArgs, BuyXmrResponse>(
     "buy_xmr",
     bitcoin_change_address == null
       ? {
-          seller: providerToConcatenatedMultiAddr(seller),
+          rendezvous_points: PRESET_RENDEZVOUS_POINTS,
+          sellers,
           monero_receive_address,
         }
       : {
-          seller: providerToConcatenatedMultiAddr(seller),
+          rendezvous_points: PRESET_RENDEZVOUS_POINTS,
+          sellers,
           monero_receive_address,
           bitcoin_change_address,
         },
@@ -166,6 +180,10 @@ export async function resumeSwap(swapId: string) {
 
 export async function suspendCurrentSwap() {
   await invokeNoArgs<SuspendCurrentSwapResponse>("suspend_current_swap");
+}
+
+export async function getCurrentSwapId() {
+  return await invokeNoArgs<GetCurrentSwapResponse>("get_current_swap_id");
 }
 
 export async function getMoneroRecoveryKeys(
@@ -206,10 +224,10 @@ export async function redactLogs(
 }
 
 export async function listSellersAtRendezvousPoint(
-  rendezvousPointAddress: string,
+  rendezvousPointAddresses: string[],
 ): Promise<ListSellersResponse> {
   return await invoke<ListSellersArgs, ListSellersResponse>("list_sellers", {
-    rendezvous_point: rendezvousPointAddress,
+    rendezvous_points: rendezvousPointAddresses,
   });
 }
 
@@ -218,40 +236,34 @@ export async function initializeContext() {
   const testnet = isTestnet();
   const useTor = store.getState().settings.enableTor;
 
-  // This looks convoluted but it does the following:
-  // - Fetch the status of all nodes for each blockchain in parallel
-  // - Return the first available node for each blockchain
-  // - If no node is available for a blockchain, return null for that blockchain
-  const [bitcoinNode, moneroNode] = await Promise.all(
-    [Blockchain.Bitcoin, Blockchain.Monero].map(async (blockchain) => {
-      const nodes = store.getState().settings.nodes[network][blockchain];
+  // Get all Bitcoin nodes without checking availability
+  // The backend ElectrumBalancer will handle load balancing and failover
+  const bitcoinNodes =
+    store.getState().settings.nodes[network][Blockchain.Bitcoin];
 
-      if (nodes.length === 0) {
-        return null;
-      }
+  // For Monero nodes, determine whether to use pool or custom node
+  const useMoneroRpcPool = store.getState().settings.useMoneroRpcPool;
 
-      try {
-        return await Promise.any(
-          nodes.map(async (node) => {
-            const isAvailable = await getNodeStatus(node, blockchain, network);
+  const moneroNodeUrl =
+    store.getState().settings.nodes[network][Blockchain.Monero][0] ?? null;
 
-            if (isAvailable) {
-              return node;
-            }
+  // Check the state of the Monero node
+  const isMoneroNodeOnline = await getMoneroNodeStatus(moneroNodeUrl, network);
 
-            throw new Error(`No available ${blockchain} node found`);
-          }),
-        );
-      } catch {
-        return null;
-      }
-    }),
-  );
+  const moneroNodeConfig =
+    useMoneroRpcPool || moneroNodeUrl == null || !isMoneroNodeOnline
+      ? { type: "Pool" as const }
+      : {
+          type: "SingleNode" as const,
+          content: {
+            url: moneroNodeUrl,
+          },
+        };
 
-  // Initialize Tauri settings with null values
+  // Initialize Tauri settings
   const tauriSettings: TauriSettings = {
-    electrum_rpc_url: bitcoinNode,
-    monero_node_url: moneroNode,
+    electrum_rpc_urls: bitcoinNodes,
+    monero_node_config: moneroNodeConfig,
     use_tor: useTor,
   };
 
@@ -324,14 +336,15 @@ export async function updateAllNodeStatuses() {
   const network = getNetwork();
   const settings = store.getState().settings;
 
-  // For all nodes, check if they are available and store the new status (in parallel)
-  await Promise.all(
-    Object.values(Blockchain).flatMap((blockchain) =>
-      settings.nodes[network][blockchain].map((node) =>
-        updateNodeStatus(node, blockchain, network),
+  // Only check Monero nodes if we're using custom nodes (not RPC pool)
+  // Skip Bitcoin nodes since we pass all electrum servers to the backend without checking them (ElectrumBalancer handles failover)
+  if (!settings.useMoneroRpcPool) {
+    await Promise.all(
+      settings.nodes[network][Blockchain.Monero].map((node) =>
+        updateNodeStatus(node, Blockchain.Monero, network),
       ),
-    ),
-  );
+    );
+  }
 }
 
 export async function getMoneroAddresses(): Promise<GetMoneroAddressesResponse> {
@@ -360,4 +373,10 @@ export async function saveLogFiles(
   content: Record<string, string>,
 ): Promise<void> {
   await invokeUnsafe<void>("save_txt_files", { zipFileName, content });
+}
+
+export async function saveFilesInDialog(files: Record<string, string>) {
+  await invokeUnsafe<void>("save_txt_files", {
+    files,
+  });
 }

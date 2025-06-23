@@ -56,6 +56,7 @@ function getActiveStep(state: SwapState | null): PathStep | null {
     case "RequestingQuote":
     case "ReceivedQuote":
     case "WaitingForBtcDeposit":
+      return null; // No funds have been locked yet
     case "SwapSetupInflight":
       return [PathType.HAPPY_PATH, 0, isReleased];
 
@@ -63,7 +64,10 @@ function getActiveStep(state: SwapState | null): PathStep | null {
     // Bitcoin has been locked, waiting for the counterparty to lock their XMR
     case "BtcLockTxInMempool":
       // We only display the first step as completed if the Bitcoin lock has been confirmed
-      if (latestState.content.btc_lock_confirmations > 0) {
+      if (
+        latestState.content.btc_lock_confirmations !== undefined &&
+        latestState.content.btc_lock_confirmations > 0
+      ) {
         return [PathType.HAPPY_PATH, 1, isReleased];
       }
       return [PathType.HAPPY_PATH, 0, isReleased];
@@ -98,8 +102,15 @@ function getActiveStep(state: SwapState | null): PathStep | null {
     case "BtcCancelled":
       return [PathType.UNHAPPY_PATH, 1, isReleased];
 
-    // Step 2: Swap cancelled and Bitcoin refunded successfully
+    // Step 2: One of the two Bitcoin refund transactions have been published
+    // but they haven't been confirmed yet
+    case "BtcRefundPublished":
+    case "BtcEarlyRefundPublished":
+      return [PathType.UNHAPPY_PATH, 1, isReleased];
+
+    // Step 2: One of the two Bitcoin refund transactions have been confirmed
     case "BtcRefunded":
+    case "BtcEarlyRefunded":
       return [PathType.UNHAPPY_PATH, 2, false];
 
     // Step 2 (Failed): Failed to refund Bitcoin
