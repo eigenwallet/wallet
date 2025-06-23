@@ -37,10 +37,10 @@ fn main() {
         .define("GTEST_HAS_ABSL", "OFF")
         // Use lightweight crypto library
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
-        .build_arg(match is_github_actions {
-            true => "-j1",
-            false => "-j",
-        })
+        // .build_arg(match is_github_actions {
+        //     true => "-j1",
+        //     false => "-j8",
+        // })
         .build();
 
     let monero_build_dir = output_directory.join("build");
@@ -170,6 +170,10 @@ fn main() {
         println !("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/16.0.0/lib/darwin");
         println !("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/17.0.0/lib/darwin");
         println !("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/18.0.0/lib/darwin");
+    }
+
+    #[cfg(target_os = "windows")] {
+        println!("cargo:rustc-link-search=native=C:\\msys64\\clang64\\lib");
     }
 
     // Link libwallet and libwallet_api statically
