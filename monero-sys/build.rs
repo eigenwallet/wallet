@@ -255,6 +255,12 @@ fn main() {
     println!("cargo:rustc-link-lib=static=ssl"); // This is OpenSSL (libsll)
     println!("cargo:rustc-link-lib=static=crypto"); // This is OpenSSLs crypto library (libcrypto)
 
+    // Link unbound statically
+    println!("cargo:rustc-link-lib=static=unbound");
+    println!("cargo:rustc-link-lib=static=expat"); // Expat is required by unbound
+    println!("cargo:rustc-link-lib=static=nghttp2");
+    println!("cargo:rustc-link-lib=static=event");
+
     // Link protobuf statically
     println!("cargo:rustc-link-lib=static=protobuf");
 
