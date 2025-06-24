@@ -44,6 +44,7 @@ pub struct LockBitcoinDetails {
     pub btc_network_fee: bitcoin::Amount,
     #[typeshare(serialized_as = "number")]
     pub xmr_receive_amount: monero::Amount,
+    pub monero_receive_pool: MoneroAddressPool,
     #[typeshare(serialized_as = "string")]
     pub swap_id: Uuid,
 }

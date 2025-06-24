@@ -168,6 +168,7 @@ async fn next_state(
                 btc_lock_amount,
                 btc_network_fee,
                 xmr_receive_amount,
+                monero_receive_pool,
                 swap_id,
             });
 

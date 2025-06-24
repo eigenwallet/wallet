@@ -37,7 +37,11 @@ import { MoneroRecoveryResponse } from "models/rpcModel";
 import { ListSellersResponse } from "../models/tauriModel";
 import logger from "utils/logger";
 import { getNetwork, isTestnet } from "store/config";
-import { Blockchain, Network } from "store/features/settingsSlice";
+import {
+  Blockchain,
+  DonateToDevelopmentTip,
+  Network,
+} from "store/features/settingsSlice";
 import { setStatus } from "store/features/nodesSlice";
 import { discoveredMakersByRendezvous } from "store/features/makersSlice";
 import { CliLog } from "models/cliModel";
@@ -139,45 +143,43 @@ export async function withdrawBtc(address: string): Promise<string> {
   return response.txid;
 }
 
-const DONATION_ADDRESS = "49LEH26DJGuCyr8xzRAzWPUryzp7bpccC7Hie1DiwyfJEyUKvMFAethRLybDYrFdU1eHaMkKQpUPebY4WT3cSjEvThmpjPa"
+const DONATION_ADDRESS =
+  "83U4H318osy22osz9vwFx1ScyEo71zFkV4EUyPozbsZoeeHA1L3QK8RgoRxntkyKVzNkgM2XpfY7m8MMhriNWb1dSTPiJgx";
 
 export async function buyXmr(
   seller: Maker,
   bitcoin_change_address: string | null,
   monero_receive_address: string,
-  donation_percentage: number,
+  donation_percentage: DonateToDevelopmentTip,
 ) {
-  const address_pool: LabeledMoneroAddress[] = []
+  const address_pool: LabeledMoneroAddress[] = [];
 
-  if (donation_percentage > 0.0) {
-    address_pool.concat([
+  if (donation_percentage !== false) {
+    address_pool.push(
       {
         address: monero_receive_address,
-        percentage: 100 - donation_percentage,
-        label: "Swap",
+        percentage: 100 - donation_percentage * 100,
+        label: "You receive",
       },
       {
         address: DONATION_ADDRESS,
-        percentage: donation_percentage,
-        label: "Donate",
+        percentage: donation_percentage * 100,
+        label: "Tip to the developers",
       },
-    ])
+    );
   } else {
     address_pool.push({
-      address: DONATION_ADDRESS,
+      address: monero_receive_address,
       percentage: 100,
       label: "Swap",
-    })
+    });
   }
 
-  await invoke<BuyXmrArgs, BuyXmrResponse>(
-    "buy_xmr",
-    {
-      seller: providerToConcatenatedMultiAddr(seller),
-      monero_receive_pool: address_pool,
-      bitcoin_change_address,
-    },
-  );
+  await invoke<BuyXmrArgs, BuyXmrResponse>("buy_xmr", {
+    seller: providerToConcatenatedMultiAddr(seller),
+    monero_receive_pool: address_pool,
+    bitcoin_change_address,
+  });
 }
 
 export async function resumeSwap(swapId: string) {

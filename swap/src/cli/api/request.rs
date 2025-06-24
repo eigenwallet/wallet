@@ -231,6 +231,7 @@ pub struct GetSwapInfoResponse {
     pub cancel_timelock: CancelTimelock,
     pub punish_timelock: PunishTimelock,
     pub timelock: Option<ExpiredTimelocks>,
+    pub monero_receive_pool: MoneroAddressPool,
 }
 
 impl Request for GetSwapInfoArgs {
@@ -559,6 +560,8 @@ pub async fn get_swap_info(
 
     let timelock = swap_state.expired_timelocks(bitcoin_wallet.clone()).await?;
 
+    let monero_receive_pool = context.db.get_monero_address_pool(args.swap_id).await?;
+
     Ok(GetSwapInfoResponse {
         swap_id: args.swap_id,
         seller: AliceAddress {
@@ -578,6 +581,7 @@ pub async fn get_swap_info(
         cancel_timelock,
         punish_timelock,
         timelock,
+        monero_receive_pool,
     })
 }
 
