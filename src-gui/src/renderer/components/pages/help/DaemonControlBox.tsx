@@ -3,7 +3,7 @@ import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { useAppSelector } from "store/hooks";
-import InfoBox from "../../modal/swap/InfoBox";
+import InfoBox from "../swap/swap/components/InfoBox";
 import CliLogsBox from "../../other/RenderedCliLog";
 import { getDataDir, initializeContext } from "renderer/rpc";
 import { relaunch } from "@tauri-apps/plugin-process";

@@ -10,7 +10,7 @@ import { swapReset } from "store/features/swapSlice";
 import { useAppDispatch, useAppSelector, useIsSwapRunning } from "store/hooks";
 import SwapSuspendAlert from "../SwapSuspendAlert";
 import DebugPage from "./pages/DebugPage";
-import SwapStatePage from "./pages/SwapStatePage";
+import SwapStatePage from "../../pages/swap/swap/SwapStatePage";
 import SwapDialogTitle from "./SwapDialogTitle";
 import SwapStateStepper from "./SwapStateStepper";
 import { haveFundsBeenLocked } from "models/tauriModelExt";

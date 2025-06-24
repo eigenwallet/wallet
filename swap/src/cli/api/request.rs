@@ -1,6 +1,8 @@
 use super::tauri_bindings::TauriHandle;
 use crate::bitcoin::{wallet, CancelTimelock, ExpiredTimelocks, PunishTimelock};
-use crate::cli::api::tauri_bindings::{ApprovalRequestDetails, SelectMakerDetails, TauriEmitter, TauriSwapProgressEvent};
+use crate::cli::api::tauri_bindings::{
+    ApprovalRequestDetails, SelectMakerDetails, TauriEmitter, TauriSwapProgressEvent,
+};
 use crate::cli::api::Context;
 use crate::cli::list_sellers::{list_sellers_init, QuoteWithAddress, UnreachableSeller};
 use crate::cli::{list_sellers as list_sellers_impl, EventLoop, SellerStatus};
@@ -1409,8 +1411,7 @@ where
             .filter_map(|quote_with_address| {
                 let quote = quote_with_address.quote;
 
-                if quote.min_quantity <= max_giveable
-                    && quote.max_quantity > bitcoin::Amount::ZERO
+                if quote.min_quantity <= max_giveable && quote.max_quantity > bitcoin::Amount::ZERO
                 {
                     let tx_lock_fee = balance - max_giveable;
                     let tx_lock_amount = std::cmp::min(max_giveable, quote.max_quantity);

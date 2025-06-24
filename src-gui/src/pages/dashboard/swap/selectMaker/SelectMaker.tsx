@@ -5,7 +5,7 @@ import {
   DialogActions,
   Button,
 } from "@mui/material";
-import MakerOfferItem from "../components/MakerOfferItem";
+import MakerOfferItem from "../../../../renderer/components/pages/swap/swap/init/walletAndMakers/MakerOfferItem";
 import SwapOverview from "../components/SwapOverview";
 
 export default function SelectMaker({

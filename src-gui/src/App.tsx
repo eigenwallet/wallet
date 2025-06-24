@@ -22,7 +22,6 @@ import { setupBackgroundTasks } from "renderer/background";
 import "@fontsource/roboto";
 import FeedbackPage from "./renderer/components/pages/feedback/FeedbackPage";
 import IntroductionModal from "./renderer/components/modal/introduction/IntroductionModal";
-import Dashboard from "./pages/dashboard/Dashboard";
 
 declare module "@mui/material/styles" {
   interface Theme {
@@ -76,7 +75,7 @@ function InnerContent() {
         <Route path="/wallet" element={<WalletPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/feedback" element={<FeedbackPage />} />
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<SwapPage />} />
       </Routes>
     </Box>
   );
