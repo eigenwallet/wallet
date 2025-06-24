@@ -27,6 +27,54 @@ const EMBEDDED_PATCHES: &[EmbeddedPatch] = &[embedded_patch!(
     "patches/wallet2_api_allow_subtract_from_fee.patch"
 )];
 
+/// Split a multi-file patch into individual file patches
+fn split_patch_by_files(patch_content: &str) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+    let mut file_patches = Vec::new();
+    let lines: Vec<&str> = patch_content.lines().collect();
+    
+    let mut current_file_patch = String::new();
+    let mut current_file_path: Option<String> = None;
+    let mut in_file_section = false;
+    
+    for line in lines {
+        if line.starts_with("diff --git ") {
+            // Save previous file patch if we have one
+            if let Some(file_path) = current_file_path.take() {
+                if !current_file_patch.trim().is_empty() {
+                    file_patches.push((file_path, current_file_patch.clone()));
+                }
+            }
+            
+            // Start new file patch
+            current_file_patch.clear();
+            current_file_patch.push_str(line);
+            current_file_patch.push('\n');
+            
+            // Extract file path from diff line (e.g., "diff --git a/src/wallet/api/wallet.cpp b/src/wallet/api/wallet.cpp")
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 4 {
+                let file_path = parts[2]
+                    .strip_prefix("a/")
+                    .unwrap_or(parts[2]);
+                current_file_path = Some(file_path.to_string());
+            }
+            in_file_section = true;
+        } else if in_file_section {
+            current_file_patch.push_str(line);
+            current_file_patch.push('\n');
+        }
+    }
+    
+    // Don't forget the last file
+    if let Some(file_path) = current_file_path {
+        if !current_file_patch.trim().is_empty() {
+            file_patches.push((file_path, current_file_patch));
+        }
+    }
+    
+    Ok(file_patches)
+}
+
 fn apply_embedded_patches() -> Result<(), Box<dyn std::error::Error>> {
     let monero_dir = Path::new("monero");
 
@@ -36,59 +84,67 @@ fn apply_embedded_patches() -> Result<(), Box<dyn std::error::Error>> {
 
     for embedded in EMBEDDED_PATCHES {
         println!(
-            "cargo:warning=Applying embedded patch: {} ({}) with content: {}",
-            embedded.name, embedded.description, embedded.patch_unified
+            "cargo:warning=Processing embedded patch: {} ({})",
+            embedded.name, embedded.description
         );
 
-        // Try parsing the entire patch first
-        let patch = diffy::Patch::from_str(embedded.patch_unified)
-            .map_err(|e| format!("Failed to parse patch {}: {}", embedded.name, e))?;
+        // Split the patch into individual file patches
+        let file_patches = split_patch_by_files(embedded.patch_unified)
+            .map_err(|e| format!("Failed to split patch {}: {}", embedded.name, e))?;
 
-        // Get the file path from patch headers
-        let raw_path = patch
-            .modified()
-            .or_else(|| patch.original())
-            .ok_or_else(|| format!("Patch {} does not specify a file", embedded.name))?;
-
-        let clean_path = raw_path
-            .strip_prefix("a/")
-            .or_else(|| raw_path.strip_prefix("b/"))
-            .expect("Failed to strip prefix from Monero patch");
-
-        let target_path = monero_dir.join(clean_path);
-
-        if !target_path.exists() {
-            return Err(format!("Target file {} not found!", clean_path).into());
+        if file_patches.is_empty() {
+            return Err(format!("No file patches found in patch {}", embedded.name).into());
         }
 
-        let current = fs::read_to_string(&target_path)
-            .map_err(|e| format!("Failed to read {}: {}", clean_path, e))?;
+        println!("cargo:warning=Found {} file(s) in patch {}", file_patches.len(), embedded.name);
 
-        let patched = match diffy::apply(&current, &patch) {
-            Ok(p) => p,
-            Err(_) => {
-                // Try reversing the patch – if that succeeds the file already contains the changes
-                if let Ok(_) = diffy::apply(&current, &patch.reverse()) {
-                    println!(
-                        "cargo:warning=Patch {} already applied to {} – skipping",
-                        embedded.name, clean_path
-                    );
-                    continue;
-                } else {
-                    return Err(format!(
-                        "Failed to apply patch {} to {}: hunk mismatch (not already applied)",
-                        embedded.name, clean_path
-                    )
-                    .into());
-                }
+        // Apply each file patch individually
+        for (file_path, patch_content) in file_patches {
+            println!("cargo:warning=Applying patch to file: {}", file_path);
+
+            // Parse the individual file patch
+            let patch = diffy::Patch::from_str(&patch_content)
+                .map_err(|e| format!("Failed to parse patch for {}: {}", file_path, e))?;
+
+            let target_path = monero_dir.join(&file_path);
+
+            if !target_path.exists() {
+                return Err(format!("Target file {} not found!", file_path).into());
             }
-        };
 
-        fs::write(&target_path, patched)
-            .map_err(|e| format!("Failed to write {}: {}", clean_path, e))?;
+            let current = fs::read_to_string(&target_path)
+                .map_err(|e| format!("Failed to read {}: {}", file_path, e))?;
+
+            let patched = match diffy::apply(&current, &patch) {
+                Ok(p) => p,
+                Err(_) => {
+                    // Try reversing the patch – if that succeeds the file already contains the changes
+                    if let Ok(_) = diffy::apply(&current, &patch.reverse()) {
+                        println!(
+                            "cargo:warning=Patch for {} already applied – skipping",
+                            file_path
+                        );
+                        continue;
+                    } else {
+                        return Err(format!(
+                            "Failed to apply patch to {}: hunk mismatch (not already applied)",
+                            file_path
+                        ).into());
+                    }
+                }
+            };
+
+            fs::write(&target_path, patched)
+                .map_err(|e| format!("Failed to write {}: {}", file_path, e))?;
+
+            println!(
+                "cargo:warning=Successfully applied patch to: {}",
+                file_path
+            );
+        }
 
         println!(
-            "cargo:warning=Successfully applied embedded patch: {} ({}).",
+            "cargo:warning=Successfully applied all file patches for: {} ({})",
             embedded.name, embedded.description
         );
     }

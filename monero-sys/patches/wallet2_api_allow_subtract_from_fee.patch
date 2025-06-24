@@ -1,5 +1,6 @@
 # Applies the new functionality from: https://github.com/monero-project/monero/pull/8861
-# to the wallet2_api as the pull request only added it for wallet2 (which is different from wallet2_api)
+# to the wallet2_api
+# The pull request only added it for wallet2 (which is different from wallet2_api)
 
 diff --git a/src/wallet/api/wallet.cpp b/src/wallet/api/wallet.cpp
 index 96393eaaa..f2f8e7fbb 100644
