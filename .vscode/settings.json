@@ -68,4 +68,14 @@
         "unordered_map": "cpp",
         "unordered_set": "cpp",
         "variant": "cpp",
+        "algorithm": "cpp",
+        "*.rs": "rust",
+        "shared_mutex": "cpp",
+        "source_location": "cpp",
+        "strstream": "cpp",
+        "typeindex": "cpp"
+    },
+    "rust-analyzer.cargo.extraEnv": {
+        "CARGO_TARGET_DIR": "target-check"
     }
+}
