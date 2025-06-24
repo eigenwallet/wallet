@@ -263,15 +263,6 @@ impl MoneroAddressPool {
         Self(addresses)
     }
 
-    /// Sanity check that the sum of the percentages is 100
-    fn sums_to_one_hundred(&self) -> bool {
-        self.0
-            .iter()
-            .map(|address| address.percentage)
-            .sum::<Decimal>()
-            == Decimal::from(100)
-    }
-
     pub fn addresses(&self) -> Vec<monero::Address> {
         self.0.iter().map(|address| address.address()).collect()
     }

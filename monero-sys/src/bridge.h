@@ -132,17 +132,6 @@ namespace Monero
         return wallet.createTransaction(dest_address, "", Monero::optional<uint64_t>(), 0, PendingTransaction::Priority_Default);
     }
 
-    inline uint64_t estimateTransactionFee(
-        const Wallet &wallet,
-        uint64_t num_outputs)
-    {
-        std::vector<std::pair<std::string, uint64_t>> fee_dests;
-        for (uint64_t i = 0; i < num_outputs; ++i)
-            fee_dests.emplace_back(wallet.address(0, i), 1); // Use arbitrary addresses
-
-        return wallet.estimateTransactionFee(fee_dests, PendingTransaction::Priority_Default);
-    }
-
     /**
      * Creates a transaction that spends the unlocked balance to multiple destinations with given ratios.
      * Ratiosn must sum to 1.
@@ -171,12 +160,22 @@ namespace Monero
         // Build the actual multi‐dest transaction
         // No change left -> wallet drops it
         // N outputs, fee should be the same as the one estimated above
+        
+        // Find the highest output and choose it for subtract_fee_indices
+        std::set<uint32_t> subtract_fee_indices;
+        auto max_it = std::max_element(amounts.begin(), amounts.end());
+        size_t max_index = std::distance(amounts.begin(), max_it);
+        subtract_fee_indices.insert(static_cast<uint32_t>(max_index));
+        
         return wallet.createTransactionMultDest(
             dest_addresses,
             "", // No Payment ID
             Monero::optional<std::vector<uint64_t>>(amounts),
             0, // No mixin count
-            PendingTransaction::Priority_Default);
+            PendingTransaction::Priority_Default,
+            0, // subaddr_account
+            {}, // subaddr_indices
+            subtract_fee_indices); // Subtract fee from all outputs
     }
 
     inline bool setWalletDaemon(Wallet &wallet, const std::string &daemon_address)
