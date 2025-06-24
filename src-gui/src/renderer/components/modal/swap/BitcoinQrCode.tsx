@@ -4,19 +4,36 @@ import QRCode from "react-qr-code";
 export default function BitcoinQrCode({ address }: { address: string }) {
   return (
     <Box
-      style={{
-        height: "100%",
-        margin: "0 auto",
+      sx={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        width: "100%",
       }}
     >
-      <QRCode
-        value={`bitcoin:${address}`}
-        size={256}
-        style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-        /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
-        /* @ts-ignore */
-        viewBox="0 0 256 256"
-      />
+      <Box
+        sx={{
+          backgroundColor: "white",
+          padding: 1,
+          borderRadius: 1,
+          width: "100%",
+          aspectRatio: "1 / 1",
+        }}
+      >
+        <QRCode
+          value={`bitcoin:${address}`}
+          size={1}
+          style={{
+            display: "block",
+            width: "100%",
+            height: "min-content",
+            aspectRatio: 1,
+          }}
+          /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
+          /* @ts-ignore */
+          viewBox="0 0 1 1"
+        />
+      </Box>
     </Box>
   );
 }
