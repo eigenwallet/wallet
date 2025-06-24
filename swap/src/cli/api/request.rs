@@ -1,8 +1,8 @@
 use super::tauri_bindings::TauriHandle;
 use crate::bitcoin::{wallet, CancelTimelock, ExpiredTimelocks, PunishTimelock};
-use crate::cli::api::tauri_bindings::{TauriEmitter, TauriSwapProgressEvent};
+use crate::cli::api::tauri_bindings::{ApprovalRequestDetails, SelectMakerDetails, TauriEmitter, TauriSwapProgressEvent};
 use crate::cli::api::Context;
-use crate::cli::list_sellers::{QuoteWithAddress, UnreachableSeller};
+use crate::cli::list_sellers::{list_sellers_init, QuoteWithAddress, UnreachableSeller};
 use crate::cli::{list_sellers as list_sellers_impl, EventLoop, SellerStatus};
 use crate::common::{get_logs, redact};
 use crate::libp2p_ext::MultiAddrExt;
@@ -642,11 +642,6 @@ pub async fn buy_xmr(
     let env_config = context.config.env_config;
     let seed = context.config.seed.clone().context("Could not get seed")?;
 
-    // Now actually determine the seller and the Bitcoin amount
-    // Here we prompt the user to deposit coins and to approve a specific seller
-    // to connect to
-    context.swap_lock.acquire_swap_lock(swap_id).await?;
-
     // Prepare variables for the quote fetching process
     let identity = seed.derive_libp2p_identity();
     let namespace = context.config.namespace;
@@ -664,15 +659,6 @@ pub async fn buy_xmr(
     let bitcoin_change_address_for_spawn = bitcoin_change_address.clone();
     let rendezvous_points_clone = rendezvous_points.clone();
     let sellers_clone = sellers.clone();
-
-    context.tauri_handle.emit_swap_progress_event(
-        swap_id,
-        TauriSwapProgressEvent::WaitingForBtcDeposit {
-            deposit_address: bitcoin_change_address,
-            max_giveable: bitcoin::Amount::ZERO,
-            min_bitcoin_lock_tx_fee: bitcoin::Amount::ZERO,
-        },
-    );
 
     let (seller_multiaddr, seller_peer_id, quote, tx_lock_amount, tx_lock_fee) = tokio::select! {
         result = determine_btc_to_swap(
@@ -724,19 +710,15 @@ pub async fn buy_xmr(
             |quote_with_address| {
                 let tauri_handle = context.tauri_handle.clone();
                 Box::new(async move {
-                    if let Some(handle) = &tauri_handle {
-                        let details = crate::cli::api::tauri_bindings::ApprovalRequestDetails::SelectMaker(
-                            crate::cli::api::tauri_bindings::SelectMakerDetails {
-                                swap_id,
-                                btc_amount_to_swap: quote_with_address.quote.max_quantity,
-                                maker: quote_with_address,
-                            }
-                        );
+                    let details = ApprovalRequestDetails::SelectMaker(
+                        SelectMakerDetails {
+                            swap_id,
+                            btc_amount_to_swap: quote_with_address.quote.max_quantity,
+                            maker: quote_with_address,
+                        }
+                    );
 
-                        handle.request_approval(details, 300).await
-                    } else {
-                        Ok(true) // Auto-approve if no Tauri handle
-                    }
+                    tauri_handle.request_approval(details, 300).await
                 }) as Box<dyn Future<Output = Result<bool>> + Send>
             },
         ) => {
@@ -748,6 +730,9 @@ pub async fn buy_xmr(
             bail!("Shutdown signal received");
         },
     };
+
+    // We only acquire the lock after the user has selected a maker and we already have funds in the wallet
+    context.swap_lock.acquire_swap_lock(swap_id).await?;
 
     // Insert the peer_id into the database
     context.db.insert_peer_id(swap_id, seller_peer_id).await?;
@@ -1286,7 +1271,7 @@ pub async fn fetch_quotes_task(
         .filter_map(|addr| addr.split_peer_id())
         .collect();
 
-    let fetch_fn = crate::cli::list_sellers::list_sellers_init(
+    let fetch_fn = list_sellers_init(
         rendezvous_nodes,
         namespace,
         tor_client,
