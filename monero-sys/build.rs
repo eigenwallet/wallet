@@ -23,9 +23,9 @@ macro_rules! embedded_patch {
 /// Embedded patches applied at compile time
 const EMBEDDED_PATCHES: &[EmbeddedPatch] = &[
     embedded_patch!(
-        "wallet2_3min_remote_rpc_node_timeout",
+        "wallet2_api_allow_subtract_from_fee",
         "Increases network timeouts from 15 seconds to 3 minutes for remote RPC connections",
-        "patches/wallet2_3min_remote_rpc_node_timeout.patch"
+        "patches/wallet2_api_allow_subtract_from_fee.patch"
     ),
 ];
 
@@ -317,14 +317,6 @@ fn main() {
     // Link OpenSSL statically
     println!("cargo:rustc-link-lib=static=ssl"); // This is OpenSSL (libsll)
     println!("cargo:rustc-link-lib=static=crypto"); // This is OpenSSLs crypto library (libcrypto)
-
-    // Link unbound statically (skip for iOS)
-    if !is_ios {
-        println!("cargo:rustc-link-lib=static=unbound");
-        println!("cargo:rustc-link-lib=static=expat"); // Expat is required by unbound
-        println!("cargo:rustc-link-lib=static=nghttp2");
-        println!("cargo:rustc-link-lib=static=event");
-    }
 
     // Link protobuf statically
     println!("cargo:rustc-link-lib=static=protobuf");
