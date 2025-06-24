@@ -1399,6 +1399,14 @@ where
         let quotes = quotes_rx.borrow().clone();
         let (balance, max_giveable) = *balance_rx.borrow();
 
+        let success_quotes = quotes
+            .iter()
+            .filter_map(|quote| match quote {
+                SellerStatus::Online(quote_with_address) => Some(quote_with_address.clone()),
+                SellerStatus::Unreachable(_) => None,
+            })
+            .collect::<Vec<_>>();
+
         // Emit a Tauri event
         event_emitter.emit_swap_progress_event(
             swap_id,
@@ -1406,28 +1414,26 @@ where
                 deposit_address: deposit_address.clone(),
                 max_giveable: max_giveable,
                 min_bitcoin_lock_tx_fee: balance - max_giveable,
+                known_quotes: success_quotes.clone(),
             },
         );
 
         // Iterate through quotes and find ones that match the balance and max_giveable
-        let matching_quotes = quotes
+        let matching_quotes = success_quotes
             .iter()
-            .filter_map(|quote| match quote {
-                SellerStatus::Online(quote_with_address) => {
-                    let quote = quote_with_address.quote;
+            .filter_map(|quote_with_address| {
+                let quote = quote_with_address.quote;
 
-                    if quote.min_quantity <= max_giveable
-                        && quote.max_quantity > bitcoin::Amount::ZERO
-                    {
-                        let tx_lock_fee = balance - max_giveable;
-                        let tx_lock_amount = std::cmp::min(max_giveable, quote.max_quantity);
+                if quote.min_quantity <= max_giveable
+                    && quote.max_quantity > bitcoin::Amount::ZERO
+                {
+                    let tx_lock_fee = balance - max_giveable;
+                    let tx_lock_amount = std::cmp::min(max_giveable, quote.max_quantity);
 
-                        Some((quote_with_address.clone(), tx_lock_amount, tx_lock_fee))
-                    } else {
-                        None
-                    }
+                    Some((quote_with_address.clone(), tx_lock_amount, tx_lock_fee))
+                } else {
+                    None
                 }
-                SellerStatus::Unreachable(_) => None,
             })
             .collect::<Vec<_>>();
 

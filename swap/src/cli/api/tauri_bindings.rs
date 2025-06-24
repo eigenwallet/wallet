@@ -670,6 +670,7 @@ pub enum TauriSwapProgressEvent {
         #[typeshare(serialized_as = "number")]
         #[serde(with = "::bitcoin::amount::serde::as_sat")]
         min_bitcoin_lock_tx_fee: bitcoin::Amount,
+        known_quotes: Vec<QuoteWithAddress>,
     },
     SwapSetupInflight {
         #[typeshare(serialized_as = "number")]
