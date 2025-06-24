@@ -139,6 +139,7 @@ fn main() {
         monero_build_dir.join("src/rpc").display()
     );
 
+    // On macos we use homebrew to install the monero dependencies
     #[cfg(target_os = "macos")]
     {
         // Dynamically detect Homebrew installation prefix (works on both Apple Silicon and Intel Macs)
@@ -172,9 +173,20 @@ fn main() {
         println !("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/18.0.0/lib/darwin");
     }
 
-    #[cfg(target_os = "windows")] {
-        println!("cargo:rustc-link-search=native=C:\\msys64\\clang64\\lib");
+    // On windows we use vcpkg to build the monero dependencies -- not on macos or linux because
+    // its not absolutely necessary and takes a long time to build
+    #[cfg(target_os = "windows")]
+    {
+        vcpkg::find_package("zeromq").unwrap();
+        vcpkg::find_package("unbound").unwrap();
+        vcpkg::find_package("openssl").unwrap();
+        vcpkg::find_package("boost").unwrap();
+        vcpkg::find_package("libusb").unwrap();
+        vcpkg::find_package("libsodium").unwrap();
+        vcpkg::find_package("protobuf-c").unwrap();
     }
+
+    // On linux we use apt to install the monero dependencies, they are found automatically
 
     // Link libwallet and libwallet_api statically
     println!("cargo:rustc-link-lib=static=wallet");

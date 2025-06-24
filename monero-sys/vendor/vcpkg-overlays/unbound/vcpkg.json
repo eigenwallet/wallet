@@ -1,0 +1,19 @@
+{
+    "name": "unbound",
+    "version-string": "1.23.0",
+    "homepage": "https://nlnetlabs.nl/projects/unbound/about/",
+    "description": "Recursive DNS resolver library (-lunbound)",
+    "license": "BSD-3-Clause",
+    "supports": "!(uwp)",
+    "dependencies": [
+        "openssl"
+    ],
+    "features": {
+        "libevent": {
+            "description": "Enable libevent support for large outgoing port ranges",
+            "dependencies": [
+                "libevent"
+            ]
+        }
+    }
+}
