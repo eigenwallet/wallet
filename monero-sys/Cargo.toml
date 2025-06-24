@@ -6,6 +6,7 @@ edition = "2021"
 [package.metadata.vcpkg]
 git = "https://github.com/microsoft/vcpkg"
 rev = "ef7dbf9"
+config = "vendor/vcpkg-overlays/vcpkg-configuration.json"
 dependencies = [
     "zeromq",
     "unbound",
@@ -17,13 +18,12 @@ dependencies = [
 ]
 
 [dependencies]
+backoff = { version = "0.4.0", features = ["tokio", "futures"] }
 anyhow = "1.0.98"
-backoff = "0.4.0"
 cxx = "1.0.137"
 monero = { version = "0.12", features = ["serde_support"] }
 tokio = { version = "1.44.2", features = ["sync", "time", "rt"] }
 tracing = "0.1.41"
-
 
 [build-dependencies]
 cmake = "0.1.54"

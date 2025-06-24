@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use cmake::Config;
 
 fn main() {
@@ -177,6 +179,17 @@ fn main() {
     // its not absolutely necessary and takes a long time to build
     #[cfg(target_os = "windows")]
     {
+        println!("cargo:Building Monero dependencies with vcpkg");
+
+        Command::new("cargo")
+            .env("VCPKG_OVERLAY_PORTS", "vendor/vcpkg-overlays/unbound")
+            .arg("vcpkg")
+            .arg("build")
+            .output()
+            .expect("Failed to build vcpkg dependencies");
+
+        println!("cargo:debug=Finding vcpkg dependencies");
+
         vcpkg::find_package("zeromq").unwrap();
         vcpkg::find_package("unbound").unwrap();
         vcpkg::find_package("openssl").unwrap();
