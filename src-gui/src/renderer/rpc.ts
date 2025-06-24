@@ -27,6 +27,7 @@ import {
   ResolveApprovalResponse,
   RedactArgs,
   RedactResponse,
+  LabeledMoneroAddress,
 } from "models/tauriModel";
 import { rpcSetBalance, rpcSetSwapInfo } from "store/features/rpcSlice";
 import { store } from "./store/storeRenderer";
@@ -138,47 +139,44 @@ export async function withdrawBtc(address: string): Promise<string> {
   return response.txid;
 }
 
-const DONATE_PERCENTAGE = 0.1;
+const DONATION_ADDRESS = "49LEH26DJGuCyr8xzRAzWPUryzp7bpccC7Hie1DiwyfJEyUKvMFAethRLybDYrFdU1eHaMkKQpUPebY4WT3cSjEvThmpjPa"
 
 export async function buyXmr(
   seller: Maker,
   bitcoin_change_address: string | null,
   monero_receive_address: string,
+  donation_percentage: number,
 ) {
+  const address_pool: LabeledMoneroAddress[] = []
+
+  if (donation_percentage > 0.0) {
+    address_pool.concat([
+      {
+        address: monero_receive_address,
+        percentage: 100 - donation_percentage,
+        label: "Swap",
+      },
+      {
+        address: DONATION_ADDRESS,
+        percentage: donation_percentage,
+        label: "Donate",
+      },
+    ])
+  } else {
+    address_pool.push({
+      address: DONATION_ADDRESS,
+      percentage: 100,
+      label: "Swap",
+    })
+  }
+
   await invoke<BuyXmrArgs, BuyXmrResponse>(
     "buy_xmr",
-    bitcoin_change_address == null
-      ? {
-        seller: providerToConcatenatedMultiAddr(seller),
-        monero_receive_pool: [
-          {
-            address: monero_receive_address,
-            percentage: DONATE_PERCENTAGE,
-            label: "Donate",
-          },
-          {
-            address: monero_receive_address,
-            percentage: 1 - DONATE_PERCENTAGE,
-            label: "Swap",
-          },
-        ]
-      }
-      : {
-        seller: providerToConcatenatedMultiAddr(seller),
-        monero_receive_pool: [
-          {
-            address: monero_receive_address,
-            percentage: 1 - DONATE_PERCENTAGE,
-            label: "Swap",
-          },
-          {
-            address: monero_receive_address,
-            percentage: DONATE_PERCENTAGE,
-            label: "Donate",
-          },
-        ],
-        bitcoin_change_address,
-      },
+    {
+      seller: providerToConcatenatedMultiAddr(seller),
+      monero_receive_pool: address_pool,
+      bitcoin_change_address,
+    },
   );
 }
 

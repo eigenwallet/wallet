@@ -82,7 +82,7 @@ async fn fund_transfer_and_check_tx_key() {
                 bob_wallet.address().await.unwrap(),
                 candice_wallet.address().await.unwrap(),
             ],
-            &[0.999, 0.001],
+            &[99.9, 0.1],
         )
         .await
         .unwrap();

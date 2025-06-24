@@ -18,12 +18,14 @@ export default function InitPage() {
   const [refundAddressValid, setRefundAddressValid] = useState(false);
 
   const selectedMaker = useAppSelector((state) => state.makers.selectedMaker);
+  const donationRatio = 0.1;
 
   async function init() {
     await buyXmr(
       selectedMaker,
       useExternalRefundAddress ? refundAddress : null,
       redeemAddress,
+      donationRatio,
     );
   }
 

@@ -747,7 +747,7 @@ impl State5 {
         let tx_hashes = wallet
             .sweep_multi(
                 &monero_receive_pool.addresses(),
-                &monero_receive_pool.ratios(),
+                &monero_receive_pool.percentages(),
             )
             .await
             .context("Failed to redeem Monero")?
