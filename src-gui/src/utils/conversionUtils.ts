@@ -15,6 +15,15 @@ export function piconerosToXmr(piconeros: number): number {
   return piconeros / 1000000000000;
 }
 
+/**
+ * Checks if a Monero address is valid for the specified network.
+ *
+ * The validation uses a regular expression to match the expected address format for either stagenet or mainnet.
+ *
+ * @param address - The Monero address to validate
+ * @param stagenet - Whether to validate against the stagenet format (true) or mainnet format (false)
+ * @returns True if the address matches the expected format for the specified network; otherwise, false
+ */
 export function isXmrAddressValid(address: string, stagenet: boolean) {
   const re = stagenet
     ? "^(?:[57][0-9A-Za-z]{94}|[57][0-9A-Za-z]{105})$"

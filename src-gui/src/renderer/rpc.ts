@@ -213,6 +213,11 @@ export async function listSellersAtRendezvousPoint(
   });
 }
 
+/**
+ * Initializes the backend context with current network, node, and Tor settings.
+ *
+ * Selects Bitcoin and Monero node configurations based on user preferences and node availability, then invokes the backend to set up the operational context.
+ */
 export async function initializeContext() {
   const network = getNetwork();
   const testnet = isTestnet();
