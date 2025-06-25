@@ -55,35 +55,37 @@ pub enum SeedChoice {
     FromSeed { seed: String },
 }
 
-pub type SeedSelectionDetails = ();
-
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "content")]
 pub enum ApprovalRequest {
     /// Request approval before locking Bitcoin.
     /// Contains specific details for review.
-    LockBitcoin(GenericApprovalRequest<LockBitcoinDetails, ()>),
+    LockBitcoin(LockBitcoinRequest),
     /// Request seed selection from user.
     /// User can choose between random seed or provide their own.
-    SeedSelection(GenericApprovalRequest<SeedSelectionDetails, SeedChoice>),
+    SeedSelection(SeedSelectionRequest),
 }
+
+type LockBitcoinRequest = GenericApprovalRequest<LockBitcoinDetails, ()>;
+type SeedSelectionRequest = GenericApprovalRequest<(), SeedChoice>;
+
+
 
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "state", content = "content")]
-pub enum GenericApprovalRequest<Details, ApproveInput> {
+pub enum GenericApprovalRequest<Details> {
     Pending {
         request_id: String,
         #[typeshare(serialized_as = "number")]
         expiration_ts: u64,
         details: Details,
-        approve_input: ApproveInput,
     },
     Resolved {
         request_id: String,
         details: Details,
-        approve_input: ApproveInput,
+        approve_input: serde_json::Value,
     },
     Rejected {
         request_id: String,
@@ -91,8 +93,8 @@ pub enum GenericApprovalRequest<Details, ApproveInput> {
     },
 }
 
-struct PendingApproval {
-    responder: Option<oneshot::Sender<serde_json::Value>>,
+struct PendingApproval<ApproveInput> {
+    responder: Option<oneshot::Sender<ApproveInput>>,
     #[allow(dead_code)]
     expiration_ts: u64,
 }
@@ -148,114 +150,25 @@ impl TauriHandle {
         self.emit_unified_event(TauriEvent::Approval(event))
     }
 
-    pub async fn request_seed_selection_approval(
+    pub async fn request_approval<Response>(
         &self,
-        details: SeedSelectionDetails,
+        request: ApprovalRequest,
         timeout_secs: u64,
-    ) -> Result<SeedChoice> {
+    ) -> Result<Response>
+    where 
+        Response: serde::Deserialize + Clone,
+
+     {
         #[cfg(not(feature = "tauri"))]
         {
-            return Ok(SeedChoice::RandomSeed);
+            bail!("Tauri feature not enabled");
         }
 
         #[cfg(feature = "tauri")]
         {
-            // Compute absolute expiration timestamp, and UUID for the request
-            let request_id = Uuid::new_v4();
-            let now_secs = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("system time to be after unix epoch (1970-01-01)")
-                .as_secs();
-            let expiration_ts = now_secs + timeout_secs;
-
-            // Build the approval event based on the request type
-            let pending_event = ApprovalRequest::SeedSelection(GenericApprovalRequest::Pending {
-                request_id: request_id.to_string(),
-                expiration_ts,
-                details: details.clone(),
-                approve_input: SeedChoice::RandomSeed, // Default value
-            });
-
             // Emit the creation of the approval request to the frontend
-            self.emit_approval(pending_event.clone());
-
-            tracing::debug!(%request_id, request=?pending_event, "Emitted seed selection approval request event");
-
-            // Construct the data structure we use to internally track the approval request
-            let (responder, receiver) = oneshot::channel();
-            let timeout_duration = Duration::from_secs(timeout_secs);
-
-            let pending = PendingApproval {
-                responder: Some(responder),
-                expiration_ts,
-            };
-
-            // Lock map and insert the pending approval
-            {
-                let mut pending_map = self.0.pending_approvals.lock().await;
-                pending_map.insert(request_id, pending);
-            }
-
-            // Determine the response
-            let response = tokio::select! {
-                res = receiver => res.map_err(|_| anyhow!("Approval responder dropped"))?,
-                _ = tokio::time::sleep(timeout_duration) => {
-                    tracing::debug!(%request_id, "Seed selection approval request timed out");
-                    serde_json::to_value(SeedChoice::RandomSeed)?
-                },
-            };
-
-            let mut map = self.0.pending_approvals.lock().await;
-            if let Some(_pending) = map.remove(&request_id) {
-                // Parse the response back to SeedChoice
-                let seed_choice: SeedChoice = serde_json::from_value(response.clone())?;
-                
-                let event = ApprovalRequest::SeedSelection(GenericApprovalRequest::Resolved {
-                    request_id: request_id.to_string(),
-                    details: details.clone(),
-                    approve_input: seed_choice.clone(),
-                });
-
-                self.emit_approval(event);
-                tracing::debug!(%request_id, response=?seed_choice, "Resolved seed selection approval request");
-                
-                Ok(seed_choice)
-            } else {
-                Ok(SeedChoice::RandomSeed)
-            }
-        }
-    }
-
-    pub async fn request_approval_internal(
-        &self,
-        details: LockBitcoinDetails,
-        timeout_secs: u64,
-    ) -> Result<bool> {
-        #[cfg(not(feature = "tauri"))]
-        {
-            return Ok(true);
-        }
-
-        #[cfg(feature = "tauri")]
-        {
-            // Compute absolute expiration timestamp, and UUID for the request
-            let request_id = Uuid::new_v4();
-            let now_secs = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("system time to be after unix epoch (1970-01-01)")
-                .as_secs();
-            let expiration_ts = now_secs + timeout_secs;
-
-            // Build the approval event based on the request type
-            let pending_event = ApprovalRequest::LockBitcoin(GenericApprovalRequest::Pending {
-                request_id: request_id.to_string(),
-                expiration_ts,
-                details: details.clone(),
-                approve_input: (),
-            });
-
-            // Emit the creation of the approval request to the frontend
-            self.emit_approval(pending_event.clone());
+            // TODO: We need to send a UUID with it here
+            self.emit_approval(request.clone());
 
             tracing::debug!(%request_id, request=?pending_event, "Emitted approval request event");
 
@@ -279,12 +192,12 @@ impl TauriHandle {
             let response = tokio::select! {
                 res = receiver => res.map_err(|_| anyhow!("Approval responder dropped"))?,
                 _ = tokio::time::sleep(timeout_duration) => {
-                    tracing::debug!(%request_id, "Approval request timed out and was therefore rejected");
-                    serde_json::Value::Bool(false)
+                    bail!("Approval request timed out and was therefore rejected");
                 },
             };
 
-            let accepted = response.as_bool().unwrap_or(false);
+            let response: Response = serde_json::from_value(response)
+                .context("Failed to parse approval response to expected type")?;
 
             let mut map = self.0.pending_approvals.lock().await;
             if let Some(_pending) = map.remove(&request_id) {
@@ -465,19 +378,19 @@ impl TauriEmitter for Option<TauriHandle> {
         }
     }
 
-    fn request_approval<'life0, 'async_trait>(
+    fn request_approval<Response, 'life0, 'async_trait>(
         &'life0 self,
-        details: LockBitcoinDetails,
+        details: ApprovalRequest,
         timeout_secs: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
+    ) -> Pin<Box<dyn Future<Output = Result<Response>> + Send + 'async_trait>>
     where
         'life0: 'async_trait,
         Self: 'async_trait,
     {
         Box::pin(async move {
             match self {
-                Some(tauri) => tauri.request_approval_internal(details, timeout_secs).await,
-                None => Ok(true),
+                Some(tauri) => tauri.request_approval(details, timeout_secs).await,
+                None => bail!("No Tauri handle available"),
             }
         })
     }
