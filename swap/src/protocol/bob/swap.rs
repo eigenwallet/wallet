@@ -545,7 +545,6 @@ async fn next_state(
                 TauriSwapProgressEvent::XmrRedeemInMempool {
                     xmr_redeem_txids,
                     xmr_receive_pool: monero_receive_pool.clone(),
-                    xmr_receive_amount: monero_receive_amount,
                 },
             );
 
@@ -749,7 +748,6 @@ async fn next_state(
                                 TauriSwapProgressEvent::XmrRedeemInMempool {
                                     xmr_redeem_txids,
                                     xmr_receive_pool: monero_receive_pool.clone(),
-                                    xmr_receive_amount: monero_receive_amount,
                                 },
                             );
 
@@ -816,7 +814,6 @@ async fn next_state(
                     // We don't have the txids of the redeem transaction here, so we can't emit them
                     // We return an empty array instead
                     xmr_redeem_txids: vec![],
-                    xmr_receive_amount: monero::Amount::ZERO,
                     xmr_receive_pool: monero_receive_pool.clone(),
                 },
             );

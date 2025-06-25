@@ -632,7 +632,6 @@ pub enum TauriSwapProgressEvent {
         #[typeshare(serialized_as = "Vec<string>")]
         xmr_redeem_txids: Vec<monero::TxHash>,
         xmr_receive_pool: MoneroAddressPool,
-        xmr_receive_amount: monero::Amount,
     },
     CancelTimelockExpired,
     BtcCancelled {

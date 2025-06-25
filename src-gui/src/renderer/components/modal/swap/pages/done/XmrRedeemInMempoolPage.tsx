@@ -62,21 +62,6 @@ export default function XmrRedeemInMempoolPage(
                       >
                         {pool.label} ({pool.percentage}%)
                       </Typography>
-                      {pool.percentage > 5 && (
-                        <Typography
-                          variant="body2"
-                          sx={(theme) => ({
-                            fontWeight: "bold",
-                            color: theme.palette.success.main,
-                          })}
-                        >
-                          <PiconeroAmount
-                            amount={
-                              (pool.percentage * PLACEHOLDER_XMR_TOTAL) / 100
-                            }
-                          />
-                        </Typography>
-                      )}
                     </Box>
                     <Typography
                       variant="caption"
