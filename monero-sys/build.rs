@@ -72,10 +72,10 @@ fn main() {
         .define("GTEST_HAS_ABSL", "OFF")
         // Use lightweight crypto library
         .define("MONERO_WALLET_CRYPTO_LIBRARY", "cn")
-        // .build_arg(match is_github_actions {
-        //     true => "-j1",
-        //     false => "-j8",
-        // })
+        .build_arg(match is_github_actions {
+            true => "-j1",
+            false => "-j",
+        })
         .build();
 
     let monero_build_dir = output_directory.join("build");
