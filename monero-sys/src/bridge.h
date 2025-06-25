@@ -1,10 +1,3 @@
-#pragma once
-
-#include <memory>
-
-#include "../monero/src/wallet/api/wallet2_api.h"
-#include "../monero/src/wallet/api/wallet_manager.h"
-
 /**
  * This file contains some C++ glue code needed to make the FFI work.
  * This consists mainly of two use-cases:
@@ -19,11 +12,20 @@
  *       those in a unique_ptr.
  *     - CXX doesn't support optional arguments, so we make thin wrapper functions that either
  *       take the argument or not.
+ *     - Somehow a specific destructor (std::pair<std::map<std::string, std::string>, std::vector<std::string>>) doesn't get included
+ *       into the binary (even though it is used) unless we explicitly instantiate it.
  *
  *  2. Hooking into the C++ logging system:
  *     - We install a custom callback to the easylogging++ logging system that forwards
  *       all log messages to Rust.
  */
+
+#pragma once
+
+#include <memory>
+
+#include "../monero/src/wallet/api/wallet2_api.h"
+#include "../monero/src/wallet/api/wallet_manager.h"
 
 /**
  * This adds some glue to the Monero namespace to make the ffi work.
@@ -176,8 +178,8 @@ namespace Monero
 #include "monero-sys/src/bridge.rs.h"
 
 /**
- * This section is us capturing the log messages from easylogging++
- * and forwarding it to rust's tracing.
+ * This section is us capturing the log messages from easylogging++ (which Monero uses)
+ * and forwarding it to rust's tracing (which we use).
  */
 namespace monero_rust_log
 {

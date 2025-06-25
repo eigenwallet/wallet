@@ -2,79 +2,80 @@
 help:
 	@just --list
 
-# Build Monero C++ Codebase (currently disabled)
-# build_monero_cpp:
-#	just update_submodules
-#	cd monero-sys/monero && make -j8 release
-
 # Clean the Monero C++ Codebase
-clean_monero_cpp:
+clean-monero:
 	rm -rf monero-sys/monero/
-	just update_submodules
+	just update-submodules
 
 # Builds the Rust bindings for Monero
-monero_sys:
-	just update_submodules
+build-monero-sys: update-submodules	
 	cd monero-sys && cargo build
 
 # Test the FFI bindings using various sanitizers, that can detect memory safety issues.
 test-ffi: test-ffi-address
 
-# Tests the FFI bindings using AddressSanitizer (https://doc.rust-lang.org/beta/unstable-book/compiler-flags/sanitizer.html#addresssanitizer). Can detect memory safety issues like use-after-free, double-free, leaks, etc.
+# Tests the FFI bindings using AddressSanitizer. Can detect memory safety issues like use-after-free, double-free, leaks, etc.
 test-ffi-address:
+	just update-submodules
 	cd monero-sys && RUSTFLAGS=-Zsanitizer=address cargo +nightly nextest run -Zbuild-std --target=`rustc --version --verbose | grep "host:" | cut -d' ' -f2`
 
 # Start the Tauri app
-tauri:
+tauri: update-submodules
 	cd src-tauri && cargo tauri dev --no-watch -- -- --testnet
 
-tauri-mainnet:
+tauri-mainnet: update-submodules
 	cd src-tauri && cargo tauri dev --no-watch
 
 # Install the GUI dependencies
-gui_install:
+gui-install:
 	cd src-gui && yarn install
 
 # Start the GUI Dev Server
-web:
+web: gui-install
 	cd src-gui && yarn dev
 
+# Start the app by starting the web server and the tauri app
 gui:
 	just web & just tauri
 
+# Start the app by starting the web server and the tauri app on mainnet
 gui-mainnet:
 	just web & just tauri-mainnet
 
 # Build the GUI
-gui_build:
-        cd src-gui && yarn build
+gui-build: gui-install
+	cd src-gui && yarn build
 
 # Run the Rust tests
-tests:
-        cargo nextest run
+tests: update-submodules
+	cargo nextest run
 
 # Tests the Rust bindings for Monero
-test_monero_sys:
-        cd monero-sys && cargo nextest run
+test-monero-sys: update-submodules
+	cd monero-sys && cargo nextest run
+	just test-ffi
 
 # Builds the ASB and Swap binaries
-swap:
+swap: update-submodules
 	cd swap && cargo build --bin asb --bin=swap
 
 # Run the asb on testnet
-asb-testnet:
+asb:
 	cd swap && cargo run --bin asb -- --trace --testnet start
 
 # Updates our submodules (currently only Monero C++ codebase)
-update_submodules:
+update-submodules:
 	cd monero-sys && git submodule update --init --recursive --force
 
+# Run all the linting checks
+lint: clippy lint-gui
+
 # Run clippy checks
-clippy:
+clippy: update-submodules
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Generate the bindings for the Tauri API
-bindings:
+bindings: gui-install
 	cd src-gui && yarn run gen-bindings
 
 # Format the code
@@ -82,27 +83,26 @@ fmt:
 	dprint fmt
 
 # Run eslint for the GUI frontend
-check_gui_eslint:
+lint-gui-eslint: gui-install
 	cd src-gui && yarn run eslint
 
 # Run the typescript type checker for the GUI frontend
-check_gui_tsc:
+lint-gui-tsc: gui-install
 	cd src-gui && yarn run tsc --noEmit
 
 # Run the checks for the GUI frontend
-check_gui:
-	just check_gui_eslint || true
-	just check_gui_tsc
+lint-gui: gui-install
+	just lint-gui-eslint || true
+	just check-gui-tsc
 
 # Sometimes you have to prune the docker network to get the integration tests to work
 docker-prune-network:
 	docker network prune -f
 
 # Install dependencies required for building monero-sys
-prepare_mac_os_brew_dependencies:
+macos-dependencies:
 	cd dev_scripts && chmod +x ./brew_dependencies_install.sh && ./brew_dependencies_install.sh
 
-# Takes a crate (e.g monero-rpc-pool) and uses code2prompt to copy to clipboard
-# E.g code2prompt . --exclude "*.lock" --exclude ".sqlx/*" --exclude "target"
-code2prompt_single_crate crate:
-	cd {{crate}} && code2prompt . --exclude "*.lock" --exclude ".sqlx/*" --exclude "target"
+# Takes a crate (e.g monero-rpc-pool) and uses code2prompt to copy it's content to the clipboard.
+prompt-crate crate:
+	cd {{crate}} && code2prompt . --exclude "*.lock" --exclude ".sqlx/*" --exclude "target" --exclude "monero" --exclude "target-check"
