@@ -597,6 +597,8 @@ pub async fn buy_xmr(
         monero_receive_pool,
     } = buy_xmr;
 
+    monero_receive_pool.assert_network(context.config.env_config.monero_network)?;
+
     let bitcoin_wallet = Arc::clone(
         context
             .bitcoin_wallet

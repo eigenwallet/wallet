@@ -282,6 +282,16 @@ impl MoneroAddressPool {
     pub fn iter(&self) -> impl Iterator<Item = &LabeledMoneroAddress> {
         self.0.iter()
     }
+
+    pub fn assert_network(&self, network: Network) -> Result<()> {
+        for address in self.0.iter() {
+            if address.address().network != network {
+                bail!("Address pool contains addresses on the wrong network (address {} is on {:?}, expected {:?})", address.address(), address.address().network, network);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl From<::monero::Address> for MoneroAddressPool {
