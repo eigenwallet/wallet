@@ -3,7 +3,7 @@ use crate::cli::api::tauri_bindings::TauriHandle;
 use crate::database::Swap;
 use crate::monero::LabeledMoneroAddress;
 use crate::monero::MoneroAddressPool;
-use crate::monero::{Address, TransferProof};
+use crate::monero::{TransferProof};
 use crate::protocol::{Database, State};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;

@@ -5,7 +5,6 @@ use crate::cli::api::tauri_bindings::{
     LockBitcoinDetails, TauriEmitter, TauriHandle, TauriSwapProgressEvent,
 };
 use crate::cli::EventLoopHandle;
-use crate::common::retry;
 use crate::monero::MoneroAddressPool;
 use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, Rejected};
 use crate::network::swap_setup::bob::NewSwap;
@@ -14,11 +13,10 @@ use crate::protocol::{bob, Database};
 use crate::{bitcoin, monero};
 use anyhow::{bail, Context as AnyContext, Result};
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::select;
 use uuid::Uuid;
 
-const PRE_BTC_LOCK_APPROVAL_TIMEOUT_SECS: u64 = 120 * 10;
+const PRE_BTC_LOCK_APPROVAL_TIMEOUT_SECS: u64 = 60 * 3;
 
 pub fn is_complete(state: &BobState) -> bool {
     matches!(
