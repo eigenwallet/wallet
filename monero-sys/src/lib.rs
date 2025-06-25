@@ -1609,6 +1609,23 @@ impl FfiWallet {
 
     /// Distribute the funds in the wallet to a set of addresses with a set of percentages,
     /// such that the complete balance is spent (takes fee into account).
+    ///
+    /// # Arguments
+    ///
+    /// * `balance` - The total balance to distribute
+    /// * `percentages` - A slice of percentages that must sum to 100.0
+    ///
+    /// # Returns
+    ///
+    /// A vector of Monero amounts proportional to the input percentages.
+    /// The last amount gets any remainder to ensure exact distribution.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Percentages don't sum to 100.0
+    /// - Balance is zero
+    /// - There are more outputs than piconeros in balance
     fn distribute(balance: monero::Amount, percentages: &[f64]) -> Result<Vec<monero::Amount>> {
         if percentages.is_empty() {
             bail!("No ratios to distribute to");
@@ -1894,10 +1911,7 @@ mod tests {
     use quickcheck_macros::quickcheck;
 
     #[quickcheck]
-    fn prop_distribute_sum_equals_balance(
-        balance_pico: u64,
-        percentages: Vec<f64>,
-    ) -> TestResult {
+    fn prop_distribute_sum_equals_balance(balance_pico: u64, percentages: Vec<f64>) -> TestResult {
         // Filter out invalid inputs
         if percentages.is_empty() || balance_pico == 0 {
             return TestResult::discard();
@@ -1976,7 +1990,8 @@ mod tests {
         // We check all but the last amount since the last one gets the remainder
         let mut percentages_respected = true;
         for i in 0..percentages.len() - 1 {
-            let expected_amount = ((balance.as_pico() as f64) * percentages[i] / 100.0).floor() as u64;
+            let expected_amount =
+                ((balance.as_pico() as f64) * percentages[i] / 100.0).floor() as u64;
             if amounts[i].as_pico() != expected_amount {
                 percentages_respected = false;
                 break;
@@ -2029,7 +2044,7 @@ mod tests {
         // First two amounts should respect percentages exactly
         assert_eq!(amounts[0].as_pico(), 500); // 50% of 1000
         assert_eq!(amounts[1].as_pico(), 300); // 30% of 1000
-        // Last amount gets remainder: 1000 - 500 - 300 = 200
+                                               // Last amount gets remainder: 1000 - 500 - 300 = 200
         assert_eq!(amounts[2].as_pico(), 200);
     }
 
@@ -2048,7 +2063,7 @@ mod tests {
 
         // First amount should respect percentage exactly
         assert_eq!(amounts[0].as_pico(), 999); // 99.9% of 1000 (floored)
-        // Last amount gets remainder: 1000 - 999 = 1
+                                               // Last amount gets remainder: 1000 - 999 = 1
         assert_eq!(amounts[1].as_pico(), 1);
     }
 

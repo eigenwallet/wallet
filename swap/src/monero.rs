@@ -220,6 +220,10 @@ impl Amount {
     }
 }
 
+/// A Monero address with an associated percentage and human-readable label.
+///
+/// This structure represents a destination address for Monero transactions
+/// along with the percentage of funds it should receive and a descriptive label.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[typeshare]
 pub struct LabeledMoneroAddress {
@@ -231,6 +235,17 @@ pub struct LabeledMoneroAddress {
 }
 
 impl LabeledMoneroAddress {
+    /// Creates a new labeled Monero address.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The Monero address
+    /// * `percentage` - The percentage of funds (between 0.0 and 1.0)
+    /// * `label` - A human-readable label for this address
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the percentage is not between 0.0 and 1.0 inclusive.
     pub fn new(
         address: monero::Address,
         percentage: Decimal,
@@ -250,19 +265,27 @@ impl LabeledMoneroAddress {
         })
     }
 
+    /// Returns the Monero address.
     pub fn address(&self) -> monero::Address {
         self.address
     }
 
+    /// Returns the percentage as a decimal.
     pub fn percentage(&self) -> Decimal {
         self.percentage
     }
 
+    /// Returns the human-readable label.
     pub fn label(&self) -> &str {
         &self.label
     }
 }
 
+/// A collection of labeled Monero addresses that can receive funds in a transaction.
+///
+/// This structure manages multiple destination addresses with their associated
+/// percentages and labels. It's used for splitting Monero transactions across
+/// multiple recipients, such as for donations or multi-destination swaps.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[typeshare]
 pub struct MoneroAddressPool(Vec<LabeledMoneroAddress>);
@@ -270,14 +293,21 @@ pub struct MoneroAddressPool(Vec<LabeledMoneroAddress>);
 use rust_decimal::prelude::ToPrimitive;
 
 impl MoneroAddressPool {
+    /// Creates a new address pool from a vector of labeled addresses.
+    ///
+    /// # Arguments
+    ///
+    /// * `addresses` - Vector of labeled Monero addresses
     pub fn new(addresses: Vec<LabeledMoneroAddress>) -> Self {
         Self(addresses)
     }
 
+    /// Returns a vector of all Monero addresses in the pool.
     pub fn addresses(&self) -> Vec<monero::Address> {
         self.0.iter().map(|address| address.address()).collect()
     }
 
+    /// Returns a vector of all percentages as f64 values.
     pub fn percentages(&self) -> Vec<f64> {
         self.0
             .iter()
@@ -290,10 +320,20 @@ impl MoneroAddressPool {
             .collect()
     }
 
+    /// Returns an iterator over the labeled addresses.
     pub fn iter(&self) -> impl Iterator<Item = &LabeledMoneroAddress> {
         self.0.iter()
     }
 
+    /// Validates that all addresses in the pool are on the expected network.
+    ///
+    /// # Arguments
+    ///
+    /// * `network` - The expected Monero network
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any address is on a different network than expected.
     pub fn assert_network(&self, network: Network) -> Result<()> {
         for address in self.0.iter() {
             if address.address().network != network {

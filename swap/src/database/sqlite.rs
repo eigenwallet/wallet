@@ -528,36 +528,43 @@ mod tests {
         let db = setup_test_db().await?;
 
         let swap_id = Uuid::new_v4();
-        
+
         // Create multiple labeled addresses with valid percentages that sum to 1
         let address1 = "53gEuGZUhP9JMEBZoGaFNzhwEgiG7hwQdMCqFxiyiTeFPmkbt1mAoNybEUvYBKHcnrSgxnVWgZsTvRBaHBNXPa8tHiCU51a".parse()?; // Stagenet address
         let address2 = "44Ato7HveWidJYUAVw5QffEcEtSH1DwzSP3FPPkHxNAS4LX9CqgucphTisH978FLHE34YNEx7FcbBfQLQUU8m3NUC4VqsRa".parse()?; // Mainnet address
         let address3 = "53gEuGZUhP9JMEBZoGaFNzhwEgiG7hwQdMCqFxiyiTeFPmkbt1mAoNybEUvYBKHcnrSgxnVWgZsTvRBaHBNXPa8tHiCU51a".parse()?; // Same as address1 for simplicity
 
         let labeled_addresses = vec![
-            LabeledMoneroAddress::new(address1, Decimal::new(5, 1), "Primary".to_string()).map_err(|e| anyhow!(e))?, // 0.5
-            LabeledMoneroAddress::new(address2, Decimal::new(3, 1), "Secondary".to_string()).map_err(|e| anyhow!(e))?, // 0.3
-            LabeledMoneroAddress::new(address3, Decimal::new(2, 1), "Tertiary".to_string()).map_err(|e| anyhow!(e))?, // 0.2
+            LabeledMoneroAddress::new(address1, Decimal::new(5, 1), "Primary".to_string())
+                .map_err(|e| anyhow!(e))?, // 0.5
+            LabeledMoneroAddress::new(address2, Decimal::new(3, 1), "Secondary".to_string())
+                .map_err(|e| anyhow!(e))?, // 0.3
+            LabeledMoneroAddress::new(address3, Decimal::new(2, 1), "Tertiary".to_string())
+                .map_err(|e| anyhow!(e))?, // 0.2
         ];
 
         let address_pool = MoneroAddressPool::new(labeled_addresses);
 
         // Insert the address pool
-        db.insert_monero_address_pool(swap_id, address_pool.clone()).await?;
+        db.insert_monero_address_pool(swap_id, address_pool.clone())
+            .await?;
 
         // Load the address pool back
         let loaded_address_pool = db.get_monero_address_pool(swap_id).await?;
 
         // Verify they are equal
         assert_eq!(address_pool.addresses(), loaded_address_pool.addresses());
-        assert_eq!(address_pool.percentages(), loaded_address_pool.percentages());
-        
+        assert_eq!(
+            address_pool.percentages(),
+            loaded_address_pool.percentages()
+        );
+
         // Verify each labeled address individually
         let original_addresses: Vec<_> = address_pool.iter().collect();
         let loaded_addresses: Vec<_> = loaded_address_pool.iter().collect();
-        
+
         assert_eq!(original_addresses.len(), loaded_addresses.len());
-        
+
         for (orig, loaded) in original_addresses.iter().zip(loaded_addresses.iter()) {
             assert_eq!(orig.address(), loaded.address());
             assert_eq!(orig.percentage(), loaded.percentage());
