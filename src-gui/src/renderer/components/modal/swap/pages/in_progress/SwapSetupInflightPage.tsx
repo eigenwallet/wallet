@@ -81,7 +81,13 @@ export default function SwapSetupInflightPage({
         </Box>
 
         {/* Row 1: Animated arrow */}
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
           <AnimatedArrow />
         </Box>
 
@@ -240,7 +246,7 @@ const PoolBreakdown = ({
                 : theme.palette.action.hover,
             width: "100%", // Ensure full width
             minWidth: 0,
-            opacity: pool.percentage >= 5 ? 1 : 0.6,
+            opacity: pool.percentage >= 5 ? 1 : 0.75,
             transform: pool.percentage >= 5 ? "scale(1)" : "scale(0.95)",
             animation:
               pool.percentage >= 5
@@ -413,15 +419,6 @@ const MoneroMainBox = ({
               100
             }
           />
-        </Typography>
-        <Typography
-          variant="caption"
-          sx={(theme) => ({
-            color: theme.palette.text.secondary,
-            whiteSpace: "nowrap",
-          })}
-        >
-          {highestPercentagePool.percentage}%
         </Typography>
       </Box>
     </Box>

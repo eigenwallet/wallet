@@ -231,12 +231,23 @@ pub struct LabeledMoneroAddress {
 }
 
 impl LabeledMoneroAddress {
-    pub fn new(address: monero::Address, percentage: Decimal, label: String) -> Self {
-        Self {
+    pub fn new(
+        address: monero::Address,
+        percentage: Decimal,
+        label: String,
+    ) -> Result<Self, String> {
+        if percentage < Decimal::ZERO || percentage > Decimal::ONE {
+            return Err(format!(
+                "Percentage must be between 0 and 1 inclusive, got: {}",
+                percentage
+            ));
+        }
+
+        Ok(Self {
             address,
             percentage,
             label,
-        }
+        })
     }
 
     pub fn address(&self) -> monero::Address {
@@ -296,11 +307,12 @@ impl MoneroAddressPool {
 
 impl From<::monero::Address> for MoneroAddressPool {
     fn from(address: ::monero::Address) -> Self {
-        Self(vec![LabeledMoneroAddress {
+        Self(vec![LabeledMoneroAddress::new(
             address,
-            percentage: Decimal::from(1),
-            label: "user address".to_string(),
-        }])
+            Decimal::from(1),
+            "user address".to_string(),
+        )
+        .expect("Percentage 1 is always valid")])
     }
 }
 
@@ -843,5 +855,28 @@ mod tests {
         let large_amount = Amount::from_piconero(u64::MAX / 2);
         let min_balance = large_amount.min_conservative_balance_to_spend();
         assert!(min_balance > large_amount);
+    }
+
+    #[test]
+    fn labeled_monero_address_percentage_validation() {
+        use rust_decimal::Decimal;
+
+        let address = "53gEuGZUhP9JMEBZoGaFNzhwEgiG7hwQdMCqFxiyiTeFPmkbt1mAoNybEUvYBKHcnrSgxnVWgZsTvRBaHBNXPa8tHiCU51a".parse().unwrap();
+
+        // Valid percentages should work
+        assert!(LabeledMoneroAddress::new(address, Decimal::ZERO, "test".to_string()).is_ok());
+        assert!(LabeledMoneroAddress::new(address, Decimal::ONE, "test".to_string()).is_ok());
+        assert!(LabeledMoneroAddress::new(address, Decimal::new(5, 1), "test".to_string()).is_ok()); // 0.5
+
+        // Invalid percentages should fail
+        assert!(
+            LabeledMoneroAddress::new(address, Decimal::new(-1, 0), "test".to_string()).is_err()
+        );
+        assert!(
+            LabeledMoneroAddress::new(address, Decimal::new(11, 1), "test".to_string()).is_err()
+        ); // 1.1
+        assert!(
+            LabeledMoneroAddress::new(address, Decimal::new(2, 0), "test".to_string()).is_err()
+        ); // 2.0
     }
 }

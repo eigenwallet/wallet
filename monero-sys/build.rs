@@ -42,9 +42,7 @@ fn main() {
     println!("cargo:rerun-if-changed=patches");
 
     // Apply embedded patches before building
-    if let Err(e) = apply_embedded_patches() {
-        panic!("Failed to apply embedded patches: {}", e);
-    }
+    apply_embedded_patches().expect("Failed to apply embedded patches");
 
     // Build with the monero library all dependencies required
     let mut config = Config::new("monero");
@@ -403,7 +401,7 @@ fn apply_embedded_patches() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(p) => p,
                 Err(_) => {
                     // Try reversing the patch – if that succeeds the file already contains the changes
-                    if let Ok(_) = diffy::apply(&current, &patch.reverse()) {
+                    if diffy::apply(&current, &patch.reverse()).is_ok() {
                         println!(
                             "cargo:warning=Patch for {} already applied – skipping",
                             file_path

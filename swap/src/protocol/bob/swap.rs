@@ -5,6 +5,7 @@ use crate::cli::api::tauri_bindings::{
     LockBitcoinDetails, TauriEmitter, TauriHandle, TauriSwapProgressEvent,
 };
 use crate::cli::EventLoopHandle;
+use crate::common::retry;
 use crate::monero::MoneroAddressPool;
 use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, Rejected};
 use crate::network::swap_setup::bob::NewSwap;
@@ -13,6 +14,7 @@ use crate::protocol::{bob, Database};
 use crate::{bitcoin, monero};
 use anyhow::{bail, Context as AnyContext, Result};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::select;
 use uuid::Uuid;
 
@@ -534,9 +536,19 @@ async fn next_state(
         BobState::BtcRedeemed(state) => {
             event_emitter.emit_swap_progress_event(swap_id, TauriSwapProgressEvent::BtcRedeemed);
 
-            let xmr_redeem_txids = state
-                .redeem_xmr(&monero_wallet, swap_id, monero_receive_pool.clone())
-                .await?;
+            let xmr_redeem_txids = retry(
+                "Refund Monero",
+                || async {
+                    state
+                        .redeem_xmr(&monero_wallet, swap_id, monero_receive_pool.clone())
+                        .await
+                        .map_err(backoff::Error::transient)
+                },
+                None,
+                None,
+            )
+            .await
+            .context("Failed to redeem Monero")?;
 
             event_emitter.emit_swap_progress_event(
                 swap_id,
@@ -736,9 +748,19 @@ async fn next_state(
 
                     let state5 = state.attempt_cooperative_redeem(s_a, lock_transfer_proof);
 
-                    match state5
-                        .redeem_xmr(&monero_wallet, swap_id, monero_receive_pool.clone())
-                        .await
+                    match retry(
+                        "Redeeming Monero",
+                        || async {
+                            state5
+                                .redeem_xmr(&monero_wallet, swap_id, monero_receive_pool.clone())
+                                .await
+                                .map_err(backoff::Error::transient)
+                        },
+                        Duration::from_secs(2 * 60),
+                        None,
+                    )
+                    .await
+                    .context("Failed to redeem Monero")
                     {
                         Ok(xmr_redeem_txids) => {
                             event_emitter.emit_swap_progress_event(

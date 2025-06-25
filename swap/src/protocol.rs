@@ -4,7 +4,7 @@ use crate::protocol::alice::AliceState;
 use crate::protocol::bob::swap::is_complete as bob_is_complete;
 use crate::protocol::bob::BobState;
 use crate::{bitcoin, monero};
-use anyhow::{Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use conquer_once::Lazy;
 use libp2p::{Multiaddr, PeerId};

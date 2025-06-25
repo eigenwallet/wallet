@@ -3,7 +3,7 @@ use crate::cli::api::tauri_bindings::TauriHandle;
 use crate::database::Swap;
 use crate::monero::LabeledMoneroAddress;
 use crate::monero::MoneroAddressPool;
-use crate::monero::{TransferProof};
+use crate::monero::TransferProof;
 use crate::protocol::{Database, State};
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -150,6 +150,13 @@ impl Database for SqliteDatabase {
         .fetch_all(&self.pool)
         .await?;
 
+        if row.is_empty() {
+            return Err(anyhow!(
+                "No Monero address pool found for swap ID: {}",
+                swap_id
+            ));
+        }
+
         let addresses = row
             .iter()
             .map(|row| -> Result<LabeledMoneroAddress> {
@@ -157,7 +164,8 @@ impl Database for SqliteDatabase {
                 let percentage = Decimal::from_f64(row.percentage).expect("Invalid percentage");
                 let label = row.label.clone();
 
-                Ok(LabeledMoneroAddress::new(address, percentage, label))
+                LabeledMoneroAddress::new(address, percentage, label)
+                    .map_err(|e| anyhow::anyhow!("Invalid percentage in database: {}", e))
             })
             .collect::<Result<Vec<_>, _>>()?;
 

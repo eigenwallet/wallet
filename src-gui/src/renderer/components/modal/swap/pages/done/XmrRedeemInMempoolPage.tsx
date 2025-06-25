@@ -2,11 +2,6 @@ import { Box, DialogContentText, Typography } from "@mui/material";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
 import MoneroTransactionInfoBox from "../../MoneroTransactionInfoBox";
-import { MoneroAddressPool } from "models/tauriModel";
-import { PiconeroAmount } from "renderer/components/other/Units";
-
-// Placeholder value until backend sends the actual amount
-const PLACEHOLDER_XMR_TOTAL = 1000000000000; // 1 XMR in piconeros
 
 export default function XmrRedeemInMempoolPage(
   state: TauriSwapProgressEventContent<"XmrRedeemInMempool">,

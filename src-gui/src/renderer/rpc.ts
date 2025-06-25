@@ -199,7 +199,7 @@ export async function buyXmr(
     address_pool.push({
       address: monero_receive_address,
       percentage: 100,
-      label: "Swap",
+      label: "Your wallet",
     });
   }
 
