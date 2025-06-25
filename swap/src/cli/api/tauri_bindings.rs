@@ -50,35 +50,36 @@ pub struct LockBitcoinDetails {
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "content")]
-pub enum ApprovalRequestDetails {
+pub enum ApprovalRequest {
     /// Request approval before locking Bitcoin.
     /// Contains specific details for review.
-    LockBitcoin(LockBitcoinDetails),
+    LockBitcoin(GenericApprovalRequest<LockBitcoinDetails, ()>),
 }
 
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "state", content = "content")]
-pub enum ApprovalRequest {
+pub enum GenericApprovalRequest<Details, ApproveInput> {
     Pending {
         request_id: String,
         #[typeshare(serialized_as = "number")]
         expiration_ts: u64,
-        details: ApprovalRequestDetails,
+        details: Details,
+        approve_input: ApproveInput,
     },
     Resolved {
         request_id: String,
-        details: ApprovalRequestDetails,
+        details: Details,
+        approve_input: ApproveInput,
     },
     Rejected {
         request_id: String,
-        details: ApprovalRequestDetails,
+        details: Details,
     },
 }
 
 struct PendingApproval {
     responder: Option<oneshot::Sender<bool>>,
-    details: ApprovalRequestDetails,
     #[allow(dead_code)]
     expiration_ts: u64,
 }
@@ -134,9 +135,9 @@ impl TauriHandle {
         self.emit_unified_event(TauriEvent::Approval(event))
     }
 
-    pub async fn request_approval(
+    pub async fn request_approval_internal(
         &self,
-        request_type: ApprovalRequestDetails,
+        details: LockBitcoinDetails,
         timeout_secs: u64,
     ) -> Result<bool> {
         #[cfg(not(feature = "tauri"))]
@@ -154,13 +155,13 @@ impl TauriHandle {
                 .as_secs();
             let expiration_ts = now_secs + timeout_secs;
 
-            // Build the approval event
-            let details = request_type.clone();
-            let pending_event = ApprovalRequest::Pending {
+            // Build the approval event based on the request type
+            let pending_event = ApprovalRequest::LockBitcoin(GenericApprovalRequest::Pending {
                 request_id: request_id.to_string(),
                 expiration_ts,
                 details: details.clone(),
-            };
+                approve_input: (),
+            });
 
             // Emit the creation of the approval request to the frontend
             self.emit_approval(pending_event.clone());
@@ -173,7 +174,6 @@ impl TauriHandle {
 
             let pending = PendingApproval {
                 responder: Some(responder),
-                details: request_type.clone(),
                 expiration_ts,
             };
 
@@ -194,17 +194,18 @@ impl TauriHandle {
             };
 
             let mut map = self.0.pending_approvals.lock().await;
-            if let Some(pending) = map.remove(&request_id) {
+            if let Some(_pending) = map.remove(&request_id) {
                 let event = if accepted {
-                    ApprovalRequest::Resolved {
+                    ApprovalRequest::LockBitcoin(GenericApprovalRequest::Resolved {
                         request_id: request_id.to_string(),
-                        details: pending.details,
-                    }
+                        details: details.clone(),
+                        approve_input: (),
+                    })
                 } else {
-                    ApprovalRequest::Rejected {
+                    ApprovalRequest::LockBitcoin(GenericApprovalRequest::Rejected {
                         request_id: request_id.to_string(),
-                        details: pending.details,
-                    }
+                        details,
+                    })
                 };
 
                 self.emit_approval(event);
@@ -244,7 +245,7 @@ impl TauriHandle {
 pub trait TauriEmitter {
     fn request_approval<'life0, 'async_trait>(
         &'life0 self,
-        request_type: ApprovalRequestDetails,
+        details: LockBitcoinDetails,
         timeout_secs: u64,
     ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
     where
@@ -318,14 +319,14 @@ pub trait TauriEmitter {
 impl TauriEmitter for TauriHandle {
     fn request_approval<'life0, 'async_trait>(
         &'life0 self,
-        request_type: ApprovalRequestDetails,
+        details: LockBitcoinDetails,
         timeout_secs: u64,
     ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
     where
         'life0: 'async_trait,
         Self: 'async_trait,
     {
-        Box::pin(self.request_approval(request_type, timeout_secs))
+        Box::pin(self.request_approval_internal(details, timeout_secs))
     }
 
     fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()> {
@@ -369,7 +370,7 @@ impl TauriEmitter for Option<TauriHandle> {
 
     fn request_approval<'life0, 'async_trait>(
         &'life0 self,
-        request_type: ApprovalRequestDetails,
+        details: LockBitcoinDetails,
         timeout_secs: u64,
     ) -> Pin<Box<dyn Future<Output = Result<bool>> + Send + 'async_trait>>
     where
@@ -378,7 +379,7 @@ impl TauriEmitter for Option<TauriHandle> {
     {
         Box::pin(async move {
             match self {
-                Some(tauri) => tauri.request_approval(request_type, timeout_secs).await,
+                Some(tauri) => tauri.request_approval_internal(details, timeout_secs).await,
                 None => Ok(true),
             }
         })

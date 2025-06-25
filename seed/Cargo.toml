@@ -1,12 +1,12 @@
 [package]
 name = "monero-seed"
 version = "0.1.0"
-description = "Rust implementation of Monero's seed algorithm"
-license = "MIT"
-repository = "https://github.com/kayabaNerve/monero-wallet-util/tree/develop/seed"
 authors = ["Luke Parker <lukeparker5132@gmail.com>"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/kayabaNerve/monero-wallet-util/tree/develop/seed"
 rust-version = "1.80"
+description = "Rust implementation of Monero's seed algorithm"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -20,8 +20,8 @@ std-shims = { git = "https://github.com/serai-dex/serai", version = "^0.1.1", de
 
 thiserror = { version = "1", default-features = false, optional = true }
 
-zeroize = { version = "^1.5", default-features = false, features = ["zeroize_derive"] }
 rand_core = { version = "0.6", default-features = false }
+zeroize = { version = "^1.5", default-features = false, features = ["zeroize_derive"] }
 
 curve25519-dalek = { version = "4", default-features = false, features = ["alloc", "zeroize"] }
 

@@ -190,6 +190,7 @@ pub struct Context {
     bitcoin_wallet: Option<Arc<bitcoin::Wallet>>,
     monero_manager: Option<Arc<monero::Wallets>>,
     tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
+    #[allow(dead_code)]
     monero_rpc_pool_handle: Option<Arc<monero_rpc_pool::PoolHandle>>,
 }
 
@@ -284,6 +285,7 @@ impl ContextBuilder {
         // These are needed for everything else, and are blocking calls
         let data_dir = &data::data_dir_from(self.data, self.is_testnet)?;
         let env_config = env_config_from(self.is_testnet);
+
         let seed = &Seed::from_file_or_generate(data_dir.as_path())
             .context("Failed to read seed in file")?;
 

@@ -24,7 +24,7 @@ function useActiveLockBitcoinApprovalRequest(): PendingLockBitcoinApprovalReques
 
   return (
     approvals?.find(
-      (r) => r.content.details.content.swap_id === activeSwapId,
+      (r) => r.content.content.details.swap_id === activeSwapId,
     ) || null
   );
 }
@@ -36,7 +36,7 @@ export default function SwapSetupInflightPage({
 
   const [timeLeft, setTimeLeft] = useState<number>(0);
 
-  const expiresAtMs = request?.content.expiration_ts * 1000 || 0;
+  const expiresAtMs = request?.content.content.expiration_ts * 1000 || 0;
 
   useEffect(() => {
     const tick = () => {
@@ -64,7 +64,7 @@ export default function SwapSetupInflightPage({
   }
 
   const { btc_network_fee, xmr_receive_amount } =
-    request.content.details.content;
+    request.content.content.details;
 
   return (
     <InfoBox
@@ -144,7 +144,9 @@ export default function SwapSetupInflightPage({
             variant="text"
             size="large"
             sx={(theme) => ({ color: theme.palette.text.secondary })}
-            onInvoke={() => resolveApproval(request.content.request_id, false)}
+            onInvoke={() =>
+              resolveApproval(request.content.content.request_id, false)
+            }
             displayErrorSnackbar
             requiresContext
           >
@@ -155,7 +157,9 @@ export default function SwapSetupInflightPage({
             variant="contained"
             color="primary"
             size="large"
-            onInvoke={() => resolveApproval(request.content.request_id, true)}
+            onInvoke={() =>
+              resolveApproval(request.content.content.request_id, true)
+            }
             displayErrorSnackbar
             requiresContext
             endIcon={<CheckIcon />}
