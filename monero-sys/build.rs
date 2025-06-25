@@ -3,6 +3,39 @@ use std::process::Command;
 use cmake::Config;
 
 fn main() {
+    // On windows we use vcpkg to build the monero dependencies -- not on macos or linux because
+    // its not absolutely necessary and takes a long time to build
+    #[cfg(target_os = "windows")]
+    {
+        println!("cargo:Building Monero dependencies with vcpkg");
+
+        let output = Command::new("cargo-vcpkg")
+            .args(["--verbose", "build"])
+            .env(
+                "VCPKG_OVERLAY_PORTS",
+                "../../monero-sys/vendor/vcpkg-overlays/unbound", // starts at core/target/vcpkg/
+            )
+            .output()
+            .expect("Failed to build vcpkg dependencies");
+
+        println!(
+            "cargo:debug=Vcpkg stderr output:\n{}",
+            String::from_utf8(output.stdout).unwrap()
+        );
+
+        println!("cargo:debug=Finding vcpkg dependencies");
+
+        vcpkg::find_package("zeromq").unwrap();
+        vcpkg::find_package("unbound").unwrap();
+        vcpkg::find_package("openssl").unwrap();
+        vcpkg::find_package("boost").unwrap();
+        vcpkg::find_package("libusb").unwrap();
+        vcpkg::find_package("libsodium").unwrap();
+        vcpkg::find_package("protobuf-c").unwrap();
+    }
+
+    println!("cargo:warn=Building Monero");
+
     let is_github_actions: bool = std::env::var("GITHUB_ACTIONS").is_ok();
 
     // Only rerun this when the bridge.rs or static_bridge.h file changes.
@@ -173,30 +206,6 @@ fn main() {
         println !("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/16.0.0/lib/darwin");
         println !("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/17.0.0/lib/darwin");
         println !("cargo:rustc-link-search=native=/Library/Developer/CommandLineTools/usr/lib/clang/18.0.0/lib/darwin");
-    }
-
-    // On windows we use vcpkg to build the monero dependencies -- not on macos or linux because
-    // its not absolutely necessary and takes a long time to build
-    #[cfg(target_os = "windows")]
-    {
-        println!("cargo:Building Monero dependencies with vcpkg");
-
-        Command::new("cargo")
-            .env("VCPKG_OVERLAY_PORTS", "vendor/vcpkg-overlays/unbound")
-            .arg("vcpkg")
-            .arg("build")
-            .output()
-            .expect("Failed to build vcpkg dependencies");
-
-        println!("cargo:debug=Finding vcpkg dependencies");
-
-        vcpkg::find_package("zeromq").unwrap();
-        vcpkg::find_package("unbound").unwrap();
-        vcpkg::find_package("openssl").unwrap();
-        vcpkg::find_package("boost").unwrap();
-        vcpkg::find_package("libusb").unwrap();
-        vcpkg::find_package("libsodium").unwrap();
-        vcpkg::find_package("protobuf-c").unwrap();
     }
 
     // On linux we use apt to install the monero dependencies, they are found automatically

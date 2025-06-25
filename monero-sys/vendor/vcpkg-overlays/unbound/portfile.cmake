@@ -28,6 +28,7 @@ vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
 
 set(CONFIGURE_OPTIONS
     --with-ssl=${CURRENT_INSTALLED_DIR}
+    --with-libexpat=${CURRENT_INSTALLED_DIR}
     --disable-shared
     --enable-static
     --disable-rpath

@@ -5,8 +5,7 @@ edition = "2021"
 
 [package.metadata.vcpkg]
 git = "https://github.com/microsoft/vcpkg"
-rev = "ef7dbf9"
-config = "vendor/vcpkg-overlays/vcpkg-configuration.json"
+rev = "ef7dbf9" # Other versions might not work with openssl (https://github.com/mcgoo/cargo-vcpkg/issues/20#issuecomment-2018977259)
 dependencies = [
     "zeromq",
     "unbound",
@@ -15,6 +14,7 @@ dependencies = [
     "libusb",
     "libsodium",
     "protobuf-c",
+    "expat",
 ]
 
 [dependencies]

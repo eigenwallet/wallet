@@ -6,7 +6,8 @@
     "license": "BSD-3-Clause",
     "supports": "!(uwp)",
     "dependencies": [
-        "openssl"
+        "openssl",
+        "expat"
     ],
     "features": {
         "libevent": {
