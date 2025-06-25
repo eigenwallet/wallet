@@ -18,6 +18,16 @@ if(VCPKG_TARGET_IS_WINDOWS)
     set(ENV{OPENSSL_ROOT_DIR} ${CURRENT_INSTALLED_DIR})
     set(ENV{OPENSSL_LIBDIR} ${CURRENT_INSTALLED_DIR}/lib)
     set(ENV{OPENSSL_INCLUDEDIR} ${CURRENT_INSTALLED_DIR}/include)
+
+    # Ensure Flex & Bison tools (provided by winflexbison) are in PATH so that
+    # Unbound's autotools build can find them. These tools are installed for the
+    # host triplet, therefore we refer to CURRENT_HOST_INSTALLED_DIR.
+    vcpkg_add_to_path(${CURRENT_HOST_INSTALLED_DIR}/tools/winflexbison)
+
+    # Autotools checks use the LEX and YACC env vars. Point them to the
+    # canonical executable names expected by the build system.
+    set(ENV{LEX} win_flex.exe)
+    set(ENV{YACC} win_bison.exe)
 endif()
 
 # Check for features

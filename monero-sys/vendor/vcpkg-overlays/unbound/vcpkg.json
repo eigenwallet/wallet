@@ -5,11 +5,20 @@
   "description": "Recursive DNS resolver library (-lunbound)",
   "license": "BSD-3-Clause",
   "supports": "!(uwp)",
-  "dependencies": ["openssl", "expat"],
+  "dependencies": [
+    "openssl",
+    "expat",
+    {
+      "name": "winflexbison",
+      "host": true
+    }
+  ],
   "features": {
     "libevent": {
       "description": "Enable libevent support for large outgoing port ranges",
-      "dependencies": ["libevent"]
+      "dependencies": [
+        "libevent"
+      ]
     }
   }
 }
