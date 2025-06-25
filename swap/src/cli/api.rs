@@ -11,7 +11,7 @@ use crate::monero::wallet_rpc;
 use crate::monero::Wallets;
 use crate::network::rendezvous::XmrBtcNamespace;
 use crate::protocol::Database;
-use crate::seed::Seed;
+use crate::seed::NewSeed;
 use crate::{bitcoin, common, monero};
 use anyhow::{bail, Context as AnyContext, Error, Result};
 use arti_client::TorClient;
@@ -38,7 +38,7 @@ static START: Once = Once::new();
 pub struct Config {
     namespace: XmrBtcNamespace,
     pub env_config: EnvConfig,
-    seed: Option<Seed>,
+    seed: Option<NewSeed>,
     debug: bool,
     json: bool,
     data_dir: PathBuf,
@@ -190,7 +190,6 @@ pub struct Context {
     bitcoin_wallet: Option<Arc<bitcoin::Wallet>>,
     monero_manager: Option<Arc<monero::Wallets>>,
     tor_client: Option<Arc<TorClient<TokioRustlsRuntime>>>,
-    #[allow(dead_code)]
     monero_rpc_pool_handle: Option<Arc<monero_rpc_pool::PoolHandle>>,
 }
 
@@ -285,9 +284,10 @@ impl ContextBuilder {
         // These are needed for everything else, and are blocking calls
         let data_dir = &data::data_dir_from(self.data, self.is_testnet)?;
         let env_config = env_config_from(self.is_testnet);
-
-        let seed = &Seed::from_file_or_generate(data_dir.as_path())
+        let seed = &NewSeed::from_file_or_generate(data_dir.as_path(), self.tauri_handle.clone())
             .context("Failed to read seed in file")?;
+        
+
 
         // Initialize logging
         let format = if self.json { Format::Json } else { Format::Raw };
@@ -507,7 +507,7 @@ impl Context {
     }
 
     pub async fn for_harness(
-        seed: Seed,
+        seed: NewSeed,
         env_config: EnvConfig,
         db_path: PathBuf,
         bob_bitcoin_wallet: Arc<bitcoin::Wallet>,
@@ -553,7 +553,7 @@ impl fmt::Debug for Context {
 
 async fn init_bitcoin_wallet(
     electrum_rpc_urls: Vec<String>,
-    seed: &Seed,
+    seed: &NewSeed,
     data_dir: &Path,
     env_config: EnvConfig,
     bitcoin_target_block: u16,
@@ -673,7 +673,7 @@ fn env_config_from(testnet: bool) -> EnvConfig {
 }
 
 impl Config {
-    pub fn for_harness(seed: Seed, env_config: EnvConfig) -> Self {
+    pub fn for_harness(seed: NewSeed, env_config: EnvConfig) -> Self {
         let data_dir = data::data_dir_from(None, false).expect("Could not find data directory");
 
         Self {
@@ -725,7 +725,7 @@ pub mod api_test {
             json: bool,
         ) -> Self {
             let data_dir = data::data_dir_from(data_dir, is_testnet).unwrap();
-            let seed = Seed::from_file_or_generate(data_dir.as_path()).unwrap();
+            let seed = NewSeed::from_file_or_generate(data_dir.as_path()).unwrap();
             let env_config = env_config_from(is_testnet);
 
             Self {

@@ -1,3 +1,6 @@
+use crate::cli::api::tauri_bindings::{SeedSelectionDetails, TauriHandle};
+use monero_seed::{Seed as MoneroSeed, Language};
+use zeroize::Zeroizing;
 use crate::fs::ensure_directory_exists;
 use ::bitcoin::bip32::Xpriv as ExtendedPrivKey;
 use anyhow::{Context, Result};
@@ -59,8 +62,8 @@ impl Seed {
 
         identity::Keypair::ed25519_from_bytes(bytes).expect("we always pass 32 bytes")
     }
-
-    pub fn from_file_or_generate(data_dir: &Path) -> Result<Self, Error> {
+    
+    pub async fn from_file_or_generate(data_dir: &Path, tauri_handle: Option<TauriHandle>) -> Result<Self, Error> {
         let file_path_buf = data_dir.join("seed.pem");
         let file_path = Path::new(&file_path_buf);
 
@@ -70,10 +73,21 @@ impl Seed {
 
         tracing::debug!("No seed file found, creating at {}", file_path.display());
 
-        let random_seed = Seed::random()?;
-        random_seed.write_to(file_path.to_path_buf())?;
+        let new_seed = match tauri_handle {
+            Some(tauri_handle) => {
+                let seedRequest = tauri_handle.request_seed_selection_approval(SeedSelectionDetails::default(), 60).await?;
+                let seed = MoneroSeed::from_string(Language::English, Zeroizing::new(seedRequest.clone())).unwrap();
+                seed.write_to(file_path.to_path_buf())?;
+                seed
+            }
+            None => {
+                let random_seed = Seed::random()?;
+                random_seed.write_to(file_path.to_path_buf())?;
+                random_seed
+            }
+        };
 
-        Ok(random_seed)
+        Ok(seed)
     }
 
     /// Derive a new seed using the given scope.

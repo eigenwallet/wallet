@@ -9765,6 +9765,7 @@ dependencies = [
  "monero-harness",
  "monero-rpc",
  "monero-rpc-pool",
+ "monero-seed",
  "monero-sys",
  "once_cell",
  "pem",
@@ -9810,6 +9811,7 @@ dependencies = [
  "uuid",
  "vergen",
  "void",
+ "zeroize",
  "zip 0.5.13",
 ]
 
