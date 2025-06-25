@@ -16,8 +16,8 @@ export default function XmrRedeemInMempoolPage(
   return (
     <Box>
       <DialogContentText>
-        The swap was successful and the Monero has been sent to the following address(es).
-        The swap is completed and you may exit the application now.
+        The swap was successful and the Monero has been sent to the following
+        address(es). The swap is completed and you may exit the application now.
       </DialogContentText>
       <Box
         style={{
@@ -46,7 +46,13 @@ export default function XmrRedeemInMempoolPage(
                       backgroundColor: (theme) => theme.palette.action.hover,
                     }}
                   >
-                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
                       <Typography
                         variant="body2"
                         sx={(theme) => ({
@@ -65,7 +71,9 @@ export default function XmrRedeemInMempoolPage(
                           })}
                         >
                           <PiconeroAmount
-                            amount={(pool.percentage * PLACEHOLDER_XMR_TOTAL) / 100}
+                            amount={
+                              (pool.percentage * PLACEHOLDER_XMR_TOTAL) / 100
+                            }
                           />
                         </Typography>
                       )}

@@ -290,12 +290,12 @@ async fn next_state(
                 match status {
                     ScriptStatus::Confirmed(confirmed) => {
                         event_emitter.emit_swap_progress_event(
-                                            swap_id,
-                                            TauriSwapProgressEvent::BtcLockTxInMempool {
-                                                btc_lock_txid: state3.tx_lock_id(),
-                                                btc_lock_confirmations: Some(u64::from(confirmed.confirmations())),
-                                            },
-                                        );
+                            swap_id,
+                            TauriSwapProgressEvent::BtcLockTxInMempool {
+                                btc_lock_txid: state3.tx_lock_id(),
+                                btc_lock_confirmations: Some(u64::from(confirmed.confirmations())),
+                            },
+                        );
                     }
                     ScriptStatus::InMempool => {
                         event_emitter.emit_swap_progress_event(
