@@ -283,3 +283,14 @@ namespace monero_rust_log
         installed = false;
     }
 } // namespace
+
+#include <map>
+#include <vector>
+#include <string>
+
+// The following is a hack to ensure the linker includes the pair destructor in the binary
+using String = std::string;
+using StringMap = std::map<String, String>;
+using StringVec = std::vector<String>;
+
+static std::pair<StringMap, StringVec> _monero_sys_pair_instantiation;
