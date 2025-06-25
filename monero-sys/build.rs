@@ -7,7 +7,7 @@ fn main() {
     // its not absolutely necessary and takes a long time to build
     #[cfg(target_os = "windows")]
     {
-        println!("cargo:Building Monero dependencies with vcpkg");
+        println!("cargo:debug=Building Monero dependencies with vcpkg");
 
         let output = Command::new("cargo-vcpkg")
             .args(["--verbose", "build"])
