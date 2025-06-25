@@ -1439,10 +1439,10 @@ impl CheckElectrumNodeArgs {
 }
 
 #[typeshare]
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ResolveApprovalArgs {
     pub request_id: String,
-    pub accept: bool,
+    pub accept: serde_json::Value,
 }
 
 #[typeshare]

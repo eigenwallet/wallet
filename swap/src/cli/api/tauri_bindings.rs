@@ -50,10 +50,23 @@ pub struct LockBitcoinDetails {
 #[typeshare]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "content")]
+pub enum SeedChoice {
+    RandomSeed,
+    FromSeed { seed: String },
+}
+
+pub type SeedSelectionDetails = ();
+
+#[typeshare]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "content")]
 pub enum ApprovalRequest {
     /// Request approval before locking Bitcoin.
     /// Contains specific details for review.
     LockBitcoin(GenericApprovalRequest<LockBitcoinDetails, ()>),
+    /// Request seed selection from user.
+    /// User can choose between random seed or provide their own.
+    SeedSelection(GenericApprovalRequest<SeedSelectionDetails, SeedChoice>),
 }
 
 #[typeshare]
@@ -79,7 +92,7 @@ pub enum GenericApprovalRequest<Details, ApproveInput> {
 }
 
 struct PendingApproval {
-    responder: Option<oneshot::Sender<bool>>,
+    responder: Option<oneshot::Sender<serde_json::Value>>,
     #[allow(dead_code)]
     expiration_ts: u64,
 }
@@ -135,6 +148,84 @@ impl TauriHandle {
         self.emit_unified_event(TauriEvent::Approval(event))
     }
 
+    pub async fn request_seed_selection_approval(
+        &self,
+        details: SeedSelectionDetails,
+        timeout_secs: u64,
+    ) -> Result<SeedChoice> {
+        #[cfg(not(feature = "tauri"))]
+        {
+            return Ok(SeedChoice::RandomSeed);
+        }
+
+        #[cfg(feature = "tauri")]
+        {
+            // Compute absolute expiration timestamp, and UUID for the request
+            let request_id = Uuid::new_v4();
+            let now_secs = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time to be after unix epoch (1970-01-01)")
+                .as_secs();
+            let expiration_ts = now_secs + timeout_secs;
+
+            // Build the approval event based on the request type
+            let pending_event = ApprovalRequest::SeedSelection(GenericApprovalRequest::Pending {
+                request_id: request_id.to_string(),
+                expiration_ts,
+                details: details.clone(),
+                approve_input: SeedChoice::RandomSeed, // Default value
+            });
+
+            // Emit the creation of the approval request to the frontend
+            self.emit_approval(pending_event.clone());
+
+            tracing::debug!(%request_id, request=?pending_event, "Emitted seed selection approval request event");
+
+            // Construct the data structure we use to internally track the approval request
+            let (responder, receiver) = oneshot::channel();
+            let timeout_duration = Duration::from_secs(timeout_secs);
+
+            let pending = PendingApproval {
+                responder: Some(responder),
+                expiration_ts,
+            };
+
+            // Lock map and insert the pending approval
+            {
+                let mut pending_map = self.0.pending_approvals.lock().await;
+                pending_map.insert(request_id, pending);
+            }
+
+            // Determine the response
+            let response = tokio::select! {
+                res = receiver => res.map_err(|_| anyhow!("Approval responder dropped"))?,
+                _ = tokio::time::sleep(timeout_duration) => {
+                    tracing::debug!(%request_id, "Seed selection approval request timed out");
+                    serde_json::to_value(SeedChoice::RandomSeed)?
+                },
+            };
+
+            let mut map = self.0.pending_approvals.lock().await;
+            if let Some(_pending) = map.remove(&request_id) {
+                // Parse the response back to SeedChoice
+                let seed_choice: SeedChoice = serde_json::from_value(response.clone())?;
+                
+                let event = ApprovalRequest::SeedSelection(GenericApprovalRequest::Resolved {
+                    request_id: request_id.to_string(),
+                    details: details.clone(),
+                    approve_input: seed_choice.clone(),
+                });
+
+                self.emit_approval(event);
+                tracing::debug!(%request_id, response=?seed_choice, "Resolved seed selection approval request");
+                
+                Ok(seed_choice)
+            } else {
+                Ok(SeedChoice::RandomSeed)
+            }
+        }
+    }
+
     pub async fn request_approval_internal(
         &self,
         details: LockBitcoinDetails,
@@ -185,13 +276,15 @@ impl TauriHandle {
 
             // Determine if the request will be accepted or rejected
             // Either by being resolved by the user, or by timing out
-            let accepted = tokio::select! {
+            let response = tokio::select! {
                 res = receiver => res.map_err(|_| anyhow!("Approval responder dropped"))?,
                 _ = tokio::time::sleep(timeout_duration) => {
                     tracing::debug!(%request_id, "Approval request timed out and was therefore rejected");
-                    false
+                    serde_json::Value::Bool(false)
                 },
             };
+
+            let accepted = response.as_bool().unwrap_or(false);
 
             let mut map = self.0.pending_approvals.lock().await;
             if let Some(_pending) = map.remove(&request_id) {
@@ -216,7 +309,7 @@ impl TauriHandle {
         }
     }
 
-    pub async fn resolve_approval(&self, request_id: Uuid, accepted: bool) -> Result<()> {
+    pub async fn resolve_approval(&self, request_id: Uuid, response: serde_json::Value) -> Result<()> {
         #[cfg(not(feature = "tauri"))]
         {
             return Err(anyhow!(
@@ -232,7 +325,7 @@ impl TauriHandle {
                     .responder
                     .take()
                     .context("Approval responder was already consumed")?
-                    .send(accepted);
+                    .send(response);
 
                 Ok(())
             } else {
@@ -251,6 +344,8 @@ pub trait TauriEmitter {
     where
         'life0: 'async_trait,
         Self: 'async_trait;
+
+
 
     fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()>;
 
@@ -328,6 +423,8 @@ impl TauriEmitter for TauriHandle {
     {
         Box::pin(self.request_approval_internal(details, timeout_secs))
     }
+
+
 
     fn emit_tauri_event<S: Serialize + Clone>(&self, event: &str, payload: S) -> Result<()> {
         self.emit_tauri_event(event, payload)

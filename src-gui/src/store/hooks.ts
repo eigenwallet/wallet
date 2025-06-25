@@ -5,8 +5,10 @@ import {
   isBitcoinSyncProgress,
   isPendingBackgroundProcess,
   isPendingLockBitcoinApprovalEvent,
+  isPendingSeedSelectionApprovalEvent,
   PendingApprovalRequest,
   PendingLockBitcoinApprovalRequest,
+  PendingSeedSelectionApprovalRequest,
 } from "models/tauriModelExt";
 import { TypedUseSelectorHook, useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "renderer/store/storeRenderer";
@@ -163,6 +165,11 @@ export function usePendingApprovals(): PendingApprovalRequest[] {
 export function usePendingLockBitcoinApproval(): PendingLockBitcoinApprovalRequest[] {
   const approvals = usePendingApprovals();
   return approvals.filter((c) => isPendingLockBitcoinApprovalEvent(c));
+}
+
+export function usePendingSeedSelectionApproval(): PendingSeedSelectionApprovalRequest[] {
+  const approvals = usePendingApprovals();
+  return approvals.filter((c) => isPendingSeedSelectionApprovalEvent(c));
 }
 
 /// Returns all the pending background processes
