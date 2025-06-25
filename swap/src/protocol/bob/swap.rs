@@ -287,14 +287,34 @@ async fn next_state(
             let transfer_proof_watcher = event_loop_handle.recv_transfer_proof();
             let cancel_timelock_expires = tx_lock_status.wait_until(|status| {
                 // Emit a tauri event on new confirmations
-                if let ScriptStatus::Confirmed(confirmed) = status {
-                    event_emitter.emit_swap_progress_event(
-                        swap_id,
-                        TauriSwapProgressEvent::BtcLockTxInMempool {
-                            btc_lock_txid: state3.tx_lock_id(),
-                            btc_lock_confirmations: Some(u64::from(confirmed.confirmations())),
-                        },
-                    );
+                match status {
+                    ScriptStatus::Confirmed(confirmed) => {
+                        event_emitter.emit_swap_progress_event(
+                                            swap_id,
+                                            TauriSwapProgressEvent::BtcLockTxInMempool {
+                                                btc_lock_txid: state3.tx_lock_id(),
+                                                btc_lock_confirmations: Some(u64::from(confirmed.confirmations())),
+                                            },
+                                        );
+                    }
+                    ScriptStatus::InMempool => {
+                        event_emitter.emit_swap_progress_event(
+                            swap_id,
+                            TauriSwapProgressEvent::BtcLockTxInMempool {
+                                btc_lock_txid: state3.tx_lock_id(),
+                                btc_lock_confirmations: Some(0),
+                            },
+                        );
+                    }
+                    ScriptStatus::Unseen | ScriptStatus::Retrying => {
+                        event_emitter.emit_swap_progress_event(
+                            swap_id,
+                            TauriSwapProgressEvent::BtcLockTxInMempool {
+                                btc_lock_txid: state3.tx_lock_id(),
+                                btc_lock_confirmations: None,
+                            },
+                        );
+                    }
                 }
 
                 // Stop when the cancel timelock expires
@@ -524,7 +544,8 @@ async fn next_state(
                 swap_id,
                 TauriSwapProgressEvent::XmrRedeemInMempool {
                     xmr_redeem_txids,
-                    xmr_redeem_address: monero_receive_pool,
+                    xmr_receive_pool: monero_receive_pool.clone(),
+                    xmr_receive_amount: monero_receive_amount,
                 },
             );
 
@@ -727,7 +748,8 @@ async fn next_state(
                                 swap_id,
                                 TauriSwapProgressEvent::XmrRedeemInMempool {
                                     xmr_redeem_txids,
-                                    xmr_redeem_address: monero_receive_pool,
+                                    xmr_receive_pool: monero_receive_pool.clone(),
+                                    xmr_receive_amount: monero_receive_amount,
                                 },
                             );
 
@@ -794,7 +816,8 @@ async fn next_state(
                     // We don't have the txids of the redeem transaction here, so we can't emit them
                     // We return an empty array instead
                     xmr_redeem_txids: vec![],
-                    xmr_redeem_address: monero_receive_pool,
+                    xmr_receive_amount: monero::Amount::ZERO,
+                    xmr_receive_pool: monero_receive_pool.clone(),
                 },
             );
             BobState::XmrRedeemed { tx_lock_id }

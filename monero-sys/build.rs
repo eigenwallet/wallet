@@ -308,14 +308,16 @@ fn main() {
 }
 
 /// Split a multi-file patch into individual file patches
-fn split_patch_by_files(patch_content: &str) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+fn split_patch_by_files(
+    patch_content: &str,
+) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
     let mut file_patches = Vec::new();
     let lines: Vec<&str> = patch_content.lines().collect();
-    
+
     let mut current_file_patch = String::new();
     let mut current_file_path: Option<String> = None;
     let mut in_file_section = false;
-    
+
     for line in lines {
         if line.starts_with("diff --git ") {
             // Save previous file patch if we have one
@@ -324,18 +326,16 @@ fn split_patch_by_files(patch_content: &str) -> Result<Vec<(String, String)>, Bo
                     file_patches.push((file_path, current_file_patch.clone()));
                 }
             }
-            
+
             // Start new file patch
             current_file_patch.clear();
             current_file_patch.push_str(line);
             current_file_patch.push('\n');
-            
+
             // Extract file path from diff line (e.g., "diff --git a/src/wallet/api/wallet.cpp b/src/wallet/api/wallet.cpp")
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 4 {
-                let file_path = parts[2]
-                    .strip_prefix("a/")
-                    .unwrap_or(parts[2]);
+                let file_path = parts[2].strip_prefix("a/").unwrap_or(parts[2]);
                 current_file_path = Some(file_path.to_string());
             }
             in_file_section = true;
@@ -344,14 +344,14 @@ fn split_patch_by_files(patch_content: &str) -> Result<Vec<(String, String)>, Bo
             current_file_patch.push('\n');
         }
     }
-    
+
     // Don't forget the last file
     if let Some(file_path) = current_file_path {
         if !current_file_patch.trim().is_empty() {
             file_patches.push((file_path, current_file_patch));
         }
     }
-    
+
     Ok(file_patches)
 }
 
@@ -376,7 +376,11 @@ fn apply_embedded_patches() -> Result<(), Box<dyn std::error::Error>> {
             return Err(format!("No file patches found in patch {}", embedded.name).into());
         }
 
-        println!("cargo:warning=Found {} file(s) in patch {}", file_patches.len(), embedded.name);
+        println!(
+            "cargo:warning=Found {} file(s) in patch {}",
+            file_patches.len(),
+            embedded.name
+        );
 
         // Apply each file patch individually
         for (file_path, patch_content) in file_patches {
@@ -409,7 +413,8 @@ fn apply_embedded_patches() -> Result<(), Box<dyn std::error::Error>> {
                         return Err(format!(
                             "Failed to apply patch to {}: hunk mismatch (not already applied)",
                             file_path
-                        ).into());
+                        )
+                        .into());
                     }
                 }
             };
@@ -417,10 +422,7 @@ fn apply_embedded_patches() -> Result<(), Box<dyn std::error::Error>> {
             fs::write(&target_path, patched)
                 .map_err(|e| format!("Failed to write {}: {}", file_path, e))?;
 
-            println!(
-                "cargo:warning=Successfully applied patch to: {}",
-                file_path
-            );
+            println!("cargo:warning=Successfully applied patch to: {}", file_path);
         }
 
         println!(
