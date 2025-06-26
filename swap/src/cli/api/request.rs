@@ -454,6 +454,81 @@ impl Request for GetMoneroAddressesArgs {
     }
 }
 
+#[typeshare]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GetMoneroHistoryArgs;
+
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetMoneroHistoryResponse {
+    pub transactions: Vec<monero_sys::TransactionInfo>,
+}
+
+impl Request for GetMoneroHistoryArgs {
+    type Response = GetMoneroHistoryResponse;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        let wallet = ctx.monero_manager.as_ref().context("Monero wallet manager not available")?;
+        let wallet = wallet.main_wallet().await;
+        
+        let transactions = wallet.history().await;
+        Ok(GetMoneroHistoryResponse { transactions })
+    }
+}
+
+#[typeshare]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GetMoneroMainAddressArgs;
+
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetMoneroMainAddressResponse {
+    #[typeshare(serialized_as = "String")]
+    pub address: monero::Address,
+}
+
+impl Request for GetMoneroMainAddressArgs {
+    type Response = GetMoneroMainAddressResponse;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        let wallet = ctx.monero_manager.as_ref().context("Monero wallet manager not available")?;
+        let wallet = wallet.main_wallet().await;
+        let address = wallet.main_address().await;
+        Ok(GetMoneroMainAddressResponse { address })
+    }
+}
+
+// New request type for Monero balance
+#[typeshare]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GetMoneroBalanceArgs;
+
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetMoneroBalanceResponse {
+    #[typeshare(serialized_as = "string")] // Assuming monero::Amount serializes to string via typeshare
+    pub total_balance: crate::monero::Amount,
+    #[typeshare(serialized_as = "string")]
+    pub unlocked_balance: crate::monero::Amount,
+}
+
+impl Request for GetMoneroBalanceArgs {
+    type Response = GetMoneroBalanceResponse;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        let wallet_manager = ctx.monero_manager.as_ref().context("Monero wallet manager not available")?;
+        let wallet = wallet_manager.main_wallet().await;
+        
+        let total_balance = wallet.total_balance().await;
+        let unlocked_balance = wallet.unlocked_balance().await;
+
+        Ok(GetMoneroBalanceResponse {
+            total_balance: crate::monero::Amount::from_piconero(total_balance.as_pico()),
+            unlocked_balance: crate::monero::Amount::from_piconero(unlocked_balance.as_pico()),
+        })
+    }
+}
+
 #[tracing::instrument(fields(method = "suspend_current_swap"), skip(context))]
 pub async fn suspend_current_swap(context: Arc<Context>) -> Result<SuspendCurrentSwapResponse> {
     let swap_id = context.swap_lock.get_current_swap_id().await;

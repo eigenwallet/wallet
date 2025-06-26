@@ -1,5 +1,5 @@
+import React, { ReactNode } from "react";
 import { Box, Link, Typography } from "@mui/material";
-import { ReactNode } from "react";
 import InfoBox from "./InfoBox";
 import TruncatedText from "renderer/components/other/TruncatedText";
 
@@ -9,7 +9,7 @@ export type TransactionInfoBoxProps = {
   explorerUrlCreator: ((txId: string) => string) | null;
   additionalContent: ReactNode;
   loading: boolean;
-  icon: JSX.Element;
+  icon: React.ReactElement;
 };
 
 export default function TransactionInfoBox({

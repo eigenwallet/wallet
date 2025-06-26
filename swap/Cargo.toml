@@ -81,7 +81,7 @@ tower-http = { version = "0.3.4", features = ["full"] }
 tracing = { version = "0.1", features = ["attributes"] }
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "ansi", "env-filter", "time", "tracing-log", "json"] }
-typeshare = "1.0.3"
+typeshare = "1.0.4"
 unsigned-varint = { version = "0.8.0", features = ["codec", "asynchronous_codec"] }
 url = { version = "2", features = ["serde"] }
 uuid = { version = "1.9", features = ["serde", "v4"] }

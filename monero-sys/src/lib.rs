@@ -21,12 +21,14 @@ use anyhow::{anyhow, bail, Context, Result};
 use backoff::{future::retry_notify, retry_notify as blocking_retry_notify};
 use cxx::{let_cxx_string, CxxString, CxxVector, UniquePtr};
 use monero::Amount;
+use serde::{Deserialize, Serialize};
 use tokio::sync::{
     mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     oneshot,
 };
 
-use bridge::ffi;
+use bridge::ffi::{self, TransactionHistory};
+use typeshare::typeshare;
 
 /// A handle which can communicate with the wallet thread via channels.
 pub struct WalletHandle {
@@ -123,8 +125,30 @@ pub struct Daemon {
     pub ssl: bool,
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[typeshare]
+pub struct TransactionInfo {
+    #[serde(with = "monero_serde")]
+    pub fee: monero::Amount,
+    #[serde(with = "monero_serde")]
+    pub amount: monero::Amount,
+    #[typeshare(serialized_as = "number")]
+    pub block_height: u64,
+}
+
 /// A wrapper around a pending transaction.
 pub struct PendingTransaction(*mut ffi::PendingTransaction);
+
+/// A struct containing transaction history.
+pub struct TransactionHistoryHandle(UniquePtr<TransactionHistory>);
+
+/// A struct containing a single transaction.
+pub struct TransactionInfoHandle(*mut ffi::TransactionInfo);
+
+// Safety: The underlying C++ object is thread-safe for immutable access once obtained from TransactionHistory.
+unsafe impl Send for TransactionInfoHandle {}
+unsafe impl Sync for TransactionInfoHandle {}
 
 impl WalletHandle {
     /// Open an existing wallet or create a new one, with a random seed.
@@ -448,6 +472,14 @@ impl WalletHandle {
 
         self.call(move |wallet| wallet.sweep_multi(&addresses, &percentages))
             .await
+    }
+
+    /// Get the transaction history and convert it to a list of serializable transaction infos.
+    /// This is needed because TransactionHistory and TransactionInfo are not Send.
+    pub async fn history(&self) -> Vec<TransactionInfo> {
+        self.call(move |wallet| {
+            wallet.history()
+        }).await
     }
 
     /// Get the unlocked balance of the wallet.
@@ -1668,6 +1700,19 @@ impl FfiWallet {
         Ok(amounts)
     }
 
+    /// Get the transaction history.
+    fn history(&self) -> Vec<TransactionInfo> {
+        let history_handle = unsafe { TransactionHistoryHandle(ffi::walletHistory(self.inner.inner)) };
+        let count = history_handle.count();
+        let mut transactions = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            if let Some(tx_info_handle) = history_handle.transaction(i) {
+                transactions.push(tx_info_handle.serialize());
+            }
+        }
+        transactions
+    }
+
     /// Dispose (deallocate) a pending transaction object.
     /// Always call this before dropping a pending transaction object,
     /// otherwise we leak memory.
@@ -1883,6 +1928,96 @@ impl Deref for PendingTransaction {
                 .as_ref()
                 .expect("pending transaction pointer not to be null")
         }
+    }
+}
+
+impl TransactionHistoryHandle {
+    /// Get the number of transactions in the history.
+    pub fn count(&self) -> i32 {
+        // Safety: self.0 is a valid UniquePtr<TransactionHistory>
+        // The bridged count() method is safe to call on a valid reference.
+        self.0.as_ref().unwrap().count()
+    }
+
+    /// Get a transaction from the history by index.
+    pub fn transaction(&self, index: i32) -> Option<TransactionInfoHandle> {
+        println!("calling TransactionHistoryHandle::transaction with index: {}", index);
+
+        // Safety: self.0 is a valid UniquePtr<TransactionHistory>.
+        // The bridged transaction() method returns a raw pointer, which we immediately wrap.
+        let tx_info_ptr = unsafe { self.0.as_ref().unwrap().transaction(index) };
+
+        if tx_info_ptr.is_null() {
+            None
+        } else {
+            println!("got tx_info_ptr: {:?}", tx_info_ptr);
+
+            // We wrap the raw pointer in our safe wrapper struct.
+            Some(TransactionInfoHandle(tx_info_ptr))
+        }
+    }
+}
+
+impl TransactionInfoHandle {
+    /// Get the amount of the transaction.
+    pub fn amount(&self) -> u64 {
+        // Safety: self.0 is a valid *mut ffi::TransactionInfo
+        // The bridged method is safe to call on a valid reference.
+        unsafe { self.0.as_ref().expect("transaction info pointer not to be null").amount() }
+    }
+
+    /// Get the fee of the transaction.
+    pub fn fee(&self) -> u64 {
+        // Safety: self.0 is a valid *mut ffi::TransactionInfo
+        // The bridged method is safe to call on a valid reference.
+        unsafe { self.0.as_ref().expect("transaction info pointer not to be null").fee() }
+    }
+
+    /// Get the confirmations of the transaction.
+    pub fn confirmations(&self) -> u64 {
+        // Safety: self.0 is a valid *mut ffi::TransactionInfo
+        // The bridged method is safe to call on a valid reference.
+        unsafe { self.0.as_ref().expect("transaction info pointer not to be null").confirmations() }
+    }
+
+    pub fn serialize(&self) -> TransactionInfo {
+        println!("TransactionInfoHandle::serializing: transaction info");
+
+        let fee = monero::Amount::from_pico(self.fee());
+        let amount = monero::Amount::from_pico(self.amount());
+        let block_height = self.confirmations();
+
+        println!("TransactionInfoHandle::serializing: fee: {:?}", fee);
+        println!("TransactionInfoHandle::serializing: amount: {:?}", amount);
+        println!("TransactionInfoHandle::serializing: block_height: {:?}", block_height);
+
+        TransactionInfo {
+            fee,
+            amount,
+            block_height,
+        }
+    }
+}
+
+pub mod monero_serde {
+    use monero::Amount;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(x: &Amount, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        s.serialize_u64(x.as_pico())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Amount, <D as Deserializer<'de>>::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let picos = u64::deserialize(deserializer)?;
+        let amount = Amount::from_pico(picos);
+
+        Ok(amount)
     }
 }
 

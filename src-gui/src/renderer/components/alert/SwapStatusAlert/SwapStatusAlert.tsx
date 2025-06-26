@@ -1,3 +1,4 @@
+import React from "react";
 import { Box, Alert, AlertTitle } from "@mui/material";
 import {
   BobStateName,
@@ -239,7 +240,7 @@ export default function SwapStatusAlert({
   swap: GetSwapInfoResponseExt;
   isRunning: boolean;
   onlyShowIfUnusualAmountOfTimeHasPassed?: boolean;
-}): JSX.Element | null {
+}): React.ReactElement | null {
   // If the swap is completed, we do not need to display anything
   if (!isGetSwapInfoResponseRunningSwap(swap)) {
     return null;

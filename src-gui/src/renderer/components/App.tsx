@@ -20,6 +20,7 @@ import { setupBackgroundTasks } from "renderer/background";
 import "@fontsource/roboto";
 import FeedbackPage from "./pages/feedback/FeedbackPage";
 import IntroductionModal from "./modal/introduction/IntroductionModal";
+import MoneroWalletPage from "./pages/monero/MoneroWalletPage";
 
 declare module "@mui/material/styles" {
   interface Theme {
@@ -71,6 +72,7 @@ function InnerContent() {
         <Route path="/swap" element={<SwapPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/wallet" element={<WalletPage />} />
+        <Route path="/monero-wallet" element={<MoneroWalletPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/feedback" element={<FeedbackPage />} />
         <Route path="/" element={<SwapPage />} />

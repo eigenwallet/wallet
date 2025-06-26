@@ -28,6 +28,9 @@ import {
   RedactArgs,
   RedactResponse,
   LabeledMoneroAddress,
+  GetMoneroHistoryResponse,
+  GetMoneroMainAddressResponse,
+  GetMoneroBalanceResponse,
 } from "models/tauriModel";
 import { rpcSetBalance, rpcSetSwapInfo } from "store/features/rpcSlice";
 import { store } from "./store/storeRenderer";
@@ -384,6 +387,18 @@ export async function updateAllNodeStatuses() {
 
 export async function getMoneroAddresses(): Promise<GetMoneroAddressesResponse> {
   return await invokeNoArgs<GetMoneroAddressesResponse>("get_monero_addresses");
+}
+
+export async function getMoneroHistory(): Promise<GetMoneroHistoryResponse> {
+  return await invokeNoArgs<GetMoneroHistoryResponse>("get_monero_history");
+}
+
+export async function getMoneroMainAddress(): Promise<GetMoneroMainAddressResponse> {
+  return await invokeNoArgs<GetMoneroMainAddressResponse>("get_monero_main_address");
+}
+
+export async function getMoneroBalance(): Promise<GetMoneroBalanceResponse> {
+  return await invokeNoArgs<GetMoneroBalanceResponse>("get_monero_balance");
 }
 
 export async function getDataDir(): Promise<string> {

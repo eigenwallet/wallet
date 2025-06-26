@@ -7,6 +7,7 @@ import RouteListItemIconButton from "./RouteListItemIconButton";
 import UnfinishedSwapsBadge from "./UnfinishedSwapsCountBadge";
 import { useTotalUnreadMessagesCount } from "store/hooks";
 import SettingsIcon from "@mui/icons-material/Settings";
+import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 
 export default function NavigationHeader() {
   const totalUnreadCount = useTotalUnreadMessagesCount();
@@ -24,6 +25,9 @@ export default function NavigationHeader() {
         </RouteListItemIconButton>
         <RouteListItemIconButton name="Wallet" route="/wallet">
           <AccountBalanceWalletIcon />
+        </RouteListItemIconButton>
+        <RouteListItemIconButton name="Monero Wallet" route="/monero-wallet">
+          <AttachMoneyIcon />
         </RouteListItemIconButton>
         <RouteListItemIconButton name="Feedback" route="/feedback">
           <Badge

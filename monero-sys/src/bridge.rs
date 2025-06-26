@@ -54,6 +54,12 @@ pub mod ffi {
         /// A pending transaction.
         type PendingTransaction;
 
+        /// A struct containing transaction history.
+        type TransactionHistory;
+
+        /// A struct containing a single transaction.
+        type TransactionInfo;
+
         /// A wallet listener.
         ///
         /// Can be attached to a wallet and will get notified upon specific events.
@@ -270,6 +276,24 @@ pub mod ffi {
             self: Pin<&mut Wallet>,
             tx: *mut PendingTransaction,
         ) -> Result<()>;
+
+        /// Get the transaction history.
+        unsafe fn walletHistory(wallet: *mut Wallet) -> UniquePtr<TransactionHistory>;
+
+        /// Get the transaction history count.
+        fn count(self: &TransactionHistory) -> i32;
+
+        /// Get a transaction from the history by index.
+        unsafe fn transaction(self: &TransactionHistory, index: i32) -> *mut TransactionInfo;
+
+        /// Get the amount of the transaction.
+        fn amount(self: &TransactionInfo) -> u64;
+
+        /// Get the fee of the transaction.
+        fn fee(self: &TransactionInfo) -> u64;
+
+        /// Get the confirmations of the transaction.
+        fn confirmations(self: &TransactionInfo) -> u64;
     }
 }
 

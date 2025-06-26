@@ -225,6 +225,17 @@ namespace Monero
     {
         v.push_back(s);
     }
+
+    /**
+     * Get the transaction history.
+     */
+    inline std::unique_ptr<TransactionHistory> walletHistory(Wallet* wallet)
+    {
+        if (wallet == nullptr) {
+            return nullptr;
+        }
+        return std::unique_ptr<TransactionHistory>(wallet->history());
+    }
 }
 
 #include "easylogging++.h"
