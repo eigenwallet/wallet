@@ -1,4 +1,4 @@
-import { Box, Typography, LinearProgress } from "@mui/material";
+import { Box, Typography, LinearProgress, Paper } from "@mui/material";
 import { usePendingBackgroundProcesses } from "store/hooks";
 
 export default function MakerDiscoveryStatus() {
@@ -46,13 +46,14 @@ export default function MakerDiscoveryStatus() {
   }
 
   return (
-    <Box
+    <Paper
+      variant="outlined"
       sx={{
         width: "100%",
         mb: 2,
         p: 2,
         border: "1px solid",
-        borderColor: isActive ? "info.main" : "divider",
+        borderColor: isActive ? "success.main" : "divider",
         borderRadius: 1,
         opacity: isActive ? 1 : 0.6,
       }}
@@ -113,10 +114,9 @@ export default function MakerDiscoveryStatus() {
             height: 8,
             borderRadius: 4,
             opacity: isActive ? 1 : 0.4,
-            backgroundColor: isActive ? "info.light" : "action.disabled",
           }}
         />
       </Box>
-    </Box>
+    </Paper>
   );
 }
