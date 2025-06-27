@@ -1,6 +1,8 @@
-import { Box, Typography } from "@mui/material";
+import { Box, Button, Chip, Typography } from "@mui/material";
 import Avatar from "boring-avatars";
 import { ApprovalRequest } from "models/tauriModel";
+import { MoneroAmount, MoneroBitcoinExchangeRate, MoneroBitcoinExchangeRateFromAmounts, MoneroSatsExchangeRate, PiconeroAmount, SatsAmount } from "renderer/components/other/Units";
+import { satsToBtc } from "utils/conversionUtils";
 
 export default function MakerOfferItem({
   makerApproval,
@@ -25,13 +27,13 @@ export default function MakerOfferItem({
     <Box
       sx={{
         display: "flex",
-        flexDirection: "row",
+        flexDirection: { xs: "column", sm: "row" },
         gap: 2,
         borderRadius: 2,
         padding: 2,
         width: "100%",
         justifyContent: "space-between",
-        alignItems: "center",
+        alignItems: { xs: "stretch", sm: "center" },
         backgroundColor: isSelected ? "primary.light" : "background.default",
         cursor: "pointer",
         border: "1px solid",
@@ -71,20 +73,46 @@ export default function MakerOfferItem({
           <Box
             sx={{
               display: "flex",
-              flexDirection: "row",
+              flexDirection: { xs: "column", sm: "row" },
               gap: 1,
+              flexWrap: "wrap",
             }}
           >
-            <Typography variant="body1">{quote.price} XMR/BTC</Typography>
             <Typography variant="body1">
-              {quote.min_quantity} - {quote.max_quantity} XMR
+              <Chip
+                label={
+                  <MoneroSatsExchangeRate
+                    rate={quote.price}
+                    displayMarkup={true}
+                  />
+                }
+                size="small"
+              />
             </Typography>
-            <Typography variant="body1">Version: {version}</Typography>
+            <Typography variant="body1">
+              <Chip
+                label={
+                  <Typography variant="body1">
+                    <SatsAmount amount={quote.min_quantity} /> -{" "}
+                    <SatsAmount amount={quote.max_quantity} />
+                  </Typography>
+                }
+                size="small"
+              />
+            </Typography>
+            <Typography variant="body1">
+              <Chip
+                label={version}
+                size="small"
+              />
+            </Typography>
           </Box>
         </Box>
       </Box>
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-        <Typography variant="body1">{btc_amount_to_swap} XMR</Typography>
+        <Button variant="contained" color="primary">
+          Select
+        </Button>
       </Box>
     </Box>
   );

@@ -666,7 +666,6 @@ pub async fn buy_xmr(
     // because we need to be able to cancel the determine_btc_to_swap(..)
     context.swap_lock.acquire_swap_lock(swap_id).await?;
 
-
     let (seller_multiaddr, seller_peer_id, quote, tx_lock_amount, tx_lock_fee) = tokio::select! {
         result = determine_btc_to_swap(
             move || {

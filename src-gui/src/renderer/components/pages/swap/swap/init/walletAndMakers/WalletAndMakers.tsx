@@ -2,17 +2,15 @@ import { Button, Typography, Box, Paper, Divider, Chip } from "@mui/material";
 import BitcoinQrCode from "renderer/components/pages/swap/swap/components/BitcoinQrCode";
 import ActionableMonospaceTextBox from "renderer/components/other/ActionableMonospaceTextBox";
 import MakerOfferItem from "./MakerOfferItem";
-import FiatPriceLabel from "../../components/FiatPriceLabel";
-import { Currency } from "../../components/FiatPriceLabel";
 import { useAppDispatch } from "store/hooks";
 import { usePendingSelectMakerApproval } from "store/hooks";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { resolveApproval } from "renderer/rpc";
-import { satsToBtc } from "utils/conversionUtils";
 import MakerDiscoveryStatus from "./MakerDiscoveryStatus";
 import { swapReset } from "store/features/swapSlice";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { useState } from "react";
+import { SatsAmount } from "renderer/components/other/Units";
 
 export default function WalletAndMakers({
   deposit_address,
@@ -36,24 +34,38 @@ export default function WalletAndMakers({
       >
         <Paper
           elevation={8}
-          sx={{ padding: 2, display: "flex", flexDirection: "row", gap: 2 }}
+          sx={{ 
+            padding: 2, 
+            display: "flex", 
+            flexDirection: { xs: "column", md: "row" }, 
+            gap: 2 
+          }}
         >
           <Box sx={{ flexGrow: 1, flexShrink: 0, minWidth: "12em" }}>
             <Typography variant="body1">Bitcoin Balance</Typography>
-
-            <Box sx={{ padding: 4, paddingLeft: 0 }}>
-              <Typography variant="h4">
-                {satsToBtc(max_giveable)} BTC
-              </Typography>
-
-              <FiatPriceLabel
-                amount={satsToBtc(max_giveable)}
-                originalCurrency={Currency.BTC}
-              />
-            </Box>
+            <Typography variant="h5">
+              <SatsAmount amount={max_giveable} />
+            </Typography>
           </Box>
 
-          <Divider orientation="vertical" flexItem sx={{ marginX: 1 }} />
+          <Divider 
+            orientation="vertical" 
+            flexItem 
+            sx={{ 
+              marginX: { xs: 0, md: 1 }, 
+              marginY: { xs: 1, md: 0 },
+              display: { xs: "none", md: "block" }
+            }} 
+          />
+          <Divider 
+            orientation="horizontal" 
+            flexItem 
+            sx={{ 
+              marginX: { xs: 0, md: 1 }, 
+              marginY: { xs: 1, md: 0 },
+              display: { xs: "block", md: "none" }
+            }} 
+          />
 
           <Box
             sx={{
@@ -103,7 +115,8 @@ export default function WalletAndMakers({
             <Box>
               <Typography variant="h4">Available Makers</Typography>
               <Typography variant="body2" color="text.secondary">
-                Current network fee: {min_bitcoin_lock_tx_fee} sats/vbyte
+                Bitcoin network fee:{" "}
+                <SatsAmount amount={min_bitcoin_lock_tx_fee} />
               </Typography>
             </Box>
             <Chip
