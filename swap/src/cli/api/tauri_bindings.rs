@@ -91,47 +91,6 @@ pub enum ApprovalRequest {
     },
 }
 
-struct CleanupGuard {
-    request_id: Uuid,
-    pending_approvals: Option<Arc<TokioMutex<HashMap<Uuid, PendingApproval>>>>,
-    emitter: TauriHandle,
-}
-
-impl CleanupGuard {
-    async fn cleanup_and_get_details(mut self) -> Option<ApprovalRequestDetails> {
-        if let Some(pending_approvals) = self.pending_approvals.take() {
-            let mut map = pending_approvals.lock().await;
-            if let Some(pending) = map.remove(&self.request_id) {
-                return Some(pending.details.clone());
-            }
-        }
-        None
-    }
-}
-
-impl Drop for CleanupGuard {
-    fn drop(&mut self) {
-        if let Some(pending_approvals) = self.pending_approvals.take() {
-            let request_id = self.request_id;
-            let emitter = self.emitter.clone();
-
-            // Spawn a task to clean up the HashMap entry if the function was cancelled
-            tokio::spawn(async move {
-                let mut map = pending_approvals.lock().await;
-                if let Some(pending) = map.remove(&request_id) {
-                    // Emit a rejected event for the cancelled approval
-                    let event = ApprovalRequest::Rejected {
-                        request_id: request_id.to_string(),
-                        details: pending.details.clone(),
-                    };
-                    emitter.emit_approval(event);
-                    tracing::debug!(%request_id, "Approval request was cancelled and automatically rejected");
-                }
-            });
-        }
-    }
-}
-
 struct PendingApproval {
     responder: Option<oneshot::Sender<bool>>,
     details: ApprovalRequestDetails,
