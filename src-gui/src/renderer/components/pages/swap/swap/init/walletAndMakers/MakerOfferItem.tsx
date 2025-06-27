@@ -1,21 +1,16 @@
-import { Box, Button, Chip, Typography } from "@mui/material";
+import { Box, Button, Chip, Paper, Typography } from "@mui/material";
 import Avatar from "boring-avatars";
 import { ApprovalRequest } from "models/tauriModel";
 import { MoneroAmount, MoneroBitcoinExchangeRate, MoneroBitcoinExchangeRateFromAmounts, MoneroSatsExchangeRate, PiconeroAmount, SatsAmount } from "renderer/components/other/Units";
+import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
+import { resolveApproval } from "renderer/rpc";
 import { satsToBtc } from "utils/conversionUtils";
 
 export default function MakerOfferItem({
   makerApproval,
-  selectedMakerRequestId,
-  onSelect,
 }: {
   makerApproval: ApprovalRequest;
-  selectedMakerRequestId: string | null;
-  onSelect: (requestId: string) => void;
 }) {
-  const isSelected =
-    selectedMakerRequestId === makerApproval.content.request_id;
-
   if (makerApproval.content.details.type !== "SelectMaker") {
     return null;
   }
@@ -24,7 +19,8 @@ export default function MakerOfferItem({
   const { multiaddr, peer_id, quote, version } = maker;
 
   return (
-    <Box
+    <Paper
+      variant="outlined"
       sx={{
         display: "flex",
         flexDirection: { xs: "column", sm: "row" },
@@ -34,15 +30,7 @@ export default function MakerOfferItem({
         width: "100%",
         justifyContent: "space-between",
         alignItems: { xs: "stretch", sm: "center" },
-        backgroundColor: isSelected ? "primary.light" : "background.default",
-        cursor: "pointer",
-        border: "1px solid",
-        borderColor: isSelected ? "primary.main" : "divider",
-        "&:hover": {
-          backgroundColor: isSelected ? "primary.light" : "action.hover",
-        },
       }}
-      onClick={() => onSelect(makerApproval.content.request_id)}
     >
       <Box
         sx={{
@@ -110,10 +98,14 @@ export default function MakerOfferItem({
         </Box>
       </Box>
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-        <Button variant="contained" color="primary">
+        <PromiseInvokeButton
+            variant="contained"
+            onInvoke={() => resolveApproval(makerApproval.content.request_id, true)}
+            displayErrorSnackbar
+          >
           Select
-        </Button>
+        </PromiseInvokeButton>
       </Box>
-    </Box>
+    </Paper>
   );
 }
