@@ -36,12 +36,17 @@ export default function WalletAndMakers({
       >
         <Paper
           elevation={8}
-          sx={{ padding: 2, display: "flex", flexDirection: "row", gap: 2 }}
+          sx={{
+            padding: 2,
+            display: "flex",
+            flexDirection: { xs: "column", md: "row" },
+            gap: 2,
+          }}
         >
           <Box sx={{ flexGrow: 1, flexShrink: 0, minWidth: "12em" }}>
             <Typography variant="body1">Bitcoin Balance</Typography>
 
-            <Box sx={{ padding: 4, paddingLeft: 0 }}>
+            <Box sx={{ paddingY: {xs: 2, md: 4}, paddingLeft: 0 }}>
               <Typography variant="h4">
                 {satsToBtc(max_giveable)} BTC
               </Typography>
@@ -53,13 +58,29 @@ export default function WalletAndMakers({
             </Box>
           </Box>
 
-          <Divider orientation="vertical" flexItem sx={{ marginX: 1 }} />
+          <Divider 
+            orientation="vertical" 
+            flexItem 
+            sx={{
+              marginX: 1,
+              display: { xs: "none", md: "block" },
+            }}
+          />
+
+          <Divider 
+            orientation="horizontal" 
+            flexItem 
+            sx={{
+              marginX: 1,
+              display: { xs: "block", md: "none" },
+            }}
+          />
 
           <Box
             sx={{
               flexShrink: 1,
               display: "flex",
-              flexDirection: "row",
+              flexDirection: { xs: "row", md: "column", lg: "row" },
               gap: 2,
             }}
           >
@@ -106,11 +127,6 @@ export default function WalletAndMakers({
                 Current network fee: {min_bitcoin_lock_tx_fee} sats/vbyte
               </Typography>
             </Box>
-            <Chip
-              label={`${pendingSelectMakerApprovals.length} online`}
-              color="success"
-              size="small"
-            />
           </Box>
 
           {/* Maker Discovery Status */}
