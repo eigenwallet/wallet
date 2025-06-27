@@ -183,7 +183,7 @@ export async function suspendCurrentSwap() {
 }
 
 export async function getCurrentSwapId() {
-  return await invokeNoArgs<GetCurrentSwapResponse>("get_current_swap_id");
+  return await invokeNoArgs<GetCurrentSwapResponse>("get_current_swap");
 }
 
 export async function getMoneroRecoveryKeys(

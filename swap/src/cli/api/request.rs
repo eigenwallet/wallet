@@ -27,6 +27,7 @@ use libp2p::{identity, PeerId};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio_util::task::AbortOnDropHandle;
 use std::convert::TryInto;
 use std::future::Future;
 use std::path::PathBuf;
@@ -1378,6 +1379,10 @@ where
         ::tokio::sync::watch::Receiver<(bitcoin::Amount, bitcoin::Amount)>,
     ) = refresh_wallet_task(max_giveable_fn, balance, sync).await?;
 
+    // Get the abort handles to kill the background tasks when we exit the function
+    let quote_fetch_abort_handle = AbortOnDropHandle::new(quote_fetch_handle);
+    let wallet_refresh_abort_handle = AbortOnDropHandle::new(wallet_refresh_handle);
+
     let mut pending_approvals = FuturesUnordered::new();
 
     let deposit_address = get_new_address.await?;
@@ -1505,15 +1510,13 @@ where
 
         // If user accepted an offer, return it to start the swap
         if let Some((multiaddr, peer_id, quote, tx_lock_amount, tx_lock_fee)) = result {
-            quote_fetch_handle.abort();
-            wallet_refresh_handle.abort();
+            quote_fetch_abort_handle.abort();
+            wallet_refresh_abort_handle.abort();
 
             return Ok((multiaddr, peer_id, quote, tx_lock_amount, tx_lock_fee));
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-
-        // Otherwise continue the loop to get updated quotes/balance
     }
 }
 
