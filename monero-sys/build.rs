@@ -1,27 +1,51 @@
-use std::process::Command;
-
 use cmake::Config;
 
 fn main() {
     // On windows we use vcpkg to build the monero dependencies -- not on macos or linux because
     // its not absolutely necessary and takes a long time to build
-    #[cfg(target_os = "windows")]
+    // #[cfg(target_os = "windows")]
     {
         println!("cargo:debug=Building Monero dependencies with vcpkg");
 
-        let output = Command::new("cargo-vcpkg")
+        use std::io::{BufRead, BufReader};
+        use std::process::{Command, Stdio};
+
+        // Build dependencies, stream output to the console
+        let mut child = Command::new("cargo-vcpkg")
             .args(["--verbose", "build"])
             .env(
                 "VCPKG_OVERLAY_PORTS",
                 "../../monero-sys/vendor/vcpkg-overlays/unbound", // starts at core/target/vcpkg/
             )
-            .output()
-            .expect("Failed to build vcpkg dependencies");
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("Failed to spawn vcpkg build process");
 
-        println!(
-            "cargo:debug=Vcpkg stderr output:\n{}",
-            String::from_utf8(output.stdout).unwrap()
-        );
+        // Stream stdout
+        if let Some(stdout) = child.stdout.take() {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    println!("cargo:debug={}", line);
+                }
+            }
+        }
+
+        // Stream stderr
+        if let Some(stderr) = child.stderr.take() {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    println!("cargo:debug={}", line);
+                }
+            }
+        }
+
+        let status = child.wait().expect("Failed to wait for vcpkg process");
+        if !status.success() {
+            panic!("vcpkg build failed with status: {}", status);
+        }
 
         println!("cargo:debug=Finding vcpkg dependencies");
 
