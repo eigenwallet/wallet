@@ -112,13 +112,7 @@ export default function WalletAndMakers({
               mb: 2,
             }}
           >
-            <Box>
-              <Typography variant="h4">Available Makers</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Bitcoin network fee:{" "}
-                <SatsAmount amount={min_bitcoin_lock_tx_fee} />
-              </Typography>
-            </Box>
+              <Typography variant="h5">Select an offer</Typography>
             <Chip
               label={`${pendingSelectMakerApprovals.length} online`}
               color="success"
@@ -182,15 +176,6 @@ export default function WalletAndMakers({
         >
           Cancel
         </Button>
-        <PromiseInvokeButton
-          variant="contained"
-          disabled={!selectedMakerRequestId}
-          onInvoke={() => resolveApproval(selectedMakerRequestId, true)}
-          displayErrorSnackbar
-          sx={{ minWidth: 120 }}
-        >
-          Continue
-        </PromiseInvokeButton>
       </Box>
     </>
   );
