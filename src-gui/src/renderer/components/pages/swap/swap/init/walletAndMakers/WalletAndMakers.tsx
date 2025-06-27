@@ -4,24 +4,36 @@ import ActionableMonospaceTextBox from "renderer/components/other/ActionableMono
 import MakerOfferItem from "./MakerOfferItem";
 import { useAppDispatch } from "store/hooks";
 import { usePendingSelectMakerApproval } from "store/hooks";
-import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
-import { resolveApproval } from "renderer/rpc";
 import MakerDiscoveryStatus from "./MakerDiscoveryStatus";
 import { swapReset } from "store/features/swapSlice";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
-import { useState } from "react";
 import { SatsAmount } from "renderer/components/other/Units";
+import _ from "lodash";
 
 export default function WalletAndMakers({
   deposit_address,
   min_bitcoin_lock_tx_fee,
   max_giveable,
+  known_quotes
 }: TauriSwapProgressEventContent<"WaitingForBtcDeposit">) {
   const dispatch = useAppDispatch();
   const pendingSelectMakerApprovals = usePendingSelectMakerApproval();
-  const [selectedMakerRequestId, setSelectedMakerRequestId] = useState<
-    string | null
-  >(null);
+
+  const makerOffers = _.chain(pendingSelectMakerApprovals)
+    .map(approval => ({
+      quoteWithAddress: approval.content.details.content.maker,
+      requestId: approval.content.request_id
+    }))
+    .concat(
+      known_quotes.map(quote => ({
+        quoteWithAddress: quote,
+        requestId: null
+      }))
+    )
+    .sortBy(quote => quote.quoteWithAddress.quote.price)
+    .sortBy(quote => quote.requestId ? 0 : 1)
+    .uniqBy(quote => quote.quoteWithAddress.peer_id)
+    .value();
 
   return (
     <>
@@ -122,19 +134,19 @@ export default function WalletAndMakers({
           <Box>
             {pendingSelectMakerApprovals.length > 0 && (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {pendingSelectMakerApprovals.map((makerApproval, index) => {
+                {makerOffers.map((quote, index) => {
                   return (
                     <MakerOfferItem
                       key={index}
-                      makerApproval={makerApproval}
-                      selectedMakerRequestId={selectedMakerRequestId}
-                      onSelect={setSelectedMakerRequestId}
+                      quoteWithAddress={quote.quoteWithAddress}
+                      requestId={quote.requestId}
                     />
                   );
                 })}
               </Box>
             )}
 
+            {/* TODO: Differentiate between no makers found and still loading */}
             {pendingSelectMakerApprovals.length === 0 && (
               <Paper variant="outlined" sx={{ p: 3, textAlign: "center" }}>
                 <Typography variant="body1" color="textSecondary">

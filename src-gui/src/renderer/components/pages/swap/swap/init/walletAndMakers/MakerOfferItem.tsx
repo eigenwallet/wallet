@@ -1,22 +1,21 @@
 import { Box, Button, Chip, Paper, Typography } from "@mui/material";
 import Avatar from "boring-avatars";
-import { ApprovalRequest } from "models/tauriModel";
-import { MoneroAmount, MoneroBitcoinExchangeRate, MoneroBitcoinExchangeRateFromAmounts, MoneroSatsExchangeRate, PiconeroAmount, SatsAmount } from "renderer/components/other/Units";
+import { QuoteWithAddress } from "models/tauriModel";
+import {
+  MoneroSatsExchangeRate,
+  SatsAmount,
+} from "renderer/components/other/Units";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { resolveApproval } from "renderer/rpc";
-import { satsToBtc } from "utils/conversionUtils";
 
 export default function MakerOfferItem({
-  makerApproval,
+  quoteWithAddress,
+  requestId,
 }: {
-  makerApproval: ApprovalRequest;
+  requestId?: string;
+  quoteWithAddress: QuoteWithAddress;
 }) {
-  if (makerApproval.content.details.type !== "SelectMaker") {
-    return null;
-  }
-
-  const { maker, btc_amount_to_swap } = makerApproval.content.details.content;
-  const { multiaddr, peer_id, quote, version } = maker;
+  const { multiaddr, peer_id, quote, version } = quoteWithAddress;
 
   return (
     <Paper
@@ -89,20 +88,18 @@ export default function MakerOfferItem({
               />
             </Typography>
             <Typography variant="body1">
-              <Chip
-                label={version}
-                size="small"
-              />
+              <Chip label={version} size="small" />
             </Typography>
           </Box>
         </Box>
       </Box>
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
         <PromiseInvokeButton
-            variant="contained"
-            onInvoke={() => resolveApproval(makerApproval.content.request_id, true)}
-            displayErrorSnackbar
-          >
+          variant="contained"
+          onInvoke={() => resolveApproval(requestId, true)}
+          displayErrorSnackbar
+          disabled={!requestId}
+        >
           Select
         </PromiseInvokeButton>
       </Box>
