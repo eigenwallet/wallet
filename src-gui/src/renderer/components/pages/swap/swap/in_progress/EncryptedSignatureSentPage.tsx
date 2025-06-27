@@ -2,6 +2,7 @@ import SwapStatusAlert from "renderer/components/alert/SwapStatusAlert/SwapStatu
 import CircularProgressWithSubtitle from "../components/CircularProgressWithSubtitle";
 import { useActiveSwapInfo, useSwapInfosSortedByDate } from "store/hooks";
 import { Box } from "@mui/material";
+import CancelButton from "../CancelButton";
 
 export default function EncryptedSignatureSentPage() {
   const swap = useActiveSwapInfo();
@@ -20,6 +21,7 @@ export default function EncryptedSignatureSentPage() {
       >
         <CircularProgressWithSubtitle description="Waiting for them to redeem the Bitcoin" />
       </Box>
+      <CancelButton />
     </Box>
   );
 }

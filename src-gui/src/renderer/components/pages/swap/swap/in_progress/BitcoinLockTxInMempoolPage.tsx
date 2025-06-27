@@ -4,6 +4,7 @@ import BitcoinTransactionInfoBox from "../components/BitcoinTransactionInfoBox";
 import SwapStatusAlert from "renderer/components/alert/SwapStatusAlert/SwapStatusAlert";
 import { useActiveSwapInfo } from "store/hooks";
 import { Box, DialogContentText } from "@mui/material";
+import CancelButton from "../CancelButton";
 
 // This is the number of blocks after which we consider the swap to be at risk of being unsuccessful
 const BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD = 2;
@@ -51,6 +52,8 @@ export default function BitcoinLockTxInMempoolPage({
           }
         />
       </Box>
+
+      <CancelButton />
     </Box>
   );
 }

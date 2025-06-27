@@ -207,14 +207,6 @@ impl TauriHandle {
                 pending_map.insert(request_id, pending);
             }
 
-            // Create a cleanup guard to ensure the HashMap entry is always removed
-            let pending_approvals = Arc::clone(&self.0.pending_approvals);
-            let cleanup_guard = CleanupGuard {
-                request_id,
-                pending_approvals: Some(pending_approvals),
-                emitter: self.clone(),
-            };
-
             // Determine if the request will be accepted or rejected
             // Either by being resolved by the user, or by timing out
             let accepted = tokio::select! {
@@ -225,25 +217,20 @@ impl TauriHandle {
                 },
             };
 
-            // Manually trigger cleanup to get the details for the event
-            let details = cleanup_guard.cleanup_and_get_details().await;
+            let event = if accepted {
+                ApprovalRequest::Resolved {
+                    request_id: request_id.to_string(),
+                    details,
+                }
+            } else {
+                ApprovalRequest::Rejected {
+                    request_id: request_id.to_string(),
+                    details,
+                }
+            };
 
-            if let Some(details) = details {
-                let event = if accepted {
-                    ApprovalRequest::Resolved {
-                        request_id: request_id.to_string(),
-                        details,
-                    }
-                } else {
-                    ApprovalRequest::Rejected {
-                        request_id: request_id.to_string(),
-                        details,
-                    }
-                };
-
-                self.emit_approval(event);
-                tracing::debug!(%request_id, %accepted, "Resolved approval request");
-            }
+            self.emit_approval(event);
+            tracing::debug!(%request_id, %accepted, "Resolved approval request");
 
             Ok(accepted)
         }

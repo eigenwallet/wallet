@@ -9,30 +9,31 @@ import { swapReset } from "store/features/swapSlice";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { SatsAmount } from "renderer/components/other/Units";
 import _ from "lodash";
+import CancelButton from "../../CancelButton";
 
 export default function WalletAndMakers({
   deposit_address,
   min_bitcoin_lock_tx_fee,
   max_giveable,
-  known_quotes
+  known_quotes,
 }: TauriSwapProgressEventContent<"WaitingForBtcDeposit">) {
   const dispatch = useAppDispatch();
   const pendingSelectMakerApprovals = usePendingSelectMakerApproval();
 
   const makerOffers = _.chain(pendingSelectMakerApprovals)
-    .map(approval => ({
+    .map((approval) => ({
       quoteWithAddress: approval.content.details.content.maker,
-      requestId: approval.content.request_id
+      requestId: approval.content.request_id,
     }))
     .concat(
-      known_quotes.map(quote => ({
+      known_quotes.map((quote) => ({
         quoteWithAddress: quote,
-        requestId: null
-      }))
+        requestId: null,
+      })),
     )
-    .sortBy(quote => quote.quoteWithAddress.quote.price)
-    .sortBy(quote => quote.requestId ? 0 : 1)
-    .uniqBy(quote => quote.quoteWithAddress.peer_id)
+    .sortBy((quote) => quote.quoteWithAddress.quote.price)
+    .sortBy((quote) => (quote.requestId ? 0 : 1))
+    .uniqBy((quote) => quote.quoteWithAddress.peer_id)
     .value();
 
   return (
@@ -46,11 +47,11 @@ export default function WalletAndMakers({
       >
         <Paper
           elevation={8}
-          sx={{ 
-            padding: 2, 
-            display: "flex", 
-            flexDirection: { xs: "column", md: "row" }, 
-            gap: 2 
+          sx={{
+            padding: 2,
+            display: "flex",
+            flexDirection: { xs: "column", md: "row" },
+            gap: 2,
           }}
         >
           <Box sx={{ flexGrow: 1, flexShrink: 0, minWidth: "12em" }}>
@@ -60,23 +61,23 @@ export default function WalletAndMakers({
             </Typography>
           </Box>
 
-          <Divider 
-            orientation="vertical" 
-            flexItem 
-            sx={{ 
-              marginX: { xs: 0, md: 1 }, 
+          <Divider
+            orientation="vertical"
+            flexItem
+            sx={{
+              marginX: { xs: 0, md: 1 },
               marginY: { xs: 1, md: 0 },
-              display: { xs: "none", md: "block" }
-            }} 
+              display: { xs: "none", md: "block" },
+            }}
           />
-          <Divider 
-            orientation="horizontal" 
-            flexItem 
-            sx={{ 
-              marginX: { xs: 0, md: 1 }, 
+          <Divider
+            orientation="horizontal"
+            flexItem
+            sx={{
+              marginX: { xs: 0, md: 1 },
               marginY: { xs: 1, md: 0 },
-              display: { xs: "block", md: "none" }
-            }} 
+              display: { xs: "block", md: "none" },
+            }}
           />
 
           <Box
@@ -124,7 +125,7 @@ export default function WalletAndMakers({
               mb: 2,
             }}
           >
-              <Typography variant="h5">Select an offer</Typography>
+            <Typography variant="h5">Select an offer</Typography>
           </Box>
 
           {/* Maker Discovery Status */}
@@ -176,13 +177,7 @@ export default function WalletAndMakers({
           borderColor: "divider",
         }}
       >
-        <Button
-          variant="outlined"
-          onClick={() => dispatch(swapReset())}
-          sx={{ minWidth: 120 }}
-        >
-          Cancel
-        </Button>
+        <CancelButton />
       </Box>
     </>
   );

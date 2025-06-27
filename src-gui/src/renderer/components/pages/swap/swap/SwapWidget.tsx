@@ -1,6 +1,7 @@
 import { Paper } from "@mui/material";
 import { useAppSelector } from "store/hooks";
 import SwapStatePage from "renderer/components/pages/swap/swap/SwapStatePage";
+import CancelButton from "./CancelButton";
 
 export default function SwapWidget() {
   const swap = useAppSelector((state) => state.swap);

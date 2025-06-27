@@ -20,7 +20,6 @@ import XmrLockedPage from "./in_progress/XmrLockedPage";
 import XmrLockTxInMempoolPage from "./in_progress/XmrLockInMempoolPage";
 import { exhaustiveGuard } from "utils/typescriptUtils";
 import RedeemAddress from "./init/redeemAddress/RedeemAddress";
-import DefaultButtonSet from "./DefaultButtonSet";
 import WalletAndMakers from "renderer/components/pages/swap/swap/init/walletAndMakers/WalletAndMakers";
 import Offer from "./in_progress/offer/Offer";
 
@@ -37,12 +36,7 @@ export default function SwapStatePage({ state }: { state: SwapState | null }) {
     case "Resuming":
       return <CircularProgressWithSubtitle description="Resuming swap..." />;
     case "ReceivedQuote":
-      return (
-        <>
-          <ReceivedQuotePage />
-          <DefaultButtonSet />
-        </>
-      );
+      return <ReceivedQuotePage />;
     case "WaitingForBtcDeposit":
       // This double check is necessary for the typescript compiler to infer types
       if (state.curr.type === "WaitingForBtcDeposit") {
@@ -56,116 +50,56 @@ export default function SwapStatePage({ state }: { state: SwapState | null }) {
       break;
     case "BtcLockTxInMempool":
       if (state.curr.type === "BtcLockTxInMempool") {
-        return (
-          <>
-            <BitcoinLockTxInMempoolPage {...state.curr.content} />
-            <DefaultButtonSet />
-          </>
-        );
+        return <BitcoinLockTxInMempoolPage {...state.curr.content} />;
       }
       break;
     case "XmrLockTxInMempool":
       if (state.curr.type === "XmrLockTxInMempool") {
-        return (
-          <>
-            <XmrLockTxInMempoolPage {...state.curr.content} />
-            <DefaultButtonSet />
-          </>
-        );
+        return <XmrLockTxInMempoolPage {...state.curr.content} />;
       }
       break;
     case "XmrLocked":
-      return (
-        <>
-          <XmrLockedPage />
-          <DefaultButtonSet />
-        </>
-      );
+      return <XmrLockedPage />;
     case "EncryptedSignatureSent":
-      return (
-        <>
-          <EncryptedSignatureSentPage />
-          <DefaultButtonSet />
-        </>
-      );
+      return <EncryptedSignatureSentPage />;
     case "BtcRedeemed":
-      return (
-        <>
-          <BitcoinRedeemedPage />
-          <DefaultButtonSet />
-        </>
-      );
+      return <BitcoinRedeemedPage />;
     case "XmrRedeemInMempool":
       if (state.curr.type === "XmrRedeemInMempool") {
         return <XmrRedeemInMempoolPage {...state.curr.content} />;
       }
       break;
     case "CancelTimelockExpired":
-      return (
-        <>
-          <CancelTimelockExpiredPage />
-          <DefaultButtonSet />
-        </>
-      );
+      return <CancelTimelockExpiredPage />;
     case "BtcCancelled":
-      return (
-        <>
-          <BitcoinCancelledPage />
-          <DefaultButtonSet />
-        </>
-      );
+      return <BitcoinCancelledPage />;
 
     //// 4 different types of Bitcoin refund states we can be in
     case "BtcRefundPublished": // tx_refund has been published but has not been confirmed yet
       if (state.curr.type === "BtcRefundPublished") {
-        return (
-          <>
-            <BitcoinRefundPublishedPage {...state.curr.content} />
-            <DefaultButtonSet />
-          </>
-        );
+        return <BitcoinRefundPublishedPage {...state.curr.content} />;
       }
       break;
     case "BtcEarlyRefundPublished": // tx_early_refund has been published but has not been confirmed yet
       if (state.curr.type === "BtcEarlyRefundPublished") {
-        return (
-          <>
-            <BitcoinEarlyRefundPublishedPage {...state.curr.content} />
-            <DefaultButtonSet />
-          </>
-        );
+        return <BitcoinEarlyRefundPublishedPage {...state.curr.content} />;
       }
       break;
     case "BtcRefunded": // tx_refund has been confirmed
       if (state.curr.type === "BtcRefunded") {
-        return (
-          <>
-            <BitcoinRefundedPage {...state.curr.content} />
-            <DefaultButtonSet />
-          </>
-        );
+        return <BitcoinRefundedPage {...state.curr.content} />;
       }
       break;
     case "BtcEarlyRefunded": // tx_early_refund has been confirmed
       if (state.curr.type === "BtcEarlyRefunded") {
-        return (
-          <>
-            <BitcoinEarlyRefundedPage {...state.curr.content} />
-            <DefaultButtonSet />
-          </>
-        );
+        return <BitcoinEarlyRefundedPage {...state.curr.content} />;
       }
       break;
 
     //// 4 different types of Bitcoin punished states we can be in
     case "BtcPunished":
       if (state.curr.type === "BtcPunished") {
-        return (
-          <>
-            <BitcoinPunishedPage state={state.curr} />
-            <DefaultButtonSet />
-          </>
-        );
+        return <BitcoinPunishedPage state={state.curr} />;
       }
       break;
     case "AttemptingCooperativeRedeem":
@@ -178,21 +112,11 @@ export default function SwapStatePage({ state }: { state: SwapState | null }) {
       );
     case "CooperativeRedeemRejected":
       if (state.curr.type === "CooperativeRedeemRejected") {
-        return (
-          <>
-            <BitcoinPunishedPage state={state.curr} />
-            <DefaultButtonSet />
-          </>
-        );
+        return <BitcoinPunishedPage state={state.curr} />;
       }
       break;
     case "Released":
-      return (
-        <>
-          <ProcessExitedPage prevState={state.prev} swapId={state.swapId} />
-          <DefaultButtonSet />
-        </>
-      );
+      return <ProcessExitedPage prevState={state.prev} swapId={state.swapId} />;
 
     default:
       return exhaustiveGuard(type);

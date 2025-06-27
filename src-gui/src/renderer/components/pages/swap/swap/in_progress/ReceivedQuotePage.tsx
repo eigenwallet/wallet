@@ -5,16 +5,18 @@ import {
 import CircularProgressWithSubtitle, {
   LinearProgressWithSubtitle,
 } from "../components/CircularProgressWithSubtitle";
+import CancelButton from "../CancelButton";
 
 export default function ReceivedQuotePage() {
   const syncProgress = useConservativeBitcoinSyncProgress();
+  let progress = null;
 
   if (syncProgress?.type === "Known") {
     const percentage = Math.round(
       (syncProgress.content.consumed / syncProgress.content.total) * 100,
     );
 
-    return (
+    progress = (
       <LinearProgressWithSubtitle
         description={`Syncing Bitcoin wallet`}
         value={percentage}
@@ -23,10 +25,17 @@ export default function ReceivedQuotePage() {
   }
 
   if (syncProgress?.type === "Unknown") {
-    return (
+    progress = (
       <CircularProgressWithSubtitle description="Syncing Bitcoin wallet" />
     );
   }
 
-  return <CircularProgressWithSubtitle description="Processing offer" />;
+  progress = <CircularProgressWithSubtitle description="Processing offer" />;
+
+  return (
+    <>
+      {progress}
+      <CancelButton />
+    </>
+  );
 }

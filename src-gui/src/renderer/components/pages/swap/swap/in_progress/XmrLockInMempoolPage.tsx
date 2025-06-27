@@ -2,6 +2,7 @@ import { Box, DialogContentText } from "@mui/material";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { formatConfirmations } from "utils/formatUtils";
 import MoneroTransactionInfoBox from "../components/MoneroTransactionInfoBox";
+import CancelButton from "../CancelButton";
 
 export default function XmrLockTxInMempoolPage({
   xmr_lock_tx_confirmations,
@@ -22,6 +23,8 @@ export default function XmrLockTxInMempoolPage({
         additionalContent={additionalContent}
         loading
       />
+
+      <CancelButton />
     </Box>
   );
 }

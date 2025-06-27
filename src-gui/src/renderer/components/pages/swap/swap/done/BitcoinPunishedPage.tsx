@@ -1,6 +1,7 @@
 import { Box, DialogContentText } from "@mui/material";
 import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
 import { TauriSwapProgressEventExt } from "models/tauriModelExt";
+import CancelButton from "../CancelButton";
 
 export default function BitcoinPunishedPage({
   state,
@@ -26,6 +27,7 @@ export default function BitcoinPunishedPage({
         )}
       </DialogContentText>
       <FeedbackInfoBox />
+      <CancelButton />
     </Box>
   );
 }

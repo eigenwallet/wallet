@@ -3,6 +3,7 @@ import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { useActiveSwapInfo } from "store/hooks";
 import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
 import BitcoinTransactionInfoBox from "../components/BitcoinTransactionInfoBox";
+import CancelButton from "../CancelButton";
 
 export function BitcoinRefundPublishedPage({
   btc_refund_txid,
@@ -87,6 +88,7 @@ function MultiBitcoinRefundedPage({
         />
         <FeedbackInfoBox />
       </Box>
+      <CancelButton />
     </Box>
   );
 }

@@ -16,6 +16,7 @@ import { SatsAmount } from "renderer/components/other/Units";
 import CircularProgressWithSubtitle from "renderer/components/pages/swap/swap/components/CircularProgressWithSubtitle";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { Check as CheckIcon } from "@mui/icons-material";
+import CancelButton from "../../CancelButton";
 
 function useActiveLockBitcoinApprovalRequest(): PendingLockBitcoinApprovalRequest | null {
   const approvals = usePendingLockBitcoinApproval();
@@ -50,13 +51,16 @@ export default function Offer({
 
   if (!request) {
     return (
-      <CircularProgressWithSubtitle
-        description={
-          <>
-            Negotiating offer for <SatsAmount amount={btc_lock_amount} />
-          </>
-        }
-      />
+      <>
+        <CircularProgressWithSubtitle
+          description={
+            <>
+              Negotiating offer for <SatsAmount amount={btc_lock_amount} />
+            </>
+          }
+        />
+        <CancelButton />
+      </>
     );
   }
 

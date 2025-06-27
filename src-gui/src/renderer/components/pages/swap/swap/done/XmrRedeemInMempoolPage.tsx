@@ -2,6 +2,7 @@ import { Box, DialogContentText } from "@mui/material";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
 import MoneroTransactionInfoBox from "../components/MoneroTransactionInfoBox";
+import CancelButton from "../CancelButton";
 
 export default function XmrRedeemInMempoolPage(
   state: TauriSwapProgressEventContent<"XmrRedeemInMempool">,
@@ -29,6 +30,7 @@ export default function XmrRedeemInMempoolPage(
         />
         <FeedbackInfoBox />
       </Box>
+      <CancelButton />
     </Box>
   );
 }
