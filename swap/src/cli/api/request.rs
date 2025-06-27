@@ -662,6 +662,11 @@ pub async fn buy_xmr(
     let rendezvous_points_clone = rendezvous_points.clone();
     let sellers_clone = sellers.clone();
 
+    // Acquire the lock before the user has selected a maker and we already have funds in the wallet
+    // because we need to be able to cancel the determine_btc_to_swap(..)
+    context.swap_lock.acquire_swap_lock(swap_id).await?;
+
+
     let (seller_multiaddr, seller_peer_id, quote, tx_lock_amount, tx_lock_fee) = tokio::select! {
         result = determine_btc_to_swap(
             move || {
@@ -732,9 +737,6 @@ pub async fn buy_xmr(
             bail!("Shutdown signal received");
         },
     };
-
-    // We only acquire the lock after the user has selected a maker and we already have funds in the wallet
-    context.swap_lock.acquire_swap_lock(swap_id).await?;
 
     // Insert the peer_id into the database
     context.db.insert_peer_id(swap_id, seller_peer_id).await?;
