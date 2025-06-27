@@ -1547,7 +1547,7 @@ impl FfiWallet {
     ) -> anyhow::Result<Vec<TxReceipt>> {
         tracing::warn!("STARTED MULTI SWEEP");
 
-        if addresses.len() == 0 {
+        if addresses.is_empty() {
             bail!("No addresses to sweep to");
         }
 
@@ -2053,7 +2053,7 @@ mod tests {
         }
 
         // Ensure percentages are valid (non-negative and sum to approximately 1.0)
-        if percentages.iter().any(|&p| p < 0.0 || p > 1.0) {
+        if percentages.iter().any(|&p| !(0.0..=1.0).contains(&p)) {
             return TestResult::discard();
         }
 
@@ -2082,7 +2082,7 @@ mod tests {
             return TestResult::discard();
         }
 
-        if percentages.iter().any(|&p| p < 0.0 || p > 1.0) {
+        if percentages.iter().any(|&p| !(0.0..=1.0).contains(&p)) {
             return TestResult::discard();
         }
 
@@ -2108,7 +2108,7 @@ mod tests {
             return TestResult::discard();
         }
 
-        if percentages.iter().any(|&p| p < 0.0 || p > 1.0) {
+        if percentages.iter().any(|&p| !(0.0..=1.0).contains(&p)) {
             return TestResult::discard();
         }
 

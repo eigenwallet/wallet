@@ -1,39 +1,56 @@
 import React, { useEffect, useState } from "react";
-import { Box, Typography, CircularProgress, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Alert } from "@mui/material";
-import { GetMoneroHistoryResponse, TransactionInfo, GetMoneroMainAddressResponse, GetMoneroBalanceResponse } from "models/tauriModel";
-import { getMoneroHistory, getMoneroMainAddress, getMoneroBalance } from "../../../rpc";
+import { 
+  Box, 
+  Typography, 
+  CircularProgress, 
+  Alert, 
+  TextField, 
+  Button,
+  Card,
+  CardContent,
+  Grid,
+  InputAdornment
+} from "@mui/material";
+import { Send as SendIcon, QrCodeScanner as QrCodeScannerIcon, Refresh as RefreshIcon } from "@mui/icons-material";
+import { 
+  GetMoneroBalanceResponse, 
+  SendMoneroArgs,
+  SendMoneroResponse 
+} from "models/tauriModel";
+import { 
+  getMoneroMainAddress, 
+  getMoneroBalance, 
+  sendMonero 
+} from "../../../rpc";
 import ActionableMonospaceTextBox from "../../other/ActionableMonospaceTextBox";
 import { PiconeroAmount } from "../../other/Units";
 
 export default function MoneroWalletPage() {
-  const [history, setHistory] = useState<TransactionInfo[] | null>(null);
   const [mainAddress, setMainAddress] = useState<string | null>(null);
   const [balance, setBalance] = useState<GetMoneroBalanceResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Send form state
+  const [sendAddress, setSendAddress] = useState("");
+  const [sendAmount, setSendAmount] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [sendResult, setSendResult] = useState<SendMoneroResponse | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // throw new Error("test");
         setIsLoading(true);
         setError(null);
-        /*const [historyResponse, addressResponse]: [GetMoneroHistoryResponse, GetMoneroMainAddressResponse] = await Promise.all([
-          getMoneroHistory(),
+        
+        const [addressResponse, balanceResponse] = await Promise.all([
           getMoneroMainAddress(),
+          getMoneroBalance(),
         ]);
-        setHistory(historyResponse.transactions);*/
-        // Fetch all data in parallel if desired, or sequentially
-        const mainAddressResponse = await getMoneroMainAddress();
-        setMainAddress(mainAddressResponse.address);
-
-        const balanceResponse = await getMoneroBalance();
+        
+        setMainAddress(addressResponse.address);
         setBalance(balanceResponse);
-
-        // History fetching can be re-enabled when stable
-        // const historyResponse = await getMoneroHistory(); 
-        // setHistory(historyResponse.transactions);
-
       } catch (err) {
         console.error("Failed to fetch Monero wallet data:", err);
         setError("Failed to fetch Monero wallet data.");
@@ -45,58 +62,210 @@ export default function MoneroWalletPage() {
     fetchData();
   }, []);
 
+  const handleSend = async () => {
+    if (!sendAddress || !sendAmount) return;
+    
+    try {
+      setIsSending(true);
+      setSendResult(null);
+      
+      const result = await sendMonero({
+        address: sendAddress,
+        amount: parseFloat(sendAmount) * 1e12, // Convert XMR to piconero
+      });
+      
+      setSendResult(result);
+      setSendAddress("");
+      setSendAmount("");
+      
+      // Refresh balance after sending
+      const newBalance = await getMoneroBalance();
+      setBalance(newBalance);
+      
+    } catch (err) {
+      console.error("Failed to send Monero:", err);
+      setError("Failed to send Monero transaction.");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleMaxAmount = () => {
+    if (balance?.unlocked_balance) {
+      // Convert piconero to XMR and leave some for fees
+      const unlocked = parseFloat(balance.unlocked_balance);
+      const maxAmount = (unlocked - 10000000000) / 1e12; // Subtract ~0.01 XMR for fees
+      setSendAmount(Math.max(0, maxAmount).toString());
+    }
+  };
+
+  const handleRefresh = async () => {
+    try {
+      setIsRefreshing(true);
+      setError(null);
+      setSendResult(null);
+      
+      const [addressResponse, balanceResponse] = await Promise.all([
+        getMoneroMainAddress(),
+        getMoneroBalance(),
+      ]);
+      
+      setMainAddress(addressResponse.address);
+      setBalance(balanceResponse);
+    } catch (err) {
+      console.error("Failed to refresh Monero wallet data:", err);
+      setError("Failed to refresh Monero wallet data.");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   return (
-    <Box>
-      <Typography variant="h3">Monero Wallet</Typography>
+    <Box sx={{ maxWidth: 800, mx: "auto", p: 2 }}>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-      {isLoading && <CircularProgress />}
-      {error && <Alert severity="error">{error}</Alert>}
+      {sendResult && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          Transaction sent! Hash: {sendResult.tx_hash}
+        </Alert>
+      )}
 
+      {/* Primary Address */}
       {mainAddress && (
-        <Box mb={2}>
-          <Typography variant="h6">Main Address:</Typography>
-          <ActionableMonospaceTextBox content={mainAddress} />
-        </Box>
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Primary Address
+            </Typography>
+            <ActionableMonospaceTextBox content={mainAddress} />
+          </CardContent>
+        </Card>
       )}
 
+      {/* Balance */}
       {balance && (
-        <Box mb={2}>
-          <Typography variant="h6">Balance:</Typography>
-          <Typography>Total: <PiconeroAmount amount={parseFloat(balance.total_balance)} /></Typography>
-          <Typography>Unlocked: <PiconeroAmount amount={parseFloat(balance.unlocked_balance)} /></Typography>
-        </Box>
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+              <Typography variant="h6">
+                Monero Balance
+              </Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={isRefreshing ? <CircularProgress size={16} /> : <RefreshIcon />}
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+              >
+                {isRefreshing ? "Refreshing..." : "Refresh"}
+              </Button>
+            </Box>
+            <Box sx={{ display: "flex", gap: 4 }}>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Confirmed
+                </Typography>
+                <Typography variant="h5">
+                  <PiconeroAmount amount={parseFloat(balance.total_balance) - parseFloat(balance.unlocked_balance)} /> XMR
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Unconfirmed (Available)
+                </Typography>
+                <Typography variant="h5" color="primary">
+                  <PiconeroAmount amount={parseFloat(balance.unlocked_balance)} /> XMR
+                </Typography>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
       )}
 
-      {history && history.length > 0 && (
-        <TableContainer component={Paper}>
-          <Table aria-label="monero transaction history">
-            <TableHead>
-              <TableRow>
-                <TableCell>Amount</TableCell>
-                <TableCell>Fee</TableCell>
-                <TableCell>Confirmations</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {history.map((tx, index) => (
-                <TableRow key={index}>
-                  <TableCell component="th" scope="row">
-                    <PiconeroAmount amount={tx.amount} />
-                  </TableCell>
-                  <TableCell>
-                    <PiconeroAmount amount={tx.fee} />
-                  </TableCell>
-                  <TableCell>{tx.block_height}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
-
-      {history && history.length === 0 && !isLoading && !error && (
-        <Typography>No transactions found.</Typography>
-      )}
+      {/* Send Transaction */}
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Send Monero
+          </Typography>
+          
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <TextField
+              fullWidth
+              label="Pay to"
+              placeholder="Monero address"
+              value={sendAddress}
+              onChange={(e) => setSendAddress(e.target.value)}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Button size="small" startIcon={<QrCodeScannerIcon />}>
+                      Scan
+                    </Button>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            
+            <Box sx={{ display: "flex", gap: 1 }}>
+              <TextField
+                fullWidth
+                label="Amount"
+                placeholder="0.0"
+                value={sendAmount}
+                onChange={(e) => setSendAmount(e.target.value)}
+                type="number"
+                InputProps={{
+                  endAdornment: <InputAdornment position="end">XMR</InputAdornment>,
+                }}
+              />
+              <Button 
+                variant="outlined" 
+                onClick={handleMaxAmount}
+                disabled={!balance?.unlocked_balance}
+              >
+                Max
+              </Button>
+            </Box>
+            
+            <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setSendAddress("");
+                  setSendAmount("");
+                  setSendResult(null);
+                }}
+                disabled={isSending}
+              >
+                Clear
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                endIcon={<SendIcon />}
+                onClick={handleSend}
+                disabled={!sendAddress || !sendAmount || isSending}
+                sx={{ minWidth: 100 }}
+              >
+                {isSending ? <CircularProgress size={20} /> : "Send"}
+              </Button>
+            </Box>
+          </Box>
+        </CardContent>
+      </Card>
     </Box>
   );
-} 
+}

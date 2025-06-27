@@ -31,6 +31,8 @@ import {
   GetMoneroHistoryResponse,
   GetMoneroMainAddressResponse,
   GetMoneroBalanceResponse,
+  SendMoneroArgs,
+  SendMoneroResponse,
 } from "models/tauriModel";
 import { rpcSetBalance, rpcSetSwapInfo } from "store/features/rpcSlice";
 import { store } from "./store/storeRenderer";
@@ -399,6 +401,10 @@ export async function getMoneroMainAddress(): Promise<GetMoneroMainAddressRespon
 
 export async function getMoneroBalance(): Promise<GetMoneroBalanceResponse> {
   return await invokeNoArgs<GetMoneroBalanceResponse>("get_monero_balance");
+}
+
+export async function sendMonero(args: SendMoneroArgs): Promise<SendMoneroResponse> {
+  return await invoke<SendMoneroArgs, SendMoneroResponse>("send_monero", args);
 }
 
 export async function getDataDir(): Promise<string> {

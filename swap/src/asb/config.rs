@@ -147,7 +147,7 @@ mod addr_list {
         D: Deserializer<'de>,
     {
         let s = Value::deserialize(deserializer)?;
-        return match s {
+        match s {
             Value::String(s) => {
                 let list: Result<Vec<_>, _> = s
                     .split(',')
@@ -173,7 +173,7 @@ mod addr_list {
                 Unexpected::Other(&value.to_string()),
                 &"a string or array",
             )),
-        };
+        }
     }
 }
 
@@ -188,7 +188,7 @@ mod electrum_urls {
         D: Deserializer<'de>,
     {
         let s = Value::deserialize(deserializer)?;
-        return match s {
+        match s {
             Value::String(s) => {
                 let list: Result<Vec<_>, _> = s
                     .split(',')
@@ -214,7 +214,7 @@ mod electrum_urls {
                 Unexpected::Other(&value.to_string()),
                 &"a string or array",
             )),
-        };
+        }
     }
 }
 

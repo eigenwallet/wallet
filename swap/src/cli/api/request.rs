@@ -16,6 +16,7 @@ use crate::{bitcoin, cli, monero};
 use ::bitcoin::address::NetworkUnchecked;
 use ::bitcoin::Txid;
 use ::monero::Network;
+use std::str::FromStr;
 use anyhow::{bail, Context as AnyContext, Result};
 use libp2p::core::Multiaddr;
 use libp2p::PeerId;
@@ -525,6 +526,46 @@ impl Request for GetMoneroBalanceArgs {
         Ok(GetMoneroBalanceResponse {
             total_balance: crate::monero::Amount::from_piconero(total_balance.as_pico()),
             unlocked_balance: crate::monero::Amount::from_piconero(unlocked_balance.as_pico()),
+        })
+    }
+}
+
+// New request type for sending Monero
+#[typeshare]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SendMoneroArgs {
+    #[typeshare(serialized_as = "String")]
+    pub address: String,
+    pub amount: crate::monero::Amount,
+}
+
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SendMoneroResponse {
+    pub tx_hash: String,
+    pub amount_sent: crate::monero::Amount,
+}
+
+impl Request for SendMoneroArgs {
+    type Response = SendMoneroResponse;
+
+    async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
+        let wallet_manager = ctx.monero_manager.as_ref().context("Monero wallet manager not available")?;
+        let wallet = wallet_manager.main_wallet().await;
+        
+        // Parse the address
+        let address = monero::Address::from_str(&self.address)
+            .map_err(|e| anyhow::anyhow!("Invalid Monero address: {}", e))?;
+        
+        // Convert our amount to monero-sys amount
+        let amount = monero::Amount::from_piconero(self.amount.as_piconero());
+        
+        // Send the transaction
+        let receipt = wallet.transfer(&address, amount.into()).await?;
+        
+        Ok(SendMoneroResponse {
+            tx_hash: receipt.txid,
+            amount_sent: crate::monero::Amount::from_piconero(amount.as_piconero()),
         })
     }
 }

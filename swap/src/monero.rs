@@ -354,7 +354,7 @@ impl MoneroAddressPool {
 
         const TOLERANCE: f64 = 1e-6;
 
-        if (sum - Decimal::ONE).abs() > Decimal::from_f64(TOLERANCE).unwrap() {
+        if (sum - Decimal::ONE).abs() > Decimal::from_f64(TOLERANCE).expect("TOLERANCE constant should be a valid f64") {
             bail!("Address pool percentages do not sum to 1");
         }
 
@@ -488,7 +488,7 @@ pub mod monero_private_key {
 
     struct BytesVisitor;
 
-    impl<'de> Visitor<'de> for BytesVisitor {
+    impl Visitor<'_> for BytesVisitor {
         type Value = PrivateKey;
 
         fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
