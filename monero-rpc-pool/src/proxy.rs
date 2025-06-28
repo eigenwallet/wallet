@@ -16,7 +16,7 @@ enum HandlerError {
     NoNodes,
     PoolError(String),
     RequestError(String),
-    AllRequestsFailed(Vec<(String, String)>), // Vec of (node_url, error_message)
+    AllRequestsFailed(Vec<(String, String)>),
 }
 
 impl std::fmt::Display for HandlerError {
@@ -228,7 +228,9 @@ async fn single_raw_request(
     }
 }
 
-async fn race_requests(
+const POOL_SIZE: usize = 20;
+
+async fn sequential_requests(
     state: &AppState,
     path: &str,
     method: &str,
@@ -245,12 +247,11 @@ async fn race_requests(
     } else {
         None
     };
-    const POOL_SIZE: usize = 20;
-    let mut tried_nodes = std::collections::HashSet::new();
-    let mut pool_index = 0;
+
+    let mut tried_nodes = 0;
     let mut collected_errors: Vec<(String, String)> = Vec::new();
 
-    // Get the exclusive pool of 20 nodes once at the beginning
+    // Get the pool of nodes
     let available_pool = {
         let node_pool_guard = state.node_pool.read().await;
         let reliable_nodes = node_pool_guard
@@ -260,7 +261,7 @@ async fn race_requests(
 
         let pool: Vec<(String, String, i64)> = reliable_nodes
             .into_iter()
-            .map(|node| (node.scheme, node.host, node.port))
+            .map(|node| (node.address.scheme, node.address.host, node.address.port as i64))
             .collect();
 
         pool
@@ -270,140 +271,55 @@ async fn race_requests(
         return Err(HandlerError::NoNodes);
     }
 
-    // Power of Two Choices within the exclusive pool
-    while pool_index < available_pool.len() && tried_nodes.len() < POOL_SIZE {
-        let mut node1_option = None;
-        let mut node2_option = None;
-
-        // Select first untried node from pool
-        for (i, node) in available_pool.iter().enumerate().skip(pool_index) {
-            if !tried_nodes.contains(node) {
-                node1_option = Some(node.clone());
-                pool_index = i + 1;
-                break;
-            }
-        }
-
-        // Select second untried node from pool (different from first)
-        for node in available_pool.iter().skip(pool_index) {
-            if !tried_nodes.contains(node) && Some(node) != node1_option.as_ref() {
-                node2_option = Some(node.clone());
-                break;
-            }
-        }
-
-        // If we can't get any new nodes from the pool, we've exhausted our options
-        if node1_option.is_none() && node2_option.is_none() {
-            break;
-        }
-
-        // Store node URLs for error tracking before consuming them
-        let current_nodes: Vec<(String, String, i64)> = [&node1_option, &node2_option]
-            .iter()
-            .filter_map(|opt| opt.as_ref())
-            .cloned()
-            .collect();
-
-        let mut requests = Vec::new();
-
-        if let Some(node1) = node1_option {
-            tried_nodes.insert(node1.clone());
-            requests.push(single_raw_request(
-                state,
-                node1.clone(),
-                path,
-                method,
-                headers,
-                body,
-            ));
-        }
-
-        if let Some(node2) = node2_option {
-            tried_nodes.insert(node2.clone());
-            requests.push(single_raw_request(
-                state,
-                node2.clone(),
-                path,
-                method,
-                headers,
-                body,
-            ));
-        }
-
-        if requests.is_empty() {
-            break;
-        }
+    // Try nodes one by one sequentially
+    for node in available_pool.iter().take(POOL_SIZE) {
+        tried_nodes += 1;
+        let node_display = format!("{}://{}:{}", node.0, node.1, node.2);
 
         match &jsonrpc_method {
             Some(rpc_method) => debug!(
-                "Racing {} requests to {} (JSON-RPC: {}): {} nodes (tried {} so far)",
+                "Trying {} request to {} (JSON-RPC: {}) - attempt {} of {}",
                 method,
-                path,
+                node_display,
                 rpc_method,
-                requests.len(),
-                tried_nodes.len()
+                tried_nodes,
+                available_pool.len().min(POOL_SIZE)
             ),
             None => debug!(
-                "Racing {} requests to {}: {} nodes (tried {} so far)",
+                "Trying {} request to {} - attempt {} of {}",
                 method,
-                path,
-                requests.len(),
-                tried_nodes.len()
+                node_display,
+                tried_nodes,
+                available_pool.len().min(POOL_SIZE)
             ),
         }
 
-        // Handle the requests based on how many we have
-        let result = match requests.len() {
-            1 => {
-                // Only one request
-                requests.into_iter().next().unwrap().await
-            }
-            2 => {
-                // Two requests - race them
-                let mut iter = requests.into_iter();
-                let req1 = iter.next().unwrap();
-                let req2 = iter.next().unwrap();
-
-                tokio::select! {
-                    result1 = req1 => result1,
-                    result2 = req2 => result2,
-                }
-            }
-            _ => unreachable!("We only add 1 or 2 requests"),
-        };
-
-        match result {
+        match single_raw_request(state, node.clone(), path, method, headers, body).await {
             Ok((response, winning_node, latency_ms)) => {
                 let (scheme, host, port) = &winning_node;
-                let winning_node = format!("{}://{}:{}", scheme, host, port);
+                let winning_node_display = format!("{}://{}:{}", scheme, host, port);
 
                 match &jsonrpc_method {
-                    Some(rpc_method) => {
-                        debug!(
+                    Some(rpc_method) => debug!(
                         "{} response from {} ({}ms) - SUCCESS after trying {} nodes! JSON-RPC: {}",
-                        method, winning_node, latency_ms, tried_nodes.len(), rpc_method
-                    )
-                    }
+                        method, winning_node_display, latency_ms, tried_nodes, rpc_method
+                    ),
                     None => debug!(
                         "{} response from {} ({}ms) - SUCCESS after trying {} nodes!",
                         method,
-                        winning_node,
+                        winning_node_display,
                         latency_ms,
-                        tried_nodes.len()
+                        tried_nodes
                     ),
                 }
-                record_success(state, scheme, host, *port, latency_ms).await;
                 return Ok(response);
             }
             Err(e) => {
-                // Since we don't know which specific node failed in the race,
-                // record the error for all nodes in this batch
-                for (scheme, host, port) in &current_nodes {
-                    let node_display = format!("{}://{}:{}", scheme, host, port);
-                    collected_errors.push((node_display, e.to_string()));
-                }
+                collected_errors.push((node_display.clone(), e.to_string()));
+                
                 debug!(
-                    "Request failed: {} - retrying with different nodes from pool...",
+                    "Request failed with node {} with error {} - trying next node...",
+                    node_display,
                     e
                 );
                 continue;
@@ -421,14 +337,14 @@ async fn race_requests(
         Some(rpc_method) => error!(
             "All {} requests failed after trying {} nodes (JSON-RPC: {}). Detailed errors:\n{}",
             method,
-            tried_nodes.len(),
+            tried_nodes,
             rpc_method,
             detailed_errors.join("\n")
         ),
         None => error!(
             "All {} requests failed after trying {} nodes. Detailed errors:\n{}",
             method,
-            tried_nodes.len(),
+            tried_nodes,
             detailed_errors.join("\n")
         ),
     }
@@ -446,7 +362,7 @@ async fn proxy_request(
     headers: &HeaderMap,
     body: Option<&[u8]>,
 ) -> Response {
-    match race_requests(state, path, method, headers, body).await {
+    match sequential_requests(state, path, method, headers, body).await {
         Ok(res) => res,
         Err(handler_error) => {
             let error_response = match &handler_error {
@@ -505,7 +421,7 @@ async fn proxy_request(
 }
 
 #[axum::debug_handler]
-pub async fn simple_proxy_handler(
+pub async fn proxy_handler(
     State(state): State<AppState>,
     method: Method,
     uri: axum::http::Uri,
@@ -553,7 +469,7 @@ pub async fn simple_proxy_handler(
 }
 
 #[axum::debug_handler]
-pub async fn simple_stats_handler(State(state): State<AppState>) -> Response {
+pub async fn stats_handler(State(state): State<AppState>) -> Response {
     async move {
         let node_pool_guard = state.node_pool.read().await;
 

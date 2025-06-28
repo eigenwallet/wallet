@@ -23,13 +23,14 @@ pub mod config;
 pub mod database;
 pub mod discovery;
 pub mod pool;
-pub mod simple_handlers;
+pub mod proxy;
+pub mod types;
 
 use config::Config;
 use database::Database;
 use discovery::NodeDiscovery;
 use pool::{NodePool, PoolStatus};
-use simple_handlers::{simple_proxy_handler, simple_stats_handler};
+use proxy::{proxy_handler, stats_handler};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -121,8 +122,8 @@ async fn create_app_with_receiver(
 
     // Build the app
     let app = Router::new()
-        .route("/stats", get(simple_stats_handler))
-        .route("/*path", any(simple_proxy_handler))
+        .route("/stats", get(stats_handler))
+        .route("/*path", any(proxy_handler))
         .layer(CorsLayer::permissive())
         .with_state(app_state);
 

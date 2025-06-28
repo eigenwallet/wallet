@@ -1,28 +1,16 @@
-use std::collections::HashSet;
 use std::time::{Duration, Instant};
-
 use anyhow::Result;
 use monero::Network;
-use rand::seq::SliceRandom;
 use reqwest::Client;
-use serde::Deserialize;
 use serde_json::Value;
 use tracing::{error, info, warn};
 use url;
-
 use crate::database::Database;
 
-#[derive(Debug, Deserialize)]
-struct MoneroFailResponse {
-    monero: MoneroNodes,
-}
+/// A user agent that is fairly common, and won't get us noticed.
+/// See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/User-Agent/Firefox
+const USER_AGENT: &str = "Mozilla/5.0 (Windows NT x.y; rv:10.0) Gecko/20100101 Firefox/10.0";
 
-#[derive(Debug, Deserialize)]
-struct MoneroNodes {
-    clear: Vec<String>,
-    #[serde(default)]
-    web_compatible: Vec<String>,
-}
 
 #[derive(Debug)]
 pub struct HealthCheckOutcome {
@@ -49,70 +37,11 @@ impl NodeDiscovery {
     pub fn new(db: Database) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
-            .user_agent("monero-rpc-pool/1.0")
+            .user_agent(USER_AGENT)
             .build()
             .map_err(|e| anyhow::anyhow!("Failed to build HTTP client: {}", e))?;
 
         Ok(Self { client, db })
-    }
-
-    /// Fetch nodes from monero.fail API
-    pub async fn fetch_mainnet_nodes_from_api(&self) -> Result<Vec<String>> {
-        let url = "https://monero.fail/nodes.json?chain=monero";
-
-        let response = self
-            .client
-            .get(url)
-            .timeout(Duration::from_secs(30))
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!("HTTP error: {}", response.status()));
-        }
-
-        let monero_fail_response: MoneroFailResponse = response.json().await?;
-
-        // Combine clear and web_compatible nodes
-        let mut nodes = monero_fail_response.monero.web_compatible;
-        nodes.extend(monero_fail_response.monero.clear);
-
-        // Remove duplicates using HashSet for O(n) complexity
-        let mut seen = HashSet::new();
-        let mut unique_nodes = Vec::new();
-        for node in nodes {
-            if seen.insert(node.clone()) {
-                unique_nodes.push(node);
-            }
-        }
-
-        // Shuffle nodes in random order
-        let mut rng = rand::thread_rng();
-        unique_nodes.shuffle(&mut rng);
-
-        info!(
-            "Fetched {} mainnet nodes from monero.fail API",
-            unique_nodes.len()
-        );
-        Ok(unique_nodes)
-    }
-
-    /// Fetch nodes from monero.fail API and discover from other sources
-    pub async fn discover_nodes_from_sources(&self, target_network: Network) -> Result<()> {
-        // Only fetch from external sources for mainnet to avoid polluting test networks
-        if target_network == Network::Mainnet {
-            match self.fetch_mainnet_nodes_from_api().await {
-                Ok(nodes) => {
-                    self.discover_and_insert_nodes(target_network, nodes)
-                        .await?;
-                }
-                Err(e) => {
-                    warn!("Failed to fetch nodes from monero.fail API: {}", e);
-                }
-            }
-        }
-
-        Ok(())
     }
 
     /// Enhanced health check that detects network and validates node identity
@@ -308,11 +237,6 @@ impl NodeDiscovery {
                 "Running periodic node discovery for network: {}",
                 network_to_string(&target_network)
             );
-
-            // Discover new nodes from sources
-            if let Err(e) = self.discover_nodes_from_sources(target_network).await {
-                error!("Failed to discover nodes: {}", e);
-            }
 
             // Health check all nodes (will identify networks automatically)
             if let Err(e) = self.health_check_all_nodes(target_network).await {

@@ -5,6 +5,7 @@ use tracing::debug;
 use typeshare::typeshare;
 
 use crate::database::Database;
+use crate::types::NodeRecord;
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[typeshare]
@@ -80,20 +81,20 @@ impl NodePool {
 
     /// Calculate goodness score based on usage-based recency
     /// Score is a function of success rate and latency from last N health checks
-    fn calculate_goodness_score(&self, node: &crate::database::MoneroNode) -> f64 {
-        let total_checks = node.success_count + node.failure_count;
+    fn calculate_goodness_score(&self, node: &NodeRecord) -> f64 {
+        let total_checks = node.health.success_count + node.health.failure_count;
         if total_checks == 0 {
             return 0.0;
         }
 
-        let success_rate = node.success_count as f64 / total_checks as f64;
+        let success_rate = node.health.success_count as f64 / total_checks as f64;
 
         // Weight by recency (more recent interactions = higher weight)
         let recency_weight = (total_checks as f64).min(200.0) / 200.0;
         let mut score = success_rate * recency_weight;
 
         // Factor in latency - lower latency = higher score
-        if let Some(avg_latency) = node.avg_latency_ms {
+        if let Some(avg_latency) = node.health.avg_latency_ms {
             let latency_factor = 1.0 - (avg_latency.min(2000.0) / 2000.0);
             score = score * 0.8 + latency_factor * 0.2; // 80% success rate, 20% latency
         }
@@ -139,7 +140,7 @@ impl NodePool {
             .map(|node| ReliableNodeInfo {
                 url: node.full_url(),
                 success_rate: node.success_rate(),
-                avg_latency_ms: node.avg_latency_ms,
+                avg_latency_ms: node.health.avg_latency_ms,
             })
             .collect();
 
@@ -157,7 +158,7 @@ impl NodePool {
     pub async fn get_top_reliable_nodes(
         &self,
         limit: usize,
-    ) -> Result<Vec<crate::database::MoneroNode>> {
+    ) -> Result<Vec<NodeRecord>> {
         debug!(
             "Getting top reliable nodes for network {} (target: {})",
             self.network, limit
@@ -201,7 +202,7 @@ impl NodePool {
             );
 
             // Step 4: Collect exclusion IDs from nodes already selected
-            let exclude_ids: Vec<i64> = top_nodes.iter().filter_map(|node| node.id).collect();
+            let exclude_ids: Vec<i64> = top_nodes.iter().map(|node| node.metadata.id).collect();
 
             // Step 5: Secondary fetch - get random nodes to fill up
             let random_fillers = self
@@ -238,11 +239,11 @@ impl NodePool {
         } else {
             let total_latency: f64 = reliable_nodes
                 .iter()
-                .filter_map(|node| node.avg_latency_ms)
+                .filter_map(|node| node.health.avg_latency_ms)
                 .sum();
             let count = reliable_nodes
                 .iter()
-                .filter(|node| node.avg_latency_ms.is_some())
+                .filter(|node| node.health.avg_latency_ms.is_some())
                 .count();
 
             if count > 0 {

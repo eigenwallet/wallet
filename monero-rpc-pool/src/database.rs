@@ -6,36 +6,10 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct MoneroNode {
-    pub id: Option<i64>,
-    pub scheme: String, // http or https
-    pub host: String,
-    pub port: i64,
-    pub network: String, // mainnet, stagenet, or testnet - always known at insertion time
-    pub first_seen_at: String, // ISO 8601 timestamp when first discovered
-    // Computed fields from health_checks (not stored in monero_nodes table)
-    #[sqlx(default)]
-    pub success_count: i64,
-    #[sqlx(default)]
-    pub failure_count: i64,
-    #[sqlx(default)]
-    pub last_success: Option<String>,
-    #[sqlx(default)]
-    pub last_failure: Option<String>,
-    #[sqlx(default)]
-    pub last_checked: Option<String>,
-    #[sqlx(default)]
-    pub is_reliable: bool,
-    #[sqlx(default)]
-    pub avg_latency_ms: Option<f64>,
-    #[sqlx(default)]
-    pub min_latency_ms: Option<f64>,
-    #[sqlx(default)]
-    pub max_latency_ms: Option<f64>,
-    #[sqlx(default)]
-    pub last_latency_ms: Option<f64>,
-}
+use crate::types::{DbNodeRow, NodeRecord};
+
+// MoneroNode struct has been replaced with NodeRecord, NodeAddress, NodeMetadata, and NodeHealthStats
+// These are defined in the types module
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct HealthCheck {
@@ -46,63 +20,7 @@ pub struct HealthCheck {
     pub latency_ms: Option<f64>,
 }
 
-impl MoneroNode {
-    pub fn new(scheme: String, host: String, port: i64, network: String) -> Self {
-        // TODO: Do this in the database
-        let now = chrono::Utc::now().to_rfc3339();
-
-        Self {
-            id: None,
-            scheme,
-            host,
-            port,
-            network,
-            first_seen_at: now,
-            // These are computed from health_checks
-            success_count: 0,
-            failure_count: 0,
-            last_success: None,
-            last_failure: None,
-            last_checked: None,
-            is_reliable: false,
-            avg_latency_ms: None,
-            min_latency_ms: None,
-            max_latency_ms: None,
-            last_latency_ms: None,
-        }
-    }
-
-    pub fn full_url(&self) -> String {
-        format!("{}://{}:{}", self.scheme, self.host, self.port)
-    }
-
-    pub fn success_rate(&self) -> f64 {
-        let total = self.success_count + self.failure_count;
-        if total == 0 {
-            0.0
-        } else {
-            self.success_count as f64 / total as f64
-        }
-    }
-
-    pub fn reliability_score(&self) -> f64 {
-        let success_rate = self.success_rate();
-        let total_requests = self.success_count + self.failure_count;
-
-        // Weight success rate by total requests (more requests = more reliable data)
-        let request_weight = (total_requests as f64).min(200.0) / 200.0;
-        let mut score = success_rate * request_weight;
-
-        // Factor in latency - lower latency = higher score
-        if let Some(avg_latency) = self.avg_latency_ms {
-            // Normalize latency to 0-1 range (assuming 0-2000ms range)
-            let latency_factor = 1.0 - (avg_latency.min(2000.0) / 2000.0);
-            score = score * 0.8 + latency_factor * 0.2; // 80% success rate, 20% latency
-        }
-
-        score
-    }
-}
+// MoneroNode implementation moved to NodeRecord, NodeHealthStats etc. in types module
 
 #[derive(Clone)]
 pub struct Database {
@@ -262,7 +180,7 @@ impl Database {
     }
 
     /// Get nodes that have been identified (have network set)
-    pub async fn get_identified_nodes(&self, network: &str) -> Result<Vec<MoneroNode>> {
+    pub async fn get_identified_nodes(&self, network: &str) -> Result<Vec<NodeRecord>> {
         let rows = sqlx::query!(
             r#"
             SELECT 
@@ -335,10 +253,10 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        let nodes: Vec<MoneroNode> = rows
+        let nodes: Vec<NodeRecord> = rows
             .into_iter()
-            .map(|row| MoneroNode {
-                id: Some(row.id),
+            .map(|row| DbNodeRow {
+                id: row.id,
                 scheme: row.scheme,
                 host: row.host,
                 port: row.port,
@@ -355,6 +273,7 @@ impl Database {
                 max_latency_ms: row.max_latency_ms,
                 last_latency_ms: row.last_latency_ms,
             })
+            .map(NodeRecord::from)
             .collect();
 
         debug!(
@@ -366,7 +285,7 @@ impl Database {
     }
 
     /// Get reliable nodes (top 4 by reliability score)
-    pub async fn get_reliable_nodes(&self, network: &str) -> Result<Vec<MoneroNode>> {
+    pub async fn get_reliable_nodes(&self, network: &str) -> Result<Vec<NodeRecord>> {
         let rows = sqlx::query!(
             r#"
             SELECT 
@@ -417,25 +336,28 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        let nodes = rows
+        let nodes: Vec<NodeRecord> = rows
             .into_iter()
-            .map(|row| MoneroNode {
-                id: Some(row.id),
-                scheme: row.scheme,
-                host: row.host,
-                port: row.port,
-                network: row.network,
-                first_seen_at: row.first_seen_at,
-                success_count: row.success_count,
-                failure_count: row.failure_count,
-                last_success: row.last_success,
-                last_failure: row.last_failure,
-                last_checked: row.last_checked,
-                is_reliable: true,
-                avg_latency_ms: row.avg_latency_ms,
-                min_latency_ms: row.min_latency_ms,
-                max_latency_ms: row.max_latency_ms,
-                last_latency_ms: row.last_latency_ms,
+            .map(|row| {
+                let db_row = DbNodeRow {
+                    id: row.id,
+                    scheme: row.scheme,
+                    host: row.host,
+                    port: row.port,
+                    network: row.network,
+                    first_seen_at: row.first_seen_at,
+                    success_count: row.success_count,
+                    failure_count: row.failure_count,
+                    last_success: row.last_success,
+                    last_failure: row.last_failure,
+                    last_checked: row.last_checked,
+                    is_reliable: true, // For reliable nodes, we explicitly set is_reliable to true
+                    avg_latency_ms: row.avg_latency_ms,
+                    min_latency_ms: row.min_latency_ms,
+                    max_latency_ms: row.max_latency_ms,
+                    last_latency_ms: row.last_latency_ms,
+                };
+                NodeRecord::from(db_row)
             })
             .collect();
 
@@ -528,7 +450,7 @@ impl Database {
         network: &str,
         _recent_checks_limit: i64,
         limit: i64,
-    ) -> Result<Vec<MoneroNode>> {
+    ) -> Result<Vec<NodeRecord>> {
         let rows = sqlx::query!(
             r#"
             SELECT 
@@ -605,25 +527,28 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        let nodes = rows
+        let nodes: Vec<NodeRecord> = rows
             .into_iter()
-            .map(|row| MoneroNode {
-                id: Some(row.id),
-                scheme: row.scheme,
-                host: row.host,
-                port: row.port,
-                network: row.network,
-                first_seen_at: row.first_seen_at,
-                success_count: row.success_count,
-                failure_count: row.failure_count,
-                last_success: row.last_success,
-                last_failure: row.last_failure,
-                last_checked: row.last_checked,
-                is_reliable: row.is_reliable != 0,
-                avg_latency_ms: row.avg_latency_ms,
-                min_latency_ms: row.min_latency_ms,
-                max_latency_ms: row.max_latency_ms,
-                last_latency_ms: row.last_latency_ms,
+            .map(|row| {
+                let db_row = DbNodeRow {
+                    id: row.id,
+                    scheme: row.scheme,
+                    host: row.host,
+                    port: row.port,
+                    network: row.network,
+                    first_seen_at: row.first_seen_at,
+                    success_count: row.success_count,
+                    failure_count: row.failure_count,
+                    last_success: row.last_success,
+                    last_failure: row.last_failure,
+                    last_checked: row.last_checked,
+                    is_reliable: row.is_reliable != 0,
+                    avg_latency_ms: row.avg_latency_ms,
+                    min_latency_ms: row.min_latency_ms,
+                    max_latency_ms: row.max_latency_ms,
+                    last_latency_ms: row.last_latency_ms,
+                };
+                NodeRecord::from(db_row)
             })
             .collect();
 
@@ -634,7 +559,7 @@ impl Database {
     pub async fn get_identified_nodes_with_success(
         &self,
         network: &str,
-    ) -> Result<Vec<MoneroNode>> {
+    ) -> Result<Vec<NodeRecord>> {
         let rows = sqlx::query!(
             r#"
             SELECT 
@@ -707,25 +632,28 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
-        let nodes: Vec<MoneroNode> = rows
+        let nodes: Vec<NodeRecord> = rows
             .into_iter()
-            .map(|row| MoneroNode {
-                id: Some(row.id),
-                scheme: row.scheme,
-                host: row.host,
-                port: row.port,
-                network: row.network,
-                first_seen_at: row.first_seen_at,
-                success_count: row.success_count,
-                failure_count: row.failure_count,
-                last_success: row.last_success,
-                last_failure: row.last_failure,
-                last_checked: row.last_checked,
-                is_reliable: row.is_reliable != 0,
-                avg_latency_ms: row.avg_latency_ms,
-                min_latency_ms: row.min_latency_ms,
-                max_latency_ms: row.max_latency_ms,
-                last_latency_ms: row.last_latency_ms,
+            .map(|row| {
+                let db_row = DbNodeRow {
+                    id: row.id,
+                    scheme: row.scheme,
+                    host: row.host,
+                    port: row.port,
+                    network: row.network,
+                    first_seen_at: row.first_seen_at,
+                    success_count: row.success_count,
+                    failure_count: row.failure_count,
+                    last_success: row.last_success,
+                    last_failure: row.last_failure,
+                    last_checked: row.last_checked,
+                    is_reliable: row.is_reliable != 0,
+                    avg_latency_ms: row.avg_latency_ms,
+                    min_latency_ms: row.min_latency_ms,
+                    max_latency_ms: row.max_latency_ms,
+                    last_latency_ms: row.last_latency_ms,
+                };
+                NodeRecord::from(db_row)
             })
             .collect();
 
@@ -743,7 +671,7 @@ impl Database {
         network: &str,
         limit: i64,
         exclude_ids: &[i64],
-    ) -> Result<Vec<MoneroNode>> {
+    ) -> Result<Vec<NodeRecord>> {
         if exclude_ids.is_empty() {
             let rows = sqlx::query!(
                 r#"
@@ -821,23 +749,26 @@ impl Database {
 
             return Ok(rows
                 .into_iter()
-                .map(|row| MoneroNode {
-                    id: Some(row.id),
-                    scheme: row.scheme,
-                    host: row.host,
-                    port: row.port,
-                    network: row.network,
-                    first_seen_at: row.first_seen_at,
-                    success_count: row.success_count,
-                    failure_count: row.failure_count,
-                    last_success: row.last_success,
-                    last_failure: row.last_failure,
-                    last_checked: row.last_checked,
-                    is_reliable: row.is_reliable != 0,
-                    avg_latency_ms: row.avg_latency_ms,
-                    min_latency_ms: row.min_latency_ms,
-                    max_latency_ms: row.max_latency_ms,
-                    last_latency_ms: row.last_latency_ms,
+                .map(|row| {
+                    let db_row = DbNodeRow {
+                        id: row.id,
+                        scheme: row.scheme,
+                        host: row.host,
+                        port: row.port,
+                        network: row.network,
+                        first_seen_at: row.first_seen_at,
+                        success_count: row.success_count,
+                        failure_count: row.failure_count,
+                        last_success: row.last_success,
+                        last_failure: row.last_failure,
+                        last_checked: row.last_checked,
+                        is_reliable: row.is_reliable != 0,
+                        avg_latency_ms: row.avg_latency_ms,
+                        min_latency_ms: row.min_latency_ms,
+                        max_latency_ms: row.max_latency_ms,
+                        last_latency_ms: row.last_latency_ms,
+                    };
+                    NodeRecord::from(db_row)
                 })
                 .collect());
         }
@@ -922,27 +853,30 @@ impl Database {
         // Convert exclude_ids to a HashSet for O(1) lookup
         let exclude_set: std::collections::HashSet<i64> = exclude_ids.iter().cloned().collect();
 
-        let nodes: Vec<MoneroNode> = all_rows
+        let nodes: Vec<NodeRecord> = all_rows
             .into_iter()
             .filter(|row| !exclude_set.contains(&row.id))
             .take(limit as usize)
-            .map(|row| MoneroNode {
-                id: Some(row.id),
-                scheme: row.scheme,
-                host: row.host,
-                port: row.port,
-                network: row.network,
-                first_seen_at: row.first_seen_at,
-                success_count: row.success_count,
-                failure_count: row.failure_count,
-                last_success: row.last_success,
-                last_failure: row.last_failure,
-                last_checked: row.last_checked,
-                is_reliable: row.is_reliable != 0,
-                avg_latency_ms: row.avg_latency_ms,
-                min_latency_ms: row.min_latency_ms,
-                max_latency_ms: row.max_latency_ms,
-                last_latency_ms: row.last_latency_ms,
+            .map(|row| {
+                let db_row = DbNodeRow {
+                    id: row.id,
+                    scheme: row.scheme,
+                    host: row.host,
+                    port: row.port,
+                    network: row.network,
+                    first_seen_at: row.first_seen_at,
+                    success_count: row.success_count,
+                    failure_count: row.failure_count,
+                    last_success: row.last_success,
+                    last_failure: row.last_failure,
+                    last_checked: row.last_checked,
+                    is_reliable: row.is_reliable != 0,
+                    avg_latency_ms: row.avg_latency_ms,
+                    min_latency_ms: row.min_latency_ms,
+                    max_latency_ms: row.max_latency_ms,
+                    last_latency_ms: row.last_latency_ms,
+                };
+                NodeRecord::from(db_row)
             })
             .collect();
 
