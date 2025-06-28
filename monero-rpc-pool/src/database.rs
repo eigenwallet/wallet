@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
 
-use crate::types::{DbNodeRow, NodeRecord};
+use crate::types::{NodeAddress, NodeHealthStats, NodeMetadata, NodeRecord};
 
 // MoneroNode struct has been replaced with NodeRecord, NodeAddress, NodeMetadata, and NodeHealthStats
 // These are defined in the types module
@@ -255,25 +255,24 @@ impl Database {
 
         let nodes: Vec<NodeRecord> = rows
             .into_iter()
-            .map(|row| DbNodeRow {
-                id: row.id,
-                scheme: row.scheme,
-                host: row.host,
-                port: row.port,
-                network: row.network,
-                first_seen_at: row.first_seen_at,
-                success_count: row.success_count,
-                failure_count: row.failure_count,
-                last_success: row.last_success,
-                last_failure: row.last_failure,
-                last_checked: row.last_checked,
-                is_reliable: row.is_reliable != 0,
-                avg_latency_ms: row.avg_latency_ms,
-                min_latency_ms: row.min_latency_ms,
-                max_latency_ms: row.max_latency_ms,
-                last_latency_ms: row.last_latency_ms,
+            .map(|row| {
+                let address = NodeAddress::new(row.scheme, row.host, row.port as u16);
+                let first_seen_at = row.first_seen_at.parse().unwrap_or_else(|_| chrono::Utc::now());
+                let metadata = NodeMetadata::new(row.id, row.network, first_seen_at);
+                let health = NodeHealthStats {
+                    success_count: row.success_count,
+                    failure_count: row.failure_count,
+                    last_success: row.last_success.and_then(|s| s.parse().ok()),
+                    last_failure: row.last_failure.and_then(|s| s.parse().ok()),
+                    last_checked: row.last_checked.and_then(|s| s.parse().ok()),
+                    is_reliable: row.is_reliable != 0,
+                    avg_latency_ms: row.avg_latency_ms,
+                    min_latency_ms: row.min_latency_ms,
+                    max_latency_ms: row.max_latency_ms,
+                    last_latency_ms: row.last_latency_ms,
+                };
+                NodeRecord::new(address, metadata, health)
             })
-            .map(NodeRecord::from)
             .collect();
 
         debug!(
@@ -339,25 +338,22 @@ impl Database {
         let nodes: Vec<NodeRecord> = rows
             .into_iter()
             .map(|row| {
-                let db_row = DbNodeRow {
-                    id: row.id,
-                    scheme: row.scheme,
-                    host: row.host,
-                    port: row.port,
-                    network: row.network,
-                    first_seen_at: row.first_seen_at,
+                let address = NodeAddress::new(row.scheme, row.host, row.port as u16);
+                let first_seen_at = row.first_seen_at.parse().unwrap_or_else(|_| chrono::Utc::now());
+                let metadata = NodeMetadata::new(row.id, row.network, first_seen_at);
+                let health = NodeHealthStats {
                     success_count: row.success_count,
                     failure_count: row.failure_count,
-                    last_success: row.last_success,
-                    last_failure: row.last_failure,
-                    last_checked: row.last_checked,
+                    last_success: row.last_success.and_then(|s| s.parse().ok()),
+                    last_failure: row.last_failure.and_then(|s| s.parse().ok()),
+                    last_checked: row.last_checked.and_then(|s| s.parse().ok()),
                     is_reliable: true, // For reliable nodes, we explicitly set is_reliable to true
                     avg_latency_ms: row.avg_latency_ms,
                     min_latency_ms: row.min_latency_ms,
                     max_latency_ms: row.max_latency_ms,
                     last_latency_ms: row.last_latency_ms,
                 };
-                NodeRecord::from(db_row)
+                NodeRecord::new(address, metadata, health)
             })
             .collect();
 
@@ -530,25 +526,22 @@ impl Database {
         let nodes: Vec<NodeRecord> = rows
             .into_iter()
             .map(|row| {
-                let db_row = DbNodeRow {
-                    id: row.id,
-                    scheme: row.scheme,
-                    host: row.host,
-                    port: row.port,
-                    network: row.network,
-                    first_seen_at: row.first_seen_at,
+                let address = NodeAddress::new(row.scheme, row.host, row.port as u16);
+                let first_seen_at = row.first_seen_at.parse().unwrap_or_else(|_| chrono::Utc::now());
+                let metadata = NodeMetadata::new(row.id, row.network, first_seen_at);
+                let health = NodeHealthStats {
                     success_count: row.success_count,
                     failure_count: row.failure_count,
-                    last_success: row.last_success,
-                    last_failure: row.last_failure,
-                    last_checked: row.last_checked,
+                    last_success: row.last_success.and_then(|s| s.parse().ok()),
+                    last_failure: row.last_failure.and_then(|s| s.parse().ok()),
+                    last_checked: row.last_checked.and_then(|s| s.parse().ok()),
                     is_reliable: row.is_reliable != 0,
                     avg_latency_ms: row.avg_latency_ms,
                     min_latency_ms: row.min_latency_ms,
                     max_latency_ms: row.max_latency_ms,
                     last_latency_ms: row.last_latency_ms,
                 };
-                NodeRecord::from(db_row)
+                NodeRecord::new(address, metadata, health)
             })
             .collect();
 
@@ -635,25 +628,22 @@ impl Database {
         let nodes: Vec<NodeRecord> = rows
             .into_iter()
             .map(|row| {
-                let db_row = DbNodeRow {
-                    id: row.id,
-                    scheme: row.scheme,
-                    host: row.host,
-                    port: row.port,
-                    network: row.network,
-                    first_seen_at: row.first_seen_at,
+                let address = NodeAddress::new(row.scheme, row.host, row.port as u16);
+                let first_seen_at = row.first_seen_at.parse().unwrap_or_else(|_| chrono::Utc::now());
+                let metadata = NodeMetadata::new(row.id, row.network, first_seen_at);
+                let health = NodeHealthStats {
                     success_count: row.success_count,
                     failure_count: row.failure_count,
-                    last_success: row.last_success,
-                    last_failure: row.last_failure,
-                    last_checked: row.last_checked,
+                    last_success: row.last_success.and_then(|s| s.parse().ok()),
+                    last_failure: row.last_failure.and_then(|s| s.parse().ok()),
+                    last_checked: row.last_checked.and_then(|s| s.parse().ok()),
                     is_reliable: row.is_reliable != 0,
                     avg_latency_ms: row.avg_latency_ms,
                     min_latency_ms: row.min_latency_ms,
                     max_latency_ms: row.max_latency_ms,
                     last_latency_ms: row.last_latency_ms,
                 };
-                NodeRecord::from(db_row)
+                NodeRecord::new(address, metadata, health)
             })
             .collect();
 
@@ -750,25 +740,22 @@ impl Database {
             return Ok(rows
                 .into_iter()
                 .map(|row| {
-                    let db_row = DbNodeRow {
-                        id: row.id,
-                        scheme: row.scheme,
-                        host: row.host,
-                        port: row.port,
-                        network: row.network,
-                        first_seen_at: row.first_seen_at,
+                    let address = NodeAddress::new(row.scheme, row.host, row.port as u16);
+                    let first_seen_at = row.first_seen_at.parse().unwrap_or_else(|_| chrono::Utc::now());
+                    let metadata = NodeMetadata::new(row.id, row.network, first_seen_at);
+                    let health = NodeHealthStats {
                         success_count: row.success_count,
                         failure_count: row.failure_count,
-                        last_success: row.last_success,
-                        last_failure: row.last_failure,
-                        last_checked: row.last_checked,
+                        last_success: row.last_success.and_then(|s| s.parse().ok()),
+                        last_failure: row.last_failure.and_then(|s| s.parse().ok()),
+                        last_checked: row.last_checked.and_then(|s| s.parse().ok()),
                         is_reliable: row.is_reliable != 0,
                         avg_latency_ms: row.avg_latency_ms,
                         min_latency_ms: row.min_latency_ms,
                         max_latency_ms: row.max_latency_ms,
                         last_latency_ms: row.last_latency_ms,
                     };
-                    NodeRecord::from(db_row)
+                    NodeRecord::new(address, metadata, health)
                 })
                 .collect());
         }
@@ -858,25 +845,22 @@ impl Database {
             .filter(|row| !exclude_set.contains(&row.id))
             .take(limit as usize)
             .map(|row| {
-                let db_row = DbNodeRow {
-                    id: row.id,
-                    scheme: row.scheme,
-                    host: row.host,
-                    port: row.port,
-                    network: row.network,
-                    first_seen_at: row.first_seen_at,
+                let address = NodeAddress::new(row.scheme, row.host, row.port as u16);
+                let first_seen_at = row.first_seen_at.parse().unwrap_or_else(|_| chrono::Utc::now());
+                let metadata = NodeMetadata::new(row.id, row.network, first_seen_at);
+                let health = NodeHealthStats {
                     success_count: row.success_count,
                     failure_count: row.failure_count,
-                    last_success: row.last_success,
-                    last_failure: row.last_failure,
-                    last_checked: row.last_checked,
+                    last_success: row.last_success.and_then(|s| s.parse().ok()),
+                    last_failure: row.last_failure.and_then(|s| s.parse().ok()),
+                    last_checked: row.last_checked.and_then(|s| s.parse().ok()),
                     is_reliable: row.is_reliable != 0,
                     avg_latency_ms: row.avg_latency_ms,
                     min_latency_ms: row.min_latency_ms,
                     max_latency_ms: row.max_latency_ms,
                     last_latency_ms: row.last_latency_ms,
                 };
-                NodeRecord::from(db_row)
+                NodeRecord::new(address, metadata, health)
             })
             .collect();
 
