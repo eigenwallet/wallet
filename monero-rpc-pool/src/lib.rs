@@ -21,14 +21,12 @@ fn network_to_string(network: &Network) -> String {
 
 pub mod config;
 pub mod database;
-pub mod discovery;
 pub mod pool;
 pub mod proxy;
 pub mod types;
 
 use config::Config;
 use database::Database;
-use discovery::NodeDiscovery;
 use pool::{NodePool, PoolStatus};
 use proxy::{proxy_handler, stats_handler};
 
@@ -40,13 +38,11 @@ pub struct AppState {
 /// Manages background tasks for the RPC pool
 pub struct PoolHandle {
     pub status_update_handle: JoinHandle<()>,
-    pub discovery_handle: JoinHandle<()>,
 }
 
 impl Drop for PoolHandle {
     fn drop(&mut self) {
         self.status_update_handle.abort();
-        self.discovery_handle.abort();
     }
 }
 
@@ -73,9 +69,6 @@ async fn create_app_with_receiver(
     let (node_pool, status_receiver) = NodePool::new(db.clone(), network_str.clone());
     let node_pool = Arc::new(RwLock::new(node_pool));
 
-    // Initialize discovery service
-    let discovery = NodeDiscovery::new(db.clone())?;
-
     // Publish initial status immediately to ensure first event is sent
     {
         let pool_guard = node_pool.read().await;
@@ -100,22 +93,8 @@ async fn create_app_with_receiver(
         }
     });
 
-    // Start periodic discovery task
-    let discovery_clone = discovery.clone();
-    let network_clone = network;
-    let discovery_handle = tokio::spawn(async move {
-        if let Err(e) = discovery_clone.periodic_discovery_task(network_clone).await {
-            error!(
-                "Periodic discovery task failed for network {}: {}",
-                network_to_string(&network_clone),
-                e
-            );
-        }
-    });
-
     let pool_handle = PoolHandle {
         status_update_handle,
-        discovery_handle,
     };
 
     let app_state = AppState { node_pool };

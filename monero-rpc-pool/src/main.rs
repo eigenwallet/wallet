@@ -17,6 +17,7 @@ fn parse_network(s: &str) -> Result<Network, String> {
     }
 }
 
+// TODO: Replace with Display impl for Network
 fn network_to_string(network: &Network) -> String {
     match network {
         Network::Mainnet => "mainnet".to_string(),
@@ -48,34 +49,12 @@ struct Args {
     verbose: bool,
 }
 
-// Custom filter function that overrides log levels for our crate
-fn create_level_override_filter(base_filter: &str) -> EnvFilter {
-    // Parse the base filter and modify it to treat all monero_rpc_pool logs as trace
-    let mut filter = EnvFilter::new(base_filter);
-
-    // Add a directive that treats all levels from our crate as trace
-    filter = filter.add_directive("monero_rpc_pool=trace".parse().unwrap());
-
-    filter
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    // Create a filter that treats all logs from our crate as traces
-    let base_filter = if args.verbose {
-        // In verbose mode, show logs from other crates at WARN level
-        "warn"
-    } else {
-        // In normal mode, show logs from other crates at ERROR level
-        "error"
-    };
-
-    let filter = create_level_override_filter(base_filter);
-
     tracing_subscriber::fmt()
-        .with_env_filter(filter)
+        .with_env_filter(EnvFilter::from_default_env())
         .with_target(false)
         .with_file(true)
         .with_line_number(true)
@@ -88,8 +67,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     info!(
-        "Starting Monero RPC Pool\nConfiguration:\n  Host: {}\n  Port: {}\n  Network: {}",
-        config.host, config.port, network_to_string(&args.network)
+        host = config.host,
+        port = config.port,
+        network = network_to_string(&args.network),
+        "Starting Monero RPC Pool"
     );
 
     if let Err(e) = run_server(config, args.network).await {

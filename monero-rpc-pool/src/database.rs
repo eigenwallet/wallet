@@ -2,25 +2,9 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use dirs::data_dir;
-use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tracing::{debug, info, warn};
-
 use crate::types::{NodeAddress, NodeHealthStats, NodeMetadata, NodeRecord};
-
-// MoneroNode struct has been replaced with NodeRecord, NodeAddress, NodeMetadata, and NodeHealthStats
-// These are defined in the types module
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct HealthCheck {
-    pub id: Option<i64>,
-    pub node_id: i64,
-    pub timestamp: String, // ISO 8601 timestamp
-    pub was_successful: bool,
-    pub latency_ms: Option<f64>,
-}
-
-// MoneroNode implementation moved to NodeRecord, NodeHealthStats etc. in types module
 
 #[derive(Clone)]
 pub struct Database {
@@ -40,7 +24,8 @@ impl Database {
         }
 
         let db_path = data_dir.join("nodes.db");
-        info!("Using database at: {}", db_path.display());
+
+        info!("Using database at {}", db_path.display());
 
         let database_url = format!("sqlite:{}?mode=rwc", db_path.display());
         let pool = SqlitePool::connect(&database_url).await?;
@@ -59,78 +44,6 @@ impl Database {
         Ok(())
     }
 
-    /// Insert a node if it doesn't exist, return the node_id
-    pub async fn upsert_node(
-        &self,
-        scheme: &str,
-        host: &str,
-        port: i64,
-        network: &str,
-    ) -> Result<i64> {
-        let now = chrono::Utc::now().to_rfc3339();
-
-        let result = sqlx::query!(
-            r#"
-            INSERT INTO monero_nodes (scheme, host, port, network, first_seen_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(scheme, host, port) DO UPDATE SET
-                network = excluded.network,
-                updated_at = excluded.updated_at
-            RETURNING id
-            "#,
-            scheme,
-            host,
-            port,
-            network,
-            now,
-            now
-        )
-        .fetch_one(&self.pool)
-        .await?;
-
-        Ok(result.id)
-    }
-
-    /// Update a node's network after it has been identified
-    pub async fn update_node_network(
-        &self,
-        scheme: &str,
-        host: &str,
-        port: i64,
-        network: &str,
-    ) -> Result<()> {
-        let now = chrono::Utc::now().to_rfc3339();
-
-        let result = sqlx::query!(
-            r#"
-            UPDATE monero_nodes 
-            SET network = ?, updated_at = ?
-            WHERE scheme = ? AND host = ? AND port = ?
-            "#,
-            network,
-            now,
-            scheme,
-            host,
-            port
-        )
-        .execute(&self.pool)
-        .await?;
-
-        if result.rows_affected() > 0 {
-            debug!(
-                "Updated network for node {}://{}:{} to {}",
-                scheme, host, port, network
-            );
-        } else {
-            warn!(
-                "Failed to update network for node {}://{}:{}: not found",
-                scheme, host, port
-            );
-        }
-
-        Ok(())
-    }
-
     /// Record a health check event
     pub async fn record_health_check(
         &self,
@@ -142,39 +55,29 @@ impl Database {
     ) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
 
-        // First get the node_id
-        let node_row = sqlx::query!(
-            "SELECT id FROM monero_nodes WHERE scheme = ? AND host = ? AND port = ?",
+        let result = sqlx::query!(
+            r#"
+            INSERT INTO health_checks (node_id, timestamp, was_successful, latency_ms)
+            SELECT id, ?, ?, ?
+            FROM monero_nodes 
+            WHERE scheme = ? AND host = ? AND port = ?
+            "#,
+            now,
+            was_successful,
+            latency_ms,
             scheme,
             host,
             port
         )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        let node_id = match node_row {
-            Some(row) => row.id,
-            None => {
-                warn!(
-                    "Cannot record health check for unknown node: {}://{}:{}",
-                    scheme, host, port
-                );
-                return Ok(());
-            }
-        };
-
-        sqlx::query!(
-            r#"
-            INSERT INTO health_checks (node_id, timestamp, was_successful, latency_ms)
-            VALUES (?, ?, ?, ?)
-            "#,
-            node_id,
-            now,
-            was_successful,
-            latency_ms
-        )
         .execute(&self.pool)
         .await?;
+
+        if result.rows_affected() == 0 {
+            warn!(
+                "Cannot record health check for unknown node: {}://{}:{}",
+                scheme, host, port
+            );
+        }
 
         Ok(())
     }
