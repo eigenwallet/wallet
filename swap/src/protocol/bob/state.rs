@@ -467,7 +467,7 @@ impl State3 {
     pub fn xmr_locked(
         self,
         monero_wallet_restore_blockheight: BlockHeight,
-        transfer_proof: TransferProof,
+        lock_transfer_proof: TransferProof,
     ) -> State4 {
         State4 {
             A: self.A,
@@ -484,7 +484,7 @@ impl State3 {
             tx_cancel_sig_a: self.tx_cancel_sig_a,
             tx_refund_encsig: self.tx_refund_encsig,
             monero_wallet_restore_blockheight,
-            transfer_proof,
+            lock_transfer_proof,
             tx_redeem_fee: self.tx_redeem_fee,
             tx_refund_fee: self.tx_refund_fee,
             tx_cancel_fee: self.tx_cancel_fee,
@@ -590,7 +590,7 @@ pub struct State4 {
     tx_cancel_sig_a: Signature,
     tx_refund_encsig: bitcoin::EncryptedSignature,
     monero_wallet_restore_blockheight: BlockHeight,
-    transfer_proof: TransferProof,
+    lock_transfer_proof: TransferProof,
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
     tx_redeem_fee: bitcoin::Amount,
     #[serde(with = "::bitcoin::amount::serde::as_sat")]
@@ -623,7 +623,7 @@ impl State4 {
                 xmr: self.xmr,
                 tx_lock: self.tx_lock.clone(),
                 monero_wallet_restore_blockheight: self.monero_wallet_restore_blockheight,
-                lock_transfer_proof: self.transfer_proof.clone(),
+                lock_transfer_proof: self.lock_transfer_proof.clone(),
             }))
         } else {
             Ok(None)
@@ -693,10 +693,6 @@ impl State4 {
             tx_cancel_fee: self.tx_cancel_fee,
             xmr: self.xmr,
         }
-    }
-
-    pub fn transfer_proof(&self) -> Option<&TransferProof> {
-        Some(&self.transfer_proof)
     }
 
     pub fn construct_tx_early_refund(&self) -> bitcoin::TxEarlyRefund {
