@@ -358,7 +358,7 @@ async fn next_state(
                 TauriSwapProgressEvent::XmrLockTxInMempool {
                     xmr_lock_txid: lock_transfer_proof.tx_hash(),
                     xmr_lock_tx_confirmations: None,
-                    xmr_lock_tx_target_confirmations: Some(2),
+                    xmr_lock_tx_target_confirmations: 2,
                 },
             );
 
@@ -399,7 +399,7 @@ async fn next_state(
                         TauriSwapProgressEvent::XmrLockTxInMempool {
                             xmr_lock_txid: tranfer.tx_hash(),
                             xmr_lock_tx_confirmations: Some(confirmations),
-                            xmr_lock_tx_target_confirmations: Some(2), // Our early reveal target
+                            xmr_lock_tx_target_confirmations: 2,
                         },
                     );
                 }),
@@ -561,7 +561,8 @@ async fn next_state(
                             TauriSwapProgressEvent::WaitingForXmrConfirmationsBeforeRedeem {
                                 xmr_lock_txid: tx_hash,
                                 xmr_lock_tx_confirmations,
-                                xmr_lock_tx_target_confirmations: 10, // Full confirmations for redeem
+                                // We need 10 full confirmations to sweep
+                                xmr_lock_tx_target_confirmations: 10,
                             },
                         );
                     }
