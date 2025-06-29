@@ -1,6 +1,14 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { Theme } from "renderer/components/theme";
 
+export type DonateToDevelopmentTip = false | 0.0005 | 0.0075;
+
+const DEFAULT_RENDEZVOUS_POINTS = [
+  "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
+  "/dns4/discover2.unstoppableswap.net/tcp/8888/p2p/12D3KooWGRvf7qVQDrNR5nfYD6rKrbgeTi9x8RrbdxbmsPvxL4mw",
+  "/dns4/darkness.su/tcp/8888/p2p/12D3KooWFQAgVVS9t9UgL6v1sLprJVM7am5hFK7vy9iBCCoCBYmU",
+];
+
 export interface SettingsState {
   /// This is an ordered list of node urls for each network and blockchain
   nodes: Record<Network, Record<Blockchain, string[]>>;
@@ -11,7 +19,14 @@ export interface SettingsState {
   fiatCurrency: FiatCurrency;
   /// Whether to enable Tor for p2p connections
   enableTor: boolean;
+  /// Whether to use the Monero RPC pool for load balancing (true) or custom nodes (false)
+  useMoneroRpcPool: boolean;
   userHasSeenIntroduction: boolean;
+  /// List of rendezvous points
+  rendezvousPoints: string[];
+  /// Does the user want to donate parts of his swaps to funding the development
+  /// of the project?
+  donateToDevelopment: DonateToDevelopmentTip;
 }
 
 export enum FiatCurrency {
@@ -78,12 +93,21 @@ const initialState: SettingsState = {
   nodes: {
     [Network.Testnet]: {
       [Blockchain.Bitcoin]: [
+        "ssl://ax101.blockeng.ch:60002",
+        "ssl://blackie.c3-soft.com:57006",
+        "ssl://v22019051929289916.bestsrv.de:50002",
+        "tcp://v22019051929289916.bestsrv.de:50001",
+        "tcp://electrum.blockstream.info:60001",
+        "ssl://electrum.blockstream.info:60002",
         "ssl://blockstream.info:993",
         "tcp://blockstream.info:143",
-        "ssl://testnet.aranguren.org:51002",
+        "ssl://testnet.qtornado.com:51002",
+        "tcp://testnet.qtornado.com:51001",
         "tcp://testnet.aranguren.org:51001",
-        "ssl://bitcoin.stagemole.eu:5010",
-        "tcp://bitcoin.stagemole.eu:5000",
+        "ssl://testnet.aranguren.org:51002",
+        "ssl://testnet.qtornado.com:50002",
+        "ssl://bitcoin.devmole.eu:5010",
+        "tcp://bitcoin.devmole.eu:5000",
       ],
       [Blockchain.Monero]: [],
     },
@@ -102,7 +126,10 @@ const initialState: SettingsState = {
   fetchFiatPrices: false,
   fiatCurrency: FiatCurrency.Usd,
   enableTor: true,
+  useMoneroRpcPool: true, // Default to using RPC pool
   userHasSeenIntroduction: false,
+  rendezvousPoints: DEFAULT_RENDEZVOUS_POINTS,
+  donateToDevelopment: false, // Default to no donation
 };
 
 const alertsSlice = createSlice({
@@ -137,6 +164,14 @@ const alertsSlice = createSlice({
     },
     setFiatCurrency(slice, action: PayloadAction<FiatCurrency>) {
       slice.fiatCurrency = action.payload;
+    },
+    addRendezvousPoint(slice, action: PayloadAction<string>) {
+      slice.rendezvousPoints.push(action.payload);
+    },
+    removeRendezvousPoint(slice, action: PayloadAction<string>) {
+      slice.rendezvousPoints = slice.rendezvousPoints.filter(
+        (point) => point !== action.payload,
+      );
     },
     addNode(
       slice,
@@ -180,6 +215,15 @@ const alertsSlice = createSlice({
     setTorEnabled(slice, action: PayloadAction<boolean>) {
       slice.enableTor = action.payload;
     },
+    setUseMoneroRpcPool(slice, action: PayloadAction<boolean>) {
+      slice.useMoneroRpcPool = action.payload;
+    },
+    setDonateToDevelopment(
+      slice,
+      action: PayloadAction<DonateToDevelopmentTip>,
+    ) {
+      slice.donateToDevelopment = action.payload;
+    },
   },
 });
 
@@ -192,7 +236,11 @@ export const {
   setFetchFiatPrices,
   setFiatCurrency,
   setTorEnabled,
+  setUseMoneroRpcPool,
   setUserHasSeenIntroduction,
+  addRendezvousPoint,
+  removeRendezvousPoint,
+  setDonateToDevelopment,
 } = alertsSlice.actions;
 
 export default alertsSlice.reducer;

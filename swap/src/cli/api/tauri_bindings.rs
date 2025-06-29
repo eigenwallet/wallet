@@ -1,8 +1,10 @@
 use super::request::BalanceResponse;
 use crate::bitcoin;
+use crate::monero::MoneroAddressPool;
 use crate::{bitcoin::ExpiredTimelocks, monero, network::quote::BidQuote};
 use anyhow::{anyhow, Context, Result};
 use bitcoin::Txid;
+use monero_rpc_pool::pool::PoolStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
@@ -12,7 +14,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use strum::Display;
 use tokio::sync::{oneshot, Mutex as TokioMutex};
 use typeshare::typeshare;
-use url::Url;
 use uuid::Uuid;
 
 #[typeshare]
@@ -27,6 +28,7 @@ pub enum TauriEvent {
     TimelockChange(TauriTimelockChangeEvent),
     Approval(ApprovalRequest),
     BackgroundProgress(TauriBackgroundProgressWrapper),
+    PoolStatusUpdate(PoolStatus),
 }
 
 const TAURI_UNIFIED_EVENT_NAME: &str = "tauri-unified-event";
@@ -42,6 +44,7 @@ pub struct LockBitcoinDetails {
     pub btc_network_fee: bitcoin::Amount,
     #[typeshare(serialized_as = "number")]
     pub xmr_receive_amount: monero::Amount,
+    pub monero_receive_pool: MoneroAddressPool,
     #[typeshare(serialized_as = "string")]
     pub swap_id: Uuid,
 }
@@ -297,6 +300,10 @@ pub trait TauriEmitter {
         ));
     }
 
+    fn emit_pool_status_update(&self, status: PoolStatus) {
+        self.emit_unified_event(TauriEvent::PoolStatusUpdate(status));
+    }
+
     /// Create a new background progress handle for tracking a specific type of progress
     fn new_background_process<T: Clone>(
         &self,
@@ -442,9 +449,10 @@ pub struct TauriBackgroundProgressHandle<T: Clone> {
 impl<T: Clone> TauriBackgroundProgressHandle<T> {
     /// Update the progress of this background process
     /// Updates after finish() has been called will be ignored
+    #[cfg(feature = "tauri")]
     pub fn update(&self, progress: T) {
+        // Silently fail if the background process has already been finished
         if self.is_finished.load(std::sync::atomic::Ordering::Relaxed) {
-            tracing::trace!(%self.id, "Ignoring update to background progress because it has already been finished");
             return;
         }
 
@@ -454,6 +462,11 @@ impl<T: Clone> TauriBackgroundProgressHandle<T> {
                 (self.component)(PendingCompleted::Pending(progress)),
             );
         }
+    }
+
+    #[cfg(not(feature = "tauri"))]
+    pub fn update(&self, _progress: T) {
+        // Do nothing when tauri is not enabled
     }
 
     /// Mark this background process as completed
@@ -534,13 +547,13 @@ pub struct BackgroundRefundProgress {
 #[serde(tag = "componentName", content = "progress")]
 pub enum TauriBackgroundProgress {
     OpeningBitcoinWallet(PendingCompleted<()>),
-    DownloadingMoneroWalletRpc(PendingCompleted<DownloadProgress>),
     OpeningMoneroWallet(PendingCompleted<()>),
     OpeningDatabase(PendingCompleted<()>),
     EstablishingTorCircuits(PendingCompleted<TorBootstrapStatus>),
     SyncingBitcoinWallet(PendingCompleted<TauriBitcoinSyncProgress>),
     FullScanningBitcoinWallet(PendingCompleted<TauriBitcoinFullScanProgress>),
     BackgroundRefund(PendingCompleted<BackgroundRefundProgress>),
+    ListSellers(PendingCompleted<ListSellersProgress>),
 }
 
 #[typeshare]
@@ -603,16 +616,16 @@ pub enum TauriSwapProgressEvent {
     BtcLockTxInMempool {
         #[typeshare(serialized_as = "string")]
         btc_lock_txid: bitcoin::Txid,
-        #[typeshare(serialized_as = "number")]
-        btc_lock_confirmations: u64,
+        #[typeshare(serialized_as = "Option<number>")]
+        btc_lock_confirmations: Option<u64>,
     },
     XmrLockTxInMempool {
         #[typeshare(serialized_as = "string")]
         xmr_lock_txid: monero::TxHash,
-        #[typeshare(serialized_as = "number")]
-        xmr_lock_tx_confirmations: u64,
-        #[typeshare(serialized_as = "number")]
-        xmr_lock_tx_target_confirmations: u64,
+        #[typeshare(serialized_as = "Option<number>")]
+        xmr_lock_tx_confirmations: Option<u64>,
+        #[typeshare(serialized_as = "Option<number>")]
+        xmr_lock_tx_target_confirmations: Option<u64>,
     },
     XmrLocked,
     EncryptedSignatureSent,
@@ -628,14 +641,31 @@ pub enum TauriSwapProgressEvent {
     XmrRedeemInMempool {
         #[typeshare(serialized_as = "Vec<string>")]
         xmr_redeem_txids: Vec<monero::TxHash>,
-        #[typeshare(serialized_as = "string")]
-        xmr_redeem_address: monero::Address,
+        xmr_receive_pool: MoneroAddressPool,
     },
     CancelTimelockExpired,
     BtcCancelled {
         #[typeshare(serialized_as = "string")]
         btc_cancel_txid: Txid,
     },
+    // tx_early_refund has been published but has not been confirmed yet
+    // we can still transition into BtcRefunded from here
+    BtcEarlyRefundPublished {
+        #[typeshare(serialized_as = "string")]
+        btc_early_refund_txid: Txid,
+    },
+    // tx_refund has been published but has not been confirmed yet
+    // we can still transition into BtcEarlyRefunded from here
+    BtcRefundPublished {
+        #[typeshare(serialized_as = "string")]
+        btc_refund_txid: Txid,
+    },
+    // tx_early_refund has been confirmed
+    BtcEarlyRefunded {
+        #[typeshare(serialized_as = "string")]
+        btc_early_refund_txid: Txid,
+    },
+    // tx_refund has been confirmed
     BtcRefunded {
         #[typeshare(serialized_as = "string")]
         btc_refund_txid: Txid,
@@ -683,15 +713,33 @@ pub enum BackgroundRefundState {
     Completed,
 }
 
+#[typeshare]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", content = "content")]
+pub enum MoneroNodeConfig {
+    Pool,
+    SingleNode { url: String },
+}
+
 /// This struct contains the settings for the Context
 #[typeshare]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TauriSettings {
-    /// The URL of the Monero node e.g `http://xmr.node:18081`
-    pub monero_node_url: Option<String>,
-    /// The URL of the Electrum RPC server e.g `ssl://bitcoin.com:50001`
-    #[typeshare(serialized_as = "string")]
-    pub electrum_rpc_url: Option<Url>,
+    /// Configuration for Monero node connection
+    pub monero_node_config: MoneroNodeConfig,
+    /// The URLs of the Electrum RPC servers e.g `["ssl://bitcoin.com:50001", "ssl://backup.com:50001"]`
+    pub electrum_rpc_urls: Vec<String>,
     /// Whether to initialize and use a tor client.
     pub use_tor: bool,
+}
+
+#[typeshare]
+#[derive(Debug, Serialize, Clone)]
+pub struct ListSellersProgress {
+    pub rendezvous_points_connected: u32,
+    pub rendezvous_points_total: u32,
+    pub rendezvous_points_failed: u32,
+    pub peers_discovered: u32,
+    pub quotes_received: u32,
+    pub quotes_failed: u32,
 }

@@ -1,7 +1,10 @@
-target
+target/
 .vscode
 .claude/settings.local.json
 .DS_Store
 target-check
 release-build.sh
 cn_macos
+build/
+monero-rpc-pool/temp_db.sqlite
+monero-rpc-pool/temp.db

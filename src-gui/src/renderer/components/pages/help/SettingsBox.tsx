@@ -20,26 +20,28 @@ import {
   useTheme,
   Switch,
   SelectChangeEvent,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import {
-  removeNode,
-  resetSettings,
-  setFetchFiatPrices,
-  setFiatCurrency,
-} from "store/features/settingsSlice";
-import {
   addNode,
+  addRendezvousPoint,
   Blockchain,
+  DonateToDevelopmentTip,
   FiatCurrency,
   moveUpNode,
   Network,
+  removeNode,
+  removeRendezvousPoint,
+  resetSettings,
+  setFetchFiatPrices,
+  setFiatCurrency,
   setTheme,
+  setTorEnabled,
+  setUseMoneroRpcPool,
+  setDonateToDevelopment,
 } from "store/features/settingsSlice";
-import {
-  useAppDispatch,
-  useNodes,
-  useSettings,
-} from "store/hooks";
+import { useAppDispatch, useNodes, useSettings } from "store/hooks";
 import ValidatedTextField from "renderer/components/other/ValidatedTextField";
 import HelpIcon from "@mui/icons-material/HelpOutline";
 import { ReactNode, useState } from "react";
@@ -50,11 +52,15 @@ import {
   Delete,
   Edit,
   HourglassEmpty,
+  Refresh,
 } from "@mui/icons-material";
+
 import { getNetwork } from "store/config";
 import { currencySymbol } from "utils/formatUtils";
-import { setTorEnabled } from "store/features/settingsSlice";
 import InfoBox from "renderer/components/modal/swap/InfoBox";
+import { isValidMultiAddressWithPeerId } from "utils/parseUtils";
+import { getNodeStatus } from "renderer/rpc";
+import { setStatus } from "store/features/nodesSlice";
 
 const PLACEHOLDER_ELECTRUM_RPC_URL = "ssl://blockstream.info:700";
 const PLACEHOLDER_MONERO_NODE_URL = "http://xmr-node.cakewallet.com:18081";
@@ -85,10 +91,13 @@ export default function SettingsBox() {
             <Table>
               <TableBody>
                 <TorSettings />
+                <DonationTipSetting />
                 <ElectrumRpcUrlSetting />
+                <MoneroRpcPoolSetting />
                 <MoneroNodeUrlSetting />
                 <FetchFiatPricesSetting />
                 <ThemeSetting />
+                <RendezvousPointsSetting />
               </TableBody>
             </Table>
           </TableContainer>
@@ -270,15 +279,21 @@ function ElectrumRpcUrlSetting() {
 function SettingLabel({
   label,
   tooltip,
+  disabled = false,
 }: {
   label: ReactNode;
   tooltip: string | null;
+  disabled?: boolean;
 }) {
+  const opacity = disabled ? 0.5 : 1;
+
   return (
-    <Box style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+    <Box
+      style={{ display: "flex", alignItems: "center", gap: "0.5rem", opacity }}
+    >
       <Box>{label}</Box>
       <Tooltip title={tooltip}>
-        <IconButton size="small">
+        <IconButton size="small" disabled={disabled}>
           <HelpIcon />
         </IconButton>
       </Tooltip>
@@ -287,38 +302,173 @@ function SettingLabel({
 }
 
 /**
- * A setting that allows you to select the Monero Node URL to use.
+ * A setting that allows you to toggle between using the Monero RPC Pool and custom nodes.
+ */
+function MoneroRpcPoolSetting() {
+  const useMoneroRpcPool = useSettings((s) => s.useMoneroRpcPool);
+  const dispatch = useAppDispatch();
+
+  const handleChange = (
+    event: React.MouseEvent<HTMLElement>,
+    newValue: string,
+  ) => {
+    if (newValue !== null) {
+      dispatch(setUseMoneroRpcPool(newValue === "pool"));
+    }
+  };
+
+  return (
+    <TableRow>
+      <TableCell>
+        <SettingLabel
+          label="Monero Node Selection"
+          tooltip="Choose between using a load-balanced pool of Monero nodes for better reliability, or configure custom Monero nodes."
+        />
+      </TableCell>
+      <TableCell>
+        <ToggleButtonGroup
+          color="primary"
+          value={useMoneroRpcPool ? "pool" : "custom"}
+          exclusive
+          onChange={handleChange}
+          aria-label="Monero node selection"
+          size="small"
+        >
+          <ToggleButton value="pool">Pool (Recommended)</ToggleButton>
+          <ToggleButton value="custom">Manual</ToggleButton>
+        </ToggleButtonGroup>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/**
+ * A setting that allows you to configure a single Monero Node URL.
+ * Gets disabled when RPC pool is enabled.
  */
 function MoneroNodeUrlSetting() {
   const network = getNetwork();
-  const [tableVisible, setTableVisible] = useState(false);
+  const useMoneroRpcPool = useSettings((s) => s.useMoneroRpcPool);
+  const moneroNodeUrl = useSettings(
+    (s) => s.nodes[network][Blockchain.Monero][0] || "",
+  );
+  const nodeStatuses = useNodes((s) => s.nodes);
+  const dispatch = useAppDispatch();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const isValid = (url: string) => isValidUrl(url, ["http"]);
+  const currentNodes = useSettings((s) => s.nodes[network][Blockchain.Monero]);
+
+  const handleNodeUrlChange = (newUrl: string) => {
+    // Remove existing nodes and add the new one
+    currentNodes.forEach((node) => {
+      dispatch(removeNode({ network, type: Blockchain.Monero, node }));
+    });
+
+    if (newUrl.trim()) {
+      dispatch(
+        addNode({ network, type: Blockchain.Monero, node: newUrl.trim() }),
+      );
+    }
+  };
+
+  const handleRefreshStatus = async () => {
+    // Don't refresh if pool is enabled or no node URL is configured
+    if (!moneroNodeUrl || useMoneroRpcPool) return;
+
+    setIsRefreshing(true);
+    try {
+      const status = await getNodeStatus(
+        moneroNodeUrl,
+        Blockchain.Monero,
+        network,
+      );
+
+      // Update the status in the store
+      dispatch(
+        setStatus({
+          node: moneroNodeUrl,
+          status,
+          blockchain: Blockchain.Monero,
+        }),
+      );
+    } catch (error) {
+      console.error("Failed to refresh node status:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const isValid = (url: string) => url === "" || isValidUrl(url, ["http"]);
+  const nodeStatus = moneroNodeUrl
+    ? nodeStatuses[Blockchain.Monero][moneroNodeUrl]
+    : null;
 
   return (
     <TableRow>
       <TableCell>
         <SettingLabel
           label="Custom Monero Node URL"
-          tooltip="This is the URL of the Monero node that the GUI will connect to. Ensure the node is listening for RPC connections over HTTP. If you leave this field empty, the GUI will choose from a list of known nodes at random."
+          tooltip={
+            useMoneroRpcPool
+              ? "This setting is disabled because Monero RPC pool is enabled. Disable the RPC pool to configure a custom node."
+              : "This is the URL of the Monero node that the GUI will connect to. It is used to sync Monero transactions. If you leave this field empty, the GUI will choose from a list of known servers at random."
+          }
+          disabled={useMoneroRpcPool}
         />
       </TableCell>
       <TableCell>
-        <IconButton onClick={() => setTableVisible(!tableVisible)} size="large">
-          <Edit />
-        </IconButton>
-        {tableVisible ? (
-          <NodeTableModal
-            open={tableVisible}
-            onClose={() => setTableVisible(false)}
-            network={network}
-            blockchain={Blockchain.Monero}
-            isValid={isValid}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <ValidatedTextField
+            value={moneroNodeUrl}
+            onValidatedChange={handleNodeUrlChange}
             placeholder={PLACEHOLDER_MONERO_NODE_URL}
+            disabled={useMoneroRpcPool}
+            fullWidth
+            isValid={isValid}
+            variant="outlined"
+            noErrorWhenEmpty
           />
-        ) : (
-          <></>
-        )}
+          <>
+            <Tooltip
+              title={
+                useMoneroRpcPool
+                  ? "Node status checking is disabled when using the pool"
+                  : !moneroNodeUrl
+                    ? "Enter a node URL to check status"
+                    : "Node status"
+              }
+            >
+              <Box sx={{ display: "flex", alignItems: "center" }}>
+                <Circle
+                  color={
+                    useMoneroRpcPool || !moneroNodeUrl
+                      ? "gray"
+                      : nodeStatus
+                        ? "green"
+                        : "red"
+                  }
+                />
+              </Box>
+            </Tooltip>
+            <Tooltip
+              title={
+                useMoneroRpcPool
+                  ? "Node status refresh is disabled when using the pool"
+                  : !moneroNodeUrl
+                    ? "Enter a node URL to refresh status"
+                    : "Refresh node status"
+              }
+            >
+              <IconButton
+                onClick={handleRefreshStatus}
+                disabled={isRefreshing || useMoneroRpcPool || !moneroNodeUrl}
+                size="small"
+              >
+                {isRefreshing ? <HourglassEmpty /> : <Refresh />}
+              </IconButton>
+            </Tooltip>
+          </>
+        </Box>
       </TableCell>
     </TableRow>
   );
@@ -382,7 +532,7 @@ function NodeTableModal({
           When the daemon is started, it will attempt to connect to the first
           available {blockchain} node in this list. If you leave this field
           empty or all nodes are unavailable, it will choose from a list of
-          known nodes at random. Requires a restart to take effect.
+          known nodes at random.
         </Typography>
         <NodeTable
           network={network}
@@ -413,38 +563,6 @@ function Circle({ color, radius = 6 }: { color: string; radius?: number }) {
       </svg>
     </span>
   );
-}
-
-/**
- * Displays a status indicator for a node
- */
-function NodeStatus({ status }: { status: boolean | undefined }) {
-  const theme = useTheme();
-
-  switch (status) {
-    case true:
-      return (
-        <Tooltip
-          title={"This node is available and responding to RPC requests"}
-        >
-          <Circle color={theme.palette.success.dark} />
-        </Tooltip>
-      );
-    case false:
-      return (
-        <Tooltip
-          title={"This node is not available or not responding to RPC requests"}
-        >
-          <Circle color={theme.palette.error.dark} />
-        </Tooltip>
-      );
-    default:
-      return (
-        <Tooltip title={"The status of this node is currently unknown"}>
-          <HourglassEmpty />
-        </Tooltip>
-      );
-  }
 }
 
 /**
@@ -517,7 +635,9 @@ function NodeTable({
               </TableCell>
               {/* Node status icon */}
               <TableCell align="center">
-                <NodeStatus status={nodeStatuses[blockchain][node]} />
+                <Circle
+                  color={nodeStatuses[blockchain][node] ? "green" : "red"}
+                />
               </TableCell>
               {/* Remove and move buttons */}
               <TableCell>
@@ -584,12 +704,254 @@ export function TorSettings() {
       <TableCell>
         <SettingLabel
           label="Use Tor"
-          tooltip="Tor (The Onion Router) is a decentralized network allowing for anonymous browsing. If enabled, the app will use its internal Tor client to hide your IP address from the maker. Requires a restart to take effect."
+          tooltip="Route network traffic through Tor to hide your IP address from the maker."
         />
       </TableCell>
 
       <TableCell>
         <Switch checked={torEnabled} onChange={handleChange} color="primary" />
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/**
+ * A setting that allows you to manage rendezvous points for maker discovery
+ */
+function RendezvousPointsSetting() {
+  const [tableVisible, setTableVisible] = useState(false);
+  const rendezvousPoints = useSettings((s) => s.rendezvousPoints);
+  const dispatch = useAppDispatch();
+  const [newPoint, setNewPoint] = useState("");
+
+  const onAddNewPoint = () => {
+    dispatch(addRendezvousPoint(newPoint));
+    setNewPoint("");
+  };
+
+  const onRemovePoint = (point: string) => {
+    dispatch(removeRendezvousPoint(point));
+  };
+
+  return (
+    <TableRow>
+      <TableCell>
+        <SettingLabel
+          label="Rendezvous Points"
+          tooltip="These are the points where makers can be discovered. Add custom rendezvous points here to expand your maker discovery options."
+        />
+      </TableCell>
+      <TableCell>
+        <IconButton onClick={() => setTableVisible(true)}>
+          <Edit />
+        </IconButton>
+        {tableVisible && (
+          <Dialog
+            open={true}
+            onClose={() => setTableVisible(false)}
+            maxWidth="md"
+            fullWidth
+          >
+            <DialogTitle>Rendezvous Points</DialogTitle>
+            <DialogContent>
+              <Typography variant="subtitle2">
+                Add or remove rendezvous points where makers can be discovered.
+                These points help you find trading partners in a decentralized
+                way.
+              </Typography>
+              <TableContainer
+                component={Paper}
+                style={{ marginTop: "1rem" }}
+                elevation={0}
+              >
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell style={{ width: "85%" }}>
+                        Rendezvous Point
+                      </TableCell>
+                      <TableCell style={{ width: "15%" }} align="right">
+                        Actions
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {rendezvousPoints.map((point, index) => (
+                      <TableRow key={index}>
+                        <TableCell style={{ wordBreak: "break-all" }}>
+                          <Typography variant="overline">{point}</Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Tooltip title="Remove this rendezvous point">
+                            <IconButton onClick={() => onRemovePoint(point)}>
+                              <Delete />
+                            </IconButton>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow>
+                      <TableCell>
+                        <ValidatedTextField
+                          label="Add new rendezvous point"
+                          value={newPoint}
+                          onValidatedChange={setNewPoint}
+                          placeholder="/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE"
+                          fullWidth
+                          isValid={isValidMultiAddressWithPeerId}
+                          variant="outlined"
+                          noErrorWhenEmpty
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Add this rendezvous point">
+                          <IconButton
+                            onClick={onAddNewPoint}
+                            disabled={
+                              !isValidMultiAddressWithPeerId(newPoint) ||
+                              newPoint.length === 0
+                            }
+                          >
+                            <Add />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setTableVisible(false)} size="large">
+                Close
+              </Button>
+            </DialogActions>
+          </Dialog>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/**
+ * A setting that allows you to set a development donation tip amount
+ */
+function DonationTipSetting() {
+  const donateToDevelopment = useSettings((s) => s.donateToDevelopment);
+  const dispatch = useAppDispatch();
+
+  const handleTipSelect = (tipAmount: DonateToDevelopmentTip) => {
+    dispatch(setDonateToDevelopment(tipAmount));
+  };
+
+  const formatTipLabel = (tip: DonateToDevelopmentTip) => {
+    if (tip === false) return "0%";
+    return `${(tip * 100).toFixed(2)}%`;
+  };
+
+  const getTipButtonColor = (
+    tip: DonateToDevelopmentTip,
+    isSelected: boolean,
+  ) => {
+    // Only show colored if selected and > 0
+    if (isSelected && tip !== false) {
+      return "#198754"; // Green for any tip > 0
+    }
+    return "#6c757d"; // Gray for all unselected or no tip
+  };
+
+  const getTipButtonSelectedColor = (tip: DonateToDevelopmentTip) => {
+    if (tip === false) return "#5c636a"; // Darker gray
+    return "#146c43"; // Darker green for any tip > 0
+  };
+
+  return (
+    <TableRow>
+      <TableCell>
+        <SettingLabel
+          label="Tip to the developers"
+          tooltip="Support the development of UnstoppableSwap by donating a small percentage of your swaps. Donations go directly to paying for infrastructure costs and developers"
+        />
+      </TableCell>
+      <TableCell>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <ToggleButtonGroup
+            value={donateToDevelopment}
+            exclusive
+            onChange={(event, newValue) => {
+              if (newValue !== null) {
+                handleTipSelect(newValue);
+              }
+            }}
+            aria-label="Development tip amount"
+            size="small"
+            sx={{
+              width: "100%",
+              gap: 1,
+              "& .MuiToggleButton-root": {
+                flex: 1,
+                borderRadius: "8px",
+                fontWeight: "600",
+                textTransform: "none",
+                border: "2px solid",
+                "&:not(:first-of-type)": {
+                  marginLeft: "8px",
+                  borderLeft: "2px solid",
+                },
+              },
+            }}
+          >
+            {([false, 0.0005, 0.0075] as const).map((tipAmount) => (
+              <ToggleButton
+                key={String(tipAmount)}
+                value={tipAmount}
+                sx={{
+                  borderColor: `${getTipButtonColor(tipAmount, donateToDevelopment === tipAmount)} !important`,
+                  color:
+                    donateToDevelopment === tipAmount
+                      ? "white"
+                      : getTipButtonColor(
+                          tipAmount,
+                          donateToDevelopment === tipAmount,
+                        ),
+                  backgroundColor:
+                    donateToDevelopment === tipAmount
+                      ? getTipButtonColor(
+                          tipAmount,
+                          donateToDevelopment === tipAmount,
+                        )
+                      : "transparent",
+                  "&:hover": {
+                    backgroundColor: `${getTipButtonSelectedColor(tipAmount)} !important`,
+                    color: "white !important",
+                  },
+                  "&.Mui-selected": {
+                    backgroundColor: `${getTipButtonColor(tipAmount, true)} !important`,
+                    color: "white !important",
+                    "&:hover": {
+                      backgroundColor: `${getTipButtonSelectedColor(tipAmount)} !important`,
+                    },
+                  },
+                }}
+              >
+                {formatTipLabel(tipAmount)}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+          <Typography variant="subtitle2">
+            <ul style={{ margin: 0, padding: "0 1.5rem" }}>
+              <li>
+                Tips go <strong>directly</strong> towards paying for
+                infrastructure costs and developers
+              </li>
+              <li>
+                Only ever sent for <strong>successful</strong> swaps
+              </li>{" "}
+              (refunds are not counted)
+              <li>Monero is used for the tips, giving you full anonymity</li>
+            </ul>
+          </Typography>
+        </Box>
       </TableCell>
     </TableRow>
   );

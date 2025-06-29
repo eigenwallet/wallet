@@ -2,10 +2,12 @@ use super::tauri_bindings::TauriHandle;
 use crate::bitcoin::{wallet, CancelTimelock, ExpiredTimelocks, PunishTimelock, TxLock};
 use crate::cli::api::tauri_bindings::{TauriEmitter, TauriSwapProgressEvent};
 use crate::cli::api::Context;
-use crate::cli::{list_sellers as list_sellers_impl, EventLoop, Seller, SellerStatus};
+use crate::cli::list_sellers::{QuoteWithAddress, UnreachableSeller};
+use crate::cli::{list_sellers as list_sellers_impl, EventLoop, SellerStatus};
 use crate::common::{get_logs, redact};
 use crate::libp2p_ext::MultiAddrExt;
 use crate::monero::wallet_rpc::MoneroDaemon;
+use crate::monero::MoneroAddressPool;
 use crate::network::quote::{BidQuote, ZeroQuoteReceived};
 use crate::network::swarm;
 use crate::protocol::bob::{BobState, Swap};
@@ -58,8 +60,7 @@ pub struct BuyXmrArgs {
     pub seller: Multiaddr,
     #[typeshare(serialized_as = "Option<string>")]
     pub bitcoin_change_address: Option<bitcoin::Address<NetworkUnchecked>>,
-    #[typeshare(serialized_as = "string")]
-    pub monero_receive_address: monero::Address,
+    pub monero_receive_pool: MoneroAddressPool,
 }
 
 #[typeshare]
@@ -172,14 +173,16 @@ impl Request for WithdrawBtcArgs {
 #[typeshare]
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ListSellersArgs {
-    #[typeshare(serialized_as = "string")]
-    pub rendezvous_point: Multiaddr,
+    /// The rendezvous points to search for sellers
+    /// The address must contain a peer ID
+    #[typeshare(serialized_as = "Vec<string>")]
+    pub rendezvous_points: Vec<Multiaddr>,
 }
 
 #[typeshare]
 #[derive(Debug, Eq, PartialEq, Serialize)]
 pub struct ListSellersResponse {
-    sellers: Vec<Seller>,
+    sellers: Vec<SellerStatus>,
 }
 
 impl Request for ListSellersArgs {
@@ -228,6 +231,7 @@ pub struct GetSwapInfoResponse {
     pub cancel_timelock: CancelTimelock,
     pub punish_timelock: PunishTimelock,
     pub timelock: Option<ExpiredTimelocks>,
+    pub monero_receive_pool: MoneroAddressPool,
 }
 
 impl Request for GetSwapInfoArgs {
@@ -556,6 +560,8 @@ pub async fn get_swap_info(
 
     let timelock = swap_state.expired_timelocks(bitcoin_wallet.clone()).await?;
 
+    let monero_receive_pool = context.db.get_monero_address_pool(args.swap_id).await?;
+
     Ok(GetSwapInfoResponse {
         swap_id: args.swap_id,
         seller: AliceAddress {
@@ -575,6 +581,7 @@ pub async fn get_swap_info(
         cancel_timelock,
         punish_timelock,
         timelock,
+        monero_receive_pool,
     })
 }
 
@@ -587,8 +594,11 @@ pub async fn buy_xmr(
     let BuyXmrArgs {
         seller,
         bitcoin_change_address,
-        monero_receive_address,
+        monero_receive_pool,
     } = buy_xmr;
+
+    monero_receive_pool.assert_network(context.config.env_config.monero_network)?;
+    monero_receive_pool.assert_sum_to_one()?;
 
     let bitcoin_wallet = Arc::clone(
         context
@@ -615,7 +625,7 @@ pub async fn buy_xmr(
 
     let monero_wallet = Arc::clone(
         context
-            .monero_wallet
+            .monero_manager
             .as_ref()
             .context("Could not get Monero wallet")?,
     );
@@ -650,7 +660,7 @@ pub async fn buy_xmr(
 
     context
         .db
-        .insert_monero_address(swap_id, monero_receive_address)
+        .insert_monero_address_pool(swap_id, monero_receive_pool.clone())
         .await?;
 
     tracing::debug!(peer_id = %swarm.local_peer_id(), "Network layer initialized");
@@ -766,7 +776,7 @@ pub async fn buy_xmr(
                     monero_wallet,
                     env_config,
                     event_loop_handle,
-                    monero_receive_address,
+                    monero_receive_pool.clone(),
                     bitcoin_change_address,
                     tx_lock_amount,
                     tx_lock_fee
@@ -844,7 +854,7 @@ pub async fn resume_swap(
     let (event_loop, event_loop_handle) =
         EventLoop::new(swap_id, swarm, seller_peer_id, context.db.clone())?;
 
-    let monero_receive_address = context.db.get_monero_address(swap_id).await?;
+    let monero_receive_pool = context.db.get_monero_address_pool(swap_id).await?;
 
     let swap = Swap::from_db(
         Arc::clone(&context.db),
@@ -855,15 +865,14 @@ pub async fn resume_swap(
                 .as_ref()
                 .context("Could not get Bitcoin wallet")?,
         ),
-        Arc::clone(
-            context
-                .monero_wallet
-                .as_ref()
-                .context("Could not get Monero wallet")?,
-        ),
+        context
+            .monero_manager
+            .as_ref()
+            .context("Could not get Monero wallet manager")?
+            .clone(),
         context.config.env_config,
         event_loop_handle,
-        monero_receive_address,
+        monero_receive_pool,
     )
     .await?
     .with_event_emitter(context.tauri_handle.clone());
@@ -1079,10 +1088,11 @@ pub async fn list_sellers(
     list_sellers: ListSellersArgs,
     context: Arc<Context>,
 ) -> Result<ListSellersResponse> {
-    let ListSellersArgs { rendezvous_point } = list_sellers;
-    let rendezvous_node_peer_id = rendezvous_point
-        .extract_peer_id()
-        .context("Rendezvous node address must contain peer ID")?;
+    let ListSellersArgs { rendezvous_points } = list_sellers;
+    let rendezvous_nodes: Vec<_> = rendezvous_points
+        .iter()
+        .filter_map(|rendezvous_point| rendezvous_point.split_peer_id())
+        .collect();
 
     let identity = context
         .config
@@ -1092,30 +1102,46 @@ pub async fn list_sellers(
         .derive_libp2p_identity();
 
     let sellers = list_sellers_impl(
-        rendezvous_node_peer_id,
-        rendezvous_point,
+        rendezvous_nodes,
         context.config.namespace,
         context.tor_client.clone(),
         identity,
+        Some(context.db.clone()),
+        context.tauri_handle(),
     )
     .await?;
 
     for seller in &sellers {
-        match seller.status {
-            SellerStatus::Online(quote) => {
-                tracing::info!(
+        match seller {
+            SellerStatus::Online(QuoteWithAddress {
+                quote,
+                multiaddr,
+                peer_id,
+                version,
+            }) => {
+                tracing::debug!(
+                    status = "Online",
                     price = %quote.price.to_string(),
                     min_quantity = %quote.min_quantity.to_string(),
                     max_quantity = %quote.max_quantity.to_string(),
-                    status = "Online",
-                    address = %seller.multiaddr.to_string(),
+                    address = %multiaddr.clone().to_string(),
+                    peer_id = %peer_id,
+                    version = %version,
                     "Fetched peer status"
                 );
+
+                // Add the peer as known to the database
+                // This'll allow us to later request a quote again
+                // without having to re-discover the peer at the rendezvous point
+                context
+                    .db
+                    .insert_address(*peer_id, multiaddr.clone())
+                    .await?;
             }
-            SellerStatus::Unreachable => {
-                tracing::info!(
+            SellerStatus::Unreachable(UnreachableSeller { peer_id }) => {
+                tracing::debug!(
                     status = "Unreachable",
-                    address = %seller.multiaddr.to_string(),
+                    peer_id = %peer_id.to_string(),
                     "Fetched peer status"
                 );
             }
@@ -1176,8 +1202,25 @@ pub async fn monero_recovery(
 #[tracing::instrument(fields(method = "get_current_swap"), skip(context))]
 pub async fn get_current_swap(context: Arc<Context>) -> Result<serde_json::Value> {
     Ok(json!({
-        "swap_id": context.swap_lock.get_current_swap_id().await
+        "swap_id": context.swap_lock.get_current_swap_id().await,
     }))
+}
+
+pub async fn resolve_approval_request(
+    resolve_approval: ResolveApprovalArgs,
+    ctx: Arc<Context>,
+) -> Result<ResolveApprovalResponse> {
+    let request_id = Uuid::parse_str(&resolve_approval.request_id).context("Invalid request ID")?;
+
+    if let Some(handle) = ctx.tauri_handle.clone() {
+        handle
+            .resolve_approval(request_id, resolve_approval.accept)
+            .await?;
+    } else {
+        bail!("Cannot resolve approval without a Tauri handle");
+    }
+
+    Ok(ResolveApprovalResponse { success: true })
 }
 
 fn qr_code(value: &impl ToString) -> Result<String> {
@@ -1334,6 +1377,9 @@ struct UnknownMoneroNetwork(String);
 
 impl CheckMoneroNodeArgs {
     pub async fn request(self) -> Result<CheckMoneroNodeResponse> {
+        let url = self.url.clone();
+        let network_str = self.network.clone();
+
         let network = match self.network.to_lowercase().as_str() {
             // When the GUI says testnet, it means monero stagenet
             "mainnet" => Network::Mainnet,
@@ -1354,11 +1400,20 @@ impl CheckMoneroNodeArgs {
             return Ok(CheckMoneroNodeResponse { available: false });
         };
 
-        let Ok(available) = monero_daemon.is_available(&CLIENT).await else {
-            return Ok(CheckMoneroNodeResponse { available: false });
-        };
+        match monero_daemon.is_available(&CLIENT).await {
+            Ok(available) => Ok(CheckMoneroNodeResponse { available }),
+            Err(e) => {
+                tracing::error!(
+                    url = %url,
+                    network = %network_str,
+                    error = ?e,
+                    error_chain = %format!("{:#}", e),
+                    "Failed to check monero node availability"
+                );
 
-        Ok(CheckMoneroNodeResponse { available })
+                Ok(CheckMoneroNodeResponse { available: false })
+            }
+        }
     }
 }
 
@@ -1382,7 +1437,7 @@ impl CheckElectrumNodeArgs {
         };
 
         // Check if the node is available
-        let res = wallet::Client::new(url.as_str(), Duration::from_secs(60));
+        let res = wallet::Client::new(&[url.as_str().to_string()], Duration::from_secs(60)).await;
 
         Ok(CheckElectrumNodeResponse {
             available: res.is_ok(),
@@ -1391,14 +1446,14 @@ impl CheckElectrumNodeArgs {
 }
 
 #[typeshare]
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ResolveApprovalArgs {
     pub request_id: String,
     pub accept: bool,
 }
 
 #[typeshare]
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ResolveApprovalResponse {
     pub success: bool,
 }
@@ -1407,14 +1462,6 @@ impl Request for ResolveApprovalArgs {
     type Response = ResolveApprovalResponse;
 
     async fn request(self, ctx: Arc<Context>) -> Result<Self::Response> {
-        let request_id = Uuid::parse_str(&self.request_id).context("Invalid request ID")?;
-
-        if let Some(handle) = ctx.tauri_handle.clone() {
-            handle.resolve_approval(request_id, self.accept).await?;
-        } else {
-            bail!("Cannot resolve approval without a Tauri handle");
-        }
-
-        Ok(ResolveApprovalResponse { success: true })
+        resolve_approval_request(self, ctx).await
     }
 }

@@ -42,8 +42,7 @@ pub enum Response {
     Fullfilled {
         swap_id: Uuid,
         s_a: Scalar,
-        transfer_proof: TransferProof,
-        monero_wallet_restore_blockheight: BlockHeight,
+        lock_transfer_proof: TransferProof,
     },
     Rejected {
         swap_id: Uuid,
@@ -99,14 +98,12 @@ impl From<(PeerId, Message)> for cli::OutEvent {
                 Response::Fullfilled {
                     swap_id,
                     s_a,
-                    transfer_proof,
-                    monero_wallet_restore_blockheight,
+                    lock_transfer_proof,
                 } => Self::CooperativeXmrRedeemFulfilled {
                     id: request_id,
                     swap_id,
                     s_a,
-                    transfer_proof,
-                    monero_wallet_restore_blockheight,
+                    lock_transfer_proof,
                 },
                 Response::Rejected {
                     swap_id,

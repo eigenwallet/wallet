@@ -1,5 +1,5 @@
-import { MakerStatus } from "models/apiModel";
-import { Seller } from "models/tauriModel";
+import { MakerStatus, ExtendedMakerStatus } from "models/apiModel";
+import { SellerStatus } from "models/tauriModel";
 import { isTestnet } from "store/config";
 import { splitPeerIdFromMultiAddress } from "./parseUtils";
 
@@ -17,8 +17,8 @@ export function piconerosToXmr(piconeros: number): number {
 
 export function isXmrAddressValid(address: string, stagenet: boolean) {
   const re = stagenet
-    ? "^(5[0-9A-Za-z]{94}|5[0-9A-Za-z]{105})$"
-    : "^(?:[48][0-9A-Za-z]{94}|4[0-9A-Za-z]{105})$";
+    ? "^(?:[57][0-9A-Za-z]{94}|[57][0-9A-Za-z]{105})$"
+    : "^(?:[48][0-9A-Za-z]{94}|[48][0-9A-Za-z]{105})$";
   return new RegExp(`(?:^${re}$)`).test(address);
 }
 
@@ -48,21 +48,20 @@ export function secondsToDays(seconds: number): number {
 // which we use internally to represent the status of a provider. This provides consistency between
 // the models returned by the public registry and the models used internally.
 export function rendezvousSellerToMakerStatus(
-  seller: Seller,
-): MakerStatus | null {
-  if (seller.status.type === "Unreachable") {
+  seller: SellerStatus,
+): ExtendedMakerStatus | null {
+  if (seller.type === "Unreachable") {
     return null;
   }
 
-  const [multiAddr, peerId] = splitPeerIdFromMultiAddress(seller.multiaddr);
-
   return {
-    maxSwapAmount: seller.status.content.max_quantity,
-    minSwapAmount: seller.status.content.min_quantity,
-    price: seller.status.content.price,
-    peerId,
-    multiAddr,
+    maxSwapAmount: seller.content.quote.max_quantity,
+    minSwapAmount: seller.content.quote.min_quantity,
+    price: seller.content.quote.price,
+    peerId: seller.content.peer_id,
+    multiAddr: seller.content.multiaddr,
     testnet: isTestnet(),
+    version: seller.content.version,
   };
 }
 

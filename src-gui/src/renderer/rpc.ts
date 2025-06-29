@@ -27,6 +27,7 @@ import {
   ResolveApprovalResponse,
   RedactArgs,
   RedactResponse,
+  LabeledMoneroAddress,
 } from "models/tauriModel";
 import { rpcSetBalance, rpcSetSwapInfo } from "store/features/rpcSlice";
 import { store } from "./store/storeRenderer";
@@ -36,20 +37,52 @@ import { MoneroRecoveryResponse } from "models/rpcModel";
 import { ListSellersResponse } from "../models/tauriModel";
 import logger from "utils/logger";
 import { getNetwork, isTestnet } from "store/config";
-import { Blockchain, Network } from "store/features/settingsSlice";
+import {
+  Blockchain,
+  DonateToDevelopmentTip,
+  Network,
+} from "store/features/settingsSlice";
 import { setStatus } from "store/features/nodesSlice";
 import { discoveredMakersByRendezvous } from "store/features/makersSlice";
 import { CliLog } from "models/cliModel";
 import { logsToRawString, parseLogsFromString } from "utils/parseUtils";
 
+/// These are the official donation address for the UnstoppableSwap/core project
+const DONATION_ADDRESS_MAINNET =
+  "49LEH26DJGuCyr8xzRAzWPUryzp7bpccC7Hie1DiwyfJEyUKvMFAethRLybDYrFdU1eHaMkKQpUPebY4WT3cSjEvThmpjPa";
+const DONATION_ADDRESS_STAGENET =
+  "56E274CJxTyVuuFG651dLURKyneoJ5LsSA5jMq4By9z9GBNYQKG8y5ejTYkcvZxarZW6if14ve8xXav2byK4aRnvNdKyVxp";
+
+/// Signature by binarybaron for the donation address
+/// https://github.com/binarybaron/
+///
+/// Get the key from:
+/// - https://github.com/UnstoppableSwap/core/blob/master/utils/gpg_keys/binarybaron.asc
+/// - https://unstoppableswap.net/binarybaron.asc
+const DONATION_ADDRESS_MAINNET_SIG = `
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+56E274CJxTyVuuFG651dLURKyneoJ5LsSA5jMq4By9z9GBNYQKG8y5ejTYkcvZxarZW6if14ve8xXav2byK4aRnvNdKyVxp is our donation address (signed by binarybaron)
+-----BEGIN PGP SIGNATURE-----
+
+iHUEARYKAB0WIQQ1qETX9LVbxE4YD/GZt10+FHaibgUCaFvzWQAKCRCZt10+FHai
+bvC6APoCzCto6RsNYwUr7j1ou3xeVNiwMkUQbE0erKt70pT+tQD/fAvPxHtPyb56
+XGFQ0pxL1PKzMd9npBGmGJhC4aTljQ4=
+=OUK4
+-----END PGP SIGNATURE-----
+`;
+
 export const PRESET_RENDEZVOUS_POINTS = [
   "/dns4/discover.unstoppableswap.net/tcp/8888/p2p/12D3KooWA6cnqJpVnreBVnoro8midDL9Lpzmg8oJPoAGi7YYaamE",
+  "/dns4/discover2.unstoppableswap.net/tcp/8888/p2p/12D3KooWGRvf7qVQDrNR5nfYD6rKrbgeTi9x8RrbdxbmsPvxL4mw",
+  "/dns4/darkness.su/tcp/8888/p2p/12D3KooWFQAgVVS9t9UgL6v1sLprJVM7am5hFK7vy9iBCCoCBYmU",
 ];
 
 export async function fetchSellersAtPresetRendezvousPoints() {
   await Promise.all(
     PRESET_RENDEZVOUS_POINTS.map(async (rendezvousPoint) => {
-      const response = await listSellersAtRendezvousPoint(rendezvousPoint);
+      const response = await listSellersAtRendezvousPoint([rendezvousPoint]);
       store.dispatch(discoveredMakersByRendezvous(response.sellers));
 
       logger.info(
@@ -142,20 +175,39 @@ export async function buyXmr(
   seller: Maker,
   bitcoin_change_address: string | null,
   monero_receive_address: string,
+  donation_percentage: DonateToDevelopmentTip,
 ) {
-  await invoke<BuyXmrArgs, BuyXmrResponse>(
-    "buy_xmr",
-    bitcoin_change_address == null
-      ? {
-          seller: providerToConcatenatedMultiAddr(seller),
-          monero_receive_address,
-        }
-      : {
-          seller: providerToConcatenatedMultiAddr(seller),
-          monero_receive_address,
-          bitcoin_change_address,
-        },
-  );
+  const address_pool: LabeledMoneroAddress[] = [];
+  if (donation_percentage !== false) {
+    const donation_address = isTestnet()
+      ? DONATION_ADDRESS_STAGENET
+      : DONATION_ADDRESS_MAINNET;
+
+    address_pool.push(
+      {
+        address: monero_receive_address,
+        percentage: 1 - donation_percentage,
+        label: "Your wallet",
+      },
+      {
+        address: donation_address,
+        percentage: donation_percentage,
+        label: "Tip to the developers",
+      },
+    );
+  } else {
+    address_pool.push({
+      address: monero_receive_address,
+      percentage: 1,
+      label: "Your wallet",
+    });
+  }
+
+  await invoke<BuyXmrArgs, BuyXmrResponse>("buy_xmr", {
+    seller: providerToConcatenatedMultiAddr(seller),
+    monero_receive_pool: address_pool,
+    bitcoin_change_address,
+  });
 }
 
 export async function resumeSwap(swapId: string) {
@@ -206,10 +258,10 @@ export async function redactLogs(
 }
 
 export async function listSellersAtRendezvousPoint(
-  rendezvousPointAddress: string,
+  rendezvousPointAddresses: string[],
 ): Promise<ListSellersResponse> {
   return await invoke<ListSellersArgs, ListSellersResponse>("list_sellers", {
-    rendezvous_point: rendezvousPointAddress,
+    rendezvous_points: rendezvousPointAddresses,
   });
 }
 
@@ -218,40 +270,35 @@ export async function initializeContext() {
   const testnet = isTestnet();
   const useTor = store.getState().settings.enableTor;
 
-  // This looks convoluted but it does the following:
-  // - Fetch the status of all nodes for each blockchain in parallel
-  // - Return the first available node for each blockchain
-  // - If no node is available for a blockchain, return null for that blockchain
-  const [bitcoinNode, moneroNode] = await Promise.all(
-    [Blockchain.Bitcoin, Blockchain.Monero].map(async (blockchain) => {
-      const nodes = store.getState().settings.nodes[network][blockchain];
+  // Get all Bitcoin nodes without checking availability
+  // The backend ElectrumBalancer will handle load balancing and failover
+  const bitcoinNodes =
+    store.getState().settings.nodes[network][Blockchain.Bitcoin];
 
-      if (nodes.length === 0) {
-        return null;
-      }
+  // For Monero nodes, determine whether to use pool or custom node
+  const useMoneroRpcPool = store.getState().settings.useMoneroRpcPool;
 
-      try {
-        return await Promise.any(
-          nodes.map(async (node) => {
-            const isAvailable = await getNodeStatus(node, blockchain, network);
+  const moneroNodeUrl =
+    store.getState().settings.nodes[network][Blockchain.Monero][0] ?? null;
 
-            if (isAvailable) {
-              return node;
-            }
+  // Check the state of the Monero node
 
-            throw new Error(`No available ${blockchain} node found`);
-          }),
-        );
-      } catch {
-        return null;
-      }
-    }),
-  );
+  const moneroNodeConfig =
+    useMoneroRpcPool ||
+    moneroNodeUrl == null ||
+    !(await getMoneroNodeStatus(moneroNodeUrl, network))
+      ? { type: "Pool" as const }
+      : {
+          type: "SingleNode" as const,
+          content: {
+            url: moneroNodeUrl,
+          },
+        };
 
-  // Initialize Tauri settings with null values
+  // Initialize Tauri settings
   const tauriSettings: TauriSettings = {
-    electrum_rpc_url: bitcoinNode,
-    monero_node_url: moneroNode,
+    electrum_rpc_urls: bitcoinNodes,
+    monero_node_config: moneroNodeConfig,
     use_tor: useTor,
   };
 
@@ -324,14 +371,15 @@ export async function updateAllNodeStatuses() {
   const network = getNetwork();
   const settings = store.getState().settings;
 
-  // For all nodes, check if they are available and store the new status (in parallel)
-  await Promise.all(
-    Object.values(Blockchain).flatMap((blockchain) =>
-      settings.nodes[network][blockchain].map((node) =>
-        updateNodeStatus(node, blockchain, network),
+  // Only check Monero nodes if we're using custom nodes (not RPC pool)
+  // Skip Bitcoin nodes since we pass all electrum servers to the backend without checking them (ElectrumBalancer handles failover)
+  if (!settings.useMoneroRpcPool) {
+    await Promise.all(
+      settings.nodes[network][Blockchain.Monero].map((node) =>
+        updateNodeStatus(node, Blockchain.Monero, network),
       ),
-    ),
-  );
+    );
+  }
 }
 
 export async function getMoneroAddresses(): Promise<GetMoneroAddressesResponse> {
@@ -360,4 +408,10 @@ export async function saveLogFiles(
   content: Record<string, string>,
 ): Promise<void> {
   await invokeUnsafe<void>("save_txt_files", { zipFileName, content });
+}
+
+export async function saveFilesInDialog(files: Record<string, string>) {
+  await invokeUnsafe<void>("save_txt_files", {
+    files,
+  });
 }

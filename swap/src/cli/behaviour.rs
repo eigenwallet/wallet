@@ -37,8 +37,7 @@ pub enum OutEvent {
         id: OutboundRequestId,
         s_a: Scalar,
         swap_id: uuid::Uuid,
-        transfer_proof: TransferProof,
-        monero_wallet_restore_blockheight: BlockHeight,
+        lock_transfer_proof: TransferProof,
     },
     CooperativeXmrRedeemRejected {
         id: OutboundRequestId,
