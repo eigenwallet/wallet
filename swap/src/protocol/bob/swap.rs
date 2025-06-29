@@ -772,31 +772,18 @@ async fn next_state(
 
             match response {
                 Ok(Fullfilled {
-                    swap_id: alice_swap_id,
                     s_a,
-                    lock_transfer_proof: transfer_proof,
+                    lock_transfer_proof,
+                    ..
                 }) => {
                     tracing::info!(
                         "Alice has accepted our request to cooperatively redeem the XMR"
                     );
 
-                    // Check if the swap_id matches
-                    if swap_id != alice_swap_id {
-                        bail!("Alice accepted our request to cooperatively redeem the XMR, but the swap_id doesn't match");
-                    }
-
-                    // Check validity of the transfer proof
-                    // Note: We trust the transfer proof from Alice during cooperative redeem
-
-                    // Create State5 from State6 to access necessary fields
-                    let state5 = State5::attempt_cooperative_redeem(
-                        s_a,
-                        transfer_proof,
-                        state.monero_wallet_restore_blockheight,
-                        &state,
+                    let state5 = state.attempt_cooperative_redeem(
+                        monero::PrivateKey::from_scalar(s_a),
+                        lock_transfer_proof,
                     );
-
-                    // TODO: Check if the provided key is valid before wasting time on redeeming
 
                     let watch_request = state5.lock_xmr_watch_request_for_sweep();
                     let event_emitter_clone = event_emitter.clone();

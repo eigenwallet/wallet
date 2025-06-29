@@ -47,16 +47,12 @@ pub async fn punish(
 
     tracing::info!(%swap_id, "Trying to manually punish swap");
 
-    // Attempt to publish the punish Bitcoin transaction
     let txid = state3.punish_btc(&bitcoin_wallet).await?;
 
-    // Construct new state
     let state = AliceState::BtcPunished {
         state3: state3.clone(),
         transfer_proof,
     };
-
-    // Insert new state into database
     db.insert_latest_state(swap_id, state.clone().into())
         .await?;
 
