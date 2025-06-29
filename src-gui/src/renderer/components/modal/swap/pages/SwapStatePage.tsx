@@ -66,7 +66,10 @@ export default function SwapStatePage({ state }: { state: SwapState | null }) {
     case "RedeemingMonero":
       return <RedeemingMoneroPage />;
     case "WaitingForXmrConfirmationsBeforeRedeem":
-      return <WaitingForXmrConfirmationsBeforeRedeemPage {...state.curr.content} />;
+      if (state.curr.type === "WaitingForXmrConfirmationsBeforeRedeem") {
+        return <WaitingForXmrConfirmationsBeforeRedeemPage {...state.curr.content} />;
+      }
+      break;
     case "XmrRedeemInMempool":
       if (state.curr.type === "XmrRedeemInMempool") {
         return <XmrRedeemInMempoolPage {...state.curr.content} />;

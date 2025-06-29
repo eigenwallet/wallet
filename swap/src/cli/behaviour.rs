@@ -14,7 +14,6 @@ use libp2p::request_response::{
 };
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{identify, identity, ping, PeerId};
-use monero_rpc::wallet::BlockHeight;
 use std::sync::Arc;
 use std::time::Duration;
 

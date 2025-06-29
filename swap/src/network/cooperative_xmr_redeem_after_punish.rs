@@ -2,7 +2,6 @@ use crate::monero::{Scalar, TransferProof};
 use crate::{asb, cli};
 use libp2p::request_response::ProtocolSupport;
 use libp2p::{request_response, PeerId, StreamProtocol};
-use monero_rpc::wallet::BlockHeight;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use uuid::Uuid;
