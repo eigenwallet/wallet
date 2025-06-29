@@ -449,7 +449,7 @@ impl State3 {
     pub fn lock_xmr_watch_request(
         &self,
         transfer_proof: TransferProof,
-        conf_target: u64,
+        confirmation_target: u64,
     ) -> WatchRequest {
         let S_b_monero =
             monero::PublicKey::from_private_key(&monero::PrivateKey::from_scalar(self.s_b));
@@ -459,7 +459,7 @@ impl State3 {
             public_spend_key: S,
             public_view_key: self.v.public(),
             transfer_proof,
-            confirmation_target: conf_target,
+            confirmation_target,
             expected_amount: self.xmr.into(),
         }
     }

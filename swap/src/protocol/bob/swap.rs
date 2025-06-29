@@ -382,22 +382,18 @@ async fn next_state(
             );
 
             // Clone these so that we can move them into the listener closure
-            let transfer_proof_clone = lock_transfer_proof.clone();
-            let transfer_proof_for_state = lock_transfer_proof.clone();
+            let lock_transfer_proof_clone = lock_transfer_proof.clone();
+            let lock_transfer_proof_clone_for_state = lock_transfer_proof.clone();
             let watch_request = state.lock_xmr_watch_request(lock_transfer_proof, 2);
 
             let watch_future = monero_wallet.wait_until_confirmed(
                 watch_request,
                 Some(move |(confirmations, target_confirmations)| {
-                    // Clone them again so that we can move them again
-                    let tranfer = transfer_proof_clone.clone();
-                    let tauri = event_emitter.clone();
-
                     // Emit an event to notify about the new confirmation
-                    tauri.emit_swap_progress_event(
+                    event_emitter.emit_swap_progress_event(
                         swap_id,
                         TauriSwapProgressEvent::XmrLockTxInMempool {
-                            xmr_lock_txid: tranfer.tx_hash(),
+                            xmr_lock_txid: lock_transfer_proof_clone.tx_hash(),
                             xmr_lock_tx_confirmations: Some(confirmations),
                             xmr_lock_tx_target_confirmations: target_confirmations,
                         },
@@ -405,12 +401,13 @@ async fn next_state(
                 }),
             );
 
+
             select! {
                 // Wait for the Monero lock transaction to be confirmed with only 2 confirmations (early reveal)
                 received_xmr = watch_future => {
                     match received_xmr {
                         Ok(()) =>
-                            BobState::XmrLocked(state.xmr_locked(monero_wallet_restore_blockheight, transfer_proof_for_state)),
+                            BobState::XmrLocked(state.xmr_locked(monero_wallet_restore_blockheight, lock_transfer_proof_clone_for_state)),
                         Err(err) if err.to_string().contains("amount mismatch") => {
                             // Alice locked insufficient Monero
                             tracing::warn!(%err, "Insufficient Monero have been locked!");
@@ -553,19 +550,14 @@ async fn next_state(
                 watch_request,
                 Some(
                     move |(xmr_lock_tx_confirmations, xmr_lock_tx_target_confirmations)| {
-                        let event_emitter = event_emitter_clone.clone();
-                        let tx_hash = transfer_proof_hash.clone();
-
-                        if let Some(emitter) = event_emitter {
-                            emitter.emit_swap_progress_event(
-                                swap_id,
-                                TauriSwapProgressEvent::WaitingForXmrConfirmationsBeforeRedeem {
-                                    xmr_lock_txid: tx_hash,
-                                    xmr_lock_tx_confirmations,
-                                    xmr_lock_tx_target_confirmations,
-                                },
-                            );
-                        }
+                        event_emitter_clone.emit_swap_progress_event(
+                            swap_id,
+                            TauriSwapProgressEvent::WaitingForXmrConfirmationsBeforeRedeem {
+                                xmr_lock_txid: transfer_proof_hash.clone(),
+                                xmr_lock_tx_confirmations,
+                                xmr_lock_tx_target_confirmations,
+                            },
+                        );
                     },
                 ),
             );
