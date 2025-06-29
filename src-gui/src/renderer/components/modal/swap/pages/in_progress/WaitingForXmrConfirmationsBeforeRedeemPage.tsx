@@ -10,7 +10,8 @@ export default function WaitingForXmrConfirmationsBeforeRedeemPage({
   return (
     <Box>
       <DialogContentText>
-        We are waiting for the Monero lock transaction to receive enough confirmations before we can sweep them to your address.
+        We are waiting for the Monero lock transaction to receive enough
+        confirmations before we can sweep them to your address.
       </DialogContentText>
 
       <MoneroTransactionInfoBox
@@ -19,12 +20,13 @@ export default function WaitingForXmrConfirmationsBeforeRedeemPage({
         additionalContent={
           <>
             {`Confirmations: ${xmr_lock_tx_confirmations}/${xmr_lock_tx_target_confirmations}`}
-            <br/>
-            Once we reach {xmr_lock_tx_target_confirmations} confirmations, we will automatically redeem your Monero.
+            <br />
+            Once we reach {xmr_lock_tx_target_confirmations} confirmations, we
+            will automatically redeem your Monero.
           </>
         }
         loading
       />
     </Box>
   );
-} 
+}

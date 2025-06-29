@@ -388,7 +388,7 @@ async fn next_state(
 
             let watch_future = monero_wallet.wait_until_confirmed(
                 watch_request,
-                Some(move |confirmations| {
+                Some(move |(confirmations, target_confirmations)| {
                     // Clone them again so that we can move them again
                     let tranfer = transfer_proof_clone.clone();
                     let tauri = event_emitter.clone();
@@ -399,7 +399,7 @@ async fn next_state(
                         TauriSwapProgressEvent::XmrLockTxInMempool {
                             xmr_lock_txid: tranfer.tx_hash(),
                             xmr_lock_tx_confirmations: Some(confirmations),
-                            xmr_lock_tx_target_confirmations: 2,
+                            xmr_lock_tx_target_confirmations: target_confirmations,
                         },
                     );
                 }),
@@ -551,22 +551,23 @@ async fn next_state(
 
             let watch_future = monero_wallet.wait_until_confirmed(
                 watch_request,
-                Some(move |xmr_lock_tx_confirmations| {
-                    let event_emitter = event_emitter_clone.clone();
-                    let tx_hash = transfer_proof_hash.clone();
+                Some(
+                    move |(xmr_lock_tx_confirmations, xmr_lock_tx_target_confirmations)| {
+                        let event_emitter = event_emitter_clone.clone();
+                        let tx_hash = transfer_proof_hash.clone();
 
-                    if let Some(emitter) = event_emitter {
-                        emitter.emit_swap_progress_event(
-                            swap_id,
-                            TauriSwapProgressEvent::WaitingForXmrConfirmationsBeforeRedeem {
-                                xmr_lock_txid: tx_hash,
-                                xmr_lock_tx_confirmations,
-                                // We need 10 full confirmations to sweep
-                                xmr_lock_tx_target_confirmations: 10,
-                            },
-                        );
-                    }
-                }),
+                        if let Some(emitter) = event_emitter {
+                            emitter.emit_swap_progress_event(
+                                swap_id,
+                                TauriSwapProgressEvent::WaitingForXmrConfirmationsBeforeRedeem {
+                                    xmr_lock_txid: tx_hash,
+                                    xmr_lock_tx_confirmations,
+                                    xmr_lock_tx_target_confirmations,
+                                },
+                            );
+                        }
+                    },
+                ),
             );
 
             // Wait for the 10 confirmations to complete
@@ -802,29 +803,35 @@ async fn next_state(
                     let state5_clone = state5.clone();
 
                     // Wait for XMR confirmations before redeeming
-                    monero_wallet.wait_until_confirmed(
-                        watch_request,
-                        Some(move |confirmations| {
-                            let event_emitter = event_emitter_clone.clone();
-                            let tx_hash = state5_clone.lock_transfer_proof.tx_hash();
+                    monero_wallet
+                        .wait_until_confirmed(
+                            watch_request,
+                            Some(
+                                move |(
+                                    xmr_lock_tx_confirmations,
+                                    xmr_lock_tx_target_confirmations,
+                                )| {
+                                    let event_emitter = event_emitter_clone.clone();
+                                    let tx_hash = state5_clone.lock_transfer_proof.tx_hash();
 
-                            event_emitter.emit_swap_progress_event(
+                                    event_emitter.emit_swap_progress_event(
                                 swap_id,
                                 TauriSwapProgressEvent::WaitingForXmrConfirmationsBeforeRedeem {
                                     xmr_lock_txid: tx_hash,
-                                    xmr_lock_tx_confirmations: confirmations,
-                                    xmr_lock_tx_target_confirmations: 10, // Full confirmations for redeem
+                                    xmr_lock_tx_confirmations,
+                                    xmr_lock_tx_target_confirmations,
                                 },
                             );
-                        }),
-                    )
-                    .await
-                    .map_err(|e| {
-                        anyhow::anyhow!(
+                                },
+                            ),
+                        )
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!(
                             "Failed to wait for XMR confirmations during cooperative redeem: {}",
                             e
                         )
-                    })?;
+                        })?;
 
                     match retry(
                         "Redeeming Monero",
