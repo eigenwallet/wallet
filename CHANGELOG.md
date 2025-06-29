@@ -7,9 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- We add a safety margin of 25% to the Bitcoin fee estimation. This ensures pre-signed transactions will get confirmed in time.
+## [2.3.1] - 2025-06-25
+
+- GUI: Users can donate a small percentage of their swap to the projects donation address. Donations will be used to fund development. This is completely optional and **disabled** by default. Monero is used exclusively for donations, ensuring full anonymity for users. Donations are only ever send for successful swaps (not refunded ones). We clearly and transparently state where how much Monero is going before the user approves a swap.
+
+## [2.3.0-beta.2] - 2025-06-24
+
+- ASB + GUI + CLI: We now cache fee estimates for the Bitcoin wallet for up to 2 minutes. This improves the speed of fee estimation and reduces the number of requests to the Electrum servers.
+
+## [2.3.0-beta.1] - 2025-06-19
+
+- ASB + CLI + GUI: Introduce a load-balancing proxy for Monero RPC nodes that automatically discovers healthy nodes and routes requests to improve connection reliability.
+- ASB: Added `monero_node_pool` boolean option to ASB config. When enabled, the ASB uses the internal Monero RPC pool instead of connecting directly to a single daemon URL, providing improved reliability and automatic failover across multiple Monero nodes.
+
+## [2.2.0-beta.2] - 2025-06-17
+
+- We now call Monero function directly (via FFI bindings) instead of using `monero-wallet-rpc`.
+- ASB: Since we don't communicate with `monero-wallet-rpc` anymore, the Monero wallet's will no longer be accessible by connecting to it. If you are using the asb-docker-compose setup, run this command to migrate the wallet files from the volume of the monero-wallet-rpc container to the volume of the asb container:
+  ```bash
+  # On testnet
+  cp /var/lib/docker/volumes/testnet_stagenet_monero-wallet-rpc-data/_data/* /var/lib/docker/volumes/testnet_testnet_asb-data/_data/monero/wallets
+  # On mainnet
+  cp /var/lib/docker/volumes/mainnet_mainnet_monero-wallet-rpc-data/_data/* /var/lib/docker/volumes/mainnet_mainnet_asb-data/_data/monero/wallets
+  ```
+- ASB: The `wallet_url` option has been removed and replaced with the optional `daemon_url`, that specifies which Monero node the asb will connect to. If not specified, the asb will connect to a known public Monero node at random.
+- ASB: Add a `export-monero-wallet` command which gives the Monero wallet's seed and restore height. Export this seed into a wallet software of your own choosing to manage your Monero funds.
+  The seed is a 25 word mnemonic. Example:
+  ```bash
+  $ asb export-monero-wallet > wallet.txt
+  $ cat wallet.txt
+  Seed          : novelty deodorant aloof serving fuel vipers awful segments siblings bite exquisite quick snout rising hobby trash amply recipe cinema ritual problems pram getting playful novelty
+  Restore height: 3403755
+  $
+  ```
+
+- Logs are now written to `stderr` (instead of `stdout`). Makers relying on piping the logs need to make sure to include the `stderr` output:
+
+  | Before                     | After                            |
+  | -------------------------- | -------------------------------- |
+  | `asb logs \| my-script.sh` | `asb logs  2>&1 \| my-script.sh` |
+  | `asb logs > output.txt`    | `asb logs > output.txt 2>&1`     |
+- GUI: Improved peer discovery: We can now connect to multiple rendezvous points at once. We also cache peers we have previously connected to locally and will attempt to connect to them again in the future, even if they aren't registered with a rendezvous point anymore.
+- ASB: We now retry for 6 hours to broadcast the early refund transaction. After that, we give up and Bob will have to wait for the timelock to expire then refund himself. If we detect that Bob has cancelled the swap, we will abort the swap on our side and let Bob refund himself.
+
+## [2.0.3] - 2025-06-12
+
+## [2.0.2] - 2025-06-12
+
+- GUI: Fix issue where auto updater would not display the update
+- ASB + GUI + CLI: Increase request_timeout to 7s, min_retries to 10 for Electrum load balancer
+
+## [2.0.0] - 2025-06-12
+
+- GUI: Build Flatpak bundle in release workflow
+- docs: add instructions for verifying Tauri signature files
+- docs: document new `electrum_rpc_urls` and `use_mempool_space_fee_estimation` options
+- docs: Instructions for verifying GUI (Tauri) signature files
+
+## [2.0.0-beta.2] - 2025-06-11
+
+## [2.0.0-beta.1] - 2025-06-11
+
+- BREAKING PROTOCOL CHANGE: Takers/GUIs running `>= 2.0.0` will not be able to initiate new swaps with makers/asbs running `< 2.0.0`. Please upgrade as soon as possible. Already started swaps from older versions are not be affected.
+  - Taker and Maker now collaboratively sign a `tx_refund_early` Bitcoin transaction in the negotiation phase which allows the maker to refund the Bitcoin for the taker without having to wait for the 12h cancel timelock to expire.
+  - `tx_refund_early` will only be published if the maker has not locked their Monero yet. This allows swaps to be refunded quickly if the maker doesn't have enough funds available or their daemon is not fully synced. The taker can then use the refunded Bitcoin to start a new swap.
 - ASB: The maker will take Monero funds needed for ongoing swaps into consideration when making a quote. A warning will be displayed if the Monero funds do not cover all ongoing swaps.
 - ASB: Return a zero quote when quoting fails instead of letting the request time out
+- GUI + CLI + ASB: We now do load balancing over multiple Electrum servers. This improves the reliability of all our interactions with the Bitcoin network. When transactions are published they are broadcast to all servers in parallel.
+- ASB: The `electrum_rpc_url` option has been removed. A new `electrum_rpc_urls` option has been added. Use it to specify a list of Electrum servers to use. If you want you can continue using a single server by providing a single URL. For most makers we recommend:
+  - Running your own [electrs](https://github.com/romanz/electrs/) server
+  - Optionally providing 2-5 fallback servers. The order of the servers does matter. Electrum servers at the front of the list have priority and will be tried first. You should place your own server at the front of the list.
+  - A list of public Electrum servers can be found [here](https://1209k.com/bitcoin-eye/ele.php?chain=btc)
 
 ## [1.1.7] - 2025-06-04
 
@@ -501,7 +569,12 @@ It is possible to migrate critical data from the old db to the sqlite but there 
 - Fixed an issue where Alice would not verify if Bob's Bitcoin lock transaction is semantically correct, i.e. pays the agreed upon amount to an output owned by both of them.
   Fixing this required a **breaking change** on the network layer and hence old versions are not compatible with this version.
 
-[unreleased]: https://github.com/UnstoppableSwap/core/compare/1.1.7...HEAD
+[unreleased]: https://github.com/UnstoppableSwap/core/compare/2.0.3...HEAD
+[2.0.3]: https://github.com/UnstoppableSwap/core/compare/2.0.2...2.0.3
+[2.0.2]: https://github.com/UnstoppableSwap/core/compare/2.0.0...2.0.2
+[2.0.0]: https://github.com/UnstoppableSwap/core/compare/2.0.0-beta.2...2.0.0
+[2.0.0-beta.2]: https://github.com/UnstoppableSwap/core/compare/2.0.0-beta.1...2.0.0-beta.2
+[2.0.0-beta.1]: https://github.com/UnstoppableSwap/core/compare/1.1.7...2.0.0-beta.1
 [1.1.7]: https://github.com/UnstoppableSwap/core/compare/1.1.4...1.1.7
 [1.1.4]: https://github.com/UnstoppableSwap/core/compare/1.1.3...1.1.4
 [1.1.3]: https://github.com/UnstoppableSwap/core/compare/1.1.2...1.1.3

@@ -4,9 +4,7 @@ pub mod wallet_rpc;
 pub use ::monero::network::Network;
 pub use ::monero::{Address, PrivateKey, PublicKey};
 pub use curve25519_dalek::scalar::Scalar;
-use typeshare::typeshare;
-pub use wallet::Wallet;
-pub use wallet_rpc::{WalletRpc, WalletRpcProcess};
+pub use wallet::{Daemon, Wallet, Wallets, WatchRequest};
 
 use crate::bitcoin;
 use anyhow::{bail, Result};
@@ -18,6 +16,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::ops::{Add, Mul, Sub};
 use std::str::FromStr;
+use typeshare::typeshare;
 
 pub const PICONERO_OFFSET: u64 = 1_000_000_000_000;
 
@@ -28,6 +27,18 @@ pub enum network {
     Mainnet,
     Stagenet,
     Testnet,
+}
+
+/// A Monero block height.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct BlockHeight {
+    pub height: u64,
+}
+
+impl fmt::Display for BlockHeight {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.height)
+    }
 }
 
 pub fn private_key_from_secp256k1_scalar(scalar: bitcoin::Scalar) -> PrivateKey {
@@ -86,6 +97,8 @@ impl From<PublicViewKey> for PublicKey {
 #[derive(Clone, Copy, Debug)]
 pub struct PublicViewKey(PublicKey);
 
+/// Our own monero amount type, which we need because the monero crate
+/// doesn't implement Serialize and Deserialize.
 #[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd)]
 #[typeshare(serialized_as = "number")]
 pub struct Amount(u64);
@@ -207,6 +220,159 @@ impl Amount {
     }
 }
 
+/// A Monero address with an associated percentage and human-readable label.
+///
+/// This structure represents a destination address for Monero transactions
+/// along with the percentage of funds it should receive and a descriptive label.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[typeshare]
+pub struct LabeledMoneroAddress {
+    #[typeshare(serialized_as = "string")]
+    address: monero::Address,
+    #[typeshare(serialized_as = "number")]
+    percentage: Decimal,
+    label: String,
+}
+
+impl LabeledMoneroAddress {
+    /// Creates a new labeled Monero address.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The Monero address
+    /// * `percentage` - The percentage of funds (between 0.0 and 1.0)
+    /// * `label` - A human-readable label for this address
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the percentage is not between 0.0 and 1.0 inclusive.
+    pub fn new(
+        address: monero::Address,
+        percentage: Decimal,
+        label: String,
+    ) -> Result<Self, String> {
+        if percentage < Decimal::ZERO || percentage > Decimal::ONE {
+            return Err(format!(
+                "Percentage must be between 0 and 1 inclusive, got: {}",
+                percentage
+            ));
+        }
+
+        Ok(Self {
+            address,
+            percentage,
+            label,
+        })
+    }
+
+    /// Returns the Monero address.
+    pub fn address(&self) -> monero::Address {
+        self.address
+    }
+
+    /// Returns the percentage as a decimal.
+    pub fn percentage(&self) -> Decimal {
+        self.percentage
+    }
+
+    /// Returns the human-readable label.
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+}
+
+/// A collection of labeled Monero addresses that can receive funds in a transaction.
+///
+/// This structure manages multiple destination addresses with their associated
+/// percentages and labels. It's used for splitting Monero transactions across
+/// multiple recipients, such as for donations or multi-destination swaps.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[typeshare]
+pub struct MoneroAddressPool(Vec<LabeledMoneroAddress>);
+
+use rust_decimal::prelude::ToPrimitive;
+
+impl MoneroAddressPool {
+    /// Creates a new address pool from a vector of labeled addresses.
+    ///
+    /// # Arguments
+    ///
+    /// * `addresses` - Vector of labeled Monero addresses
+    pub fn new(addresses: Vec<LabeledMoneroAddress>) -> Self {
+        Self(addresses)
+    }
+
+    /// Returns a vector of all Monero addresses in the pool.
+    pub fn addresses(&self) -> Vec<monero::Address> {
+        self.0.iter().map(|address| address.address()).collect()
+    }
+
+    /// Returns a vector of all percentages as f64 values (0-1 range).
+    pub fn percentages(&self) -> Vec<f64> {
+        self.0
+            .iter()
+            .map(|address| {
+                address
+                    .percentage()
+                    .to_f64()
+                    .expect("Decimal should convert to f64")
+            })
+            .collect()
+    }
+
+    /// Returns an iterator over the labeled addresses.
+    pub fn iter(&self) -> impl Iterator<Item = &LabeledMoneroAddress> {
+        self.0.iter()
+    }
+
+    /// Validates that all addresses in the pool are on the expected network.
+    ///
+    /// # Arguments
+    ///
+    /// * `network` - The expected Monero network
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any address is on a different network than expected.
+    pub fn assert_network(&self, network: Network) -> Result<()> {
+        for address in self.0.iter() {
+            if address.address().network != network {
+                bail!("Address pool contains addresses on the wrong network (address {} is on {:?}, expected {:?})", address.address(), address.address().network, network);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Assert that the sum of the percentages in the address pool is 1 (allowing for a small tolerance)
+    pub fn assert_sum_to_one(&self) -> Result<()> {
+        let sum = self
+            .0
+            .iter()
+            .map(|address| address.percentage())
+            .sum::<Decimal>();
+
+        const TOLERANCE: f64 = 1e-6;
+
+        if (sum - Decimal::ONE).abs() > Decimal::from_f64(TOLERANCE).unwrap() {
+            bail!("Address pool percentages do not sum to 1");
+        }
+
+        Ok(())
+    }
+}
+
+impl From<::monero::Address> for MoneroAddressPool {
+    fn from(address: ::monero::Address) -> Self {
+        Self(vec![LabeledMoneroAddress::new(
+            address,
+            Decimal::from(1),
+            "user address".to_string(),
+        )
+        .expect("Percentage 1 is always valid")])
+    }
+}
+
 impl Add for Amount {
     type Output = Amount;
 
@@ -237,6 +403,18 @@ impl From<Amount> for u64 {
     }
 }
 
+impl From<::monero::Amount> for Amount {
+    fn from(from: ::monero::Amount) -> Self {
+        Amount::from_piconero(from.as_pico())
+    }
+}
+
+impl From<Amount> for ::monero::Amount {
+    fn from(from: Amount) -> Self {
+        ::monero::Amount::from_pico(from.as_piconero())
+    }
+}
+
 impl fmt::Display for Amount {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut decimal = Decimal::from(self.0);
@@ -258,33 +436,27 @@ impl TransferProof {
     pub fn new(tx_hash: TxHash, tx_key: PrivateKey) -> Self {
         Self { tx_hash, tx_key }
     }
-
     pub fn tx_hash(&self) -> TxHash {
         self.tx_hash.clone()
     }
-
     pub fn tx_key(&self) -> PrivateKey {
         self.tx_key
-    }
-
-    #[cfg(test)]
-    pub fn new_dummy() -> Self {
-        Self {
-            tx_hash: TxHash(
-                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-            ),
-            tx_key: PrivateKey::from_scalar(Scalar::from_bytes_mod_order([0; 32])),
-        }
     }
 }
 
 // TODO: add constructor/ change String to fixed length byte array
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TxHash(pub String);
 
 impl From<TxHash> for String {
     fn from(from: TxHash) -> Self {
         from.0
+    }
+}
+
+impl fmt::Debug for TxHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -740,5 +912,31 @@ mod tests {
         let large_amount = Amount::from_piconero(u64::MAX / 2);
         let min_balance = large_amount.min_conservative_balance_to_spend();
         assert!(min_balance > large_amount);
+    }
+
+    #[test]
+    fn labeled_monero_address_percentage_validation() {
+        use rust_decimal::Decimal;
+
+        let address = "53gEuGZUhP9JMEBZoGaFNzhwEgiG7hwQdMCqFxiyiTeFPmkbt1mAoNybEUvYBKHcnrSgxnVWgZsTvRBaHBNXPa8tHiCU51a".parse().unwrap();
+
+        // Valid percentages should work (0-1 range)
+        assert!(LabeledMoneroAddress::new(address, Decimal::ZERO, "test".to_string()).is_ok());
+        assert!(LabeledMoneroAddress::new(address, Decimal::ONE, "test".to_string()).is_ok());
+        assert!(LabeledMoneroAddress::new(address, Decimal::new(5, 1), "test".to_string()).is_ok()); // 0.5
+        assert!(
+            LabeledMoneroAddress::new(address, Decimal::new(9925, 4), "test".to_string()).is_ok()
+        ); // 0.9925
+
+        // Invalid percentages should fail
+        assert!(
+            LabeledMoneroAddress::new(address, Decimal::new(-1, 0), "test".to_string()).is_err()
+        );
+        assert!(
+            LabeledMoneroAddress::new(address, Decimal::new(11, 1), "test".to_string()).is_err()
+        ); // 1.1
+        assert!(
+            LabeledMoneroAddress::new(address, Decimal::new(2, 0), "test".to_string()).is_err()
+        ); // 2.0
     }
 }
