@@ -724,10 +724,6 @@ impl State5 {
         self.tx_lock.txid()
     }
 
-    pub fn transfer_proof(&self) -> &TransferProof {
-        &self.lock_transfer_proof
-    }
-
     pub fn lock_xmr_watch_request_for_sweep(&self) -> monero::wallet::WatchRequest {
         let S_b_monero =
             monero::PublicKey::from_private_key(&monero::PrivateKey::from_scalar(self.s_b));

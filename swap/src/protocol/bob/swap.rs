@@ -547,7 +547,7 @@ async fn next_state(
 
             // Clone these for the closure
             let event_emitter_clone = event_emitter.clone();
-            let transfer_proof_hash = state.transfer_proof().tx_hash();
+            let transfer_proof_hash = state.lock_transfer_proof.tx_hash();
 
             let watch_future = monero_wallet.wait_until_confirmed(
                 watch_request,
@@ -805,7 +805,7 @@ async fn next_state(
                         watch_request,
                         Some(move |confirmations| {
                             let event_emitter = event_emitter_clone.clone();
-                            let tx_hash = state5_clone.transfer_proof().tx_hash();
+                            let tx_hash = state5_clone.lock_transfer_proof.tx_hash();
 
                             event_emitter.emit_swap_progress_event(
                                 swap_id,
