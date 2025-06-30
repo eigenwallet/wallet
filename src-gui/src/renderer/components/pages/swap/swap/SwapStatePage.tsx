@@ -19,7 +19,7 @@ import ReceivedQuotePage from "./in_progress/ReceivedQuotePage";
 import XmrLockedPage from "./in_progress/XmrLockedPage";
 import XmrLockTxInMempoolPage from "./in_progress/XmrLockInMempoolPage";
 import { exhaustiveGuard } from "utils/typescriptUtils";
-import DepositAndChooseOfferPage from "renderer/components/pages/swap/swap/init/walletAndMakers/DepositAndChooseOfferPage";
+import DepositAndChooseOfferPage from "renderer/components/pages/swap/swap/init/deposit_and_choose_offer/DepositAndChooseOfferPage";
 import SwapSetupInflightPage from "./in_progress/SwapSetupInflightPage";
 import InitPage from "./init/InitPage";
 

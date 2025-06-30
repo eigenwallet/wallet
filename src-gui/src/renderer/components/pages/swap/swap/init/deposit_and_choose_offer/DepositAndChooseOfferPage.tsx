@@ -9,7 +9,7 @@ import { swapReset } from "store/features/swapSlice";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { SatsAmount } from "renderer/components/other/Units";
 import _ from "lodash";
-import CancelButton from "../../CancelButton";
+import SwapBasePage from "../../components/SwapBasePage";
 
 export default function DepositAndChooseOfferPage({
   deposit_address,
@@ -37,7 +37,7 @@ export default function DepositAndChooseOfferPage({
     .value();
 
   return (
-    <>
+    <SwapBasePage>
       <Box
         sx={{
           display: "flex",
@@ -165,20 +165,6 @@ export default function DepositAndChooseOfferPage({
           </Box>
         </Box>
       </Box>
-
-      {/* Navigation Buttons */}
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          mt: 4,
-          pt: 2,
-          borderTop: 1,
-          borderColor: "divider",
-        }}
-      >
-        <CancelButton />
-      </Box>
-    </>
+    </SwapBasePage>
   );
 }

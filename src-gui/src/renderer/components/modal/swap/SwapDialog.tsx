@@ -1,20 +1,16 @@
 import {
   Box,
-  Button,
   Dialog,
   DialogActions,
   DialogContent,
 } from "@mui/material";
 import { useState } from "react";
-import { swapReset } from "store/features/swapSlice";
-import { useAppDispatch, useAppSelector, useIsSwapRunning } from "store/hooks";
-import SwapSuspendAlert from "../SwapSuspendAlert";
+import { useAppSelector } from "store/hooks";
 import DebugPage from "./pages/DebugPage";
 import SwapStatePage from "../../pages/swap/swap/SwapStatePage";
 import SwapDialogTitle from "./SwapDialogTitle";
 import SwapStateStepper from "./SwapStateStepper";
-import { haveFundsBeenLocked } from "models/tauriModelExt";
-import { getCurrentSwapId, suspendCurrentSwap } from "renderer/rpc";
+import CancelButton from "renderer/components/pages/swap/swap/CancelButton";
 
 export default function SwapDialog({
   open,
@@ -24,33 +20,14 @@ export default function SwapDialog({
   onClose: () => void;
 }) {
   const swap = useAppSelector((state) => state.swap);
-  const isSwapRunning = useIsSwapRunning();
   const [debug, setDebug] = useState(false);
-  const [openSuspendAlert, setOpenSuspendAlert] = useState(false);
 
-  const dispatch = useAppDispatch();
-
-  function onCancel() {
-    if (isSwapRunning) {
-      if (haveFundsBeenLocked(swap.state.curr)) {
-        setOpenSuspendAlert(true);
-      } else {
-        suspendCurrentSwap().then(() => {
-          onClose();
-          dispatch(swapReset());
-        });
-      }
-    } else {
-      onClose();
-      dispatch(swapReset());
-    }
-  }
 
   // This prevents an issue where the Dialog is shown for a split second without a present swap state
   if (!open) return null;
 
   return (
-    <Dialog open={open} onClose={onCancel} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <SwapDialogTitle
         debug={debug}
         setDebug={setDebug}
@@ -87,23 +64,8 @@ export default function SwapDialog({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onCancel} variant="text">
-          Cancel
-        </Button>
-        <Button
-          color="primary"
-          variant="contained"
-          onClick={onCancel}
-          disabled={isSwapRunning || swap.state === null}
-        >
-          Done
-        </Button>
+        <CancelButton />
       </DialogActions>
-
-      <SwapSuspendAlert
-        open={openSuspendAlert}
-        onClose={() => setOpenSuspendAlert(false)}
-      />
     </Dialog>
   );
 }

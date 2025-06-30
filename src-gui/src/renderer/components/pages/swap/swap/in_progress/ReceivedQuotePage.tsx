@@ -5,7 +5,7 @@ import {
 import CircularProgressWithSubtitle, {
   LinearProgressWithSubtitle,
 } from "../components/CircularProgressWithSubtitle";
-import CancelButton from "../CancelButton";
+import SwapBasePage from "../components/SwapBasePage";
 
 export default function ReceivedQuotePage() {
   const syncProgress = useConservativeBitcoinSyncProgress();
@@ -33,9 +33,8 @@ export default function ReceivedQuotePage() {
   progress = <CircularProgressWithSubtitle description="Processing offer" />;
 
   return (
-    <>
+    <SwapBasePage>
       {progress}
-      <CancelButton />
-    </>
+    </SwapBasePage>
   );
 }

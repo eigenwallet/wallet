@@ -4,6 +4,7 @@ import { useActiveSwapInfo } from "store/hooks";
 import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
 import BitcoinTransactionInfoBox from "../components/BitcoinTransactionInfoBox";
 import CancelButton from "../CancelButton";
+import SwapBasePage from "../components/SwapBasePage";
 
 export function BitcoinRefundPublishedPage({
   btc_refund_txid,
@@ -67,7 +68,7 @@ function MultiBitcoinRefundedPage({
   ) : null;
 
   return (
-    <Box>
+    <SwapBasePage>
       <DialogContentText>
         Unfortunately, the swap was not successful. However, rest assured that
         all your Bitcoin has been refunded to the specified address. The swap
@@ -88,7 +89,6 @@ function MultiBitcoinRefundedPage({
         />
         <FeedbackInfoBox />
       </Box>
-      <CancelButton />
-    </Box>
+    </SwapBasePage>
   );
 }
