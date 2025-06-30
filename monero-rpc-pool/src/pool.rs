@@ -100,36 +100,63 @@ impl NodePool {
         })
     }
 
-    /// Get top reliable nodes with fill-up logic to ensure pool size
-    /// First tries to get top nodes based on recent success, then fills up with random nodes
+    /// Get nodes to use, with weighted selection favoring top performers
+    /// The list has some randomness, but the top nodes are still more likely to be chosen
     pub async fn get_top_reliable_nodes(&self, limit: usize) -> Result<Vec<NodeAddress>> {
+        use rand::seq::SliceRandom;
+
         debug!(
             "Getting top reliable nodes for network {} (target: {})",
             self.network, limit
         );
 
-        // Get top nodes based on recent success percentage
-        let top_nodes = self
+        let available_nodes = self
             .db
             .get_top_nodes_by_recent_success(&self.network, limit as i64)
             .await
             .context("Failed to get top nodes by recent success")?;
 
+        let total_candidates = available_nodes.len();
+
+        let weighted: Vec<(NodeAddress, f64)> = available_nodes
+            .into_iter()
+            .enumerate()
+            .map(|(idx, node)| {
+                // Higher-ranked (smaller idx) ⇒ larger weight
+                let weight = 1.5_f64.powi((total_candidates - idx) as i32);
+                (node, weight)
+            })
+            .collect();
+
+        let mut rng = rand::thread_rng();
+
+        let mut candidates = weighted;
+        let mut selected_nodes = Vec::with_capacity(limit);
+
+        while selected_nodes.len() < limit && !candidates.is_empty() {
+            // Choose one node based on its weight using `choose_weighted`
+            let chosen_pair = candidates
+                .choose_weighted(&mut rng, |item| item.1)
+                .map_err(|e| anyhow::anyhow!("Weighted choice failed: {}", e))?;
+
+            // Locate index of the chosen pair and remove it
+            let chosen_index = candidates
+                .iter()
+                .position(|x| std::ptr::eq(x, chosen_pair))
+                .expect("Chosen item must exist in candidates");
+
+            let (node, _) = candidates.swap_remove(chosen_index);
+            selected_nodes.push(node);
+        }
+
         debug!(
-            "Primary fetch returned {} nodes for network {} (target: {})",
-            top_nodes.len(),
+            "Pool size: {} nodes for network {} (target: {})",
+            selected_nodes.len(),
             self.network,
             limit
         );
 
-        debug!(
-            "Final pool size: {} nodes for network {} (target: {})",
-            top_nodes.len(),
-            self.network,
-            limit
-        );
-
-        Ok(top_nodes)
+        Ok(selected_nodes)
     }
 
     pub async fn get_pool_stats(&self) -> Result<PoolStats> {

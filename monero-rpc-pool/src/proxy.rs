@@ -172,15 +172,12 @@ async fn record_failure(state: &AppState, scheme: &str, host: &str, port: i64) {
 }
 
 async fn single_raw_request(
-    state: &AppState,
     node_url: (String, String, i64),
     path: &str,
     method: &str,
     headers: &HeaderMap,
     body: Option<&[u8]>,
 ) -> Result<(Response, (String, String, i64), f64), HandlerError> {
-    let (scheme, host, port) = &node_url;
-
     let start_time = Instant::now();
 
     match raw_http_request(node_url.clone(), path, method, headers, body).await {
@@ -216,14 +213,9 @@ async fn single_raw_request(
                 )))
             }
         }
-        Err(e) => {
-            record_failure(state, scheme, host, *port).await;
-            Err(e)
-        }
+        Err(e) => Err(e),
     }
 }
-
-const POOL_SIZE: usize = 20;
 
 async fn sequential_requests(
     state: &AppState,
@@ -232,6 +224,8 @@ async fn sequential_requests(
     headers: &HeaderMap,
     body: Option<&[u8]>,
 ) -> Result<Response, HandlerError> {
+    const POOL_SIZE: usize = 20;
+
     // Extract JSON-RPC method for better logging
     let jsonrpc_method = if path == "/json_rpc" {
         if let Some(body_data) = body {
@@ -289,7 +283,7 @@ async fn sequential_requests(
             ),
         }
 
-        match single_raw_request(state, node.clone(), path, method, headers, body).await {
+        match single_raw_request(node.clone(), path, method, headers, body).await {
             Ok((response, winning_node, latency_ms)) => {
                 let (scheme, host, port) = &winning_node;
                 let winning_node_display = format!("{}://{}:{}", scheme, host, port);
