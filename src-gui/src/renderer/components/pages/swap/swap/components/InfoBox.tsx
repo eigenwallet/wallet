@@ -37,6 +37,7 @@ export default function InfoBox({
       </Box>
       {loading ? <LinearProgress variant="indeterminate" /> : null}
       <Box>{additionalContent}</Box>
+      
     </Paper>
   );
 }

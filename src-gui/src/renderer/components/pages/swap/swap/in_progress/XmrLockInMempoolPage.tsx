@@ -3,6 +3,7 @@ import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { formatConfirmations } from "utils/formatUtils";
 import MoneroTransactionInfoBox from "../components/MoneroTransactionInfoBox";
 import CancelButton from "../CancelButton";
+import SwapBasePage from "../components/SwapBasePage";
 
 export default function XmrLockTxInMempoolPage({
   xmr_lock_tx_confirmations,
@@ -11,7 +12,7 @@ export default function XmrLockTxInMempoolPage({
   const additionalContent = `Confirmations: ${formatConfirmations(xmr_lock_tx_confirmations, 10)}`;
 
   return (
-    <Box>
+    <SwapBasePage>
       <DialogContentText>
         They have published their Monero lock transaction. The swap will proceed
         once the transaction has been confirmed.
@@ -25,6 +26,6 @@ export default function XmrLockTxInMempoolPage({
       />
 
       <CancelButton />
-    </Box>
+    </SwapBasePage>
   );
 }

@@ -1,7 +1,7 @@
 import { Box, DialogContentText } from "@mui/material";
 import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
 import { TauriSwapProgressEventExt } from "models/tauriModelExt";
-import CancelButton from "../CancelButton";
+import SwapBasePage from "../components/SwapBasePage";
 
 export default function BitcoinPunishedPage({
   state,
@@ -11,7 +11,7 @@ export default function BitcoinPunishedPage({
     | TauriSwapProgressEventExt<"CooperativeRedeemRejected">;
 }) {
   return (
-    <Box>
+    <SwapBasePage>
       <DialogContentText>
         Unfortunately, the swap was unsuccessful. Since you did not refund in
         time, the Bitcoin has been lost. However, with the cooperation of the
@@ -27,7 +27,6 @@ export default function BitcoinPunishedPage({
         )}
       </DialogContentText>
       <FeedbackInfoBox />
-      <CancelButton />
-    </Box>
+    </SwapBasePage>
   );
 }

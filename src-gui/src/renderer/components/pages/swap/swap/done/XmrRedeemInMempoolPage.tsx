@@ -2,7 +2,7 @@ import { Box, DialogContentText, Typography } from "@mui/material";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
 import MoneroTransactionInfoBox from "../components/MoneroTransactionInfoBox";
-import CancelButton from "../CancelButton";
+import SwapBasePage from "../components/SwapBasePage";
 
 export default function XmrRedeemInMempoolPage(
   state: TauriSwapProgressEventContent<"XmrRedeemInMempool">,
@@ -10,7 +10,7 @@ export default function XmrRedeemInMempoolPage(
   const xmr_redeem_txid = state.xmr_redeem_txids[0] ?? null;
 
   return (
-    <Box>
+    <SwapBasePage>
       <DialogContentText>
         The swap was successful and the Monero has been sent to the following
         address(es). The swap is completed and you may exit the application now.
@@ -78,7 +78,6 @@ export default function XmrRedeemInMempoolPage(
         />
         <FeedbackInfoBox />
       </Box>
-      <CancelButton />
-    </Box>
+    </SwapBasePage>
   );
 }

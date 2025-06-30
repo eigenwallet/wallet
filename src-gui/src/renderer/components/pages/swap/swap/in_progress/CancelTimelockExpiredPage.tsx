@@ -1,11 +1,10 @@
 import CircularProgressWithSubtitle from "../components/CircularProgressWithSubtitle";
-import CancelButton from "../CancelButton";
+import SwapBasePage from "../components/SwapBasePage";
 
 export default function CancelTimelockExpiredPage() {
   return (
-    <>
+    <SwapBasePage>
       <CircularProgressWithSubtitle description="Cancelling the swap" />
-      <CancelButton />
-    </>
+    </SwapBasePage>
   );
 }

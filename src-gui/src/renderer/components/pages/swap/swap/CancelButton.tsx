@@ -15,6 +15,7 @@ export default function CancelButton() {
 
   async function onCancel() {
     const swapId = await getCurrentSwapId();
+
     if (swapId !== null && isSwapRunning) {
       if (haveFundsBeenLocked(swap.state.curr)) {
         setOpenSuspendAlert(true);
