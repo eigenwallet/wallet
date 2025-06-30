@@ -315,8 +315,9 @@ pub struct SuspendCurrentSwapArgs;
 #[typeshare]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SuspendCurrentSwapResponse {
-    #[typeshare(serialized_as = "string")]
-    pub swap_id: Uuid,
+    // If no swap was running, we still return Ok(...) but this is set to None
+    #[typeshare(serialized_as = "Option<string>")]
+    pub swap_id: Option<Uuid>,
 }
 
 impl Request for SuspendCurrentSwapArgs {
@@ -477,9 +478,10 @@ pub async fn suspend_current_swap(context: Arc<Context>) -> Result<SuspendCurren
     if let Some(id_value) = swap_id {
         context.swap_lock.send_suspend_signal().await?;
 
-        Ok(SuspendCurrentSwapResponse { swap_id: id_value })
+        Ok(SuspendCurrentSwapResponse { swap_id: Some(id_value) })
     } else {
-        bail!("No swap is currently running")
+        // If no swap was running, we still return Ok(...) with None
+        Ok(SuspendCurrentSwapResponse { swap_id: None })
     }
 }
 
