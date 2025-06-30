@@ -734,6 +734,8 @@ impl State5 {
             public_spend_key: S,
             public_view_key: self.v.public(),
             transfer_proof: self.lock_transfer_proof.clone(),
+            // To sweep the funds we need 10 full confirmations because
+            // Monero requires 10 on an UTXO before it can be spent.
             confirmation_target: 10,
             expected_amount: self.xmr.into(),
         }
@@ -787,19 +789,19 @@ impl State5 {
     }
 
     pub fn attempt_cooperative_redeem(
+        &self,
         s_a: monero::Scalar,
         transfer_proof: TransferProof,
         monero_wallet_restore_blockheight: BlockHeight,
-        state6: &State6,
     ) -> State5 {
         let s_a = monero::PrivateKey::from_scalar(s_a);
 
         State5 {
             s_a,
-            s_b: state6.s_b,
-            v: state6.v,
-            xmr: state6.xmr,
-            tx_lock: state6.tx_lock.clone(),
+            s_b: self.s_b,
+            v: self.v,
+            xmr: self.xmr,
+            tx_lock: self.tx_lock.clone(),
             monero_wallet_restore_blockheight,
             lock_transfer_proof: transfer_proof,
         }

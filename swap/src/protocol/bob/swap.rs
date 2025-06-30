@@ -401,7 +401,6 @@ async fn next_state(
                 }),
             );
 
-
             select! {
                 // Wait for the Monero lock transaction to be confirmed with only 2 confirmations (early reveal)
                 received_xmr = watch_future => {
