@@ -20,7 +20,7 @@ export default function CancelButton() {
         if (isSwapRunning) {
           setOpenSuspendAlert(true);
           return;
-        } 
+        }
       }
 
       await suspendCurrentSwap();

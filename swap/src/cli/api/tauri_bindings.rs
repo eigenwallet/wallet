@@ -157,6 +157,7 @@ impl TauriHandle {
 
     /// Helper to emit a approval event via the unified event name
     fn emit_approval(&self, event: ApprovalRequest) {
+        tracing::debug!(?event, "Emitting approval event");
         self.emit_unified_event(TauriEvent::Approval(event))
     }
 
@@ -191,8 +192,6 @@ impl TauriHandle {
             // Emit the creation of the approval request to the frontend
             self.emit_approval(pending_event.clone());
 
-            tracing::debug!(%request_id, request=?pending_event, "Emitted approval request event");
-
             // Construct the data structure we use to internally track the approval request
             let (responder, receiver) = oneshot::channel();
             let timeout_duration = Duration::from_secs(timeout_secs);
@@ -209,30 +208,51 @@ impl TauriHandle {
                 pending_map.insert(request_id, pending);
             }
 
+            // Create cleanup guard to handle cancellation
+            let mut cleanup_guard = ApprovalCleanupGuard::new(
+                request_id,
+                self.clone(),
+                self.0.pending_approvals.clone(),
+            );
+
             // Determine if the request will be accepted or rejected
             // Either by being resolved by the user, or by timing out
             let accepted = tokio::select! {
-                res = receiver => res.map_err(|_| anyhow!("Approval responder dropped"))?,
+                res = receiver => {
+                    match res {
+                        Ok(accepted) => {
+                            tracing::debug!(%request_id, "Approval request resolved");
+                            accepted
+                        }
+                        Err(err) => {
+                            tracing::debug!(%request_id, ?err, "Approval request rejected because handle was dropped");
+                            false
+                        }
+                    }
+                },
                 _ = tokio::time::sleep(timeout_duration) => {
                     tracing::debug!(%request_id, "Approval request timed out and was therefore rejected");
                     false
                 },
             };
 
+            // Disarm the cleanup guard since we're handling cleanup manually
+            cleanup_guard.disarm();
+
+            // Emit the appropriate event to the frontend
             let event = if accepted {
                 ApprovalRequest::Resolved {
                     request_id: request_id.to_string(),
-                    details,
+                    details: request_type.clone(),
                 }
             } else {
                 ApprovalRequest::Rejected {
                     request_id: request_id.to_string(),
-                    details,
+                    details: request_type.clone(),
                 }
             };
 
             self.emit_approval(event);
-            tracing::debug!(%request_id, %accepted, "Resolved approval request");
 
             Ok(accepted)
         }
@@ -249,7 +269,8 @@ impl TauriHandle {
         #[cfg(feature = "tauri")]
         {
             let mut pending_map = self.0.pending_approvals.lock().await;
-            if let Some(pending) = pending_map.get_mut(&request_id) {
+            if let Some(mut pending) = pending_map.remove(&request_id) {
+                // Send response through oneshot channel
                 let _ = pending
                     .responder
                     .take()
@@ -747,4 +768,55 @@ pub struct ListSellersProgress {
     pub peers_discovered: u32,
     pub quotes_received: u32,
     pub quotes_failed: u32,
+}
+
+// Add this struct before the TauriHandle implementation
+struct ApprovalCleanupGuard {
+    request_id: Option<Uuid>,
+    approval_store: Arc<TokioMutex<HashMap<Uuid, PendingApproval>>>,
+    handle: TauriHandle,
+}
+
+impl ApprovalCleanupGuard {
+    fn new(
+        request_id: Uuid,
+        handle: TauriHandle,
+        approval_store: Arc<TokioMutex<HashMap<Uuid, PendingApproval>>>,
+    ) -> Self {
+        Self {
+            request_id: Some(request_id),
+            handle,
+            approval_store,
+        }
+    }
+
+    /// Disarm the guard so it won't cleanup on drop (call when normally resolved)
+    fn disarm(&mut self) {
+        self.request_id = None;
+    }
+}
+
+impl Drop for ApprovalCleanupGuard {
+    fn drop(&mut self) {
+        if let Some(request_id) = self.request_id {
+            tracing::debug!(%request_id, "Approval handle dropped, we should cleanup now");
+
+            // Lock the Mutex (sync, not using async)
+            if let Ok(mut approval_store) = self.approval_store.try_lock() {
+                // Check if the request id still present in the map
+                if let Some(mut pending_approval) = approval_store.remove(&request_id) {
+                    // If there is still someone listening, send a rejection
+                    if let Some(responder) = pending_approval.responder.take() {
+                        let _ = responder.send(false);
+                    }
+
+                    // Emit a rejection event to the frontend
+                    self.handle.emit_approval(ApprovalRequest::Rejected {
+                        request_id: request_id.to_string(),
+                        details: pending_approval.details.clone(),
+                    });
+                }
+            }
+        }
+    }
 }

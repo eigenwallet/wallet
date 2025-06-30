@@ -6,7 +6,8 @@ import { usePendingSelectMakerApproval } from "store/hooks";
 import MakerDiscoveryStatus from "./MakerDiscoveryStatus";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { SatsAmount } from "renderer/components/other/Units";
-import _ from "lodash";
+import _, { sortBy } from "lodash";
+import CancelButton from "../../CancelButton";
 
 export default function DepositAndChooseOfferPage({
   deposit_address,
@@ -15,7 +16,12 @@ export default function DepositAndChooseOfferPage({
 }: TauriSwapProgressEventContent<"WaitingForBtcDeposit">) {
   const pendingSelectMakerApprovals = usePendingSelectMakerApproval();
 
-  const makerOffers = _.chain(pendingSelectMakerApprovals)
+  const makerOffers = _.chain(
+    sortBy(
+      pendingSelectMakerApprovals,
+      (approval) => -approval.content.expiration_ts,
+    ),
+  )
     .map((approval) => ({
       quoteWithAddress: approval.content.details.content.maker,
       requestId: approval.content.request_id,
@@ -28,7 +34,7 @@ export default function DepositAndChooseOfferPage({
     )
     .sortBy((quote) => quote.quoteWithAddress.quote.price)
     .sortBy((quote) => (quote.requestId ? 0 : 1))
-    .uniqBy((quote) => quote.quoteWithAddress.peer_id)
+    // .uniqBy((quote) => quote.quoteWithAddress.peer_id)
     .value();
 
   return (
@@ -83,12 +89,12 @@ export default function DepositAndChooseOfferPage({
               gap: 1,
             }}
           >
-              <Typography variant="body1">Deposit</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Send Bitcoin to your internal wallet to swap your desired amount
-                of Monero
-              </Typography>
-              <ActionableMonospaceTextBox content={deposit_address} />
+            <Typography variant="body1">Deposit</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Send Bitcoin to your internal wallet to swap your desired amount
+              of Monero
+            </Typography>
+            <ActionableMonospaceTextBox content={deposit_address} />
           </Box>
         </Paper>
 

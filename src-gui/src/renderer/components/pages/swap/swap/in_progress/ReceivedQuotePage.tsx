@@ -18,7 +18,8 @@ export default function ReceivedQuotePage() {
       <LinearProgressWithSubtitle
         description={`Syncing Bitcoin wallet`}
         value={percentage}
-      />)
+      />
+    );
   }
 
   if (syncProgress?.type === "Unknown") {

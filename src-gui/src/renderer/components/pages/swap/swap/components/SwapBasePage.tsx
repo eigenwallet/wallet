@@ -1,7 +1,8 @@
 import { Box } from "@mui/material";
 import CancelButton from "../CancelButton";
 
-export default function SwapBasePage({ children,
+export default function SwapBasePage({
+  children,
   showCancelButton = true,
 }: {
   children: React.ReactNode;

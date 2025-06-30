@@ -126,12 +126,10 @@ function getPageForState(state: SwapState) {
 }
 
 export default function SwapStatePage({ state }: { state: SwapState | null }) {
-  const showCancelButton = state !== null && state.curr.type !== "SwapSetupInflight";
-
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       {getPageForState(state)}
-      {showCancelButton && <CancelButton />}
+      <CancelButton />
     </Box>
   );
 }

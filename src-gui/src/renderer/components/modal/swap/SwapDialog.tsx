@@ -1,9 +1,4 @@
-import {
-  Box,
-  Dialog,
-  DialogActions,
-  DialogContent,
-} from "@mui/material";
+import { Box, Dialog, DialogActions, DialogContent } from "@mui/material";
 import { useState } from "react";
 import { useAppSelector } from "store/hooks";
 import DebugPage from "./pages/DebugPage";
@@ -21,7 +16,6 @@ export default function SwapDialog({
 }) {
   const swap = useAppSelector((state) => state.swap);
   const [debug, setDebug] = useState(false);
-
 
   // This prevents an issue where the Dialog is shown for a split second without a present swap state
   if (!open) return null;

@@ -8,7 +8,7 @@ import { SatsAmount, PiconeroAmount } from "renderer/components/other/Units";
 import { Box, Typography, Divider, Theme } from "@mui/material";
 import { useActiveSwapId, usePendingLockBitcoinApproval } from "store/hooks";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
-import CircularProgressWithSubtitle from "../components/CircularProgressWithSubtitle"
+import CircularProgressWithSubtitle from "../components/CircularProgressWithSubtitle";
 import CheckIcon from "@mui/icons-material/Check";
 import ArrowRightAltIcon from "@mui/icons-material/ArrowRightAlt";
 import TruncatedText from "renderer/components/other/TruncatedText";
@@ -66,86 +66,86 @@ export default function SwapSetupInflightPage({
 
   return (
     <SwapBasePage showCancelButton={false}>
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "space-between",
-        justifyContent: "space-between",
-        height: "100%",
-        flex: 1,
-      }}
-    >
-      {/* Grid layout for perfect alignment */}
       <Box
         sx={{
-          display: "grid",
-          gridTemplateColumns: "max-content auto max-content",
-          gap: "1.5rem",
-          alignItems: "stretch",
-          justifyContent: "center",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "space-between",
+          justifyContent: "space-between",
+          height: "100%",
+          flex: 1,
         }}
       >
-        {/* Row 1: Bitcoin box */}
-        <Box sx={{ height: "100%" }}>
-          <BitcoinMainBox
-            btc_lock_amount={btc_lock_amount}
-            btc_network_fee={btc_network_fee}
-          />
-        </Box>
-
-        {/* Row 1: Animated arrow */}
+        {/* Grid layout for perfect alignment */}
         <Box
           sx={{
-            display: "flex",
-            alignItems: "center",
+            display: "grid",
+            gridTemplateColumns: "max-content auto max-content",
+            gap: "1.5rem",
+            alignItems: "stretch",
             justifyContent: "center",
           }}
         >
-          <AnimatedArrow />
+          {/* Row 1: Bitcoin box */}
+          <Box sx={{ height: "100%" }}>
+            <BitcoinMainBox
+              btc_lock_amount={btc_lock_amount}
+              btc_network_fee={btc_network_fee}
+            />
+          </Box>
+
+          {/* Row 1: Animated arrow */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <AnimatedArrow />
+          </Box>
+
+          {/* Row 1: Monero main box */}
+          <Box>
+            <MoneroMainBox
+              monero_receive_pool={monero_receive_pool}
+              xmr_receive_amount={xmr_receive_amount}
+            />
+          </Box>
         </Box>
 
-        {/* Row 1: Monero main box */}
-        <Box>
-          <MoneroMainBox
-            monero_receive_pool={monero_receive_pool}
-            xmr_receive_amount={xmr_receive_amount}
-          />
+        <Box
+          sx={{
+            marginTop: 2,
+            display: "flex",
+            justifyContent: "center",
+            gap: 2,
+          }}
+        >
+          <PromiseInvokeButton
+            variant="text"
+            size="large"
+            sx={(theme) => ({ color: theme.palette.text.secondary })}
+            onInvoke={() => resolveApproval(request.content.request_id, false)}
+            displayErrorSnackbar
+            requiresContext
+          >
+            Deny
+          </PromiseInvokeButton>
+
+          <PromiseInvokeButton
+            variant="contained"
+            color="primary"
+            size="large"
+            onInvoke={() => resolveApproval(request.content.request_id, true)}
+            displayErrorSnackbar
+            requiresContext
+            endIcon={<CheckIcon />}
+          >
+            {`Confirm (${timeLeft}s)`}
+          </PromiseInvokeButton>
         </Box>
       </Box>
-
-      <Box
-        sx={{
-          marginTop: 2,
-          display: "flex",
-          justifyContent: "center",
-          gap: 2,
-        }}
-      >
-        <PromiseInvokeButton
-          variant="text"
-          size="large"
-          sx={(theme) => ({ color: theme.palette.text.secondary })}
-          onInvoke={() => resolveApproval(request.content.request_id, false)}
-          displayErrorSnackbar
-          requiresContext
-        >
-          Deny
-        </PromiseInvokeButton>
-
-        <PromiseInvokeButton
-          variant="contained"
-          color="primary"
-          size="large"
-          onInvoke={() => resolveApproval(request.content.request_id, true)}
-          displayErrorSnackbar
-          requiresContext
-          endIcon={<CheckIcon />}
-        >
-          {`Confirm (${timeLeft}s)`}
-        </PromiseInvokeButton>
-      </Box>
-    </Box>
     </SwapBasePage>
   );
 }

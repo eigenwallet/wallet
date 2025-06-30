@@ -9,9 +9,9 @@ use crate::cli::{list_sellers as list_sellers_impl, EventLoop, SellerStatus};
 use crate::common::{get_logs, redact};
 use crate::libp2p_ext::MultiAddrExt;
 use crate::monero::wallet_rpc::MoneroDaemon;
-use crate::network::rendezvous::XmrBtcNamespace;
 use crate::monero::MoneroAddressPool;
 use crate::network::quote::{BidQuote, ZeroQuoteReceived};
+use crate::network::rendezvous::XmrBtcNamespace;
 use crate::network::swarm;
 use crate::protocol::bob::{BobState, Swap};
 use crate::protocol::{bob, Database, State};
@@ -478,7 +478,9 @@ pub async fn suspend_current_swap(context: Arc<Context>) -> Result<SuspendCurren
     if let Some(id_value) = swap_id {
         context.swap_lock.send_suspend_signal().await?;
 
-        Ok(SuspendCurrentSwapResponse { swap_id: Some(id_value) })
+        Ok(SuspendCurrentSwapResponse {
+            swap_id: Some(id_value),
+        })
     } else {
         // If no swap was running, we still return Ok(...) with None
         Ok(SuspendCurrentSwapResponse { swap_id: None })

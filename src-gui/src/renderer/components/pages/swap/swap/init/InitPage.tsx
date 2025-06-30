@@ -94,6 +94,6 @@ export default function InitPage() {
           Continue
         </PromiseInvokeButton>
       </Box>
-      </>
+    </>
   );
 }

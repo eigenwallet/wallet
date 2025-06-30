@@ -79,10 +79,10 @@ export default function MakerOfferItem({
             <Typography variant="body1">
               <Chip
                 label={
-                  <Typography variant="body1">
+                  <>
                     <SatsAmount amount={quote.min_quantity} /> -{" "}
                     <SatsAmount amount={quote.max_quantity} />
-                  </Typography>
+                  </>
                 }
                 size="small"
               />
