@@ -575,7 +575,7 @@ async fn next_state(
                 .emit_swap_progress_event(swap_id, TauriSwapProgressEvent::RedeemingMonero);
 
             let xmr_redeem_txids = retry(
-                "Refund Monero",
+                "Redeeming Monero",
                 || async {
                     state
                         .redeem_xmr(&monero_wallet, swap_id, monero_receive_pool.clone())
