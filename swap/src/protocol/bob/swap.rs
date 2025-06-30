@@ -384,7 +384,7 @@ async fn next_state(
             // Clone these so that we can move them into the listener closure
             let lock_transfer_proof_clone = lock_transfer_proof.clone();
             let lock_transfer_proof_clone_for_state = lock_transfer_proof.clone();
-            let watch_request = state.lock_xmr_watch_request(lock_transfer_proof, 2);
+            let watch_request = state.lock_xmr_watch_request(lock_transfer_proof, );
 
             let watch_future = monero_wallet.wait_until_confirmed(
                 watch_request,
@@ -772,7 +772,7 @@ async fn next_state(
                     );
 
                     let state5 = state.attempt_cooperative_redeem(
-                        monero::PrivateKey::from_scalar(s_a),
+                        s_a,
                         lock_transfer_proof,
                     );
 

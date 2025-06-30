@@ -537,23 +537,6 @@ impl State3 {
         ))
     }
 
-    pub fn attempt_cooperative_redeem(
-        &self,
-        s_a: monero::PrivateKey,
-        monero_wallet_restore_blockheight: BlockHeight,
-        lock_transfer_proof: TransferProof,
-    ) -> State5 {
-        State5 {
-            s_a,
-            s_b: self.s_b,
-            v: self.v,
-            xmr: self.xmr,
-            tx_lock: self.tx_lock.clone(),
-            monero_wallet_restore_blockheight,
-            lock_transfer_proof,
-        }
-    }
-
     pub fn construct_tx_early_refund(&self) -> bitcoin::TxEarlyRefund {
         bitcoin::TxEarlyRefund::new(&self.tx_lock, &self.refund_address, self.tx_refund_fee)
     }
@@ -787,25 +770,6 @@ impl State5 {
 
         Ok(tx_hashes)
     }
-
-    pub fn attempt_cooperative_redeem(
-        &self,
-        s_a: monero::Scalar,
-        transfer_proof: TransferProof,
-        monero_wallet_restore_blockheight: BlockHeight,
-    ) -> State5 {
-        let s_a = monero::PrivateKey::from_scalar(s_a);
-
-        State5 {
-            s_a,
-            s_b: self.s_b,
-            v: self.v,
-            xmr: self.xmr,
-            tx_lock: self.tx_lock.clone(),
-            monero_wallet_restore_blockheight,
-            lock_transfer_proof: transfer_proof,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -933,11 +897,14 @@ impl State6 {
     pub fn tx_lock_id(&self) -> bitcoin::Txid {
         self.tx_lock.txid()
     }
+
     pub fn attempt_cooperative_redeem(
         &self,
-        s_a: monero::PrivateKey,
+        s_a: monero::Scalar,
         lock_transfer_proof: TransferProof,
     ) -> State5 {
+        let s_a = monero::PrivateKey::from_scalar(s_a);
+
         State5 {
             s_a,
             s_b: self.s_b,
