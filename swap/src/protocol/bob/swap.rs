@@ -11,7 +11,7 @@ use crate::network::cooperative_xmr_redeem_after_punish::Response::{Fullfilled, 
 use crate::network::swap_setup::bob::NewSwap;
 use crate::protocol::bob::state::*;
 use crate::protocol::{bob, Database};
-use crate::{bitcoin, monero};
+use crate::{bitcoin, env, monero};
 use anyhow::{bail, Context as AnyContext, Result};
 use std::sync::Arc;
 use std::time::Duration;
@@ -78,6 +78,7 @@ pub async fn run_until(
             swap.monero_wallet.clone(),
             swap.monero_receive_pool.clone(),
             swap.event_emitter.clone(),
+            swap.env_config,
         )
         .await?;
 
@@ -105,6 +106,7 @@ async fn next_state(
     monero_wallet: Arc<monero::Wallets>,
     monero_receive_pool: MoneroAddressPool,
     event_emitter: Option<TauriHandle>,
+    env_config: env::Config,
 ) -> Result<BobState> {
     tracing::debug!(%state, "Advancing state");
 
@@ -384,7 +386,10 @@ async fn next_state(
             // Clone these so that we can move them into the listener closure
             let lock_transfer_proof_clone = lock_transfer_proof.clone();
             let lock_transfer_proof_clone_for_state = lock_transfer_proof.clone();
-            let watch_request = state.lock_xmr_watch_request(lock_transfer_proof, );
+            let watch_request = state.lock_xmr_watch_request(
+                lock_transfer_proof,
+                env_config.monero_double_spend_safe_confirmations,
+            );
 
             let watch_future = monero_wallet.wait_until_confirmed(
                 watch_request,
@@ -771,10 +776,7 @@ async fn next_state(
                         "Alice has accepted our request to cooperatively redeem the XMR"
                     );
 
-                    let state5 = state.attempt_cooperative_redeem(
-                        s_a,
-                        lock_transfer_proof,
-                    );
+                    let state5 = state.attempt_cooperative_redeem(s_a, lock_transfer_proof);
 
                     let watch_request = state5.lock_xmr_watch_request_for_sweep();
                     let event_emitter_clone = event_emitter.clone();
