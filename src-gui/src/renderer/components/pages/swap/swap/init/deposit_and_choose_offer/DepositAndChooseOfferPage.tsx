@@ -79,34 +79,16 @@ export default function DepositAndChooseOfferPage({
             sx={{
               flexShrink: 1,
               display: "flex",
-              flexDirection: { xs: "row", md: "column", lg: "row" },
-              gap: 2,
+              flexDirection: "column",
+              gap: 1,
             }}
           >
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 1,
-              }}
-            >
               <Typography variant="body1">Deposit</Typography>
               <Typography variant="body2" color="text.secondary">
                 Send Bitcoin to your internal wallet to swap your desired amount
                 of Monero
               </Typography>
               <ActionableMonospaceTextBox content={deposit_address} />
-            </Box>
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "center",
-                width: "100%",
-                maxWidth: "8em",
-              }}
-            >
-              <BitcoinQrCode address={deposit_address} />
-            </Box>
           </Box>
         </Paper>
 
