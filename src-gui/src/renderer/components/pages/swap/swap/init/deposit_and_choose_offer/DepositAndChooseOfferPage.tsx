@@ -1,5 +1,4 @@
 import { Typography, Box, Paper, Divider } from "@mui/material";
-import BitcoinQrCode from "renderer/components/pages/swap/swap/components/BitcoinQrCode";
 import ActionableMonospaceTextBox from "renderer/components/other/ActionableMonospaceTextBox";
 import MakerOfferItem from "./MakerOfferItem";
 import { usePendingSelectMakerApproval } from "store/hooks";
@@ -7,7 +6,6 @@ import MakerDiscoveryStatus from "./MakerDiscoveryStatus";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { SatsAmount } from "renderer/components/other/Units";
 import _, { sortBy } from "lodash";
-import CancelButton from "../../CancelButton";
 
 export default function DepositAndChooseOfferPage({
   deposit_address,
@@ -116,7 +114,7 @@ export default function DepositAndChooseOfferPage({
 
           {/* Real Maker Offers */}
           <Box>
-            {pendingSelectMakerApprovals.length > 0 && (
+            {makerOffers.length > 0 && (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                 {makerOffers.map((quote, index) => {
                   return (
@@ -131,7 +129,7 @@ export default function DepositAndChooseOfferPage({
             )}
 
             {/* TODO: Differentiate between no makers found and still loading */}
-            {pendingSelectMakerApprovals.length === 0 && (
+            {makerOffers.length === 0 && (
               <Paper variant="outlined" sx={{ p: 3, textAlign: "center" }}>
                 <Typography variant="body1" color="textSecondary">
                   Searching for available makers...

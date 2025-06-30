@@ -129,7 +129,7 @@ export default function SwapStatePage({ state }: { state: SwapState | null }) {
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
       {getPageForState(state)}
-      <CancelButton />
+      {state !== null && <CancelButton />}
     </Box>
   );
 }
