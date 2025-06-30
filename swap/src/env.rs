@@ -18,6 +18,8 @@ pub struct Config {
     pub monero_finality_confirmations: u64,
     // If Alice does manage to lock her Monero within this timeout, she will initiate an early refund of the Bitcoin.
     pub monero_lock_retry_timeout: Duration,
+    // After this many confirmations we assume that the Monero transaction is safe from double spending
+    pub monero_double_spend_safe_confirmations: u64,
     #[serde(with = "monero_network")]
     pub monero_network: monero::Network,
 }
@@ -62,6 +64,7 @@ impl GetConfig for Mainnet {
             // which is why we sometimes have to wait for 20 minutes for funds to become spendable
             monero_lock_retry_timeout: 22.std_minutes(),
             monero_finality_confirmations: 10,
+            monero_double_spend_safe_confirmations: 2,
             monero_network: monero::Network::Mainnet,
         }
     }
@@ -80,6 +83,7 @@ impl GetConfig for Testnet {
             monero_avg_block_time: 2.std_minutes(),
             monero_lock_retry_timeout: 25.std_minutes(),
             monero_finality_confirmations: 10,
+            monero_double_spend_safe_confirmations: 2,
             monero_network: monero::Network::Stagenet,
         }
     }
@@ -98,6 +102,7 @@ impl GetConfig for Regtest {
             monero_avg_block_time: 1.std_seconds(),
             monero_lock_retry_timeout: 1.std_minutes(),
             monero_finality_confirmations: 10,
+            monero_double_spend_safe_confirmations: 2,
             monero_network: monero::Network::Mainnet, // yes this is strange
         }
     }
