@@ -360,7 +360,7 @@ async fn next_state(
                 TauriSwapProgressEvent::XmrLockTxInMempool {
                     xmr_lock_txid: lock_transfer_proof.tx_hash(),
                     xmr_lock_tx_confirmations: None,
-                    xmr_lock_tx_target_confirmations: 2,
+                    xmr_lock_tx_target_confirmations: env_config.monero_double_spend_safe_confirmations,
                 },
             );
 

@@ -20,9 +20,6 @@ export default function WaitingForXmrConfirmationsBeforeRedeemPage({
         additionalContent={
           <>
             {`Confirmations: ${xmr_lock_tx_confirmations}/${xmr_lock_tx_target_confirmations}`}
-            <br />
-            Once we reach {xmr_lock_tx_target_confirmations} confirmations, we
-            will automatically redeem your Monero.
           </>
         }
         loading
