@@ -50,7 +50,6 @@ pub struct NodeHealthStats {
     pub last_success: Option<DateTime<Utc>>,
     pub last_failure: Option<DateTime<Utc>>,
     pub last_checked: Option<DateTime<Utc>>,
-    pub is_reliable: bool,
     pub avg_latency_ms: Option<f64>,
     pub min_latency_ms: Option<f64>,
     pub max_latency_ms: Option<f64>,

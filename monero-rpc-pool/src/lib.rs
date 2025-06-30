@@ -6,16 +6,22 @@ use axum::{
     Router,
 };
 use monero::Network;
-use tokio::sync::RwLock;
+
 use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
-fn network_to_string(network: &Network) -> String {
-    match network {
-        Network::Mainnet => "mainnet".to_string(),
-        Network::Stagenet => "stagenet".to_string(),
-        Network::Testnet => "testnet".to_string(),
+pub trait ToNetworkString {
+    fn to_network_string(&self) -> String;
+}
+
+impl ToNetworkString for Network {
+    fn to_network_string(&self) -> String {
+        match self {
+            Network::Mainnet => "mainnet".to_string(),
+            Network::Stagenet => "stagenet".to_string(),
+            Network::Testnet => "testnet".to_string(),
+        }
     }
 }
 
@@ -32,7 +38,7 @@ use proxy::{proxy_handler, stats_handler};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub node_pool: Arc<RwLock<NodePool>>,
+    pub node_pool: Arc<NodePool>,
 }
 
 /// Manages background tasks for the RPC pool
@@ -62,34 +68,28 @@ async fn create_app_with_receiver(
     PoolHandle,
 )> {
     // Initialize database
-    let db = Database::new_with_data_dir(config.data_dir.clone()).await?;
+    let db = Database::new(config.data_dir.clone()).await?;
 
     // Initialize node pool with network
-    let network_str = network_to_string(&network);
+    let network_str = network.to_network_string();
     let (node_pool, status_receiver) = NodePool::new(db.clone(), network_str.clone());
-    let node_pool = Arc::new(RwLock::new(node_pool));
+    let node_pool = Arc::new(node_pool);
 
     // Publish initial status immediately to ensure first event is sent
-    {
-        let pool_guard = node_pool.read().await;
-        if let Err(e) = pool_guard.publish_status_update().await {
-            error!("Failed to publish initial status update: {}", e);
-        }
+    if let Err(e) = node_pool.publish_status_update().await {
+        error!("Failed to publish initial status update: {}", e);
     }
 
-    // Start background tasks
+    // Send status updates every 10 seconds
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
     let node_pool_for_health_check = node_pool.clone();
     let status_update_handle = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(10));
-
         loop {
-            interval.tick().await;
-
-            // Publish status update
-            let pool_guard = node_pool_for_health_check.read().await;
-            if let Err(e) = pool_guard.publish_status_update().await {
+            if let Err(e) = node_pool_for_health_check.publish_status_update().await {
                 error!("Failed to publish status update: {}", e);
             }
+
+            interval.tick().await;
         }
     });
 

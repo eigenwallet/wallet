@@ -150,8 +150,7 @@ async fn raw_http_request(
 }
 
 async fn record_success(state: &AppState, scheme: &str, host: &str, port: i64, latency_ms: f64) {
-    let node_pool_guard = state.node_pool.read().await;
-    if let Err(e) = node_pool_guard
+    if let Err(e) = state.node_pool
         .record_success(scheme, host, port, latency_ms)
         .await
     {
@@ -163,8 +162,7 @@ async fn record_success(state: &AppState, scheme: &str, host: &str, port: i64, l
 }
 
 async fn record_failure(state: &AppState, scheme: &str, host: &str, port: i64) {
-    let node_pool_guard = state.node_pool.read().await;
-    if let Err(e) = node_pool_guard.record_failure(scheme, host, port).await {
+    if let Err(e) = state.node_pool.record_failure(scheme, host, port).await {
         error!(
             "Failed to record failure for {}://{}:{}: {}",
             scheme, host, port, e
@@ -199,22 +197,18 @@ async fn single_raw_request(
                         .map_err(|e| HandlerError::RequestError(format!("{:#?}", e)))?;
 
                     if is_jsonrpc_error(&body_bytes) {
-                        record_failure(state, scheme, host, *port).await;
                         return Err(HandlerError::RequestError("JSON-RPC error".to_string()));
                     }
 
                     // Reconstruct response with the body we consumed
                     let response = Response::from_parts(parts, Body::from(body_bytes));
-                    record_success(state, scheme, host, *port, latency_ms).await;
                     Ok((response, node_url, latency_ms))
                 } else {
                     // For non-JSON-RPC endpoints, HTTP success is enough
-                    record_success(state, scheme, host, *port, latency_ms).await;
                     Ok((response, node_url, latency_ms))
                 }
             } else {
                 // Non-200 status codes are failures
-                record_failure(state, scheme, host, *port).await;
                 Err(HandlerError::RequestError(format!(
                     "HTTP {}",
                     response.status()
@@ -253,15 +247,14 @@ async fn sequential_requests(
 
     // Get the pool of nodes
     let available_pool = {
-        let node_pool_guard = state.node_pool.read().await;
-        let reliable_nodes = node_pool_guard
+        let nodes = state.node_pool
             .get_top_reliable_nodes(POOL_SIZE)
             .await
             .map_err(|e| HandlerError::PoolError(e.to_string()))?;
 
-        let pool: Vec<(String, String, i64)> = reliable_nodes
+        let pool: Vec<(String, String, i64)> = nodes
             .into_iter()
-            .map(|node| (node.address.scheme, node.address.host, node.address.port as i64))
+            .map(|node| (node.scheme, node.host, node.port as i64))
             .collect();
 
         pool
@@ -312,6 +305,9 @@ async fn sequential_requests(
                         tried_nodes
                     ),
                 }
+
+                record_success(state, &node.0, &node.1, node.2, latency_ms).await;
+
                 return Ok(response);
             }
             Err(e) => {
@@ -322,6 +318,9 @@ async fn sequential_requests(
                     node_display,
                     e
                 );
+
+                record_failure(state, &node.0, &node.1, node.2).await;
+
                 continue;
             }
         }
@@ -471,9 +470,7 @@ pub async fn proxy_handler(
 #[axum::debug_handler]
 pub async fn stats_handler(State(state): State<AppState>) -> Response {
     async move {
-        let node_pool_guard = state.node_pool.read().await;
-
-        match node_pool_guard.get_current_status().await {
+        match state.node_pool.get_current_status().await {
             Ok(status) => {
                 let stats_json = serde_json::json!({
                     "status": "healthy",

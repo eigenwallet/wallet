@@ -1,11 +1,10 @@
 use anyhow::{Context, Result};
-use rand::prelude::*;
 use tokio::sync::broadcast;
 use tracing::debug;
 use typeshare::typeshare;
 
 use crate::database::Database;
-use crate::types::NodeRecord;
+use crate::types::NodeAddress;
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[typeshare]
@@ -42,64 +41,6 @@ impl NodePool {
             status_sender,
         };
         (pool, status_receiver)
-    }
-
-    /// Get next node using Power of Two Choices algorithm
-    /// Only considers identified nodes (nodes with network set)
-    pub async fn get_next_node(&self) -> Result<Option<String>> {
-        let candidate_nodes = self.db.get_identified_nodes(&self.network).await?;
-
-        if candidate_nodes.is_empty() {
-            debug!("No identified nodes available for network {}", self.network);
-            return Ok(None);
-        }
-
-        if candidate_nodes.len() == 1 {
-            return Ok(Some(candidate_nodes[0].full_url()));
-        }
-
-        // Power of Two Choices: pick 2 random nodes, select the better one
-        let mut rng = thread_rng();
-        let node1 = candidate_nodes.choose(&mut rng).unwrap();
-        let node2 = candidate_nodes.choose(&mut rng).unwrap();
-
-        let selected =
-            if self.calculate_goodness_score(node1) >= self.calculate_goodness_score(node2) {
-                node1
-            } else {
-                node2
-            };
-
-        debug!(
-            "Selected node using P2C for network {}: {}",
-            self.network,
-            selected.full_url()
-        );
-
-        Ok(Some(selected.full_url()))
-    }
-
-    /// Calculate goodness score based on usage-based recency
-    /// Score is a function of success rate and latency from last N health checks
-    fn calculate_goodness_score(&self, node: &NodeRecord) -> f64 {
-        let total_checks = node.health.success_count + node.health.failure_count;
-        if total_checks == 0 {
-            return 0.0;
-        }
-
-        let success_rate = node.health.success_count as f64 / total_checks as f64;
-
-        // Weight by recency (more recent interactions = higher weight)
-        let recency_weight = (total_checks as f64).min(200.0) / 200.0;
-        let mut score = success_rate * recency_weight;
-
-        // Factor in latency - lower latency = higher score
-        if let Some(avg_latency) = node.health.avg_latency_ms {
-            let latency_factor = 1.0 - (avg_latency.min(2000.0) / 2000.0);
-            score = score * 0.8 + latency_factor * 0.2; // 80% success rate, 20% latency
-        }
-
-        score
     }
 
     pub async fn record_success(
@@ -158,16 +99,16 @@ impl NodePool {
     pub async fn get_top_reliable_nodes(
         &self,
         limit: usize,
-    ) -> Result<Vec<NodeRecord>> {
+    ) -> Result<Vec<NodeAddress>> {
         debug!(
             "Getting top reliable nodes for network {} (target: {})",
             self.network, limit
         );
 
-        // Step 1: Try primary fetch - get top nodes based on recent success (last 200 health checks)
-        let mut top_nodes = self
+        // Get top nodes based on recent success percentage
+        let top_nodes = self
             .db
-            .get_top_nodes_by_recent_success(&self.network, 200, limit as i64)
+            .get_top_nodes_by_recent_success(&self.network, limit as i64)
             .await
             .context("Failed to get top nodes by recent success")?;
 
@@ -177,48 +118,6 @@ impl NodePool {
             self.network,
             limit
         );
-
-        // Step 2: If primary fetch didn't return enough nodes, fall back to any identified nodes with successful health checks
-        if top_nodes.len() < limit {
-            debug!("Primary fetch returned insufficient nodes, falling back to any identified nodes with successful health checks");
-            top_nodes = self
-                .db
-                .get_identified_nodes_with_success(&self.network)
-                .await?;
-
-            debug!(
-                "Fallback fetch returned {} nodes with successful health checks for network {}",
-                top_nodes.len(),
-                self.network
-            );
-        }
-
-        // Step 3: Check if we still don't have enough nodes
-        if top_nodes.len() < limit {
-            let needed = limit - top_nodes.len();
-            debug!(
-                "Pool needs {} more nodes to reach target of {} for network {}",
-                needed, limit, self.network
-            );
-
-            // Step 4: Collect exclusion IDs from nodes already selected
-            let exclude_ids: Vec<i64> = top_nodes.iter().map(|node| node.metadata.id).collect();
-
-            // Step 5: Secondary fetch - get random nodes to fill up
-            let random_fillers = self
-                .db
-                .get_random_nodes(&self.network, needed as i64, &exclude_ids)
-                .await?;
-
-            debug!(
-                "Secondary fetch returned {} random nodes for network {}",
-                random_fillers.len(),
-                self.network
-            );
-
-            // Step 6: Combine lists
-            top_nodes.extend(random_fillers);
-        }
 
         debug!(
             "Final pool size: {} nodes for network {} (target: {})",
