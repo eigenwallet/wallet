@@ -4,7 +4,6 @@ import BitcoinTransactionInfoBox from "renderer/components/pages/swap/swap/compo
 import SwapStatusAlert from "renderer/components/alert/SwapStatusAlert/SwapStatusAlert";
 import { useActiveSwapInfo } from "store/hooks";
 import { Box, DialogContentText } from "@mui/material";
-import SwapBasePage from "renderer/components/pages/swap/swap/components/SwapBasePage";
 
 // This is the number of blocks after which we consider the swap to be at risk of being unsuccessful
 const BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD = 2;
@@ -16,7 +15,7 @@ export default function BitcoinLockTxInMempoolPage({
   const swapInfo = useActiveSwapInfo();
 
   return (
-    <SwapBasePage>
+    <>
       {(btc_lock_confirmations === undefined ||
         btc_lock_confirmations < BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD) && (
         <DialogContentText>
@@ -52,6 +51,6 @@ export default function BitcoinLockTxInMempoolPage({
           }
         />
       </Box>
-    </SwapBasePage>
+    </>
   );
 }

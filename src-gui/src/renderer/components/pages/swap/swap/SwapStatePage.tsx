@@ -22,8 +22,10 @@ import { exhaustiveGuard } from "utils/typescriptUtils";
 import DepositAndChooseOfferPage from "renderer/components/pages/swap/swap/init/deposit_and_choose_offer/DepositAndChooseOfferPage";
 import SwapSetupInflightPage from "./in_progress/SwapSetupInflightPage";
 import InitPage from "./init/InitPage";
+import { Box } from "@mui/material";
+import CancelButton from "./CancelButton";
 
-export default function SwapStatePage({ state }: { state: SwapState | null }) {
+function getPageForState(state: SwapState) {
   if (state === null) {
     return <InitPage />;
   }
@@ -121,4 +123,15 @@ export default function SwapStatePage({ state }: { state: SwapState | null }) {
     default:
       return exhaustiveGuard(type);
   }
+}
+
+export default function SwapStatePage({ state }: { state: SwapState | null }) {
+  const showCancelButton = state !== null && state.curr.type !== "SwapSetupInflight";
+
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {getPageForState(state)}
+      {showCancelButton && <CancelButton />}
+    </Box>
+  );
 }

@@ -1,13 +1,11 @@
 import { Box, Paper, Tab, Tabs, Typography } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import { useState } from "react";
-import RemainingFundsWillBeUsedAlert from "renderer/components/alert/RemainingFundsWillBeUsedAlert";
 import BitcoinAddressTextField from "renderer/components/inputs/BitcoinAddressTextField";
 import MoneroAddressTextField from "renderer/components/inputs/MoneroAddressTextField";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { buyXmr } from "renderer/rpc";
 import { useSettings } from "store/hooks";
-import SwapBasePage from "../components/SwapBasePage";
 
 export default function InitPage() {
   const [redeemAddress, setRedeemAddress] = useState("");
@@ -29,7 +27,7 @@ export default function InitPage() {
   }
 
   return (
-    <SwapBasePage showCancelButton={false}>
+    <>
       <Box
         sx={{
           display: "flex",
@@ -37,7 +35,6 @@ export default function InitPage() {
           gap: 1.5,
         }}
       >
-        <RemainingFundsWillBeUsedAlert />
         <MoneroAddressTextField
           label="Monero redeem address"
           address={redeemAddress}
@@ -93,9 +90,9 @@ export default function InitPage() {
           onInvoke={init}
           displayErrorSnackbar
         >
-          Begin swap
+          Continue
         </PromiseInvokeButton>
       </Box>
-    </SwapBasePage>
+      </>
   );
 }

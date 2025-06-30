@@ -7,7 +7,6 @@ import MakerDiscoveryStatus from "./MakerDiscoveryStatus";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { SatsAmount } from "renderer/components/other/Units";
 import _ from "lodash";
-import SwapBasePage from "renderer/components/pages/swap/swap/components/SwapBasePage";
 
 export default function DepositAndChooseOfferPage({
   deposit_address,
@@ -33,7 +32,7 @@ export default function DepositAndChooseOfferPage({
     .value();
 
   return (
-    <SwapBasePage>
+    <>
       <Box
         sx={{
           display: "flex",
@@ -161,6 +160,6 @@ export default function DepositAndChooseOfferPage({
           </Box>
         </Box>
       </Box>
-    </SwapBasePage>
+    </>
   );
 }
