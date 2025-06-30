@@ -150,7 +150,8 @@ async fn raw_http_request(
 }
 
 async fn record_success(state: &AppState, scheme: &str, host: &str, port: i64, latency_ms: f64) {
-    if let Err(e) = state.node_pool
+    if let Err(e) = state
+        .node_pool
         .record_success(scheme, host, port, latency_ms)
         .await
     {
@@ -247,7 +248,8 @@ async fn sequential_requests(
 
     // Get the pool of nodes
     let available_pool = {
-        let nodes = state.node_pool
+        let nodes = state
+            .node_pool
             .get_top_reliable_nodes(POOL_SIZE)
             .await
             .map_err(|e| HandlerError::PoolError(e.to_string()))?;
@@ -299,10 +301,7 @@ async fn sequential_requests(
                     ),
                     None => debug!(
                         "{} response from {} ({}ms) - SUCCESS after trying {} nodes!",
-                        method,
-                        winning_node_display,
-                        latency_ms,
-                        tried_nodes
+                        method, winning_node_display, latency_ms, tried_nodes
                     ),
                 }
 
@@ -312,11 +311,10 @@ async fn sequential_requests(
             }
             Err(e) => {
                 collected_errors.push((node_display.clone(), e.to_string()));
-                
+
                 debug!(
                     "Request failed with node {} with error {} - trying next node...",
-                    node_display,
-                    e
+                    node_display, e
                 );
 
                 record_failure(state, &node.0, &node.1, node.2).await;

@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
+use crate::types::{NodeAddress, NodeHealthStats, NodeMetadata, NodeRecord};
 use anyhow::Result;
 use sqlx::SqlitePool;
 use tracing::{info, warn};
-use crate::types::{NodeAddress, NodeHealthStats, NodeMetadata, NodeRecord};
 
 #[derive(Clone)]
 pub struct Database {
@@ -34,7 +34,7 @@ impl Database {
         sqlx::migrate!("./migrations").run(&self.pool).await?;
 
         info!("Database migration completed");
-        
+
         Ok(())
     }
 
@@ -129,7 +129,10 @@ impl Database {
             .into_iter()
             .map(|row| {
                 let address = NodeAddress::new(row.scheme, row.host, row.port as u16);
-                let first_seen_at = row.first_seen_at.parse().unwrap_or_else(|_| chrono::Utc::now());
+                let first_seen_at = row
+                    .first_seen_at
+                    .parse()
+                    .unwrap_or_else(|_| chrono::Utc::now());
 
                 let metadata = NodeMetadata::new(row.id, row.network, first_seen_at);
                 let health = NodeHealthStats {

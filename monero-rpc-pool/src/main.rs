@@ -1,7 +1,7 @@
 use clap::Parser;
+use monero_rpc_pool::{config::Config, run_server};
 use tracing::info;
 use tracing_subscriber::{self, EnvFilter};
-use monero_rpc_pool::{config::Config, run_server};
 
 use monero::Network;
 

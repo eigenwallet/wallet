@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use tokio::sync::broadcast;
-use tracing::debug;
+use tracing::{debug, warn};
 use typeshare::typeshare;
 
 use crate::database::Database;
@@ -65,7 +65,13 @@ impl NodePool {
 
     pub async fn publish_status_update(&self) -> Result<()> {
         let status = self.get_current_status().await?;
-        let _ = self.status_sender.send(status); // Ignore if no receivers
+
+        if let Err(e) = self.status_sender.send(status.clone()) {
+            warn!("Failed to send status update: {}", e);
+        } else {
+            debug!(?status, "Sent status update");
+        }
+
         Ok(())
     }
 
@@ -96,10 +102,7 @@ impl NodePool {
 
     /// Get top reliable nodes with fill-up logic to ensure pool size
     /// First tries to get top nodes based on recent success, then fills up with random nodes
-    pub async fn get_top_reliable_nodes(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<NodeAddress>> {
+    pub async fn get_top_reliable_nodes(&self, limit: usize) -> Result<Vec<NodeAddress>> {
         debug!(
             "Getting top reliable nodes for network {} (target: {})",
             self.network, limit
