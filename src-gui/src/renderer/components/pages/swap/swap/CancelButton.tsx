@@ -16,7 +16,7 @@ export default function CancelButton() {
     const swapId = await getCurrentSwapId();
 
     if (swapId !== null) {
-      if (haveFundsBeenLocked(swap.state.curr) || isSwapRunning) {
+      if (haveFundsBeenLocked(swap.state.curr) && isSwapRunning) {
         setOpenSuspendAlert(true);
       } else {
         await suspendCurrentSwap();
