@@ -1,10 +1,10 @@
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { formatConfirmations } from "utils/formatUtils";
-import BitcoinTransactionInfoBox from "../components/BitcoinTransactionInfoBox";
+import BitcoinTransactionInfoBox from "renderer/components/pages/swap/swap/components/BitcoinTransactionInfoBox";
 import SwapStatusAlert from "renderer/components/alert/SwapStatusAlert/SwapStatusAlert";
 import { useActiveSwapInfo } from "store/hooks";
 import { Box, DialogContentText } from "@mui/material";
-import SwapBasePage from "../components/SwapBasePage";
+import SwapBasePage from "renderer/components/pages/swap/swap/components/SwapBasePage";
 
 // This is the number of blocks after which we consider the swap to be at risk of being unsuccessful
 const BITCOIN_CONFIRMATIONS_WARNING_THRESHOLD = 2;

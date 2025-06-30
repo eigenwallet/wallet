@@ -1,5 +1,5 @@
-import CircularProgressWithSubtitle from "../components/CircularProgressWithSubtitle";
-import SwapBasePage from "../components/SwapBasePage";
+import CircularProgressWithSubtitle from "renderer/components/pages/swap/swap/components/CircularProgressWithSubtitle";
+import SwapBasePage from "renderer/components/pages/swap/swap/components/SwapBasePage";
 
 export default function BitcoinCancelledPage() {
   return (

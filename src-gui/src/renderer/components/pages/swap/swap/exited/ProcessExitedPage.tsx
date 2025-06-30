@@ -2,8 +2,8 @@ import { Box, DialogContentText } from "@mui/material";
 import { TauriSwapProgressEvent } from "models/tauriModel";
 import CliLogsBox from "renderer/components/other/RenderedCliLog";
 import { useActiveSwapInfo, useActiveSwapLogs } from "store/hooks";
-import SwapStatePage from "../../../../pages/swap/swap/SwapStatePage";
-import SwapBasePage from "../components/SwapBasePage";
+import SwapStatePage from "renderer/components/pages/swap/swap/SwapStatePage";
+import SwapBasePage from "renderer/components/pages/swap/swap/components/SwapBasePage";
 
 export default function ProcessExitedPage({
   prevState,

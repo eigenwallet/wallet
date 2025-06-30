@@ -1,5 +1,5 @@
 import { Box } from "@mui/material";
-import CancelButton from "../CancelButton";
+import CancelButton from "renderer/components/pages/swap/swap/CancelButton";
 
 export default function SwapBasePage({ children,
   showCancelButton = true,

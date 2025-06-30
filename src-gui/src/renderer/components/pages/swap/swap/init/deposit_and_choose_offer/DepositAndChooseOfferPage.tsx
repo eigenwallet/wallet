@@ -1,23 +1,19 @@
-import { Button, Typography, Box, Paper, Divider } from "@mui/material";
+import { Typography, Box, Paper, Divider } from "@mui/material";
 import BitcoinQrCode from "renderer/components/pages/swap/swap/components/BitcoinQrCode";
 import ActionableMonospaceTextBox from "renderer/components/other/ActionableMonospaceTextBox";
 import MakerOfferItem from "./MakerOfferItem";
-import { useAppDispatch } from "store/hooks";
 import { usePendingSelectMakerApproval } from "store/hooks";
 import MakerDiscoveryStatus from "./MakerDiscoveryStatus";
-import { swapReset } from "store/features/swapSlice";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { SatsAmount } from "renderer/components/other/Units";
 import _ from "lodash";
-import SwapBasePage from "../../components/SwapBasePage";
+import SwapBasePage from "renderer/components/pages/swap/swap/components/SwapBasePage";
 
 export default function DepositAndChooseOfferPage({
   deposit_address,
-  min_bitcoin_lock_tx_fee,
   max_giveable,
   known_quotes,
 }: TauriSwapProgressEventContent<"WaitingForBtcDeposit">) {
-  const dispatch = useAppDispatch();
   const pendingSelectMakerApprovals = usePendingSelectMakerApproval();
 
   const makerOffers = _.chain(pendingSelectMakerApprovals)

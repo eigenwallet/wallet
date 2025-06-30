@@ -1,7 +1,7 @@
 import { Box, DialogContentText } from "@mui/material";
-import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
+import FeedbackInfoBox from "renderer/components/pages/help/FeedbackInfoBox";
 import { TauriSwapProgressEventExt } from "models/tauriModelExt";
-import SwapBasePage from "../components/SwapBasePage";
+import SwapBasePage from "renderer/components/pages/swap/swap/components/SwapBasePage";
 
 export default function BitcoinPunishedPage({
   state,

@@ -1,10 +1,9 @@
 import { Box, DialogContentText } from "@mui/material";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
 import { useActiveSwapInfo } from "store/hooks";
-import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
-import BitcoinTransactionInfoBox from "../components/BitcoinTransactionInfoBox";
-import CancelButton from "../CancelButton";
-import SwapBasePage from "../components/SwapBasePage";
+import FeedbackInfoBox from "renderer/components/pages/help/FeedbackInfoBox";
+import BitcoinTransactionInfoBox from "renderer/components/pages/swap/swap/components/BitcoinTransactionInfoBox";
+import SwapBasePage from "renderer/components/pages/swap/swap/components/SwapBasePage";
 
 export function BitcoinRefundPublishedPage({
   btc_refund_txid,

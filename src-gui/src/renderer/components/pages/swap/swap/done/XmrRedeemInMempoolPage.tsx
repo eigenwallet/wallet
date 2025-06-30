@@ -1,8 +1,8 @@
 import { Box, DialogContentText, Typography } from "@mui/material";
 import { TauriSwapProgressEventContent } from "models/tauriModelExt";
-import FeedbackInfoBox from "../../../../pages/help/FeedbackInfoBox";
-import MoneroTransactionInfoBox from "../components/MoneroTransactionInfoBox";
-import SwapBasePage from "../components/SwapBasePage";
+import FeedbackInfoBox from "renderer/components/pages/help/FeedbackInfoBox";
+import MoneroTransactionInfoBox from "renderer/components/pages/swap/swap/components/MoneroTransactionInfoBox";
+import SwapBasePage from "renderer/components/pages/swap/swap/components/SwapBasePage";
 
 export default function XmrRedeemInMempoolPage(
   state: TauriSwapProgressEventContent<"XmrRedeemInMempool">,

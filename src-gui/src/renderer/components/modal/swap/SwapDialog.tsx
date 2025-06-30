@@ -7,7 +7,7 @@ import {
 import { useState } from "react";
 import { useAppSelector } from "store/hooks";
 import DebugPage from "./pages/DebugPage";
-import SwapStatePage from "../../pages/swap/swap/SwapStatePage";
+import SwapStatePage from "renderer/components/pages/swap/swap/SwapStatePage";
 import SwapDialogTitle from "./SwapDialogTitle";
 import SwapStateStepper from "./SwapStateStepper";
 import CancelButton from "renderer/components/pages/swap/swap/CancelButton";
