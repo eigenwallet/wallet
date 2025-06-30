@@ -19,13 +19,13 @@ import ReceivedQuotePage from "./in_progress/ReceivedQuotePage";
 import XmrLockedPage from "./in_progress/XmrLockedPage";
 import XmrLockTxInMempoolPage from "./in_progress/XmrLockInMempoolPage";
 import { exhaustiveGuard } from "utils/typescriptUtils";
-import RedeemAddress from "./init/redeemAddress/RedeemAddress";
-import WalletAndMakers from "renderer/components/pages/swap/swap/init/walletAndMakers/WalletAndMakers";
-import Offer from "./in_progress/offer/Offer";
+import DepositAndChooseOfferPage from "renderer/components/pages/swap/swap/init/walletAndMakers/DepositAndChooseOfferPage";
+import SwapSetupInflightPage from "./in_progress/SwapSetupInflightPage";
+import InitPage from "./init/InitPage";
 
 export default function SwapStatePage({ state }: { state: SwapState | null }) {
   if (state === null) {
-    return <RedeemAddress />;
+    return <InitPage />;
   }
 
   const type: TauriSwapProgressEventType = state.curr.type;
@@ -40,12 +40,12 @@ export default function SwapStatePage({ state }: { state: SwapState | null }) {
     case "WaitingForBtcDeposit":
       // This double check is necessary for the typescript compiler to infer types
       if (state.curr.type === "WaitingForBtcDeposit") {
-        return <WalletAndMakers {...state.curr.content} />;
+        return <DepositAndChooseOfferPage {...state.curr.content} />;
       }
       break;
     case "SwapSetupInflight":
       if (state.curr.type === "SwapSetupInflight") {
-        return <Offer {...state.curr.content} />;
+        return <SwapSetupInflightPage {...state.curr.content} />;
       }
       break;
     case "BtcLockTxInMempool":

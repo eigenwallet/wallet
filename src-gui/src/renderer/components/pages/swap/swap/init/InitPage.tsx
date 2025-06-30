@@ -6,7 +6,7 @@ import BitcoinAddressTextField from "renderer/components/inputs/BitcoinAddressTe
 import MoneroAddressTextField from "renderer/components/inputs/MoneroAddressTextField";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
 import { buyXmr } from "renderer/rpc";
-import { useAppSelector, useSettings } from "store/hooks";
+import { useSettings } from "store/hooks";
 
 export default function InitPage() {
   const [redeemAddress, setRedeemAddress] = useState("");
@@ -17,12 +17,10 @@ export default function InitPage() {
   const [redeemAddressValid, setRedeemAddressValid] = useState(false);
   const [refundAddressValid, setRefundAddressValid] = useState(false);
 
-  const selectedMaker = useAppSelector((state) => state.makers.selectedMaker);
   const donationRatio = useSettings((s) => s.donateToDevelopment);
 
   async function init() {
     await buyXmr(
-      selectedMaker,
       useExternalRefundAddress ? refundAddress : null,
       redeemAddress,
       donationRatio,
@@ -84,8 +82,7 @@ export default function InitPage() {
         <PromiseInvokeButton
           disabled={
             (!refundAddressValid && useExternalRefundAddress) ||
-            !redeemAddressValid ||
-            !selectedMaker
+            !redeemAddressValid
           }
           variant="contained"
           color="primary"

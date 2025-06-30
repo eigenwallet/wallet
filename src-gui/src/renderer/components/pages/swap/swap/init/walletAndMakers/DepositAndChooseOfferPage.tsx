@@ -11,7 +11,7 @@ import { SatsAmount } from "renderer/components/other/Units";
 import _ from "lodash";
 import CancelButton from "../../CancelButton";
 
-export default function WalletAndMakers({
+export default function DepositAndChooseOfferPage({
   deposit_address,
   min_bitcoin_lock_tx_fee,
   max_giveable,

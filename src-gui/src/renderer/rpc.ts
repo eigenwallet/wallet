@@ -189,21 +189,6 @@ export async function buyXmr(
     providerToConcatenatedMultiAddr(maker),
   );
 
-  await invoke<BuyXmrArgs, BuyXmrResponse>(
-    "buy_xmr",
-    bitcoin_change_address == null
-      ? {
-          rendezvous_points: PRESET_RENDEZVOUS_POINTS,
-          sellers,
-          monero_receive_address,
-        }
-      : {
-          rendezvous_points: PRESET_RENDEZVOUS_POINTS,
-          sellers,
-          monero_receive_address,
-          bitcoin_change_address,
-        },
-  );
   const address_pool: LabeledMoneroAddress[] = [];
   if (donation_percentage !== false) {
     const donation_address = isTestnet()
@@ -231,6 +216,7 @@ export async function buyXmr(
   }
 
   await invoke<BuyXmrArgs, BuyXmrResponse>("buy_xmr", {
+    rendezvous_points: PRESET_RENDEZVOUS_POINTS,
     sellers,
     monero_receive_pool: address_pool,
     bitcoin_change_address,

@@ -5,10 +5,10 @@ import {
   TauriSwapProgressEventContent,
 } from "models/tauriModelExt";
 import { SatsAmount, PiconeroAmount } from "renderer/components/other/Units";
-import { Box, Typography, Divider } from "@mui/material";
+import { Box, Typography, Divider, Theme } from "@mui/material";
 import { useActiveSwapId, usePendingLockBitcoinApproval } from "store/hooks";
 import PromiseInvokeButton from "renderer/components/PromiseInvokeButton";
-import CircularProgressWithSubtitle from "../../CircularProgressWithSubtitle";
+import CircularProgressWithSubtitle from "../components/CircularProgressWithSubtitle"
 import CheckIcon from "@mui/icons-material/Check";
 import ArrowRightAltIcon from "@mui/icons-material/ArrowRightAlt";
 import TruncatedText from "renderer/components/other/TruncatedText";
@@ -481,7 +481,7 @@ const MoneroSecondaryContent = ({
 // Arrow animation styling extracted for reuse
 const arrowSx = {
   fontSize: "3rem",
-  color: (theme: any) => theme.palette.primary.main,
+  color: (theme: Theme) => theme.palette.primary.main,
   animation: "slideArrow 2s infinite",
   "@keyframes slideArrow": {
     "0%": {
