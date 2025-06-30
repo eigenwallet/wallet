@@ -163,9 +163,9 @@ function SwapStepper({
 
 const HAPPY_PATH_STEP_LABELS = [
   { label: "Locking your BTC", duration: "~12min" },
-  { label: "They lock their XMR", duration: "~2min" },
+  { label: "They lock their XMR", duration: "~10min" },
   { label: "They redeem the BTC", duration: "~2min" },
-  { label: "Redeeming your XMR", duration: "~18min" },
+  { label: "Redeeming your XMR", duration: "~10min" },
 ];
 
 const UNHAPPY_PATH_STEP_LABELS = [
