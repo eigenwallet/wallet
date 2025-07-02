@@ -1,5 +1,9 @@
-# eigenwallet
+<div align="center">
+  <img width="40px" alt="eigenwallet_icon" src="https://github.com/user-attachments/assets/6e21a005-7ee6-4b5f-a851-e589f80d40fd" /><br>
+  <strong style="font-size: 2em;">eigenwallet</strong>
+</div>
 
+---
 This is the monorepo containing the source code for all of our core projects:
 
 - [`swap`](swap/README.md) contains the source code for the main swapping binaries, `asb` and `swap`
