@@ -1,4 +1,4 @@
-# UnstoppableSwap
+# eigenwallet
 
 This is the monorepo containing the source code for all of our core projects:
 
