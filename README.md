@@ -3,33 +3,29 @@
   <strong style="font-size: 2em;">eigenwallet</strong>
 </div>
 
----
-This is the monorepo containing the source code for all of our core projects:
+_eigenwallet_ is a community-led effort to build the Monero wallet for the future.
 
-- [`swap`](swap/README.md) contains the source code for the main swapping binaries, `asb` and `swap`
-  - [`maker`](dev-docs/asb/README.md)
-  - [`taker`](dev-docs/cli/README.md)
-- [`gui`](src-gui/README.md) contains the new tauri based user interface
-- [`tauri`](src-tauri/) contains the tauri bindings between binaries and user interface
-- and other crates we use in our binaries
+To understand what we are attempting to do (and why) we must hold a few truths to be non-negotiable.
 
-If you're just here for the software, head over to the [releases](https://github.com/UnstoppableSwap/xmr-btc-swap/releases/latest) tab and grab the binary for your operating system! If you're just looking for documentation, check out our [docs page](https://docs.unstoppableswap.net/) or our [github docs](dev-docs/README.md).
+**(1)** The primary use case for crypto is to be:
+   - peer-to-peer electronic cash
+   - a system to store, hold and transfer value irrespective of borders and governements
 
-Join our [Matrix room](https://matrix.to/#/#unstoppableswap-core:matrix.org) to follow development more closely.
+**(2)** Bitcoin is the most prominent attempt at establishing such a system. Having gained widespread acceptane, it is here to stay for a while. It will continue to be acquirable to most people on this planet for the foreseable future.
 
-![Screenshot 2024-11-21 at 6 19 03 PM](https://github.com/user-attachments/assets/a9fe110e-90b4-4af8-8980-d4207a5e2a71)
+**(3)** Privacy is (indisputably) the most important aspect of any peer-to-peer electronic cash system. Without it fungibility cannot be achieved. Bitcoins public ledger severely lacks in this regard. Monero is currently the best attempt at a better system (by far)
 
-## Contributing
+Monero is the best choice because:
+- it offers reasonably private transactions
+- it enforces non-transparent uniform transactions
+- it has the largest user base of any privacy coins (by far), giving it the largest possible anonymity set
+- its community has shown to be eager and willing to adopt new technology (e.g FCMP++)
 
-We have a `justfile` containing a lot of useful commands.
-Run `just help` to see all the available commands.
+**(4)** Monero is under constant attack. Be it by chainalysis companies or governements. It lives under the constant threat of delistings. This will impact the ability to onboard new users to the network if the community does not develop a reliable non-custodial onramp.
 
-## Running tests
+**(5)** We cannot rely on centralized exchanges. Governements will continue to crack down against Monero. Centralized entities will fold under pressure because they do not want to go to prison, and they need to stay profitable. 
 
-This repository uses [cargo-nextest](https://nexte.st/docs/running/) to run the
-test suite.
-
-```bash
-cargo install cargo-nextest
-cargo nextest run
-```
+Therefore any onramp **must**:
+- be non-custodial 
+- be censorship resistant
+- have high liqudiity
