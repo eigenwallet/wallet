@@ -17,7 +17,7 @@ runs:
         echo "DEPS_MONERO_LINUX=libabsl-dev libnghttp2-dev libevent-dev libexpat1-dev build-essential cmake libboost-all-dev miniupnpc libunbound-dev graphviz doxygen libunwind8-dev pkg-config libssl-dev libzmq3-dev libsodium-dev libusb-1.0-0-dev libprotobuf-dev protobuf-compiler git" >> $GITHUB_ENV
         
         # macOS dependencies
-        echo "DEPS_MONERO_MACOS=cmake boost openssl zmq libpgm miniupnpc expat libunwind-headers protobuf" >> $GITHUB_ENV
+        echo "DEPS_MONERO_MACOS=cmake llvm@17 boost openssl zmq libpgm miniupnpc expat libunwind-headers protobuf" >> $GITHUB_ENV
         
         # Windows MSYS2 dependencies
         echo 'DEPS_MONERO_WINDOWS_MSYS2=mingw-w64-x86_64-toolchain make mingw-w64-x86_64-cmake  mingw-w64-x86_64-boost mingw-w64-x86_64-openssl mingw-w64-x86_64-zeromq mingw-w64-x86_64-libsodium mingw-w64-x86_64-protobuf-c mingw-w64-x86_64-libusb mingw-w64-x86_64-unbound git' >> $GITHUB_ENV
