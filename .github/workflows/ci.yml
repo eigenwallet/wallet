@@ -164,8 +164,9 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest-m
-          - target: armv7-unknown-linux-gnueabihf
-            os: ubuntu-latest-m
+          # Temporarily disabled armv7 Linux builds
+          # - target: armv7-unknown-linux-gnueabihf
+          #   os: ubuntu-latest-m
           - target: x86_64-apple-darwin
             os: macos-13
           - target: aarch64-apple-darwin
