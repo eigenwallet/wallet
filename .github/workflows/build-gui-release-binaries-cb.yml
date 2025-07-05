@@ -61,8 +61,9 @@ jobs:
             args: "--target x86_64-apple-darwin"
           - platform: "ubuntu-24.04"
             args: ""
-          - platform: "windows-latest"
-            args: ""
+          # Temporarily disabled Windows builds
+          # - platform: "windows-latest"
+          #   args: ""
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4

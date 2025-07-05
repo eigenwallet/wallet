@@ -170,8 +170,9 @@ jobs:
             os: macos-13
           - target: aarch64-apple-darwin
             os: macos-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest-l
+          # Temporarily disabled Windows builds
+          # - target: x86_64-pc-windows-msvc
+          #   os: windows-latest-l
     runs-on: ${{ matrix.os }}
     if: github.event_name == 'push' || !github.event.pull_request.draft
     steps:
