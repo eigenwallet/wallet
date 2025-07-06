@@ -5,6 +5,10 @@ on:
   release:
     types: [created]
 
+concurrency:
+  group: build-gui-release-cb-${{ github.event.release.tag_name }}
+  cancel-in-progress: true
+
 env:
 # We build on an older version to support older glib versions
   UBUNTU: "ubuntu-24.04"

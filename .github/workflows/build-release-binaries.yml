@@ -7,6 +7,10 @@ on:
 env:
   DOCKER_IMAGE_NAME: ghcr.io/eigenwallet/asb
 
+concurrency:
+  group: build-release-${{ github.event.release.tag_name }}
+  cancel-in-progress: true
+
 jobs:
   build_binaries:
     name: Build

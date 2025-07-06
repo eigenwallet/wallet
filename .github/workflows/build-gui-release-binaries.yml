@@ -5,6 +5,10 @@ on:
   release:
     types: [created]
 
+concurrency:
+  group: build-gui-release-${{ github.event.release.tag_name }}
+  cancel-in-progress: true
+
 jobs:
   publish-tauri:
     # Do not publish preview releases to Github.
